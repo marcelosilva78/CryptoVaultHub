@@ -43,7 +43,7 @@ export class KeyGenerationService {
     const masterSeed = await this.getOrCreateMasterSeed();
 
     // Decrypt master mnemonic
-    const mnemonic = this.encryption.decryptToString({
+    let mnemonic: string | null = this.encryption.decryptToString({
       ciphertext: masterSeed.encryptedSeed,
       iv: masterSeed.iv,
       authTag: masterSeed.authTag,
@@ -111,8 +111,15 @@ export class KeyGenerationService {
       });
     }
 
-    // Zero mnemonic from memory
-    mnemonic.split('').fill('0');
+    // NOTE: JS strings are immutable — mnemonic.split('').fill('0') was a no-op.
+    // Buffer.from() copies the bytes, so filling it with zeros overwrites the copy
+    // in the Buffer's backing ArrayBuffer, not the original V8 string. However,
+    // nulling the reference removes the strong ref and allows GC to collect it sooner.
+    {
+      const mnemonicBuf = Buffer.from(mnemonic, 'utf-8');
+      mnemonicBuf.fill(0);
+    }
+    mnemonic = null as any;
 
     this.logger.log(
       `Generated ${keyTypes.length} keys for client ${clientId}`,
@@ -130,7 +137,7 @@ export class KeyGenerationService {
     requestedBy: string,
   ): Promise<DerivedKeyInfo> {
     const masterSeed = await this.getMasterSeed();
-    const mnemonic = this.encryption.decryptToString({
+    let mnemonic: string | null = this.encryption.decryptToString({
       ciphertext: masterSeed.encryptedSeed,
       iv: masterSeed.iv,
       authTag: masterSeed.authTag,
@@ -140,6 +147,13 @@ export class KeyGenerationService {
 
     const mnemonicObj = ethers.Mnemonic.fromPhrase(mnemonic);
     const masterNode = ethers.HDNodeWallet.fromMnemonic(mnemonicObj);
+
+    // Zero mnemonic reference (JS strings are immutable; see note in generateClientKeys)
+    {
+      const mnemonicBuf = Buffer.from(mnemonic, 'utf-8');
+      mnemonicBuf.fill(0);
+    }
+    mnemonic = null;
 
     const derivationPath = `m/44'/60'/1000'/${chainId}/${clientId}`;
     const childNode = masterNode.derivePath(derivationPath);
