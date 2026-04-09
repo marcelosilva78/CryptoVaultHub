@@ -1,0 +1,71 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma-client"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Webhook configuration
+// ---------------------------------------------------------------------------
+
+model Webhook {
+  id        BigInt   @id @default(autoincrement())
+  clientId  BigInt   @map("client_id")
+  url       String   @db.VarChar(500)
+  secret    String   @db.VarChar(128)
+  events    Json
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([clientId, url])
+  @@map("webhooks")
+}
+
+// ---------------------------------------------------------------------------
+// Webhook delivery tracking
+// ---------------------------------------------------------------------------
+
+model WebhookDelivery {
+  id             BigInt    @id @default(autoincrement())
+  deliveryCode   String    @unique @db.VarChar(50) @map("delivery_code")
+  webhookId      BigInt    @map("webhook_id")
+  clientId       BigInt    @map("client_id")
+  eventType      String    @db.VarChar(50) @map("event_type")
+  payload        Json
+  status         String    @default("queued") @db.VarChar(20)
+  httpStatus     Int?      @map("http_status")
+  responseBody   String?   @db.Text @map("response_body")
+  responseTimeMs Int?      @map("response_time_ms")
+  attempts       Int       @default(0)
+  maxAttempts    Int       @default(5) @map("max_attempts")
+  lastAttemptAt  DateTime? @map("last_attempt_at")
+  nextRetryAt    DateTime? @map("next_retry_at")
+  error          String?   @db.Text
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  @@index([webhookId, createdAt])
+  @@index([status])
+  @@map("webhook_deliveries")
+}
+
+// ---------------------------------------------------------------------------
+// Email logs
+// ---------------------------------------------------------------------------
+
+model EmailLog {
+  id        BigInt    @id @default(autoincrement())
+  clientId  BigInt    @map("client_id")
+  to        String    @db.VarChar(255)
+  subject   String    @db.VarChar(500)
+  body      String    @db.Text
+  status    String    @default("queued") @db.VarChar(20)
+  sentAt    DateTime? @map("sent_at")
+  error     String?   @db.Text
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@map("email_logs")
+}
