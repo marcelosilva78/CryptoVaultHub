@@ -10,6 +10,8 @@ scrape_configs:
       - targets:
         - 'admin-api:3001'
         - 'client-api:3002'
+        - 'auth-service:3003'
         - 'core-wallet-service:3004'
         - 'chain-indexer-service:3006'
         - 'notification-service:3007'
+        - 'cron-worker-service:3008'

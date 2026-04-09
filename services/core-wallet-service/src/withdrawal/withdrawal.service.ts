@@ -9,6 +9,7 @@ import { ethers } from 'ethers';
 import { PrismaService } from '../prisma/prisma.service';
 import { ContractService } from '../blockchain/contract.service';
 import { NonceService } from '../blockchain/nonce.service';
+import { ComplianceService } from '../compliance/compliance.service';
 
 /**
  * Processes withdrawal requests:
@@ -28,6 +29,7 @@ export class WithdrawalService {
     private readonly prisma: PrismaService,
     private readonly contractService: ContractService,
     private readonly nonceService: NonceService,
+    private readonly complianceService: ComplianceService,
   ) {}
 
   /**
@@ -79,6 +81,41 @@ export class WithdrawalService {
       throw new BadRequestException(
         `Whitelisted address ${toAddressId} is not active (status: ${whitelisted.status})`,
       );
+    }
+
+    // Compliance screening: check destination address against sanctions lists
+    const screeningResult = await this.complianceService.screenWithdrawal({
+      clientId,
+      toAddress: whitelisted.address,
+    });
+
+    if (screeningResult.result === 'hit') {
+      this.logger.warn(
+        `Withdrawal rejected: sanctions hit for address ${whitelisted.address} (client ${clientId})`,
+      );
+
+      // Create a rejected withdrawal record for audit trail
+      const rejectedWithdrawal = await this.prisma.withdrawal.create({
+        data: {
+          clientId: BigInt(clientId),
+          chainId,
+          tokenId: BigInt(tokenId),
+          fromWallet: '',
+          toAddressId: BigInt(toAddressId),
+          toAddress: whitelisted.address,
+          toLabel: whitelisted.label,
+          amount,
+          amountRaw: '0',
+          status: 'rejected',
+          kytResult: 'hit',
+          idempotencyKey,
+        },
+      });
+
+      return {
+        withdrawal: this.formatWithdrawal(rejectedWithdrawal),
+        isIdempotent: false,
+      };
     }
 
     // Validate token

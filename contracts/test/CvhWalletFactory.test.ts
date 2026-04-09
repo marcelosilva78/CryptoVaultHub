@@ -56,8 +56,8 @@ describe('CvhWalletFactory', () => {
   it('Computes deterministic address correctly', async () => {
     const signerAddresses = [s.signer1.address, s.signer2.address, s.signer3.address];
 
-    // Predict the address before deploying
-    const predictedAddress = await factory.computeWalletAddress(signerAddresses, SALT);
+    // Predict the address before deploying (deployer is s.deployer / signers[0])
+    const predictedAddress = await factory.computeWalletAddress(s.deployer.address, signerAddresses, SALT);
 
     // Actually deploy
     const tx = await factory.createWallet(signerAddresses, SALT);
@@ -77,5 +77,10 @@ describe('CvhWalletFactory', () => {
     const actualAddress = parsedEvent!.args.walletAddress;
 
     expect(predictedAddress).to.equal(actualAddress);
+  });
+
+  it('Has immutable implementation address', async () => {
+    const implAddr = await walletImpl.getAddress();
+    expect(await factory.implementationAddress()).to.equal(implAddr);
   });
 });

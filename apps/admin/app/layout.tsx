@@ -3,6 +3,7 @@ import "./globals.css";
 import { Sidebar } from "@/components/sidebar";
 import { Header } from "@/components/header";
 import { Providers } from "@/components/providers";
+import { AuthProvider } from "@/lib/auth-context";
 
 export const dynamic = "force-dynamic";
 
@@ -20,11 +21,13 @@ export default function RootLayout({
     <html lang="en">
       <body>
         <Providers>
-          <Sidebar />
-          <Header />
-          <main className="ml-[var(--sidebar-w)] mt-[var(--header-h)] p-6 min-h-[calc(100vh-var(--header-h))]">
-            <div className="animate-fade-in">{children}</div>
-          </main>
+          <AuthProvider>
+            <Sidebar />
+            <Header />
+            <main className="ml-[var(--sidebar-w)] mt-[var(--header-h)] p-6 min-h-[calc(100vh-var(--header-h))]">
+              <div className="animate-fade-in">{children}</div>
+            </main>
+          </AuthProvider>
         </Providers>
       </body>
     </html>

@@ -3,10 +3,18 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { clientInfo, navSections } from "@/lib/mock-data";
+import { navSections } from "@/lib/mock-data";
+import { useClientAuth } from "@/lib/auth-context";
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { user, logout } = useClientAuth();
+
+  const clientName = user?.clientName ?? 'Client';
+  const clientTier = user?.tier ?? 'Standard';
+  const userName = user?.name ?? 'User';
+  const userInitials = userName.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2);
+  const userRole = user?.role ?? 'User';
 
   return (
     <aside className="fixed left-0 top-0 bottom-0 w-[220px] bg-cvh-bg-secondary border-r border-cvh-border-subtle flex flex-col z-[100]">
@@ -22,9 +30,9 @@ export function Sidebar() {
 
       {/* Client Info */}
       <div className="px-[18px] py-[14px] border-b border-cvh-border-subtle bg-[rgba(59,130,246,0.12)]">
-        <div className="text-[13px] font-bold">{clientInfo.name}</div>
+        <div className="text-[13px] font-bold">{clientName}</div>
         <div className="text-[10px] text-cvh-accent font-semibold uppercase tracking-[0.08em]">
-          {clientInfo.tier} Tier
+          {clientTier} Tier
         </div>
       </div>
 
@@ -67,16 +75,27 @@ export function Sidebar() {
       {/* Footer */}
       <div className="px-[14px] py-[10px] border-t border-cvh-border-subtle flex items-center gap-2">
         <div className="w-7 h-7 bg-gradient-to-br from-cvh-accent to-cvh-teal rounded-full flex items-center justify-center text-[10px] font-bold text-white">
-          {clientInfo.user.initials}
+          {userInitials}
         </div>
         <div className="flex-1">
           <div className="text-[11px] font-semibold">
-            {clientInfo.user.name}
+            {userName}
           </div>
           <div className="text-[9px] text-cvh-text-muted">
-            {clientInfo.user.role}
+            {userRole}
           </div>
         </div>
+        <button
+          onClick={logout}
+          className="p-1 rounded-[6px] text-cvh-text-muted hover:text-red-400 hover:bg-[rgba(239,68,68,0.12)] transition-all"
+          title="Logout"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+            <polyline points="16 17 21 12 16 7" />
+            <line x1="21" y1="12" x2="9" y2="12" />
+          </svg>
+        </button>
       </div>
     </aside>
   );

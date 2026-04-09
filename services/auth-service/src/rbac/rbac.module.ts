@@ -1,13 +1,11 @@
 import { Module } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
 import { RolesGuard } from './roles.guard';
 
 @Module({
-  providers: [
-    {
-      provide: APP_GUARD,
-      useClass: RolesGuard,
-    },
-  ],
+  // I7: RolesGuard removed from APP_GUARD to fix guard ordering.
+  // Use the @AdminAuth() decorator instead, which applies AuthGuard('jwt')
+  // before RolesGuard in the correct order.
+  providers: [RolesGuard],
+  exports: [RolesGuard],
 })
 export class RbacModule {}

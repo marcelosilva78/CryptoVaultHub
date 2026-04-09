@@ -6,6 +6,7 @@ import {
   MinLength,
   MaxLength,
   Min,
+  Matches,
 } from 'class-validator';
 
 export class AddChainDto {
@@ -55,6 +56,9 @@ export class AddTokenDto {
   chainId!: number;
 
   @IsString()
+  @Matches(/^0x[0-9a-fA-F]{40}$/, {
+    message: 'contractAddress must be a valid Ethereum address',
+  })
   contractAddress!: string;
 
   @IsInt()

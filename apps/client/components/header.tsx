@@ -4,13 +4,15 @@ import { usePathname } from "next/navigation";
 
 const pageMeta: Record<string, { title: string; crumb: string }> = {
   "/": { title: "Dashboard", crumb: "Portal / Overview" },
-  "/wallets": { title: "Deposit Addresses", crumb: "Portal / Wallets / Addresses" },
+  "/wallets": { title: "My Wallets", crumb: "Portal / Wallets" },
+  "/transactions": { title: "Transactions", crumb: "Portal / Transactions / Full Traceability" },
   "/deposits": { title: "Deposits", crumb: "Portal / Deposits" },
   "/withdrawals": { title: "Withdrawals", crumb: "Portal / Withdrawals" },
   "/addresses": { title: "Address Book", crumb: "Portal / Address Book" },
   "/webhooks": { title: "Webhooks", crumb: "Portal / Integration / Webhooks" },
   "/api-keys": { title: "API Keys", crumb: "Portal / Integration / API Keys" },
   "/security": { title: "Security", crumb: "Portal / Settings / Security" },
+  "/setup": { title: "Setup Wizard", crumb: "Portal / Setup" },
 };
 
 export function Header() {

@@ -59,6 +59,49 @@ export function createOperationHash(
 }
 
 /**
+ * Creates the operationHash for sendMultiSigToken.
+ *
+ * The contract computes:
+ *   keccak256(abi.encode(getTokenNetworkId(), toAddress, value, tokenContractAddress, expireTime, sequenceId))
+ */
+export function createTokenOperationHash(
+  networkId: string,
+  toAddress: string,
+  value: bigint,
+  tokenContractAddress: string,
+  expireTime: number,
+  sequenceId: number
+): string {
+  return ethers.keccak256(
+    ethers.AbiCoder.defaultAbiCoder().encode(
+      ['string', 'address', 'uint256', 'address', 'uint256', 'uint256'],
+      [`${networkId}-ERC20`, toAddress, value, tokenContractAddress, expireTime, sequenceId]
+    )
+  );
+}
+
+/**
+ * Creates the operationHash for sendMultiSigBatch.
+ *
+ * The contract computes:
+ *   keccak256(abi.encode(getBatchNetworkId(), recipients, values, expireTime, sequenceId))
+ */
+export function createBatchOperationHash(
+  networkId: string,
+  recipients: string[],
+  values: bigint[],
+  expireTime: number,
+  sequenceId: number
+): string {
+  return ethers.keccak256(
+    ethers.AbiCoder.defaultAbiCoder().encode(
+      ['string', 'address[]', 'uint256[]', 'uint256', 'uint256'],
+      [`${networkId}-Batch`, recipients, values, expireTime, sequenceId]
+    )
+  );
+}
+
+/**
  * Signs an operation hash using the given signer.
  *
  * The contract's _recoverSigner prepends "\x19Ethereum Signed Message:\n32"

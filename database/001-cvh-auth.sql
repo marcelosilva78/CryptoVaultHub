@@ -66,6 +66,5 @@ CREATE TABLE IF NOT EXISTS `api_keys` (
   `revoked_at`      TIMESTAMP    NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_api_keys_key_hash` (`key_hash`),
-  INDEX `idx_client` (`client_id`),
-  INDEX `idx_key_hash` (`key_hash`)
+  INDEX `idx_client` (`client_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
 import { PrismaModule } from './prisma/prisma.module';
+import { RedisModule } from './redis/redis.module';
 import { BlockchainModule } from './blockchain/blockchain.module';
 import { ChainModule } from './chain/chain.module';
 import { TokenModule } from './token/token.module';
@@ -9,6 +11,8 @@ import { DepositAddressModule } from './deposit-address/deposit-address.module';
 import { WithdrawalModule } from './withdrawal/withdrawal.module';
 import { BalanceModule } from './balance/balance.module';
 import { ComplianceModule } from './compliance/compliance.module';
+import { InternalServiceGuard } from './common/guards/internal-service.guard';
+import { HealthController } from './common/health.controller';
 
 @Module({
   imports: [
@@ -17,6 +21,7 @@ import { ComplianceModule } from './compliance/compliance.module';
       envFilePath: ['.env', '../../.env'],
     }),
     PrismaModule,
+    RedisModule,
     BlockchainModule,
     ChainModule,
     TokenModule,
@@ -25,6 +30,13 @@ import { ComplianceModule } from './compliance/compliance.module';
     WithdrawalModule,
     BalanceModule,
     ComplianceModule,
+  ],
+  controllers: [HealthController],
+  providers: [
+    {
+      provide: APP_GUARD,
+      useClass: InternalServiceGuard,
+    },
   ],
 })
 export class AppModule {}

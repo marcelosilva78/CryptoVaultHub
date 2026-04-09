@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Queue, Job } from 'bullmq';
 import { ethers } from 'ethers';
@@ -21,7 +21,7 @@ export interface ForwarderDeployJobData {
  */
 @Processor('forwarder-deploy')
 @Injectable()
-export class ForwarderDeployService extends WorkerHost {
+export class ForwarderDeployService extends WorkerHost implements OnModuleInit {
   private readonly logger = new Logger(ForwarderDeployService.name);
 
   constructor(
@@ -32,6 +32,10 @@ export class ForwarderDeployService extends WorkerHost {
     private readonly evmProvider: EvmProviderService,
   ) {
     super();
+  }
+
+  async onModuleInit(): Promise<void> {
+    await this.initDeployJobs();
   }
 
   /**
@@ -91,19 +95,23 @@ export class ForwarderDeployService extends WorkerHost {
 
     if (undeployed.length === 0) return 0;
 
-    // Filter to only those with deposits
-    const addressesWithDeposits: typeof undeployed = [];
-    for (const addr of undeployed) {
-      const depositCount = await this.prisma.deposit.count({
-        where: {
-          forwarderAddress: addr.address,
-          chainId,
-        },
-      });
-      if (depositCount > 0) {
-        addressesWithDeposits.push(addr);
-      }
-    }
+    // Filter to only those with deposits (single groupBy query instead of N+1)
+    const depositCounts = await this.prisma.deposit.groupBy({
+      by: ['forwarderAddress'],
+      where: {
+        forwarderAddress: { in: undeployed.map((a) => a.address) },
+        chainId,
+      },
+      _count: { forwarderAddress: true },
+    });
+    const addressesWithDepositSet = new Set(
+      depositCounts
+        .filter((d) => d._count.forwarderAddress > 0)
+        .map((d) => d.forwarderAddress),
+    );
+    const addressesWithDeposits = undeployed.filter((addr) =>
+      addressesWithDepositSet.has(addr.address),
+    );
 
     if (addressesWithDeposits.length === 0) return 0;
 
@@ -180,11 +188,12 @@ export class ForwarderDeployService extends WorkerHost {
           timestamp: new Date().toISOString(),
         });
 
-        // Mark as deployed (in production, this happens after tx confirmation)
-        await this.prisma.depositAddress.update({
-          where: { id: addr.id },
-          data: { isDeployed: true },
-        });
+        // Record deploy request timestamp; do NOT mark as deployed until
+        // the transaction is confirmed on-chain (avoids premature marking).
+        // The deploy confirmation handler will set isDeployed = true.
+        this.logger.log(
+          `Deploy requested for forwarder ${addr.address} on chain ${chainId}`,
+        );
         deployed++;
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);

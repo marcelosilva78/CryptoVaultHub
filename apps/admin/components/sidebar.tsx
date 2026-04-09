@@ -11,9 +11,15 @@ import {
   Layers,
   ShieldAlert,
   Activity,
+  BarChart3,
+  Cog,
+  ShieldCheck,
+  LogOut,
+  FileSearch,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { navSections } from "@/lib/mock-data";
+import { useAuth } from "@/lib/auth-context";
 
 const iconMap: Record<string, React.ElementType> = {
   LayoutDashboard,
@@ -24,13 +30,26 @@ const iconMap: Record<string, React.ElementType> = {
   Layers,
   ShieldAlert,
   Activity,
+  BarChart3,
+  Cog,
+  ShieldCheck,
+  FileSearch,
 };
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { user, logout } = useAuth();
+
+  const initials = user?.name
+    ? user.name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)
+    : 'AD';
+  const displayRole = user?.role
+    ? user.role.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+    : 'Admin';
 
   const isActive = (href: string) => {
     if (href === "/") return pathname === "/";
+    if (href === "/analytics") return pathname === "/analytics";
     return pathname.startsWith(href);
   };
 
@@ -87,12 +106,19 @@ export function Sidebar() {
       {/* Footer */}
       <div className="p-3 px-4 border-t border-border-subtle flex items-center gap-2.5">
         <div className="w-8 h-8 bg-gradient-to-br from-accent to-[#8b6914] rounded-full flex items-center justify-center text-xs font-bold text-black">
-          MS
+          {initials}
         </div>
         <div className="flex-1">
-          <div className="text-xs font-semibold">Marcelo Silva</div>
-          <div className="text-[10px] text-text-muted">Super Admin</div>
+          <div className="text-xs font-semibold">{user?.name ?? 'Admin'}</div>
+          <div className="text-[10px] text-text-muted">{displayRole}</div>
         </div>
+        <button
+          onClick={logout}
+          className="p-1.5 rounded-[var(--radius)] text-text-muted hover:text-red hover:bg-red-dim transition-all"
+          title="Logout"
+        >
+          <LogOut className="w-3.5 h-3.5" />
+        </button>
       </div>
     </aside>
   );

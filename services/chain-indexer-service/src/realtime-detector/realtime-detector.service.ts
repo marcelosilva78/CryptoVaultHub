@@ -188,7 +188,7 @@ export class RealtimeDetectorService implements OnModuleInit, OnModuleDestroy {
         const fromAddress = ethers.getAddress(
           '0x' + log.topics[1].slice(26),
         );
-        const amount = BigInt(log.data).toString();
+        const amount = log.data && log.data !== '0x' ? BigInt(log.data).toString() : '0';
 
         deposits.push({
           chainId,

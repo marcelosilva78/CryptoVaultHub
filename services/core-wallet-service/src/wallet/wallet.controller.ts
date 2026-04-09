@@ -7,11 +7,15 @@ import {
   ParseIntPipe,
 } from '@nestjs/common';
 import { WalletService } from './wallet.service';
+import { BalanceService } from '../balance/balance.service';
 import { CreateWalletDto } from '../common/dto/wallet.dto';
 
 @Controller('wallets')
 export class WalletController {
-  constructor(private readonly walletService: WalletService) {}
+  constructor(
+    private readonly walletService: WalletService,
+    private readonly balanceService: BalanceService,
+  ) {}
 
   @Post('create')
   async createWallets(@Body() dto: CreateWalletDto) {
@@ -51,18 +55,13 @@ export class WalletController {
     @Param('clientId', ParseIntPipe) clientId: number,
     @Param('chainId', ParseIntPipe) chainId: number,
   ) {
-    // Delegate to BalanceService (injected via BalanceModule)
-    // For now, return wallet info — balance querying is in BalanceService
-    const wallets = await this.walletService.listWallets(clientId);
-    const chainWallets = wallets.filter((w) => w.chainId === chainId);
+    const result = await this.balanceService.getWalletBalances(clientId, chainId);
     return {
       success: true,
       clientId,
       chainId,
-      wallets: chainWallets.map((w) => ({
-        address: w.address,
-        walletType: w.walletType,
-      })),
+      walletAddress: result.walletAddress,
+      balances: result.balances,
     };
   }
 }

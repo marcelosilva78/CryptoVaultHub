@@ -8,6 +8,7 @@ import { SweepModule } from './sweep/sweep.module';
 import { ForwarderDeployModule } from './forwarder-deploy/forwarder-deploy.module';
 import { GasTankModule } from './gas-tank/gas-tank.module';
 import { SanctionsListSyncModule } from './sanctions-list-sync/sanctions-list-sync.module';
+import { HealthController } from './common/health.controller';
 
 @Module({
   imports: [
@@ -33,5 +34,6 @@ import { SanctionsListSyncModule } from './sanctions-list-sync/sanctions-list-sy
     GasTankModule,
     SanctionsListSyncModule,
   ],
+  controllers: [HealthController],
 })
 export class AppModule {}

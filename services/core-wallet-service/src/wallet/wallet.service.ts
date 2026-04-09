@@ -198,6 +198,12 @@ export class WalletService {
   ): Promise<KeyVaultPublicKey[]> {
     const res = await fetch(
       `${this.keyVaultUrl}/keys/${clientId}/public`,
+      {
+        headers: {
+          'X-Internal-Service-Key':
+            this.config.get<string>('INTERNAL_SERVICE_KEY', ''),
+        },
+      },
     );
     if (!res.ok) {
       throw new Error(`Key Vault returned ${res.status}`);
@@ -211,7 +217,11 @@ export class WalletService {
   ): Promise<KeyVaultPublicKey[]> {
     const res = await fetch(`${this.keyVaultUrl}/keys/generate`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Internal-Service-Key':
+          this.config.get<string>('INTERNAL_SERVICE_KEY', ''),
+      },
       body: JSON.stringify({
         clientId,
         requestedBy: 'core-wallet-service',
@@ -234,7 +244,11 @@ export class WalletService {
       `${this.keyVaultUrl}/keys/derive-gas-tank`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Internal-Service-Key':
+            this.config.get<string>('INTERNAL_SERVICE_KEY', ''),
+        },
         body: JSON.stringify({
           clientId,
           chainId,

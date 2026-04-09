@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Badge } from "@/components/badge";
-import { custodyModes, shamirShares } from "@/lib/mock-data";
+import { custodyModes, shamirShares, clientInfo } from "@/lib/mock-data";
 import type { CustodyMode } from "@/lib/mock-data";
 
 export default function SecurityPage() {
@@ -11,6 +11,34 @@ export default function SecurityPage() {
   return (
     <div>
       <div className="text-[18px] font-bold mb-[18px]">Security Settings</div>
+
+      {/* Profile Info */}
+      <div className="bg-cvh-bg-secondary border border-cvh-border-subtle rounded-cvh-lg p-[18px] mb-3.5">
+        <div className="text-[13px] font-bold mb-3.5">Profile Information</div>
+        <div className="grid grid-cols-3 gap-4">
+          <div>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-cvh-text-muted mb-1">
+              Organization
+            </div>
+            <div className="text-[13px] font-semibold">{clientInfo.name}</div>
+          </div>
+          <div>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-cvh-text-muted mb-1">
+              Plan Tier
+            </div>
+            <Badge variant="blue">{clientInfo.tier} Tier</Badge>
+          </div>
+          <div>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-cvh-text-muted mb-1">
+              Operator
+            </div>
+            <div className="text-[12px]">
+              {clientInfo.user.name}{" "}
+              <span className="text-cvh-text-muted">({clientInfo.user.role})</span>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <div className="grid grid-cols-2 gap-3.5">
         {/* Custody Mode */}
@@ -84,13 +112,17 @@ export default function SecurityPage() {
           <div className="text-[13px] font-bold mb-3.5">
             Two-Factor Authentication
           </div>
-          <div className="flex justify-between items-center py-2 text-[12px]">
+          <div className="flex justify-between items-center py-2 text-[12px] border-b border-cvh-border-subtle">
             <span>Status</span>
             <Badge variant="green">Enabled for all members</Badge>
           </div>
-          <div className="flex justify-between items-center py-2 text-[12px]">
+          <div className="flex justify-between items-center py-2 text-[12px] border-b border-cvh-border-subtle">
             <span>Required for withdrawals above</span>
             <span className="font-mono">$5,000</span>
+          </div>
+          <div className="flex justify-between items-center py-2 text-[12px]">
+            <span>TOTP Method</span>
+            <Badge variant="blue">Authenticator App</Badge>
           </div>
         </div>
 

@@ -4,6 +4,7 @@ import { Queue, Job } from 'bullmq';
 import { ethers } from 'ethers';
 import { RedisService } from '../redis/redis.service';
 import { EvmProviderService } from '../blockchain/evm-provider.service';
+import { PrismaService } from '../prisma/prisma.service';
 
 export interface ConfirmationJobData {
   txHash: string;
@@ -33,6 +34,7 @@ export class ConfirmationTrackerService extends WorkerHost {
     private readonly confirmationQueue: Queue,
     private readonly redis: RedisService,
     private readonly evmProvider: EvmProviderService,
+    private readonly prisma: PrismaService,
   ) {
     super();
   }
@@ -138,33 +140,32 @@ export class ConfirmationTrackerService extends WorkerHost {
       return { status: 'reverted', confirmations: 0 };
     }
 
-    // Check if a milestone was reached
-    const nextMilestoneIndex = data.currentMilestoneIndex;
-    if (
-      nextMilestoneIndex < data.milestones.length &&
-      confirmations >= data.milestones[nextMilestoneIndex]
+    // Process all passed milestones, not just the next one
+    while (
+      data.currentMilestoneIndex < data.milestones.length &&
+      confirmations >= data.milestones[data.currentMilestoneIndex]
     ) {
       await this.redis.publishToStream('deposits:confirmation', {
         event: 'deposit.milestone',
         txHash: data.txHash,
         chainId: data.chainId.toString(),
         confirmations: confirmations.toString(),
-        milestone: data.milestones[nextMilestoneIndex].toString(),
+        milestone: data.milestones[data.currentMilestoneIndex].toString(),
         required: data.required.toString(),
         clientId: data.clientId,
         walletId: data.walletId,
         toAddress: data.toAddress,
         contractAddress: data.contractAddress,
         amount: data.amount,
+        status: confirmations >= data.required ? 'confirmed' : 'confirming',
         timestamp: new Date().toISOString(),
       });
 
       this.logger.log(
-        `Milestone ${data.milestones[nextMilestoneIndex]} reached for tx ${data.txHash} (${confirmations}/${data.required})`,
+        `Milestone ${data.milestones[data.currentMilestoneIndex]} reached for tx ${data.txHash} (${confirmations}/${data.required})`,
       );
 
-      // Advance to next milestone
-      data.currentMilestoneIndex = nextMilestoneIndex + 1;
+      data.currentMilestoneIndex++;
     }
 
     // Check if fully confirmed
@@ -190,8 +191,9 @@ export class ConfirmationTrackerService extends WorkerHost {
       return { status: 'confirmed', confirmations };
     }
 
-    // Not yet confirmed — schedule next check
-    const blockTimeMs = 12_000; // default; could be read from chain config
+    // Not yet confirmed — schedule next check using chain-specific block time
+    const chain = await this.prisma.chain.findUnique({ where: { id: data.chainId } });
+    const blockTimeMs = chain ? Number(chain.blockTimeSeconds) * 1000 : 12_000;
     await this.confirmationQueue.add('check-confirmation', data, {
       delay: blockTimeMs,
     });

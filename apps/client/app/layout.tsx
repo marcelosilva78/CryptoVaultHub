@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Sidebar } from "@/components/sidebar";
 import { Header } from "@/components/header";
 import { Providers } from "@/components/providers";
+import { ClientAuthProvider } from "@/lib/auth-context";
 import "./globals.css";
 
 export const dynamic = "force-dynamic";
@@ -20,11 +21,13 @@ export default function RootLayout({
     <html lang="en">
       <body className="font-display bg-cvh-bg-primary text-cvh-text-primary min-h-screen antialiased">
         <Providers>
-          <Sidebar />
-          <Header />
-          <main className="ml-[220px] mt-[54px] p-[22px] min-h-[calc(100vh-54px)] animate-fade-up">
-            {children}
-          </main>
+          <ClientAuthProvider>
+            <Sidebar />
+            <Header />
+            <main className="ml-[220px] mt-[54px] p-[22px] min-h-[calc(100vh-54px)] animate-fade-up">
+              {children}
+            </main>
+          </ClientAuthProvider>
         </Providers>
       </body>
     </html>

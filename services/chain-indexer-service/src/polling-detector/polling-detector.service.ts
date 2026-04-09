@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Queue, Job } from 'bullmq';
 import { ethers } from 'ethers';
@@ -25,7 +25,7 @@ interface PollingJobData {
  */
 @Processor('polling-detector')
 @Injectable()
-export class PollingDetectorService extends WorkerHost {
+export class PollingDetectorService extends WorkerHost implements OnModuleInit {
   private readonly logger = new Logger(PollingDetectorService.name);
 
   constructor(
@@ -35,6 +35,10 @@ export class PollingDetectorService extends WorkerHost {
     private readonly evmProvider: EvmProviderService,
   ) {
     super();
+  }
+
+  async onModuleInit(): Promise<void> {
+    await this.initPollingJobs();
   }
 
   /**

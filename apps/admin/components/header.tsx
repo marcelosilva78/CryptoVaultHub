@@ -12,6 +12,10 @@ const pageMeta: Record<string, { title: string; breadcrumb: string }> = {
   "/tiers": { title: "Tiers & Limits", breadcrumb: "Admin / Configuration / Tiers" },
   "/compliance": { title: "Compliance", breadcrumb: "Admin / Compliance / KYT" },
   "/monitoring": { title: "Monitoring", breadcrumb: "Admin / System / Monitoring" },
+  "/analytics": { title: "Analytics Overview", breadcrumb: "Admin / Analytics / Overview" },
+  "/analytics/operations": { title: "Operations Analytics", breadcrumb: "Admin / Analytics / Operations" },
+  "/analytics/compliance": { title: "Compliance Analytics", breadcrumb: "Admin / Analytics / Compliance" },
+  "/traceability": { title: "Traceability", breadcrumb: "Admin / Transaction Traceability" },
 };
 
 export function Header() {

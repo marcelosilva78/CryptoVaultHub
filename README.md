@@ -11,7 +11,7 @@ Enterprise-grade, self-hosted EVM cryptocurrency wallet management platform for 
 - **KYT/Compliance**: OFAC SDN, EU, UN, UK OFSI sanctions screening with configurable levels (off, basic, full)
 - **Multi-Tenant**: B2B platform with configurable tiers and per-endpoint rate limits
 - **Full Observability**: PostHog business events, Prometheus + Grafana metrics, Loki logs, Jaeger distributed traces
-- **3 Custody Modes**: Full custody, co-sign, and client-initiated signing
+- **Custody Modes**: Full custody and co-sign (client-initiated planned)
 - **Envelope Encryption**: AES-256-GCM with PBKDF2-derived KEK for all private keys
 - **Shamir's Secret Sharing**: 3-of-5 threshold backup key recovery
 
@@ -47,10 +47,11 @@ Enterprise-grade, self-hosted EVM cryptocurrency wallet management platform for 
   |(vault-net) | |Port 3006   | +---------------+  +--------------+
   +------------+ +------------+
 
-  +-------------+  +---------------+  +--------------+
-  |Admin Panel  |  |Client Portal  |  |BI Dashboard  |
-  |Port 3010    |  |Port 3011      |  |Port 3012     |
-  +-------------+  +---------------+  +--------------+
+  +-------------+  +---------------+
+  |Admin Panel  |  |Client Portal  |
+  |Port 3010    |  |Port 3011      |
+  |(+ Analytics)|  +---------------+
+  +-------------+
 ```
 
 ## Tech Stack
@@ -90,9 +91,8 @@ CryptoVaultHub/
 |   +-- notification-service/   # Webhooks, email delivery
 |   +-- cron-worker-service/    # Sweeps, gas management, OFAC sync
 +-- apps/                       # Next.js frontend applications
-|   +-- admin/                  # Admin Panel (port 3010)
+|   +-- admin/                  # Admin Panel (port 3010) — includes Analytics section
 |   +-- client/                 # Client Portal (port 3011)
-|   +-- bi-dashboard/           # BI Dashboard (port 3012)
 +-- database/                   # SQL migration scripts
 |   +-- 000-create-databases.sql
 |   +-- 001-cvh-auth.sql
@@ -174,9 +174,8 @@ The deploy script deploys all 5 contracts in order:
 
 | App | Port | Description |
 |-----|------|-------------|
-| Admin Panel | 3010 | Internal administration (clients, chains, tokens, tiers, compliance, monitoring) |
+| Admin Panel | 3010 | Internal administration (clients, chains, tokens, tiers, compliance, monitoring, analytics) |
 | Client Portal | 3011 | Client self-service (wallets, deposits, withdrawals, webhooks, API keys) |
-| BI Dashboard | 3012 | Business intelligence (volume analytics, revenue, operations, compliance) |
 
 ## API Overview
 
@@ -212,8 +211,8 @@ Full API documentation: [docs/api/](docs/api/)
 
 | Layer | Mechanism |
 |-------|-----------|
-| Key Storage | AES-256-GCM envelope encryption, PBKDF2-derived KEK (100k iterations, SHA-512) |
-| Key Isolation | Air-gapped Docker network (`vault-net`), mTLS communication only |
+| Key Storage | AES-256-GCM envelope encryption, PBKDF2-derived KEK (600k iterations, SHA-512) |
+| Key Isolation | Air-gapped Docker network (`vault-net`), InternalServiceGuard + network isolation |
 | Transaction Auth | 2-of-3 on-chain multisig with replay protection (sequence ID window) |
 | API Auth | API keys (SHA-256 hashed, scoped: read/write/withdraw) + JWT for web sessions |
 | Rate Limiting | Multi-level via Kong: global, per-tenant, per-endpoint |
@@ -227,9 +226,9 @@ Full API documentation: [docs/api/](docs/api/)
 
 | Network | Purpose | Services |
 |---------|---------|----------|
-| `public-net` | External access | Kong, Admin Panel, Client Portal, BI Dashboard |
+| `public-net` | External access | Kong, Admin Panel, Client Portal |
 | `internal-net` | Inter-service communication | All NestJS services, Redis |
-| `vault-net` | Isolated key management | Core Wallet <-> Key Vault only (mTLS) |
+| `vault-net` | Isolated key management | Core Wallet <-> Key Vault only (shared secret + network isolation) |
 | `monitoring-net` | Observability stack | PostHog, Prometheus, Grafana, Loki, Jaeger |
 
 ## Documentation

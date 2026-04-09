@@ -6,6 +6,7 @@ import {
   IsInt,
   MinLength,
   MaxLength,
+  Max,
   Matches,
 } from 'class-validator';
 
@@ -75,6 +76,7 @@ export class ListClientsQueryDto {
 
   @IsOptional()
   @IsInt()
+  @Max(100)
   limit?: number = 20;
 
   @IsOptional()

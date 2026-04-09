@@ -8,6 +8,7 @@ import { ChainManagementModule } from './chain-management/chain-management.modul
 import { ComplianceManagementModule } from './compliance-management/compliance-management.module';
 import { MonitoringModule } from './monitoring/monitoring.module';
 import { PostHogInterceptor } from './common/interceptors/posthog.interceptor';
+import { HealthController } from './common/health.controller';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { PostHogInterceptor } from './common/interceptors/posthog.interceptor';
     ComplianceManagementModule,
     MonitoringModule,
   ],
+  controllers: [HealthController],
   providers: [
     {
       provide: APP_INTERCEPTOR,

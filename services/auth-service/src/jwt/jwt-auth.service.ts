@@ -1,6 +1,8 @@
 import {
   Injectable,
   UnauthorizedException,
+  HttpException,
+  HttpStatus,
   Logger,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -9,6 +11,12 @@ import * as bcrypt from 'bcryptjs';
 import { createHash, randomBytes } from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../prisma/prisma.service';
+
+export class TooManyRequestsException extends HttpException {
+  constructor(message: string) {
+    super(message, HttpStatus.TOO_MANY_REQUESTS);
+  }
+}
 
 export interface JwtPayload {
   sub: string; // user id
@@ -29,6 +37,12 @@ export class JwtAuthService {
   private readonly logger = new Logger(JwtAuthService.name);
   private readonly refreshTokenTtlMs: number;
 
+  // In-memory rate limiting stores (use Redis in production for multi-instance)
+  private readonly loginAttemptsByEmail = new Map<string, { count: number; expiresAt: number }>();
+  private readonly loginAttemptsByIp = new Map<string, { count: number; expiresAt: number }>();
+  private readonly totpAttempts = new Map<string, { count: number; expiresAt: number }>();
+  private readonly accountLockouts = new Map<string, { count: number; lockedUntil: number }>();
+
   constructor(
     private readonly jwtService: JwtService,
     private readonly prisma: PrismaService,
@@ -46,6 +60,100 @@ export class JwtAuthService {
   }
 
   /**
+   * C4/C5: Check and track login attempts per email and per IP.
+   * - Per-IP rate limit: 5 attempts per 5 minutes
+   * - Per-email rate limit: 5 attempts per 5 minutes
+   * - Account lockout after 10 failed attempts (15 min lockout)
+   */
+  async checkAndTrackLoginAttempt(email: string, ip: string): Promise<void> {
+    const now = Date.now();
+    const windowMs = 5 * 60 * 1000; // 5 minutes
+
+    // Check account lockout
+    const lockout = this.accountLockouts.get(email);
+    if (lockout && lockout.lockedUntil > now) {
+      const remainingSec = Math.ceil((lockout.lockedUntil - now) / 1000);
+      throw new TooManyRequestsException(
+        `Account temporarily locked. Try again in ${remainingSec} seconds.`,
+      );
+    }
+
+    // Per-IP rate limit
+    const ipEntry = this.loginAttemptsByIp.get(ip);
+    if (ipEntry && ipEntry.expiresAt > now) {
+      if (ipEntry.count >= 5) {
+        throw new TooManyRequestsException('Too many login attempts from this IP. Try again later.');
+      }
+      ipEntry.count++;
+    } else {
+      this.loginAttemptsByIp.set(ip, { count: 1, expiresAt: now + windowMs });
+    }
+
+    // Per-email rate limit
+    const emailEntry = this.loginAttemptsByEmail.get(email);
+    if (emailEntry && emailEntry.expiresAt > now) {
+      if (emailEntry.count >= 5) {
+        throw new TooManyRequestsException('Too many login attempts for this account. Try again later.');
+      }
+      emailEntry.count++;
+    } else {
+      this.loginAttemptsByEmail.set(email, { count: 1, expiresAt: now + windowMs });
+    }
+
+    // Track cumulative failures for lockout (10 failed = 15 min lock)
+    if (lockout && lockout.lockedUntil <= now) {
+      // Previous lockout expired, reset
+      this.accountLockouts.delete(email);
+    }
+  }
+
+  /**
+   * Record a failed login for account lockout tracking.
+   */
+  private recordFailedLogin(email: string): void {
+    const now = Date.now();
+    const lockoutDurationMs = 15 * 60 * 1000; // 15 minutes
+    const entry = this.accountLockouts.get(email);
+    if (entry) {
+      entry.count++;
+      if (entry.count >= 10) {
+        entry.lockedUntil = now + lockoutDurationMs;
+        this.logger.warn(`Account locked due to too many failed attempts: ${email}`);
+      }
+    } else {
+      this.accountLockouts.set(email, { count: 1, lockedUntil: 0 });
+    }
+  }
+
+  /**
+   * Reset login attempts on successful authentication.
+   */
+  async resetLoginAttempts(email: string, ip: string): Promise<void> {
+    this.loginAttemptsByEmail.delete(email);
+    this.loginAttemptsByIp.delete(ip);
+    this.accountLockouts.delete(email);
+  }
+
+  /**
+   * C4: Per-user TOTP rate limit: 5 attempts per 5 minutes.
+   */
+  async checkTotpAttempt(userId: string): Promise<void> {
+    const now = Date.now();
+    const windowMs = 5 * 60 * 1000;
+    const key = `totp:${userId}`;
+
+    const entry = this.totpAttempts.get(key);
+    if (entry && entry.expiresAt > now) {
+      if (entry.count >= 5) {
+        throw new TooManyRequestsException('Too many TOTP verification attempts. Try again later.');
+      }
+      entry.count++;
+    } else {
+      this.totpAttempts.set(key, { count: 1, expiresAt: now + windowMs });
+    }
+  }
+
+  /**
    * Authenticate user with email/password.
    * Returns JWT access + refresh tokens on success.
    */
@@ -60,11 +168,13 @@ export class JwtAuthService {
     });
 
     if (!user || !user.isActive) {
+      this.recordFailedLogin(email);
       throw new UnauthorizedException('Invalid credentials');
     }
 
     const passwordValid = await bcrypt.compare(password, user.passwordHash);
     if (!passwordValid) {
+      this.recordFailedLogin(email);
       throw new UnauthorizedException('Invalid credentials');
     }
 

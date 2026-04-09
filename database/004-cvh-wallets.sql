@@ -33,7 +33,8 @@ CREATE TABLE IF NOT EXISTS `deposit_addresses` (
   `created_at`  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_client_chain_external` (`client_id`, `chain_id`, `external_id`),
-  INDEX `idx_address` (`address`)
+  INDEX `idx_address` (`address`),
+  FOREIGN KEY (`wallet_id`) REFERENCES `wallets` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- whitelisted_addresses
@@ -46,5 +47,6 @@ CREATE TABLE IF NOT EXISTS `whitelisted_addresses` (
   `status`           VARCHAR(20)  NOT NULL DEFAULT 'cooldown',
   `cooldown_ends_at` TIMESTAMP    NULL,
   `created_at`       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

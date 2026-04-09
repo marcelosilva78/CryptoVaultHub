@@ -15,13 +15,13 @@ networks:
 services:
   redis:
     image: redis:7-alpine
-    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru --requirepass ${REDIS_PASSWORD}
     volumes:
       - redis-data:/data
     networks:
       - internal-net
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 10s
       timeout: 3s
       retries: 3
@@ -35,13 +35,12 @@ services:
       KONG_ADMIN_ACCESS_LOG: /dev/stdout
       KONG_PROXY_ERROR_LOG: /dev/stderr
       KONG_ADMIN_ERROR_LOG: /dev/stderr
-      KONG_ADMIN_LISTEN: "0.0.0.0:8001"
+      KONG_ADMIN_LISTEN: "127.0.0.1:8001"
     volumes:
       - ./infra/kong/kong.yml:/etc/kong/kong.yml
     ports:
       - "8000:8000"
       - "8443:8443"
-      - "8001:8001"
     networks:
       - public-net
       - internal-net
@@ -61,6 +60,11 @@ services:
     networks:
       - monitoring-net
       - internal-net
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   grafana:
     image: grafana/grafana:10.3.0
@@ -69,10 +73,14 @@ services:
     ports:
       - "3000:3000"
     environment:
-      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-changeme}
     networks:
       - monitoring-net
-      - public-net
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   loki:
     image: grafana/loki:2.9.0
@@ -81,6 +89,11 @@ services:
     networks:
       - monitoring-net
       - internal-net
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3100/ready"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   jaeger:
     image: jaegertracing/all-in-one:1.54
@@ -90,6 +103,318 @@ services:
     networks:
       - monitoring-net
       - internal-net
+
+  # ─── Application Services ──────────────────────────────────
+
+  admin-api:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.nestjs
+      args:
+        SERVICE_PATH: services/admin-api
+        PORT: 3001
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - MYSQL_HOST=${MYSQL_HOST}
+      - MYSQL_PORT=${MYSQL_PORT}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - INTERNAL_SERVICE_KEY=${INTERNAL_SERVICE_KEY}
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - internal-net
+      - public-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  client-api:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.nestjs
+      args:
+        SERVICE_PATH: services/client-api
+        PORT: 3002
+    ports:
+      - "3002:3002"
+    environment:
+      - NODE_ENV=production
+      - PORT=3002
+      - MYSQL_HOST=${MYSQL_HOST}
+      - MYSQL_PORT=${MYSQL_PORT}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - INTERNAL_SERVICE_KEY=${INTERNAL_SERVICE_KEY}
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - internal-net
+      - public-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3002/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  auth-service:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.nestjs
+      args:
+        SERVICE_PATH: services/auth-service
+        PORT: 3003
+    ports:
+      - "3003:3003"
+    environment:
+      - NODE_ENV=production
+      - PORT=3003
+      - MYSQL_HOST=${MYSQL_HOST}
+      - MYSQL_PORT=${MYSQL_PORT}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - INTERNAL_SERVICE_KEY=${INTERNAL_SERVICE_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRES_IN_SECONDS=${JWT_EXPIRES_IN_SECONDS}
+      - REFRESH_TOKEN_TTL_DAYS=${REFRESH_TOKEN_TTL_DAYS}
+      - TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY}
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - internal-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3003/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  core-wallet-service:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.nestjs
+      args:
+        SERVICE_PATH: services/core-wallet-service
+        PORT: 3004
+    ports:
+      - "3004:3004"
+    environment:
+      - NODE_ENV=production
+      - PORT=3004
+      - MYSQL_HOST=${MYSQL_HOST}
+      - MYSQL_PORT=${MYSQL_PORT}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - INTERNAL_SERVICE_KEY=${INTERNAL_SERVICE_KEY}
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - internal-net
+      - vault-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3004/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  key-vault-service:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.nestjs
+      args:
+        SERVICE_PATH: services/key-vault-service
+        PORT: 3005
+    ports:
+      - "3005:3005"
+    environment:
+      - NODE_ENV=production
+      - PORT=3005
+      - MYSQL_HOST=${MYSQL_HOST}
+      - MYSQL_PORT=${MYSQL_PORT}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - INTERNAL_SERVICE_KEY=${INTERNAL_SERVICE_KEY}
+      - VAULT_MASTER_PASSWORD=${VAULT_MASTER_PASSWORD}
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - vault-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3005/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  chain-indexer-service:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.nestjs
+      args:
+        SERVICE_PATH: services/chain-indexer-service
+        PORT: 3006
+    ports:
+      - "3006:3006"
+    environment:
+      - NODE_ENV=production
+      - PORT=3006
+      - MYSQL_HOST=${MYSQL_HOST}
+      - MYSQL_PORT=${MYSQL_PORT}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - INTERNAL_SERVICE_KEY=${INTERNAL_SERVICE_KEY}
+      - RPC_ETH_HTTP=${RPC_ETH_HTTP}
+      - RPC_ETH_WS=${RPC_ETH_WS}
+      - RPC_BSC_HTTP=${RPC_BSC_HTTP}
+      - RPC_BSC_WS=${RPC_BSC_WS}
+      - RPC_POLYGON_HTTP=${RPC_POLYGON_HTTP}
+      - TATUM_API_KEY=${TATUM_API_KEY}
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - internal-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3006/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.nestjs
+      args:
+        SERVICE_PATH: services/notification-service
+        PORT: 3007
+    ports:
+      - "3007:3007"
+    environment:
+      - NODE_ENV=production
+      - PORT=3007
+      - MYSQL_HOST=${MYSQL_HOST}
+      - MYSQL_PORT=${MYSQL_PORT}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - INTERNAL_SERVICE_KEY=${INTERNAL_SERVICE_KEY}
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - internal-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3007/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  cron-worker-service:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.nestjs
+      args:
+        SERVICE_PATH: services/cron-worker-service
+        PORT: 3008
+    ports:
+      - "3008:3008"
+    environment:
+      - NODE_ENV=production
+      - PORT=3008
+      - MYSQL_HOST=${MYSQL_HOST}
+      - MYSQL_PORT=${MYSQL_PORT}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - INTERNAL_SERVICE_KEY=${INTERNAL_SERVICE_KEY}
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - internal-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3008/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ─── Frontend Apps ────────────────────────────────────────
+
+  admin:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.nextjs
+      args:
+        APP_PATH: apps/admin
+    ports:
+      - "3010:3000"
+    environment:
+      - NODE_ENV=production
+    networks:
+      - public-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  client:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.nextjs
+      args:
+        APP_PATH: apps/client
+    ports:
+      - "3011:3000"
+    environment:
+      - NODE_ENV=production
+    networks:
+      - public-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   # ─── PostHog Stack ─────────────────────────────────────────
 

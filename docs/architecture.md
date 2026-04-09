@@ -46,15 +46,16 @@ CryptoVaultHub is composed of 8 backend microservices, 3 frontend applications, 
 |:3005  | |:3006  |  |:3007       | |:3008     |
 |vault- | |Block  |  |Webhooks    | |Sweeps    |
 |net    | |Scan   |  |Email       | |Gas Mgmt  |
-|mTLS   | |Detect |  |Retry/DLQ   | |OFAC Sync |
+|guard  | |Detect |  |Retry/DLQ   | |OFAC Sync |
 +-------+ +-------+  +------------+ +----------+
 
 Frontend Applications (public-net):
-+-------------+ +---------------+ +--------------+
-| Admin Panel | | Client Portal | | BI Dashboard |
-| :3010       | | :3011         | | :3012        |
-| Next.js 14  | | Next.js 14    | | Next.js 14   |
-+-------------+ +---------------+ +--------------+
++---------------------+ +---------------+
+| Admin Panel         | | Client Portal |
+| :3010               | | :3011         |
+| Next.js 14          | | Next.js 14    |
+| (incl. Analytics)   | +---------------+
++---------------------+
 ```
 
 ## Docker Network Layout
@@ -66,7 +67,7 @@ Four isolated Docker networks enforce security boundaries:
 |  public-net (bridge)                                                   |
 |  External-facing services                                              |
 |  [Kong :8000/:8443] [Admin Panel :3010] [Client Portal :3011]         |
-|  [BI Dashboard :3012] [Grafana :3000]                                  |
+|  [Grafana :3000]                                                       |
 +-----------------------------------------------------------------------+
 
 +-----------------------------------------------------------------------+
@@ -80,8 +81,8 @@ Four isolated Docker networks enforce security boundaries:
 
 +-----------------------------------------------------------------------+
 |  vault-net (bridge, internal: true)                                    |
-|  ZERO internet access - mTLS only                                      |
-|  [Core Wallet Service] <--mTLS--> [Key Vault Service :3005]           |
+|  ZERO internet access - shared secret + network isolation              |
+|  [Core Wallet Service] <--INTERNAL_SERVICE_KEY--> [Key Vault :3005]   |
 +-----------------------------------------------------------------------+
 
 +-----------------------------------------------------------------------+
@@ -101,7 +102,7 @@ The Key Vault Service exists ONLY on `vault-net`. It has zero connectivity to th
 |------|----|----------|---------|
 | Kong | Admin API, Client API, Auth Service | HTTP/REST | Request routing with rate limiting |
 | Admin API / Client API | Core Wallet Service | HTTP/REST (internal-net) | Synchronous wallet operations |
-| Core Wallet Service | Key Vault Service | HTTP/REST via mTLS (vault-net) | Key generation, signing |
+| Core Wallet Service | Key Vault Service | HTTP/REST via InternalServiceGuard (vault-net) | Key generation, signing |
 | Core Wallet Service | Chain Indexer Service | Redis Streams | Deposit notifications, address monitoring |
 | Core Wallet Service | Notification Service | BullMQ (Redis) | Queue webhook deliveries and emails |
 | Cron Worker Service | Core Wallet Service | HTTP/REST (internal-net) | Execute sweeps, gas top-ups |
@@ -168,7 +169,7 @@ Client submits withdrawal via POST /client/v1/withdrawals
     - CLEAR -> proceed | HIT -> block + alert | POSSIBLE_MATCH -> review queue
           |
           v
-[3] Signing (via Key Vault Service over mTLS)
+[3] Signing (via Key Vault Service over vault-net)
     - Core Wallet constructs operationHash
     - Key Vault signs with platformKey (signer 1)
     - For co-sign mode: waits for client signature via /co-sign/:id/sign
@@ -202,29 +203,33 @@ CryptoVaultHub uses 8 MySQL databases for domain separation:
 |                  |     |                  |     |                  |
 | - users          |     | - clients        |     | - master_seeds   |
 | - sessions       |     | - tiers          |     | - derived_keys   |
-| - api_keys       |     | - tier_limits    |     | - shamir_shares  |
-|                  |     | - chains         |     | - key_vault_audit|
+| - api_keys       |     | - client_tier_   |     | - shamir_shares  |
+|                  |     |   overrides      |     | - key_vault_audit|
+|                  |     | - chains         |     |                  |
+|                  |     | - tokens         |     |                  |
+|                  |     | - client_tokens  |     |                  |
+|                  |     | - client_chain_  |     |                  |
+|                  |     |   config         |     |                  |
 |                  |     | - audit_logs     |     |                  |
 +------------------+     +------------------+     +------------------+
 
 +------------------+     +------------------+     +------------------+
 |   cvh_wallets    |     | cvh_transactions |     | cvh_compliance   |
 |                  |     |                  |     |                  |
-| - wallets        |     | - transactions   |     | - sanctions_lists|
-| - addresses      |     | - withdrawal_    |     | - screening_     |
-| - labels         |     |   requests       |     |   results        |
-| - balances       |     | - deposits       |     | - alerts         |
-| - tokens         |     |                  |     |                  |
-| - forwarder_     |     |                  |     |                  |
-|   contracts      |     |                  |     |                  |
+| - wallets        |     | - deposits       |     | - sanctions_     |
+| - deposit_       |     | - withdrawals    |     |   entries        |
+|   addresses      |     |                  |     | - screening_     |
+| - whitelisted_   |     |                  |     |   results        |
+|   addresses      |     |                  |     | - compliance_    |
+|                  |     |                  |     |   alerts         |
 +------------------+     +------------------+     +------------------+
 
 +------------------+     +------------------+
 | cvh_notifications|     |   cvh_indexer    |
 |                  |     |                  |
 | - webhooks       |     | - sync_cursors   |
-| - webhook_       |     | - indexed_blocks |
-|   deliveries     |     | - chain_configs  |
+| - webhook_       |     | - monitored_     |
+|   deliveries     |     |   addresses      |
 | - email_logs     |     |                  |
 +------------------+     +------------------+
 ```
@@ -234,7 +239,7 @@ CryptoVaultHub uses 8 MySQL databases for domain separation:
 - `cvh_admin.clients` is the central entity -- referenced by wallets, transactions, API keys, etc.
 - `cvh_auth.api_keys.client_id` links API keys to clients
 - `cvh_wallets.wallets` holds one hot wallet per client per chain
-- `cvh_wallets.forwarder_contracts` tracks forwarder deployment status (computed vs deployed)
+- `cvh_wallets.deposit_addresses` tracks forwarder deployment status (computed vs deployed) via `is_deployed` flag
 - `cvh_transactions.deposits` links to the forwarder address that received the deposit
 - `cvh_keyvault` is accessed ONLY by Key Vault Service -- no cross-database joins
 

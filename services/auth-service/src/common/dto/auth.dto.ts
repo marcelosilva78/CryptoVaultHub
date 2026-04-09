@@ -35,11 +35,23 @@ export class Verify2faDto {
   code!: string;
 }
 
+/**
+ * C7: DTO for verifying 2FA via opaque challenge token (replaces userId exposure).
+ */
+export class Verify2faChallengeDto {
+  @IsString()
+  challengeToken!: string;
+
+  @IsString()
+  code!: string;
+}
+
 export class Disable2faDto {
   @IsString()
   code!: string;
 
   @IsString()
+  @MinLength(8)
   password!: string;
 }
 

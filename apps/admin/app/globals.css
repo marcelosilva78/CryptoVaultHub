@@ -36,6 +36,13 @@
   --font-display: 'Outfit', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, monospace;
   --transition: 180ms ease;
+  /* Chart colors for analytics */
+  --bg-card: #161620;
+  --chart-1: #3b82f6;
+  --chart-2: #22c55e;
+  --chart-3: #f59e0b;
+  --chart-4: #ef4444;
+  --chart-5: #8b5cf6;
 }
 
 html {
@@ -94,4 +101,19 @@ body {
 
 .animate-pulse-dot {
   animation: pulse-dot 2s infinite;
+}
+
+/* Recharts overrides for dark theme */
+.recharts-cartesian-grid-horizontal line,
+.recharts-cartesian-grid-vertical line {
+  stroke: var(--border-subtle);
+}
+.recharts-text {
+  fill: var(--text-muted);
+  font-size: 11px;
+}
+.recharts-tooltip-wrapper .recharts-default-tooltip {
+  background-color: var(--bg-elevated) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius) !important;
 }

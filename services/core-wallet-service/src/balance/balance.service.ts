@@ -1,8 +1,7 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { ethers } from 'ethers';
-import Redis from 'ioredis';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../redis/redis.service';
 import { ContractService } from '../blockchain/contract.service';
 
 export interface TokenBalance {
@@ -22,23 +21,15 @@ export interface TokenBalance {
 @Injectable()
 export class BalanceService {
   private readonly logger = new Logger(BalanceService.name);
-  private redis: Redis;
 
   /** Cache TTL in seconds */
   private readonly CACHE_TTL = 30;
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly config: ConfigService,
+    private readonly redisService: RedisService,
     private readonly contractService: ContractService,
-  ) {
-    this.redis = new Redis({
-      host: this.config.get<string>('REDIS_HOST', 'localhost'),
-      port: this.config.get<number>('REDIS_PORT', 6379),
-      maxRetriesPerRequest: 3,
-      lazyConnect: true,
-    });
-  }
+  ) {}
 
   /**
    * Get token balances for a wallet on a chain.
@@ -69,7 +60,7 @@ export class BalanceService {
 
     // Check cache
     const cacheKey = `balance:${chainId}:${wallet.address}`;
-    const cached = await this.redis.get(cacheKey);
+    const cached = await this.redisService.getCache(cacheKey);
     if (cached) {
       return JSON.parse(cached);
     }
@@ -143,10 +134,9 @@ export class BalanceService {
     };
 
     // Cache the result
-    await this.redis.set(
+    await this.redisService.setCache(
       cacheKey,
       JSON.stringify(result),
-      'EX',
       this.CACHE_TTL,
     );
 

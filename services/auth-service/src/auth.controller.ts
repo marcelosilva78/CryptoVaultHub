@@ -10,35 +10,51 @@ import {
   ParseIntPipe,
   HttpCode,
   HttpStatus,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
+import { ConfigService } from '@nestjs/config';
 import { Request } from 'express';
+import * as jwt from 'jsonwebtoken';
+import * as bcrypt from 'bcryptjs';
 import { JwtAuthService } from './jwt/jwt-auth.service';
 import { ApiKeyService } from './api-key/api-key.service';
 import { TotpService } from './totp/totp.service';
 import { Roles } from './rbac/roles.decorator';
+import { AdminAuth } from './rbac/admin-auth.decorator';
 import {
   LoginDto,
   RefreshDto,
   Verify2faDto,
+  Verify2faChallengeDto,
   Disable2faDto,
   CreateApiKeyDto,
   ValidateApiKeyDto,
 } from './common/dto/auth.dto';
+import { PrismaService } from './prisma/prisma.service';
 
 @Controller('auth')
 export class AuthController {
+  private readonly jwtSecret: string;
+
   constructor(
     private readonly jwtAuthService: JwtAuthService,
     private readonly apiKeyService: ApiKeyService,
     private readonly totpService: TotpService,
-  ) {}
+    private readonly configService: ConfigService,
+    private readonly prisma: PrismaService,
+  ) {
+    this.jwtSecret = this.configService.getOrThrow<string>('JWT_SECRET');
+  }
 
   // ─── Session Management ────────────────────────────────
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
   async login(@Body() dto: LoginDto, @Req() req: Request) {
+    // C4/C5: Track login attempts per IP and email
+    await this.jwtAuthService.checkAndTrackLoginAttempt(dto.email, req.ip ?? 'unknown');
+
     const result = await this.jwtAuthService.login(
       dto.email,
       dto.password,
@@ -54,11 +70,10 @@ export class AuthController {
           dto.totpCode,
         );
         if (!isValid) {
-          return {
-            success: false,
-            error: 'Invalid TOTP code',
-          };
+          throw new UnauthorizedException('Invalid TOTP code');
         }
+        // Reset login attempts on successful login
+        await this.jwtAuthService.resetLoginAttempts(dto.email, req.ip ?? 'unknown');
         const completed = await this.jwtAuthService.completeLoginAfter2fa(
           BigInt(result.user.id),
           req.ip,
@@ -70,18 +85,70 @@ export class AuthController {
         };
       }
 
+      // C7: Return opaque challenge token instead of userId
+      const challengeToken = jwt.sign(
+        { userId: result.user.id.toString(), purpose: '2fa_challenge' },
+        this.jwtSecret,
+        { expiresIn: '2m' },
+      );
+
       return {
         success: false,
         requires2fa: true,
-        userId: result.user.id,
+        challengeToken,
         message: 'Two-factor authentication required',
       };
     }
+
+    // Reset login attempts on successful login
+    await this.jwtAuthService.resetLoginAttempts(dto.email, req.ip ?? 'unknown');
 
     return {
       success: true,
       user: result.user,
       tokens: result.tokens,
+    };
+  }
+
+  /**
+   * C7: Verify 2FA using the opaque challenge token (not userId).
+   */
+  @Post('2fa/challenge')
+  @HttpCode(HttpStatus.OK)
+  async verify2faChallenge(
+    @Body() dto: Verify2faChallengeDto,
+    @Req() req: Request,
+  ) {
+    // Decode the challenge token
+    let payload: { userId: string; purpose: string };
+    try {
+      payload = jwt.verify(dto.challengeToken, this.jwtSecret) as any;
+    } catch {
+      throw new UnauthorizedException('Invalid or expired challenge token');
+    }
+
+    if (payload.purpose !== '2fa_challenge') {
+      throw new UnauthorizedException('Invalid challenge token purpose');
+    }
+
+    const userId = BigInt(payload.userId);
+
+    // Check TOTP attempt rate limit
+    await this.jwtAuthService.checkTotpAttempt(userId.toString());
+
+    const isValid = await this.totpService.validateCode(userId, dto.code);
+    if (!isValid) {
+      throw new UnauthorizedException('Invalid TOTP code');
+    }
+
+    const completed = await this.jwtAuthService.completeLoginAfter2fa(
+      userId,
+      req.ip,
+      req.headers['user-agent'],
+    );
+    return {
+      success: true,
+      ...completed,
     };
   }
 
@@ -123,6 +190,19 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async disable2fa(@Req() req: Request, @Body() dto: Disable2faDto) {
     const userId = BigInt((req as any).user.userId);
+
+    // I6: Verify password before allowing 2FA disable
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+    const passwordValid = await bcrypt.compare(dto.password, user.passwordHash);
+    if (!passwordValid) {
+      throw new UnauthorizedException('Invalid password');
+    }
+
     await this.totpService.disable2fa(userId, dto.code);
     return { success: true, message: '2FA disabled' };
   }
@@ -130,8 +210,7 @@ export class AuthController {
   // ─── API Keys ──────────────────────────────────────────
 
   @Post('api-keys')
-  @UseGuards(AuthGuard('jwt'))
-  @Roles('super_admin', 'admin', 'owner')
+  @AdminAuth('super_admin', 'admin', 'owner')
   async createApiKey(@Body() dto: CreateApiKeyDto) {
     const result = await this.apiKeyService.createApiKey(
       dto.clientId,
@@ -150,18 +229,22 @@ export class AuthController {
   @UseGuards(AuthGuard('jwt'))
   async listApiKeys(@Req() req: Request) {
     const user = (req as any).user;
-    // If admin, allow specifying clientId via query; otherwise use their own
-    const clientId = parseInt(
-      (req.query as any).clientId || user.clientId || '0',
-      10,
-    );
+    const isAdmin = ['super_admin', 'admin'].includes(user.role);
+
+    // Non-admin users can only list their own API keys
+    let clientId: number;
+    if (isAdmin && (req.query as any).clientId) {
+      clientId = parseInt((req.query as any).clientId, 10);
+    } else {
+      clientId = parseInt(user.clientId || '0', 10);
+    }
+
     const keys = await this.apiKeyService.listApiKeys(clientId);
     return { success: true, keys };
   }
 
   @Delete('api-keys/:id')
-  @UseGuards(AuthGuard('jwt'))
-  @Roles('super_admin', 'admin', 'owner')
+  @AdminAuth('super_admin', 'admin', 'owner')
   async revokeApiKey(@Param('id', ParseIntPipe) id: number) {
     await this.apiKeyService.revokeApiKey(id);
     return { success: true, message: 'API key revoked' };

@@ -2,9 +2,10 @@ import { Module } from '@nestjs/common';
 import { WithdrawalService } from './withdrawal.service';
 import { WithdrawalController } from './withdrawal.controller';
 import { BlockchainModule } from '../blockchain/blockchain.module';
+import { ComplianceModule } from '../compliance/compliance.module';
 
 @Module({
-  imports: [BlockchainModule],
+  imports: [BlockchainModule, ComplianceModule],
   controllers: [WithdrawalController],
   providers: [WithdrawalService],
   exports: [WithdrawalService],

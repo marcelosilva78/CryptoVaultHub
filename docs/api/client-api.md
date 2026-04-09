@@ -411,13 +411,15 @@ Initiates a withdrawal from the hot wallet. The destination address must be in t
 ```
 
 **Withdrawal Flow**:
-1. `pending_kyt` -- KYT screening in progress
-2. `pending_signing` -- Awaiting multisig signature(s)
-3. `pending_broadcast` -- Signed, awaiting broadcast
-4. `broadcasted` -- Transaction submitted on-chain
-5. `confirming` -- Waiting for confirmations
-6. `confirmed` -- Final, confirmed on-chain
-7. `failed` -- Transaction failed or was rejected
+1. `pending_approval` -- Withdrawal created, awaiting approval
+2. `pending_kyt` -- KYT screening in progress
+3. `rejected` -- Rejected by KYT screening (sanctions hit) or admin
+4. `pending_signing` -- Awaiting multisig signature(s)
+5. `pending_broadcast` -- Signed, awaiting broadcast
+6. `broadcasted` -- Transaction submitted on-chain
+7. `confirming` -- Waiting for confirmations
+8. `confirmed` -- Final, confirmed on-chain
+9. `failed` -- Transaction failed
 
 **Status Codes**:
 - `201` -- Withdrawal created

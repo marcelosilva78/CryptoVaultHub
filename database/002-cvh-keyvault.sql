@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS `derived_keys` (
   `sign_count`      BIGINT       NOT NULL DEFAULT 0,
   `created_at`      TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uq_client_keytype` (`client_id`, `key_type`),
+  UNIQUE KEY `uq_client_keytype_chain` (`client_id`, `key_type`, `chain_scope`),
   INDEX `idx_address` (`address`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

@@ -15,6 +15,7 @@ const config: Config = {
           tertiary: "var(--bg-tertiary)",
           elevated: "var(--bg-elevated)",
           hover: "var(--bg-hover)",
+          card: "var(--bg-card)",
         },
         border: {
           DEFAULT: "var(--border)",
@@ -49,6 +50,13 @@ const config: Config = {
         },
         purple: {
           DEFAULT: "var(--purple)",
+        },
+        chart: {
+          1: "var(--chart-1)",
+          2: "var(--chart-2)",
+          3: "var(--chart-3)",
+          4: "var(--chart-4)",
+          5: "var(--chart-5)",
         },
       },
       fontFamily: {

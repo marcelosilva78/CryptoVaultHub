@@ -14,6 +14,29 @@ import "./TransferHelper.sol";
  * @notice 2-of-3 multisig wallet adapted from BitGo eth-multisig-v4
  */
 contract CvhWalletSimple is IERC721Receiver, ERC1155Holder, ReentrancyGuard {
+    // --- Custom Errors ---
+    error AlreadyInitialized();
+    error RequiresThreeSigners();
+    error ZeroAddressSigner();
+    error DuplicateSigner();
+    error NotASigner();
+    error SafeModeRestriction();
+    error UnequalLengths();
+    error EmptyBatch();
+    error MaxRecipientsExceeded();
+    error BatchNotAllowedInSafeMode();
+    error CallFailed();
+    error BatchTransferFailed();
+    error Expired();
+    error SequenceIdAlreadyUsed();
+    error SequenceIdTooLow();
+    error SequenceIdTooHigh();
+    error InvalidSignatureLength();
+    error InvalidVValue();
+    error InvalidSValue();
+    error InvalidSignature();
+    error SignersMustBeDifferent();
+
     // --- Events ---
     event Deposited(address from, uint256 value, bytes data);
     event Transacted(
@@ -53,7 +76,7 @@ contract CvhWalletSimple is IERC721Receiver, ERC1155Holder, ReentrancyGuard {
 
     // --- Modifiers ---
     modifier onlySigner() {
-        require(isSigner[msg.sender], "CvhWalletSimple: not a signer");
+        if (!isSigner[msg.sender]) revert NotASigner();
         _;
     }
 
@@ -62,14 +85,15 @@ contract CvhWalletSimple is IERC721Receiver, ERC1155Holder, ReentrancyGuard {
      * @param allowedSigners Array of exactly 3 unique non-zero signer addresses
      */
     function init(address[] calldata allowedSigners) external {
-        require(!initialized, "CvhWalletSimple: already initialized");
-        require(allowedSigners.length == 3, "CvhWalletSimple: requires exactly 3 signers");
+        if (initialized) revert AlreadyInitialized();
+        if (allowedSigners.length != 3) revert RequiresThreeSigners();
 
-        for (uint256 i = 0; i < 3; i++) {
-            require(allowedSigners[i] != address(0), "CvhWalletSimple: zero address signer");
-            require(!isSigner[allowedSigners[i]], "CvhWalletSimple: duplicate signer");
+        for (uint256 i = 0; i < 3;) {
+            if (allowedSigners[i] == address(0)) revert ZeroAddressSigner();
+            if (isSigner[allowedSigners[i]]) revert DuplicateSigner();
             isSigner[allowedSigners[i]] = true;
             signers.push(allowedSigners[i]);
+            unchecked { ++i; }
         }
 
         initialized = true;
@@ -128,11 +152,11 @@ contract CvhWalletSimple is IERC721Receiver, ERC1155Holder, ReentrancyGuard {
 
         // In safe mode, can only send to signers
         if (safeMode) {
-            require(isSigner[toAddress], "CvhWalletSimple: safe mode - can only send to signers");
+            if (!isSigner[toAddress]) revert SafeModeRestriction();
         }
 
         (bool success, ) = toAddress.call{value: value}(data);
-        require(success, "CvhWalletSimple: call failed");
+        if (!success) revert CallFailed();
 
         emit Transacted(msg.sender, otherSigner, operationHash, toAddress, value, data);
     }
@@ -168,7 +192,7 @@ contract CvhWalletSimple is IERC721Receiver, ERC1155Holder, ReentrancyGuard {
 
         // IMPORTANT-7: Safe mode check for token transfers
         if (safeMode) {
-            require(isSigner[toAddress], "Safe mode: can only send to signers");
+            if (!isSigner[toAddress]) revert SafeModeRestriction();
         }
 
         TransferHelper.safeTransfer(tokenContractAddress, toAddress, value);
@@ -191,10 +215,10 @@ contract CvhWalletSimple is IERC721Receiver, ERC1155Holder, ReentrancyGuard {
         uint256 sequenceId,
         bytes calldata signature
     ) external onlySigner nonReentrant {
-        require(!safeMode, "CvhWalletSimple: batch not allowed in safe mode");
-        require(recipients.length == values.length, "CvhWalletSimple: unequal lengths");
-        require(recipients.length > 0, "CvhWalletSimple: empty batch");
-        require(recipients.length <= 255, "CvhWalletSimple: max 255 recipients");
+        if (safeMode) revert BatchNotAllowedInSafeMode();
+        if (recipients.length != values.length) revert UnequalLengths();
+        if (recipients.length == 0) revert EmptyBatch();
+        if (recipients.length > 255) revert MaxRecipientsExceeded();
 
         bytes32 operationHash = keccak256(
             abi.encode(
@@ -213,10 +237,11 @@ contract CvhWalletSimple is IERC721Receiver, ERC1155Holder, ReentrancyGuard {
             sequenceId
         );
 
-        for (uint256 i = 0; i < recipients.length; i++) {
-            (bool success, ) = recipients[i].call{value: values[i]}("");
-            require(success, "CvhWalletSimple: batch transfer failed");
+        for (uint256 i = 0; i < recipients.length;) {
+            (bool success, ) = recipients[i].call{value: values[i], gas: 100000}("");
+            if (!success) revert BatchTransferFailed();
             emit BatchTransfer(msg.sender, recipients[i], values[i]);
+            unchecked { ++i; }
         }
 
         emit BatchTransacted(msg.sender, otherSigner, operationHash);
@@ -248,10 +273,11 @@ contract CvhWalletSimple is IERC721Receiver, ERC1155Holder, ReentrancyGuard {
      */
     function getNextSequenceId() public view returns (uint256) {
         uint256 highest = 0;
-        for (uint256 i = 0; i < SEQUENCE_ID_WINDOW_SIZE; i++) {
+        for (uint256 i = 0; i < SEQUENCE_ID_WINDOW_SIZE;) {
             if (recentSequenceIds[i] > highest) {
                 highest = recentSequenceIds[i];
             }
+            unchecked { ++i; }
         }
         return highest + 1;
     }
@@ -264,22 +290,17 @@ contract CvhWalletSimple is IERC721Receiver, ERC1155Holder, ReentrancyGuard {
         uint256 lowestValue = type(uint256).max;
         uint256 lowestIndex = 0;
 
-        for (uint256 i = 0; i < SEQUENCE_ID_WINDOW_SIZE; i++) {
-            require(recentSequenceIds[i] != sequenceId, "CvhWalletSimple: sequence ID already used");
+        for (uint256 i = 0; i < SEQUENCE_ID_WINDOW_SIZE;) {
+            if (recentSequenceIds[i] == sequenceId) revert SequenceIdAlreadyUsed();
             if (recentSequenceIds[i] < lowestValue) {
                 lowestValue = recentSequenceIds[i];
                 lowestIndex = i;
             }
+            unchecked { ++i; }
         }
 
-        require(
-            sequenceId > lowestValue,
-            "CvhWalletSimple: sequence ID too low"
-        );
-        require(
-            sequenceId <= lowestValue + MAX_SEQUENCE_ID_INCREASE,
-            "CvhWalletSimple: sequence ID too high"
-        );
+        if (sequenceId <= lowestValue) revert SequenceIdTooLow();
+        if (sequenceId > lowestValue + MAX_SEQUENCE_ID_INCREASE) revert SequenceIdTooHigh();
 
         recentSequenceIds[lowestIndex] = sequenceId;
     }
@@ -295,14 +316,14 @@ contract CvhWalletSimple is IERC721Receiver, ERC1155Holder, ReentrancyGuard {
         uint256 expireTime,
         uint256 sequenceId
     ) internal returns (address) {
-        require(expireTime >= block.timestamp, "CvhWalletSimple: expired");
+        if (expireTime < block.timestamp) revert Expired();
 
         _tryInsertSequenceId(sequenceId);
 
         address otherSigner = _recoverSigner(operationHash, signature);
 
-        require(isSigner[otherSigner], "CvhWalletSimple: invalid signer");
-        require(otherSigner != msg.sender, "CvhWalletSimple: signers must be different");
+        if (!isSigner[otherSigner]) revert NotASigner();
+        if (otherSigner == msg.sender) revert SignersMustBeDifferent();
 
         return otherSigner;
     }
@@ -316,7 +337,7 @@ contract CvhWalletSimple is IERC721Receiver, ERC1155Holder, ReentrancyGuard {
         bytes32 operationHash,
         bytes calldata signature
     ) internal pure returns (address) {
-        require(signature.length == 65, "CvhWalletSimple: invalid signature length");
+        if (signature.length != 65) revert InvalidSignatureLength();
 
         bytes32 r;
         bytes32 s;
@@ -333,17 +354,17 @@ contract CvhWalletSimple is IERC721Receiver, ERC1155Holder, ReentrancyGuard {
         if (v < 27) {
             v += 27;
         }
-        require(v == 27 || v == 28, "CvhWalletSimple: invalid v value");
+        if (v != 27 && v != 28) revert InvalidVValue();
 
         // Malleability protection
-        require(uint256(s) <= MAX_S_VALUE, "CvhWalletSimple: invalid s value (malleability)");
+        if (uint256(s) > MAX_S_VALUE) revert InvalidSValue();
 
         bytes32 prefixedHash = keccak256(
             abi.encodePacked("\x19Ethereum Signed Message:\n32", operationHash)
         );
 
         address recovered = ecrecover(prefixedHash, v, r, s);
-        require(recovered != address(0), "CvhWalletSimple: invalid signature");
+        if (recovered == address(0)) revert InvalidSignature();
 
         return recovered;
     }

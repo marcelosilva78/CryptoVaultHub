@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Queue, Job } from 'bullmq';
 import { ethers } from 'ethers';
@@ -37,7 +37,7 @@ export interface SweepResult {
  */
 @Processor('sweep')
 @Injectable()
-export class SweepService extends WorkerHost {
+export class SweepService extends WorkerHost implements OnModuleInit {
   private readonly logger = new Logger(SweepService.name);
 
   constructor(
@@ -47,6 +47,10 @@ export class SweepService extends WorkerHost {
     private readonly evmProvider: EvmProviderService,
   ) {
     super();
+  }
+
+  async onModuleInit(): Promise<void> {
+    await this.initSweepJobs();
   }
 
   /**

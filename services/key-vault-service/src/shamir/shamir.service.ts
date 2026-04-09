@@ -49,6 +49,13 @@ export class ShamirService {
     threshold: number;
     custodians: string[];
   }> {
+    // I8: Validate that threshold <= totalShares
+    if (threshold > totalShares) {
+      throw new BadRequestException(
+        `threshold (${threshold}) must be <= totalShares (${totalShares})`,
+      );
+    }
+
     if (custodians.length !== totalShares) {
       throw new BadRequestException(
         `Number of custodians (${custodians.length}) must match totalShares (${totalShares})`,

@@ -19,6 +19,7 @@ import { PrismaService } from '../prisma/prisma.service';
 export class TotpService {
   private readonly logger = new Logger(TotpService.name);
   private readonly issuer = 'CryptoVaultHub';
+  private readonly rawEncryptionKey: string;
   private readonly encryptionKey: Buffer;
 
   constructor(
@@ -31,39 +32,65 @@ export class TotpService {
       window: 1,
     };
 
-    // Derive a 32-byte key from TOTP_ENCRYPTION_KEY env var using scrypt
-    const rawKey = this.configService.getOrThrow<string>('TOTP_ENCRYPTION_KEY');
-    this.encryptionKey = scryptSync(rawKey, 'totp-secret-salt', 32);
+    // Store the raw key for per-operation salt derivation
+    this.rawEncryptionKey = this.configService.getOrThrow<string>('TOTP_ENCRYPTION_KEY');
+    // Legacy: keep a static-derived key for decrypting old 3-part records
+    this.encryptionKey = scryptSync(this.rawEncryptionKey, 'totp-secret-salt', 32);
+  }
+
+  /** Derive a 32-byte key from the raw key + a random salt using scrypt. */
+  private deriveKey(salt: Buffer): Buffer {
+    return scryptSync(this.rawEncryptionKey, salt, 32);
   }
 
   /**
-   * Encrypt a TOTP secret using AES-256-GCM before storage.
+   * Encrypt a TOTP secret using AES-256-GCM with a per-operation random salt.
+   * Stored as salt:iv:authTag:ciphertext (all hex).
    */
   private encryptSecret(secret: string): string {
+    const salt = randomBytes(16);
+    const key = this.deriveKey(salt);
     const iv = randomBytes(16);
-    const cipher = createCipheriv('aes-256-gcm', this.encryptionKey, iv);
+    const cipher = createCipheriv('aes-256-gcm', key, iv);
     const encrypted = Buffer.concat([
       cipher.update(secret, 'utf-8'),
       cipher.final(),
     ]);
     const authTag = cipher.getAuthTag();
-    // Store as iv:authTag:ciphertext in hex
-    return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted.toString('hex')}`;
+    return `${salt.toString('hex')}:${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted.toString('hex')}`;
   }
 
   /**
    * Decrypt a TOTP secret from AES-256-GCM encrypted storage format.
+   * Supports both new 4-part (salt:iv:authTag:ciphertext) and legacy
+   * 3-part (iv:authTag:ciphertext with static salt) formats.
    */
   private decryptSecret(encryptedValue: string): string {
     const parts = encryptedValue.split(':');
-    if (parts.length !== 3) {
+
+    let key: Buffer;
+    let iv: Buffer;
+    let authTag: Buffer;
+    let ciphertext: Buffer;
+
+    if (parts.length === 4) {
+      // New format: salt:iv:authTag:ciphertext
+      const salt = Buffer.from(parts[0], 'hex');
+      iv = Buffer.from(parts[1], 'hex');
+      authTag = Buffer.from(parts[2], 'hex');
+      ciphertext = Buffer.from(parts[3], 'hex');
+      key = this.deriveKey(salt);
+    } else if (parts.length === 3) {
+      // Legacy format: iv:authTag:ciphertext (static salt)
+      iv = Buffer.from(parts[0], 'hex');
+      authTag = Buffer.from(parts[1], 'hex');
+      ciphertext = Buffer.from(parts[2], 'hex');
+      key = this.encryptionKey;
+    } else {
       throw new BadRequestException('Invalid encrypted TOTP secret format');
     }
-    const iv = Buffer.from(parts[0], 'hex');
-    const authTag = Buffer.from(parts[1], 'hex');
-    const ciphertext = Buffer.from(parts[2], 'hex');
 
-    const decipher = createDecipheriv('aes-256-gcm', this.encryptionKey, iv);
+    const decipher = createDecipheriv('aes-256-gcm', key, iv);
     decipher.setAuthTag(authTag);
     const decrypted = Buffer.concat([
       decipher.update(ciphertext),

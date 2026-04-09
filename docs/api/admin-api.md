@@ -509,7 +509,7 @@ Returns a paginated list of KYT/compliance alerts.
 |-----------|------|---------|-------------|
 | `page` | integer | 1 | Page number |
 | `limit` | integer | 20 | Items per page |
-| `status` | string | -- | Filter by status (`pending`, `acknowledged`, `dismissed`, `escalated`, `resolved`) |
+| `status` | string | -- | Filter by status (`open`, `acknowledged`, `dismissed`, `escalated`, `resolved`, `false_positive`) |
 | `clientId` | string | -- | Filter by client ID |
 | `severity` | string | -- | Filter by severity (`low`, `medium`, `high`, `critical`) |
 
@@ -523,7 +523,7 @@ Returns a paginated list of KYT/compliance alerts.
       "clientId": 1,
       "type": "sanctions_hit",
       "severity": "critical",
-      "status": "pending",
+      "status": "open",
       "address": "0xSanctionedAddress...",
       "listSource": "OFAC_SDN",
       "details": { "matchType": "exact", "listEntry": "..." },
@@ -557,7 +557,7 @@ Updates the status or assignment of a compliance alert.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `status` | enum | `acknowledged`, `dismissed`, `escalated`, `resolved` |
+| `status` | enum | `open`, `acknowledged`, `dismissed`, `escalated`, `resolved`, `false_positive` |
 | `notes` | string | Free-text notes for the audit trail |
 | `assignedTo` | string | Assign to a specific user/team |
 

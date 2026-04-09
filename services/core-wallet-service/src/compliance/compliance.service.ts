@@ -7,6 +7,7 @@ import { PrismaService } from '../prisma/prisma.service';
 const KYT_LEVEL_LISTS: Record<string, string[]> = {
   off: [],
   basic: ['OFAC_SDN'],
+  enhanced: ['OFAC_SDN', 'EU', 'UN'],
   full: ['OFAC_SDN', 'EU', 'UN', 'UK_OFSI'],
 };
 

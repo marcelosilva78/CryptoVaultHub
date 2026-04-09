@@ -6,6 +6,7 @@ import { ApiKeyModule } from './api-key/api-key.module';
 import { TotpModule } from './totp/totp.module';
 import { RbacModule } from './rbac/rbac.module';
 import { AuthController } from './auth.controller';
+import { HealthController } from './common/health.controller';
 
 @Module({
   imports: [
@@ -19,6 +20,6 @@ import { AuthController } from './auth.controller';
     TotpModule,
     RbacModule,
   ],
-  controllers: [AuthController],
+  controllers: [AuthController, HealthController],
 })
 export class AppModule {}

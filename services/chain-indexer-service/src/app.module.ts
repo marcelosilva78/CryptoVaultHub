@@ -8,6 +8,7 @@ import { RealtimeDetectorModule } from './realtime-detector/realtime-detector.mo
 import { PollingDetectorModule } from './polling-detector/polling-detector.module';
 import { ConfirmationTrackerModule } from './confirmation-tracker/confirmation-tracker.module';
 import { ReconciliationModule } from './reconciliation/reconciliation.module';
+import { HealthController } from './common/health.controller';
 
 @Module({
   imports: [
@@ -33,5 +34,6 @@ import { ReconciliationModule } from './reconciliation/reconciliation.module';
     ConfirmationTrackerModule,
     ReconciliationModule,
   ],
+  controllers: [HealthController],
 })
 export class AppModule {}

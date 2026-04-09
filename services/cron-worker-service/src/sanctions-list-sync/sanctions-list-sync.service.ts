@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Queue, Job } from 'bullmq';
 import { ConfigService } from '@nestjs/config';
@@ -28,7 +28,7 @@ interface ParsedSanctionEntry {
  */
 @Processor('sanctions-sync')
 @Injectable()
-export class SanctionsListSyncService extends WorkerHost {
+export class SanctionsListSyncService extends WorkerHost implements OnModuleInit {
   private readonly logger = new Logger(SanctionsListSyncService.name);
   private readonly xmlParser = new XMLParser({
     ignoreAttributes: false,
@@ -43,6 +43,10 @@ export class SanctionsListSyncService extends WorkerHost {
     private readonly redis: RedisService,
   ) {
     super();
+  }
+
+  async onModuleInit(): Promise<void> {
+    await this.initSyncJob();
   }
 
   /**
@@ -82,7 +86,7 @@ export class SanctionsListSyncService extends WorkerHost {
    */
   async syncOfacList(): Promise<SanctionsSyncResult> {
     const result: SanctionsSyncResult = {
-      source: 'OFAC',
+      source: 'OFAC_SDN',
       totalParsed: 0,
       upserted: 0,
       deactivated: 0,
@@ -106,52 +110,66 @@ export class SanctionsListSyncService extends WorkerHost {
 
     this.logger.log(`Parsed ${entries.length} crypto addresses from OFAC SDN list`);
 
-    // Deactivate all existing OFAC entries first (then re-activate the ones we find)
-    const deactivateResult = await this.prisma.sanctionsEntry.updateMany({
-      where: { listSource: 'OFAC', isActive: true },
-      data: { isActive: false },
-    });
-    result.deactivated = deactivateResult.count;
+    // Use staging approach to avoid deactivate-all window vulnerability:
+    // 1. Upsert all new entries (set isActive: true)
+    // 2. After all upserts, deactivate entries NOT in the new list
+    const newAddresses = entries.map(e => e.address.toLowerCase());
+    const now = new Date();
 
-    // Upsert each entry
-    for (const entry of entries) {
-      try {
-        await this.prisma.sanctionsEntry.upsert({
-          where: {
-            uq_list_address: {
-              listSource: 'OFAC',
-              cryptoAddress: entry.cryptoAddress.toLowerCase(),
+    // Upsert each entry within a transaction
+    try {
+      await this.prisma.$transaction(
+        entries.map(entry =>
+          this.prisma.sanctionsEntry.upsert({
+            where: {
+              listSource_address: {
+                listSource: 'OFAC_SDN',
+                address: entry.address.toLowerCase(),
+              },
             },
-          },
-          update: {
-            entityName: entry.entityName,
-            currency: entry.currency,
-            sdnId: entry.sdnId,
-            isActive: true,
-          },
-          create: {
-            listSource: 'OFAC',
-            entityName: entry.entityName,
-            cryptoAddress: entry.cryptoAddress.toLowerCase(),
-            currency: entry.currency,
-            sdnId: entry.sdnId,
-            isActive: true,
-          },
-        });
-        result.upserted++;
-      } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error);
-        this.logger.error(
-          `Failed to upsert sanctions entry ${entry.cryptoAddress}: ${msg}`,
-        );
-        result.errors++;
-      }
+            update: {
+              isActive: true,
+              entityName: entry.entityName,
+              entityId: entry.entityId,
+              addressType: entry.addressType,
+              lastSyncedAt: now,
+            },
+            create: {
+              listSource: 'OFAC_SDN',
+              address: entry.address.toLowerCase(),
+              addressType: entry.addressType,
+              entityName: entry.entityName,
+              entityId: entry.entityId,
+              isActive: true,
+              lastSyncedAt: now,
+            },
+          }),
+        ),
+      );
+      result.upserted = entries.length;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Failed to upsert sanctions entries: ${msg}`);
+      result.errors = entries.length;
+    }
+
+    // Deactivate entries not found in new list
+    if (newAddresses.length > 0) {
+      const deactivateResult = await this.prisma.sanctionsEntry.updateMany({
+        where: {
+          listSource: 'OFAC_SDN',
+          address: { notIn: newAddresses },
+          isActive: true,
+        },
+        data: { isActive: false },
+      });
+      result.deactivated = deactivateResult.count;
     }
 
     // Publish sync complete event
     await this.redis.publishToStream('sanctions:sync', {
       event: 'sanctions.sync_complete',
-      source: 'OFAC',
+      source: 'OFAC_SDN',
       totalParsed: result.totalParsed.toString(),
       upserted: result.upserted.toString(),
       deactivated: result.deactivated.toString(),
@@ -207,14 +225,14 @@ export class SanctionsListSyncService extends WorkerHost {
             idType.toLowerCase().includes('digital currency')
           ) {
             const address = id.idNumber ?? id.idValue ?? '';
-            const currency = id.idCountry ?? id.currency ?? 'Unknown';
 
             if (address) {
+              const currency = id.idCountry ?? id.currency ?? 'Unknown';
               entries.push({
-                sdnId,
+                entityId: sdnId,
                 entityName,
-                cryptoAddress: address.trim(),
-                currency: typeof currency === 'string' ? currency : 'Unknown',
+                address: address.trim(),
+                addressType: typeof currency === 'string' ? currency : 'Unknown',
               });
             }
           }

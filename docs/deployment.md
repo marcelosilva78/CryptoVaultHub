@@ -45,13 +45,15 @@ cp .env.example .env
 |----------|-------------|---------|
 | `REDIS_HOST` | Redis hostname (Docker service name) | `redis` |
 | `REDIS_PORT` | Redis port | `6379` |
+| `REDIS_PASSWORD` | Redis authentication password | `changeme` |
 
 #### Key Vault
 
 | Variable | Description | Example |
 |----------|-------------|---------|
 | `VAULT_MASTER_PASSWORD` | Master password for KEK derivation (PBKDF2). CRITICAL -- use a strong, unique password. | `changeme-use-strong-password` |
-| `KDF_ITERATIONS` | PBKDF2 iteration count (default: 100000) | `100000` |
+| `KDF_ITERATIONS` | PBKDF2 iteration count (default: 600000). OWASP 2024 recommends 600,000+ for SHA-512. | `600000` |
+| `INTERNAL_SERVICE_KEY` | Shared secret for inter-service authentication (Key Vault, Core Wallet, Notification). Used in `X-Internal-Service-Key` header with timing-safe comparison. | `random-secret-256bit` |
 
 #### RPC Endpoints
 
@@ -84,8 +86,9 @@ Add additional `RPC_<CHAIN>_HTTP` and `RPC_<CHAIN>_WS` variables for each chain 
 | Variable | Description | Example |
 |----------|-------------|---------|
 | `JWT_SECRET` | Secret key for signing JWT tokens | `your-jwt-secret-256bit` |
-| `JWT_EXPIRATION` | Access token TTL | `15m` |
-| `JWT_REFRESH_EXPIRATION` | Refresh token TTL | `7d` |
+| `JWT_EXPIRES_IN_SECONDS` | Access token TTL in seconds (default: 900) | `900` |
+| `REFRESH_TOKEN_TTL_DAYS` | Refresh token TTL in days (default: 7) | `7` |
+| `TOTP_ENCRYPTION_KEY` | AES encryption key for TOTP secrets at rest. CRITICAL -- use a strong, unique key. | `random-secret-key` |
 
 #### Service URLs (internal networking)
 
@@ -116,11 +119,11 @@ The 8 databases created:
 | `cvh_auth` | Users, sessions, API keys |
 | `cvh_keyvault` | Master seeds, derived keys, Shamir shares |
 | `cvh_admin` | Clients, tiers, chains, audit logs |
-| `cvh_wallets` | Wallets, addresses, balances, tokens, forwarder contracts |
-| `cvh_transactions` | Transactions, withdrawal requests, deposits |
-| `cvh_compliance` | Sanctions lists, screening results, alerts |
+| `cvh_wallets` | Wallets, deposit addresses, whitelisted addresses |
+| `cvh_transactions` | Deposits, withdrawals |
+| `cvh_compliance` | Sanctions entries, screening results, compliance alerts |
 | `cvh_notifications` | Webhooks, webhook deliveries, email logs |
-| `cvh_indexer` | Sync cursors, indexed blocks, chain configs |
+| `cvh_indexer` | Sync cursors, monitored addresses |
 
 Each service uses Prisma ORM with its own schema pointing to the relevant database.
 
@@ -410,7 +413,6 @@ Distributed traces flow across services via OTLP (port 4318). Trace IDs are corr
 | Cron Worker | 3008 | -- | internal-net |
 | Admin Panel | 3010 | 3010 | public-net |
 | Client Portal | 3011 | 3011 | public-net |
-| BI Dashboard | 3012 | 3012 | public-net |
 | Redis | 6379 | -- | internal-net |
 | Prometheus | 9090 | 9090 | monitoring-net, internal-net |
 | Grafana | 3000 | 3000 | monitoring-net, public-net |
@@ -425,7 +427,8 @@ Distributed traces flow across services via OTLP (port 4318). Trace IDs are corr
 - [ ] Configure real RPC endpoints with API keys for all target chains
 - [ ] Set up MySQL cluster with replication and backups
 - [ ] Configure TLS certificates for Kong (port 8443)
-- [ ] Generate mTLS certificates for Key Vault <-> Core Wallet communication
+- [ ] Set a strong, random `INTERNAL_SERVICE_KEY` for Key Vault <-> Core Wallet authentication
+- [ ] (Planned) Generate mTLS certificates for Key Vault <-> Core Wallet communication
 - [ ] Deploy smart contracts to all target chains
 - [ ] Register chain and token configurations via Admin API
 - [ ] Create initial admin user and enable 2FA

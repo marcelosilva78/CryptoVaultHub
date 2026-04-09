@@ -1,31 +1,67 @@
 import { expect } from 'chai';
 import { ethers } from 'hardhat';
-import { CvhForwarder, MockERC20 } from '../typechain-types';
+import { CvhForwarder, CvhForwarderFactory, CvhWalletSimple, MockERC20 } from '../typechain-types';
 import { getSigners, NamedSigners } from './helpers/setup';
 
 describe('CvhForwarder', () => {
-  let forwarder: CvhForwarder;
+  let forwarderFactory: CvhForwarderFactory;
   let token: MockERC20;
   let s: NamedSigners;
+  let saltCounter = 0;
 
   beforeEach(async () => {
     s = await getSigners();
+    saltCounter = 0;
 
-    const ForwarderFactory = await ethers.getContractFactory('CvhForwarder');
-    forwarder = await ForwarderFactory.deploy();
-    await forwarder.waitForDeployment();
+    // Deploy forwarder implementation (constructor sets initialized = true)
+    const ForwarderImplFactory = await ethers.getContractFactory('CvhForwarder');
+    const forwarderImpl = await ForwarderImplFactory.deploy();
+    await forwarderImpl.waitForDeployment();
+
+    // Deploy forwarder factory
+    const ForwarderFactoryFactory = await ethers.getContractFactory('CvhForwarderFactory');
+    forwarderFactory = await ForwarderFactoryFactory.deploy(await forwarderImpl.getAddress());
+    await forwarderFactory.waitForDeployment();
 
     const TokenFactory = await ethers.getContractFactory('MockERC20');
     token = await TokenFactory.deploy('TestToken', 'TT', 18);
     await token.waitForDeployment();
   });
 
+  /**
+   * Helper: deploy a forwarder clone via the factory.
+   */
+  async function deployForwarderClone(
+    parent: string,
+    feeAddr: string,
+    autoFlush721 = true,
+    autoFlush1155 = true
+  ): Promise<CvhForwarder> {
+    const salt = ethers.id(`test-salt-forwarder-${saltCounter++}`);
+    const tx = await forwarderFactory.createForwarder(parent, feeAddr, salt, autoFlush721, autoFlush1155);
+    const receipt = await tx.wait();
+
+    const event = receipt!.logs.find((log) => {
+      try {
+        return forwarderFactory.interface.parseLog({ topics: log.topics as string[], data: log.data })?.name === 'ForwarderCreated';
+      } catch {
+        return false;
+      }
+    });
+    const parsedEvent = forwarderFactory.interface.parseLog({
+      topics: event!.topics as string[],
+      data: event!.data,
+    });
+    const forwarderAddress = parsedEvent!.args.forwarderAddress;
+    return (await ethers.getContractAt('CvhForwarder', forwarderAddress)) as CvhForwarder;
+  }
+
   // ---------------------------------------------------------------
   // Initialization
   // ---------------------------------------------------------------
   describe('Initialization', () => {
     it('Sets parent and feeAddress correctly', async () => {
-      await forwarder.init(s.signer1.address, s.feeAddress.address, true, true);
+      const forwarder = await deployForwarderClone(s.signer1.address, s.feeAddress.address);
 
       expect(await forwarder.parentAddress()).to.equal(s.signer1.address);
       expect(await forwarder.feeAddress()).to.equal(s.feeAddress.address);
@@ -33,10 +69,33 @@ describe('CvhForwarder', () => {
     });
 
     it('Does not allow re-initialization', async () => {
-      await forwarder.init(s.signer1.address, s.feeAddress.address, true, true);
+      const forwarder = await deployForwarderClone(s.signer1.address, s.feeAddress.address);
+
       await expect(
         forwarder.init(s.signer2.address, s.feeAddress.address, true, true)
-      ).to.be.revertedWith('CvhForwarder: already initialized');
+      ).to.be.revertedWithCustomError(forwarder, 'AlreadyInitialized');
+    });
+
+    it('Implementation contract is initialized at deployment', async () => {
+      const ForwarderImplFactory = await ethers.getContractFactory('CvhForwarder');
+      const impl = await ForwarderImplFactory.deploy();
+      await impl.waitForDeployment();
+
+      expect(await impl.initialized()).to.equal(true);
+      await expect(
+        impl.init(s.signer1.address, s.feeAddress.address, true, true)
+      ).to.be.revertedWithCustomError(impl, 'AlreadyInitialized');
+    });
+
+    it('Rejects zero fee address', async () => {
+      const ForwarderImplFactory = await ethers.getContractFactory('CvhForwarder');
+      const forwarderForError = await ForwarderImplFactory.deploy();
+      await forwarderForError.waitForDeployment();
+
+      const salt = ethers.id('test-salt-zero-fee');
+      await expect(
+        forwarderFactory.createForwarder(s.signer1.address, ethers.ZeroAddress, salt, true, true)
+      ).to.be.revertedWithCustomError(forwarderForError, 'ZeroFeeAddress');
     });
   });
 
@@ -45,15 +104,13 @@ describe('CvhForwarder', () => {
   // ---------------------------------------------------------------
   describe('ETH Auto-Forward', () => {
     it('Auto-forwards ETH to parent on receive', async () => {
-      // Use deployer as parent so we can easily track balance
-      // (deployer is not sending ETH to forwarder — signer1 is)
-      const parentWallet = await (
-        await ethers.getContractFactory('CvhWalletSimple')
-      ).deploy();
+      // Use a CvhWalletSimple as parent so it can receive ETH
+      const WalletImplFactory = await ethers.getContractFactory('CvhWalletSimple');
+      const parentWallet = await WalletImplFactory.deploy();
       await parentWallet.waitForDeployment();
       const parentAddr = await parentWallet.getAddress();
 
-      await forwarder.init(parentAddr, s.feeAddress.address, true, true);
+      const forwarder = await deployForwarderClone(parentAddr, s.feeAddress.address);
 
       const forwarderAddr = await forwarder.getAddress();
       const amount = ethers.parseEther('1');
@@ -71,13 +128,12 @@ describe('CvhForwarder', () => {
     });
 
     it('Emits ForwarderDeposited event', async () => {
-      const parentWallet = await (
-        await ethers.getContractFactory('CvhWalletSimple')
-      ).deploy();
+      const WalletImplFactory = await ethers.getContractFactory('CvhWalletSimple');
+      const parentWallet = await WalletImplFactory.deploy();
       await parentWallet.waitForDeployment();
       const parentAddr = await parentWallet.getAddress();
 
-      await forwarder.init(parentAddr, s.feeAddress.address, true, true);
+      const forwarder = await deployForwarderClone(parentAddr, s.feeAddress.address);
 
       const forwarderAddr = await forwarder.getAddress();
       const amount = ethers.parseEther('1');
@@ -94,12 +150,13 @@ describe('CvhForwarder', () => {
   // ERC20 Flush
   // ---------------------------------------------------------------
   describe('ERC20 Flush', () => {
+    let forwarder: CvhForwarder;
     let parentAddr: string;
     let forwarderAddr: string;
 
     beforeEach(async () => {
       // parent = signer1, feeAddress = feeAddress signer
-      await forwarder.init(s.signer1.address, s.feeAddress.address, true, true);
+      forwarder = await deployForwarderClone(s.signer1.address, s.feeAddress.address);
       parentAddr = s.signer1.address;
       forwarderAddr = await forwarder.getAddress();
 
@@ -130,7 +187,7 @@ describe('CvhForwarder', () => {
 
       await expect(
         forwarder.connect(s.other).flushTokens(tokenAddr)
-      ).to.be.revertedWith('CvhForwarder: not allowed');
+      ).to.be.revertedWithCustomError(forwarder, 'NotAllowed');
     });
 
     it('Handles zero balance gracefully (no revert)', async () => {
@@ -151,7 +208,7 @@ describe('CvhForwarder', () => {
   // ---------------------------------------------------------------
   describe('Batch Flush', () => {
     it('Flushes multiple tokens in one transaction', async () => {
-      await forwarder.init(s.signer1.address, s.feeAddress.address, true, true);
+      const forwarder = await deployForwarderClone(s.signer1.address, s.feeAddress.address);
       const forwarderAddr = await forwarder.getAddress();
 
       const Token2Factory = await ethers.getContractFactory('MockERC20');
@@ -184,7 +241,7 @@ describe('CvhForwarder', () => {
   // ---------------------------------------------------------------
   describe('callFromParent', () => {
     it('Only allows parent (not feeAddress) to execute arbitrary calls', async () => {
-      await forwarder.init(s.signer1.address, s.feeAddress.address, true, true);
+      const forwarder = await deployForwarderClone(s.signer1.address, s.feeAddress.address);
 
       // Parent can call
       await expect(
@@ -198,7 +255,7 @@ describe('CvhForwarder', () => {
         forwarder
           .connect(s.feeAddress)
           .callFromParent(s.recipient.address, 0, '0x')
-      ).to.be.revertedWith('CvhForwarder: not parent');
+      ).to.be.revertedWithCustomError(forwarder, 'NotParent');
     });
   });
 });

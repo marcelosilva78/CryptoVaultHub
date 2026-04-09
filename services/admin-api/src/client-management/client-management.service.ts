@@ -182,7 +182,13 @@ export class ClientManagementService {
       const response = await axios.post(
         `${this.keyVaultUrl}/keys/generate`,
         { clientId: id },
-        { timeout: 30000 },
+        {
+          timeout: 30000,
+          headers: {
+            'X-Internal-Service-Key':
+              this.configService.get<string>('INTERNAL_SERVICE_KEY', ''),
+          },
+        },
       );
 
       await this.auditLog.log({

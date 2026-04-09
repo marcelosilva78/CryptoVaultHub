@@ -13,10 +13,12 @@ async function main() {
     process.exit(1);
   }
 
+  const [deployer] = await ethers.getSigners();
   const factory = await ethers.getContractAt('CvhForwarderFactory', factoryAddress);
 
   const saltBytes32 = ethers.id(salt);
   const predictedAddress = await factory.computeForwarderAddress(
+    deployer.address,
     parentAddress,
     feeAddress,
     saltBytes32
@@ -24,6 +26,7 @@ async function main() {
 
   console.log('Predicted forwarder address:', predictedAddress);
   console.log('Parameters:');
+  console.log('  Deployer:', deployer.address);
   console.log('  Factory:', factoryAddress);
   console.log('  Parent: ', parentAddress);
   console.log('  Fee:    ', feeAddress);

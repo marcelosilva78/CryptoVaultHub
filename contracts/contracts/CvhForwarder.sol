@@ -15,8 +15,20 @@ import "./TransferHelper.sol";
  * @notice Deposit address contract that auto-forwards ETH to the parent wallet
  */
 contract CvhForwarder is IERC721Receiver, IERC1155Receiver, ERC165 {
+    // --- Custom Errors ---
+    error AlreadyInitialized();
+    error ZeroParentAddress();
+    error ZeroFeeAddress();
+    error NotAllowed();
+    error NotParent();
+    error FlushFailed();
+    error CallFailed();
+    error TooManyTokens();
+
     // --- Events ---
     event ForwarderDeposited(address from, uint256 value);
+    event AutoFlush721Changed(bool enabled);
+    event AutoFlush1155Changed(bool enabled);
 
     // --- State ---
     bool public initialized;
@@ -32,15 +44,12 @@ contract CvhForwarder is IERC721Receiver, IERC1155Receiver, ERC165 {
 
     // --- Modifiers ---
     modifier onlyAllowedAddress() {
-        require(
-            msg.sender == parentAddress || msg.sender == feeAddress,
-            "CvhForwarder: not allowed"
-        );
+        if (msg.sender != parentAddress && msg.sender != feeAddress) revert NotAllowed();
         _;
     }
 
     modifier onlyParent() {
-        require(msg.sender == parentAddress, "CvhForwarder: not parent");
+        if (msg.sender != parentAddress) revert NotParent();
         _;
     }
 
@@ -57,9 +66,9 @@ contract CvhForwarder is IERC721Receiver, IERC1155Receiver, ERC165 {
         bool _autoFlush721,
         bool _autoFlush1155
     ) external {
-        require(!initialized, "CvhForwarder: already initialized");
-        require(_parentAddress != address(0), "CvhForwarder: zero parent");
-        require(_feeAddress != address(0), "CvhForwarder: zero fee address");
+        if (initialized) revert AlreadyInitialized();
+        if (_parentAddress == address(0)) revert ZeroParentAddress();
+        if (_feeAddress == address(0)) revert ZeroFeeAddress();
 
         parentAddress = payable(_parentAddress);
         feeAddress = _feeAddress;
@@ -75,9 +84,9 @@ contract CvhForwarder is IERC721Receiver, IERC1155Receiver, ERC165 {
     }
 
     /**
-     * @notice Flush all ETH to parent
+     * @notice Flush all ETH to parent (restricted to parent/feeAddress)
      */
-    function flush() public {
+    function flush() external onlyAllowedAddress {
         _flush();
     }
 
@@ -85,7 +94,7 @@ contract CvhForwarder is IERC721Receiver, IERC1155Receiver, ERC165 {
         uint256 balance = address(this).balance;
         if (balance > 0) {
             (bool success, ) = parentAddress.call{value: balance}("");
-            require(success, "CvhForwarder: flush failed");
+            if (!success) revert FlushFailed();
             emit ForwarderDeposited(address(this), balance);
         }
     }
@@ -107,12 +116,14 @@ contract CvhForwarder is IERC721Receiver, IERC1155Receiver, ERC165 {
      * @param tokenContractAddresses Array of ERC20 token addresses
      */
     function batchFlushERC20Tokens(address[] calldata tokenContractAddresses) external onlyAllowedAddress {
-        for (uint256 i = 0; i < tokenContractAddresses.length; i++) {
+        if (tokenContractAddresses.length > 255) revert TooManyTokens();
+        for (uint256 i = 0; i < tokenContractAddresses.length;) {
             ERC20Interface token = ERC20Interface(tokenContractAddresses[i]);
             uint256 balance = token.balanceOf(address(this));
             if (balance > 0) {
                 TransferHelper.safeTransfer(tokenContractAddresses[i], parentAddress, balance);
             }
+            unchecked { ++i; }
         }
     }
 
@@ -154,6 +165,7 @@ contract CvhForwarder is IERC721Receiver, IERC1155Receiver, ERC165 {
      */
     function setAutoFlush721(bool _autoFlush721) external onlyAllowedAddress {
         autoFlush721 = _autoFlush721;
+        emit AutoFlush721Changed(_autoFlush721);
     }
 
     /**
@@ -161,6 +173,7 @@ contract CvhForwarder is IERC721Receiver, IERC1155Receiver, ERC165 {
      */
     function setAutoFlush1155(bool _autoFlush1155) external onlyAllowedAddress {
         autoFlush1155 = _autoFlush1155;
+        emit AutoFlush1155Changed(_autoFlush1155);
     }
 
     /**
@@ -175,7 +188,7 @@ contract CvhForwarder is IERC721Receiver, IERC1155Receiver, ERC165 {
         bytes calldata data
     ) external onlyParent returns (bytes memory) {
         (bool success, bytes memory returnData) = target.call{value: value}(data);
-        require(success, "CvhForwarder: call failed");
+        if (!success) revert CallFailed();
         return returnData;
     }
 
@@ -238,10 +251,10 @@ contract CvhForwarder is IERC721Receiver, IERC1155Receiver, ERC165 {
     // --- Receive / Fallback ---
 
     receive() external payable {
-        flush();
+        _flush();
     }
 
     fallback() external payable {
-        flush();
+        _flush();
     }
 }

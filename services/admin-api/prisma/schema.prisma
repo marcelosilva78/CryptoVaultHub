@@ -39,7 +39,7 @@ model Tier {
   maxForwardersPerChain Int      @default(100) @map("max_forwarders_per_chain")
   maxChains             Int      @default(5) @map("max_chains")
   maxWebhooks           Int      @default(10) @map("max_webhooks")
-  dailyWithdrawalLimitUsd Float  @default(10000) @map("daily_withdrawal_limit_usd")
+  dailyWithdrawalLimitUsd Decimal @default(10000) @map("daily_withdrawal_limit_usd") @db.Decimal(15,2)
   monitoringMode        String   @default("basic") @map("monitoring_mode") @db.VarChar(50)
   kytLevel              KytLevel @default(basic) @map("kyt_level")
   createdAt             DateTime @default(now()) @map("created_at")
@@ -81,6 +81,31 @@ model AuditLog {
   @@map("audit_logs")
 }
 
+model ClientToken {
+  id          Int      @id @default(autoincrement())
+  clientId    Int      @map("client_id")
+  tokenId     Int      @map("token_id")
+  isEnabled   Boolean  @default(true) @map("is_enabled")
+  customLabel String?  @map("custom_label") @db.VarChar(100)
+  createdAt   DateTime @default(now()) @map("created_at")
+  @@unique([clientId, tokenId], name: "uq_client_token")
+  @@map("client_tokens")
+}
+
+model ClientChainConfig {
+  id                     Int      @id @default(autoincrement())
+  clientId               Int      @map("client_id")
+  chainId                Int      @map("chain_id")
+  isEnabled              Boolean  @default(true) @map("is_enabled")
+  customRpcHttp          String?  @map("custom_rpc_http") @db.VarChar(500)
+  customRpcWs            String?  @map("custom_rpc_ws") @db.VarChar(500)
+  confirmationsOverride  Int?     @map("confirmations_override")
+  createdAt              DateTime @default(now()) @map("created_at")
+  updatedAt              DateTime @updatedAt @map("updated_at")
+  @@unique([clientId, chainId], name: "uq_client_chain")
+  @@map("client_chain_config")
+}
+
 enum ClientStatus {
   active
   suspended
@@ -90,6 +115,7 @@ enum ClientStatus {
 enum CustodyMode {
   full_custody
   co_sign
+  client_initiated
 }
 
 enum KytLevel {

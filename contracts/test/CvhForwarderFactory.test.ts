@@ -70,8 +70,9 @@ describe('CvhForwarderFactory', () => {
   it('Computes deterministic forwarder address correctly', async () => {
     const parentAddr = await parentWallet.getAddress();
 
-    // Predict address
+    // Predict address (deployer is s.deployer / signers[0])
     const predictedAddress = await factory.computeForwarderAddress(
+      s.deployer.address,
       parentAddr,
       s.feeAddress.address,
       SALT
@@ -139,5 +140,10 @@ describe('CvhForwarderFactory', () => {
 
     expect(forwarderBalance).to.equal(0n);
     expect(parentBalanceAfter - parentBalanceBefore).to.equal(amount);
+  });
+
+  it('Has immutable implementation address', async () => {
+    const implAddr = await forwarderImpl.getAddress();
+    expect(await factory.implementationAddress()).to.equal(implAddr);
   });
 });

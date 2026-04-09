@@ -1,3 +1,8 @@
+// NOTE: This service uses cross-database queries (cvh_admin, cvh_wallets, cvh_compliance).
+// This is a known Prisma limitation with MySQL — Prisma does not natively support
+// multi-database schemas. The MySQL user must have access to all referenced databases,
+// and DATABASE_URL should point to the primary database (cvh_wallets).
+
 generator client {
   provider = "prisma-client-js"
   output   = "../src/generated/prisma-client"
@@ -20,7 +25,7 @@ model Client {
   tierId      BigInt   @map("tier_id")
   custodyMode String   @default("full_custody") @db.VarChar(30) @map("custody_mode")
   kytEnabled  Boolean  @default(false) @map("kyt_enabled")
-  kytLevel    String   @default("off") @db.VarChar(10) @map("kyt_level")
+  kytLevel    String   @default("basic") @db.VarChar(10) @map("kyt_level")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
