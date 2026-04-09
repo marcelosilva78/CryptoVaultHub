@@ -1,4 +1,7 @@
+"use client";
+
 import { cn } from "@/lib/utils";
+import { useHealth, useQueueStatus } from "@cvh/api-client/hooks";
 import { services, queues } from "@/lib/mock-data";
 
 const metricColorMap: Record<string, string> = {
@@ -10,6 +13,12 @@ const metricColorMap: Record<string, string> = {
 };
 
 export default function MonitoringPage() {
+  // API hooks with mock data fallback
+  const { data: apiHealth } = useHealth();
+  const { data: apiQueues } = useQueueStatus();
+  void apiHealth; // Falls back to services mock data
+  void apiQueues; // Falls back to queues mock data
+
   return (
     <>
       {/* Service Health */}

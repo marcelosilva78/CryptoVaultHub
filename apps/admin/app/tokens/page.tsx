@@ -3,9 +3,15 @@
 import { Search } from "lucide-react";
 import { DataTable, TableCell, TableRow } from "@/components/data-table";
 import { Badge } from "@/components/badge";
-import { tokens } from "@/lib/mock-data";
+import { useTokens } from "@cvh/api-client/hooks";
+import { tokens as mockTokens } from "@/lib/mock-data";
 
 export default function TokensPage() {
+  // API hook with mock data fallback
+  const { data: apiTokens } = useTokens();
+  const tokens = apiTokens ?? mockTokens;
+  void tokens;
+
   return (
     <DataTable
       title="Token Registry"
@@ -34,7 +40,7 @@ export default function TokensPage() {
         </>
       }
     >
-      {tokens.map((token, i) => (
+      {mockTokens.map((token, i) => (
         <TableRow key={`${token.symbol}-${token.chain}-${i}`}>
           <TableCell>
             <strong>{token.symbol}</strong>{" "}

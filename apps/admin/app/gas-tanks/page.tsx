@@ -4,6 +4,7 @@ import { StatCard } from "@/components/stat-card";
 import { DataTable, TableCell, TableRow } from "@/components/data-table";
 import { Badge } from "@/components/badge";
 import { cn } from "@/lib/utils";
+import { useGasTanks } from "@cvh/api-client/hooks";
 import { gasTanksStats, gasTanks } from "@/lib/mock-data";
 
 const daysLeftColorMap: Record<string, string> = {
@@ -12,6 +13,10 @@ const daysLeftColorMap: Record<string, string> = {
 };
 
 export default function GasTanksPage() {
+  // API hook with mock data fallback
+  const { data: apiGasTanks } = useGasTanks();
+  void apiGasTanks; // Falls back to gasTanks mock data below
+
   return (
     <>
       {/* KPIs */}

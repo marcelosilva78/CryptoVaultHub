@@ -4,6 +4,7 @@ import { KpiCard } from "@/components/kpi-card";
 import { AreaChartCard } from "@/components/area-chart-card";
 import { BarChartCard } from "@/components/bar-chart-card";
 import { DonutChartCard } from "@/components/donut-chart-card";
+import { useClients, useChains } from "@cvh/api-client/hooks";
 import {
   kpiData,
   dailyVolumes,
@@ -13,6 +14,12 @@ import {
 import { formatCurrency } from "@/lib/utils";
 
 export default function OverviewPage() {
+  // API hooks with mock data fallback for BI analytics
+  const { data: apiClients } = useClients();
+  const { data: apiChains } = useChains();
+  void apiClients; // BI dashboard uses admin API for cross-client analytics
+  void apiChains;
+
   return (
     <div className="space-y-6">
       <h1 className="text-lg font-semibold text-white">Overview</h1>

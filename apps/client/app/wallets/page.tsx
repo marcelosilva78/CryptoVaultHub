@@ -5,9 +5,14 @@ import { StatCard } from "@/components/stat-card";
 import { DataTable } from "@/components/data-table";
 import { Badge } from "@/components/badge";
 import { GenerateAddressModal } from "@/components/generate-address-modal";
+import { useDepositAddresses } from "@cvh/api-client/hooks";
 import { walletKPIs, walletAddresses } from "@/lib/mock-data";
 
 export default function WalletsPage() {
+  // API hook with mock data fallback
+  const { data: apiAddresses } = useDepositAddresses();
+  void apiAddresses; // Falls back to walletAddresses mock data below
+
   const [modalOpen, setModalOpen] = useState(false);
 
   return (

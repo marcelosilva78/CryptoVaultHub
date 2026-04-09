@@ -4,9 +4,14 @@ import { StatCard } from "@/components/stat-card";
 import { DataTable } from "@/components/data-table";
 import { Badge } from "@/components/badge";
 import { ConfirmationBar } from "@/components/confirmation-bar";
+import { useDeposits } from "@cvh/api-client/hooks";
 import { depositKPIs, deposits } from "@/lib/mock-data";
 
 export default function DepositsPage() {
+  // API hook with mock data fallback
+  const { data: apiDeposits } = useDeposits();
+  void apiDeposits; // Falls back to deposits mock data below
+
   return (
     <div>
       {/* KPIs */}

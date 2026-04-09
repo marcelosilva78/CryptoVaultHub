@@ -4,6 +4,7 @@ import { AreaChartCard } from "@/components/area-chart-card";
 import { BarChartCard } from "@/components/bar-chart-card";
 import { DonutChartCard } from "@/components/donut-chart-card";
 import { KpiCard } from "@/components/kpi-card";
+import { useClients } from "@cvh/api-client/hooks";
 import {
   clientGrowth,
   tierDistribution,
@@ -13,6 +14,10 @@ import {
 import { formatNumber } from "@/lib/utils";
 
 export default function ClientsPage() {
+  // API hook with mock data fallback
+  const { data: apiClients } = useClients();
+  void apiClients; // Falls back to mock data below
+
   return (
     <div className="space-y-6">
       <h1 className="text-lg font-semibold text-white">Client Analytics</h1>

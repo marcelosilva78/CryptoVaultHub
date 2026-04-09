@@ -2,6 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { Sidebar } from "@/components/sidebar";
 import { Header } from "@/components/header";
+import { Providers } from "@/components/providers";
+
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "CryptoVaultHub - Admin Panel",
@@ -16,11 +19,13 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <Sidebar />
-        <Header />
-        <main className="ml-[var(--sidebar-w)] mt-[var(--header-h)] p-6 min-h-[calc(100vh-var(--header-h))]">
-          <div className="animate-fade-in">{children}</div>
-        </main>
+        <Providers>
+          <Sidebar />
+          <Header />
+          <main className="ml-[var(--sidebar-w)] mt-[var(--header-h)] p-6 min-h-[calc(100vh-var(--header-h))]">
+            <div className="animate-fade-in">{children}</div>
+          </main>
+        </Providers>
       </body>
     </html>
   );

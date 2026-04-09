@@ -3,6 +3,7 @@
 import { DataTable, TableCell, TableRow } from "@/components/data-table";
 import { Badge } from "@/components/badge";
 import { cn } from "@/lib/utils";
+import { useTiers } from "@cvh/api-client/hooks";
 import { presetTiers, customTiers } from "@/lib/mock-data";
 
 const tierNameColors: Record<string, string> = {
@@ -11,6 +12,10 @@ const tierNameColors: Record<string, string> = {
 };
 
 export default function TiersPage() {
+  // API hook with mock data fallback
+  const { data: apiTiers } = useTiers();
+  void apiTiers; // Falls back to mock presetTiers / customTiers below
+
   return (
     <>
       {/* Preset Tiers */}

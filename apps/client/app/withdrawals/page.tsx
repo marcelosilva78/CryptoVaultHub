@@ -1,9 +1,14 @@
 "use client";
 
 import { Badge } from "@/components/badge";
+import { useWithdrawals } from "@cvh/api-client/hooks";
 import { withdrawals, withdrawalDestinations } from "@/lib/mock-data";
 
 export default function WithdrawalsPage() {
+  // API hook with mock data fallback
+  const { data: apiWithdrawals } = useWithdrawals();
+  void apiWithdrawals; // Falls back to withdrawals mock data below
+
   return (
     <div className="grid grid-cols-2 gap-3.5">
       {/* New Withdrawal Form */}

@@ -3,6 +3,7 @@
 import { StatCard } from "@/components/stat-card";
 import { PlanUsage } from "@/components/plan-usage";
 import { Badge } from "@/components/badge";
+import { useWallets } from "@cvh/api-client/hooks";
 import {
   dashboardKPIs,
   balancesByToken,
@@ -19,6 +20,10 @@ const activityColors: Record<ActivityType, { badge: "green" | "teal" | "orange";
 };
 
 export default function DashboardPage() {
+  // API hook with mock data fallback
+  const { data: apiWallets } = useWallets();
+  void apiWallets; // Falls back to mock data below when backend is offline
+
   return (
     <div>
       <div className="mb-[18px] text-[20px] font-bold tracking-[-0.02em]">

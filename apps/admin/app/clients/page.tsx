@@ -5,9 +5,29 @@ import { Search } from "lucide-react";
 import { StatCard } from "@/components/stat-card";
 import { DataTable, TableCell, TableRow } from "@/components/data-table";
 import { Badge } from "@/components/badge";
-import { clients, clientsStats } from "@/lib/mock-data";
+import { useClients } from "@cvh/api-client/hooks";
+import { clients as mockClients, clientsStats } from "@/lib/mock-data";
 
 export default function ClientsPage() {
+  // API hook with mock data fallback
+  const { data: apiClients } = useClients();
+  // Use mock data when API is not available
+  const clients = apiClients?.data
+    ? apiClients.data.map((c) => ({
+        id: String(c.id),
+        name: c.name,
+        since: `Since ${c.createdAt?.slice(0, 7) ?? 'N/A'}`,
+        tier: c.tier,
+        tierColor: 'blue' as const,
+        chains: c.chains.join(', '),
+        forwarders: c.forwarderCount.toLocaleString(),
+        volume24h: c.volume24h,
+        balance: c.totalBalance,
+        status: c.status === 'active' ? 'Active' : 'Suspended',
+        statusColor: c.status === 'active' ? ('green' as const) : ('orange' as const),
+      }))
+    : mockClients;
+
   return (
     <>
       {/* KPIs */}

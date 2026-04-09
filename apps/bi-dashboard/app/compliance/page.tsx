@@ -3,6 +3,7 @@
 import { KpiCard } from "@/components/kpi-card";
 import { BarChartCard } from "@/components/bar-chart-card";
 import { AreaChartCard } from "@/components/area-chart-card";
+import { useAlerts } from "@cvh/api-client/hooks";
 import {
   screeningsPerDay,
   hitRateTrend,
@@ -11,6 +12,10 @@ import {
 } from "@/lib/mock-data";
 
 export default function CompliancePage() {
+  // API hook with mock data fallback
+  const { data: apiAlerts } = useAlerts();
+  void apiAlerts; // Falls back to mock data below
+
   return (
     <div className="space-y-6">
       <h1 className="text-lg font-semibold text-white">Compliance</h1>

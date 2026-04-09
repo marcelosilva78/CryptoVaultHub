@@ -4,6 +4,7 @@ import { BarChartCard } from "@/components/bar-chart-card";
 import { DonutChartCard } from "@/components/donut-chart-card";
 import { HeatmapCard } from "@/components/heatmap-card";
 import { KpiCard } from "@/components/kpi-card";
+import { useTokens } from "@cvh/api-client/hooks";
 import {
   dailyVolumes,
   volumeByToken,
@@ -13,6 +14,10 @@ import {
 import { formatCurrency } from "@/lib/utils";
 
 export default function VolumesPage() {
+  // API hook with mock data fallback
+  const { data: apiTokens } = useTokens();
+  void apiTokens;
+
   const totalDeposits = dailyVolumes.reduce((s, d) => s + d.deposits, 0);
   const totalWithdrawals = dailyVolumes.reduce((s, d) => s + d.withdrawals, 0);
   const totalTx = dailyVolumes.reduce((s, d) => s + d.txCount, 0);

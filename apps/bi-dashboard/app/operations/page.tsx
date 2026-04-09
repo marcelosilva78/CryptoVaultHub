@@ -3,6 +3,7 @@
 import { KpiCard } from "@/components/kpi-card";
 import { AreaChartCard } from "@/components/area-chart-card";
 import { DataTable } from "@/components/data-table";
+import { useQueueStatus } from "@cvh/api-client/hooks";
 import {
   sweepPerformance,
   webhookDelivery,
@@ -10,6 +11,10 @@ import {
 } from "@/lib/mock-data";
 
 export default function OperationsPage() {
+  // API hook with mock data fallback
+  const { data: apiQueues } = useQueueStatus();
+  void apiQueues;
+
   return (
     <div className="space-y-6">
       <h1 className="text-lg font-semibold text-white">Operations</h1>

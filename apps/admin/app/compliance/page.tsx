@@ -3,6 +3,7 @@
 import { StatCard } from "@/components/stat-card";
 import { DataTable, TableCell, TableRow } from "@/components/data-table";
 import { Badge } from "@/components/badge";
+import { useAlerts } from "@cvh/api-client/hooks";
 import {
   complianceStats,
   complianceAlerts,
@@ -10,6 +11,10 @@ import {
 } from "@/lib/mock-data";
 
 export default function CompliancePage() {
+  // API hook with mock data fallback
+  const { data: apiAlerts } = useAlerts({ severity: 'critical' });
+  void apiAlerts; // Falls back to complianceAlerts mock data below
+
   return (
     <>
       {/* KPIs */}

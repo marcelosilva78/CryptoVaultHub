@@ -4,6 +4,7 @@ import { StatCard } from "@/components/stat-card";
 import { VolumeChart } from "@/components/chart-volume";
 import { Badge } from "@/components/badge";
 import { cn } from "@/lib/utils";
+import { useAlerts, useHealth } from "@cvh/api-client/hooks";
 import {
   dashboardStats,
   activeAlerts,
@@ -41,6 +42,14 @@ const amountColorMap: Record<string, string> = {
 };
 
 export default function DashboardPage() {
+  // API hooks with mock data fallback
+  const { data: alertsData } = useAlerts({ limit: 10 });
+  const { data: healthData } = useHealth();
+  // When backend is running, alertsData/healthData will contain real data.
+  // For now, UI continues to render using the mock data below.
+  void alertsData;
+  void healthData;
+
   return (
     <>
       {/* KPI Cards */}

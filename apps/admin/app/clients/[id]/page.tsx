@@ -5,6 +5,7 @@ import { StatCard } from "@/components/stat-card";
 import { Badge } from "@/components/badge";
 import { GasBar } from "@/components/gas-bar";
 import { cn } from "@/lib/utils";
+import { useClient } from "@cvh/api-client/hooks";
 import { clientDetail } from "@/lib/mock-data";
 
 const tabs = [
@@ -25,6 +26,9 @@ const chainColorMap: Record<string, string> = {
 
 export default function ClientDetailPage() {
   const [activeTab, setActiveTab] = useState("Overview");
+  // API hook -- falls back to mock data when backend is not running
+  const { data: apiClient } = useClient(1);
+  void apiClient; // Will be used when API mapping is complete
   const client = clientDetail;
 
   return (

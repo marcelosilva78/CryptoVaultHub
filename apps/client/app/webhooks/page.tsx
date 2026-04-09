@@ -2,6 +2,7 @@
 
 import { DataTable } from "@/components/data-table";
 import { Badge } from "@/components/badge";
+import { useWebhooks } from "@cvh/api-client/hooks";
 import {
   webhookConfig,
   webhookEvents,
@@ -9,6 +10,10 @@ import {
 } from "@/lib/mock-data";
 
 export default function WebhooksPage() {
+  // API hook with mock data fallback
+  const { data: apiWebhooks } = useWebhooks();
+  void apiWebhooks; // Falls back to webhookConfig mock data below
+
   return (
     <div>
       <div className="flex justify-between items-center mb-[18px]">

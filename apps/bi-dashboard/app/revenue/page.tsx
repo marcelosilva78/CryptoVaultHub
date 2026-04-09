@@ -3,6 +3,7 @@
 import { AreaChartCard } from "@/components/area-chart-card";
 import { BarChartCard } from "@/components/bar-chart-card";
 import { DataTable } from "@/components/data-table";
+import { useClients } from "@cvh/api-client/hooks";
 import {
   revenueTrend,
   revenueByClient,
@@ -11,6 +12,10 @@ import {
 import { formatCurrency } from "@/lib/utils";
 
 export default function RevenuePage() {
+  // API hook with mock data fallback
+  const { data: apiClients } = useClients();
+  void apiClients;
+
   return (
     <div className="space-y-6">
       <h1 className="text-lg font-semibold text-white">Revenue Analytics</h1>

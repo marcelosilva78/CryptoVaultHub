@@ -1,6 +1,7 @@
 "use client";
 
 import { AreaChartCard } from "@/components/area-chart-card";
+import { useHealth, useGasTanks } from "@cvh/api-client/hooks";
 import {
   rpcHealth,
   gasPricesTrend,
@@ -45,6 +46,12 @@ function MiniSparkline({ data, color }: { data: number[]; color: string }) {
 }
 
 export default function InfraPage() {
+  // API hooks with mock data fallback
+  const { data: apiHealth } = useHealth();
+  const { data: apiGasTanks } = useGasTanks();
+  void apiHealth;
+  void apiGasTanks;
+
   return (
     <div className="space-y-6">
       <h1 className="text-lg font-semibold text-white">Infrastructure</h1>

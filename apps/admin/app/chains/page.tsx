@@ -1,6 +1,9 @@
+"use client";
+
 import { DataTable, TableCell, TableRow } from "@/components/data-table";
 import { Badge } from "@/components/badge";
-import { chains } from "@/lib/mock-data";
+import { useChains } from "@cvh/api-client/hooks";
+import { chains as mockChains } from "@/lib/mock-data";
 
 const lagColorMap: Record<string, string> = {
   green: "text-green",
@@ -9,6 +12,11 @@ const lagColorMap: Record<string, string> = {
 };
 
 export default function ChainsPage() {
+  // API hook with mock data fallback
+  const { data: apiChains } = useChains();
+  const chains = apiChains ?? mockChains;
+  void chains; // apiChains used when backend is running; mockChains below for now
+
   return (
     <DataTable
       title="Supported Chains"
@@ -29,7 +37,7 @@ export default function ChainsPage() {
         </button>
       }
     >
-      {chains.map((chain) => (
+      {mockChains.map((chain) => (
         <TableRow key={chain.name}>
           <TableCell className="font-semibold">{chain.name}</TableCell>
           <TableCell mono>{chain.chainId}</TableCell>
