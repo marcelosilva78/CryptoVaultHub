@@ -99,6 +99,7 @@ const isValid = signature === request.headers['x-cvh-signature'];
     .addTag('Withdrawals', 'Create withdrawal requests and track outgoing transactions')
     .addTag('Webhooks', 'Configure webhook endpoints for real-time event notifications')
     .addTag('Address Book', 'Manage whitelisted withdrawal destination addresses')
+    .addTag('Projects', 'Query and manage project scoping for multi-project clients')
     .addTag('Co-Sign', 'Co-signature operations for co-sign custody mode clients')
     .addTag('Health', 'Service health and token metadata endpoints')
     .addServer('http://localhost:3002', 'Development')
