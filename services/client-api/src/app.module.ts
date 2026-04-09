@@ -1,8 +1,36 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
+import { APP_INTERCEPTOR } from '@nestjs/core';
+import { WalletModule } from './wallet/wallet.module';
+import { DepositModule } from './deposit/deposit.module';
+import { WithdrawalModule } from './withdrawal/withdrawal.module';
+import { AddressBookModule } from './address-book/address-book.module';
+import { WebhookModule } from './webhook/webhook.module';
+import { ApiKeyModule } from './api-key/api-key.module';
+import { CoSignModule } from './co-sign/co-sign.module';
+import { HealthController } from './common/health.controller';
+import { PostHogInterceptor } from './common/interceptors/posthog.interceptor';
 
 @Module({
-  imports: [],
-  controllers: [],
-  providers: [],
+  imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: ['.env', '../../.env'],
+    }),
+    WalletModule,
+    DepositModule,
+    WithdrawalModule,
+    AddressBookModule,
+    WebhookModule,
+    ApiKeyModule,
+    CoSignModule,
+  ],
+  controllers: [HealthController],
+  providers: [
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: PostHogInterceptor,
+    },
+  ],
 })
 export class AppModule {}
