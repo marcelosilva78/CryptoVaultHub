@@ -764,7 +764,7 @@ CryptoVaultHub/
 +-- docs/                       # Documentation
 |   +-- api/                    # Admin API and Client API endpoint reference
 |   +-- identity/               # Visual identity system
-|   +-- screenshots/            # HTML mockup screenshots
+|   +-- screenshots/            # UI screenshots (PNG) and HTML mockups
 |   +-- database/               # Database documentation
 +-- docker-compose.yml          # Full orchestration (4 networks, 20+ containers)
 +-- turbo.json                  # Turborepo pipeline config
@@ -790,27 +790,71 @@ CryptoVaultHub/
 
 ## Screenshots
 
-The Admin Panel and Client Portal have been designed with the CryptoVaultHub visual identity. HTML mockups demonstrating the design system are available in the `docs/screenshots/` directory:
+The Admin Panel and Client Portal have been designed with the CryptoVaultHub visual identity, implementing the dual-font system (Outfit + JetBrains Mono), semantic design tokens, dark/light mode theming, hexagonal chain avatars, and all conceptual visual components described in the identity document.
 
 ### Admin Panel
 
-| Screen | Dark Mode | Light Mode |
-|--------|-----------|------------|
-| Dashboard | [admin-dashboard-dark.html](docs/screenshots/admin-dashboard-dark.html) | [admin-dashboard-light.html](docs/screenshots/admin-dashboard-light.html) |
-| Traceability | [admin-traceability-dark.html](docs/screenshots/admin-traceability-dark.html) | [admin-traceability-light.html](docs/screenshots/admin-traceability-light.html) |
-| Analytics | [admin-analytics-dark.html](docs/screenshots/admin-analytics-dark.html) | [admin-analytics-light.html](docs/screenshots/admin-analytics-light.html) |
-| Clients | [admin-clients-dark.html](docs/screenshots/admin-clients-dark.html) | [admin-clients-light.html](docs/screenshots/admin-clients-light.html) |
-| Login | [admin-login-dark.html](docs/screenshots/admin-login-dark.html) | [admin-login-light.html](docs/screenshots/admin-login-light.html) |
+#### Dashboard (Dark Mode)
+![Admin Dashboard - Dark Mode](docs/screenshots/admin-dashboard-dark.png)
+
+#### Dashboard (Light Mode)
+![Admin Dashboard - Light Mode](docs/screenshots/admin-dashboard-light.png)
+
+#### Traceability (Dark Mode)
+![Admin Traceability - Dark Mode](docs/screenshots/admin-traceability-dark.png)
+
+#### Traceability (Light Mode)
+![Admin Traceability - Light Mode](docs/screenshots/admin-traceability-light.png)
+
+#### Analytics (Dark Mode)
+![Admin Analytics - Dark Mode](docs/screenshots/admin-analytics-dark.png)
+
+#### Analytics (Light Mode)
+![Admin Analytics - Light Mode](docs/screenshots/admin-analytics-light.png)
+
+#### Clients (Dark Mode)
+![Admin Clients - Dark Mode](docs/screenshots/admin-clients-dark.png)
+
+#### Clients (Light Mode)
+![Admin Clients - Light Mode](docs/screenshots/admin-clients-light.png)
+
+#### Login (Dark Mode)
+![Admin Login - Dark Mode](docs/screenshots/admin-login-dark.png)
+
+#### Login (Light Mode)
+![Admin Login - Light Mode](docs/screenshots/admin-login-light.png)
 
 ### Client Portal
 
-| Screen | Dark Mode | Light Mode |
-|--------|-----------|------------|
-| Dashboard | [client-dashboard-dark.html](docs/screenshots/client-dashboard-dark.html) | [client-dashboard-light.html](docs/screenshots/client-dashboard-light.html) |
-| Transactions | [client-transactions-dark.html](docs/screenshots/client-transactions-dark.html) | [client-transactions-light.html](docs/screenshots/client-transactions-light.html) |
-| Login | [client-login-dark.html](docs/screenshots/client-login-dark.html) | [client-login-light.html](docs/screenshots/client-login-light.html) |
+#### Dashboard (Dark Mode)
+![Client Dashboard - Dark Mode](docs/screenshots/client-dashboard-dark.png)
 
-Both the Admin Panel and Client Portal implement the full visual identity system including the dual-font system (Outfit + JetBrains Mono), semantic design tokens, dark/light mode theming, hexagonal chain avatars, and all conceptual visual components described in the identity document.
+#### Dashboard (Light Mode)
+![Client Dashboard - Light Mode](docs/screenshots/client-dashboard-light.png)
+
+#### Transactions (Dark Mode)
+![Client Transactions - Dark Mode](docs/screenshots/client-transactions-dark.png)
+
+#### Transactions (Light Mode)
+![Client Transactions - Light Mode](docs/screenshots/client-transactions-light.png)
+
+#### Setup Wizard (Dark Mode)
+![Client Setup Wizard - Dark Mode](docs/screenshots/client-setup-wizard-dark.png)
+
+#### Setup Wizard (Light Mode)
+![Client Setup Wizard - Light Mode](docs/screenshots/client-setup-wizard-light.png)
+
+#### Wallets (Dark Mode)
+![Client Wallets - Dark Mode](docs/screenshots/client-wallets-dark.png)
+
+#### Wallets (Light Mode)
+![Client Wallets - Light Mode](docs/screenshots/client-wallets-light.png)
+
+#### Login (Dark Mode)
+![Client Login - Dark Mode](docs/screenshots/client-login-dark.png)
+
+#### Login (Light Mode)
+![Client Login - Light Mode](docs/screenshots/client-login-light.png)
 
 ---
 
