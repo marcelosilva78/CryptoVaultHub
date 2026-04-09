@@ -8,6 +8,7 @@ import { WalletModule } from './wallet/wallet.module';
 import { DepositAddressModule } from './deposit-address/deposit-address.module';
 import { WithdrawalModule } from './withdrawal/withdrawal.module';
 import { BalanceModule } from './balance/balance.module';
+import { ComplianceModule } from './compliance/compliance.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { BalanceModule } from './balance/balance.module';
     DepositAddressModule,
     WithdrawalModule,
     BalanceModule,
+    ComplianceModule,
   ],
 })
 export class AppModule {}

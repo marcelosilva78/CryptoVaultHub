@@ -172,3 +172,60 @@ model Withdrawal {
   @@index([clientId, status])
   @@map("withdrawals")
 }
+
+// ---------------------------------------------------------------------------
+// Compliance / KYT
+// ---------------------------------------------------------------------------
+
+model SanctionsEntry {
+  id           BigInt   @id @default(autoincrement())
+  listSource   String   @db.VarChar(50) @map("list_source")
+  address      String   @db.VarChar(100)
+  addressType  String   @db.VarChar(20) @map("address_type")
+  entityName   String?  @db.VarChar(500) @map("entity_name")
+  entityId     String?  @db.VarChar(100) @map("entity_id")
+  isActive     Boolean  @default(true) @map("is_active")
+  lastSyncedAt DateTime @map("last_synced_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@unique([listSource, address])
+  @@index([address])
+  @@map("sanctions_entries")
+}
+
+model ScreeningResult {
+  id           BigInt   @id @default(autoincrement())
+  clientId     BigInt   @map("client_id")
+  address      String   @db.VarChar(42)
+  direction    String   @db.VarChar(10)
+  trigger      String   @db.VarChar(20)
+  txHash       String?  @db.VarChar(66) @map("tx_hash")
+  listsChecked Json     @map("lists_checked")
+  result       String   @db.VarChar(20)
+  matchDetails Json?    @map("match_details")
+  action       String   @db.VarChar(20)
+  screenedAt   DateTime @default(now()) @map("screened_at")
+
+  @@index([clientId, screenedAt])
+  @@index([address])
+  @@map("screening_results")
+}
+
+model ComplianceAlert {
+  id            BigInt    @id @default(autoincrement())
+  clientId      BigInt    @map("client_id")
+  severity      String    @db.VarChar(10)
+  alertType     String    @db.VarChar(50) @map("alert_type")
+  address       String    @db.VarChar(42)
+  matchedEntity String?   @db.VarChar(500) @map("matched_entity")
+  matchedList   String?   @db.VarChar(50) @map("matched_list")
+  amount        String?   @db.VarChar(78)
+  tokenSymbol   String?   @db.VarChar(20) @map("token_symbol")
+  status        String    @default("open") @db.VarChar(20)
+  resolvedAt    DateTime? @map("resolved_at")
+  resolvedBy    String?   @db.VarChar(100) @map("resolved_by")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  @@index([clientId, status])
+  @@map("compliance_alerts")
+}
