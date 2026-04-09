@@ -10,6 +10,9 @@ import { WebhookModule } from './webhook/webhook.module';
 import { ApiKeyModule } from './api-key/api-key.module';
 import { CoSignModule } from './co-sign/co-sign.module';
 import { ProjectModule } from './project/project.module';
+import { FlushModule } from './flush/flush.module';
+import { DeployTraceModule } from './deploy-trace/deploy-trace.module';
+import { AddressGroupModule } from './address-group/address-group.module';
 import { HealthController } from './common/health.controller';
 import { PostHogInterceptor } from './common/interceptors/posthog.interceptor';
 
@@ -28,6 +31,9 @@ import { PostHogInterceptor } from './common/interceptors/posthog.interceptor';
     ApiKeyModule,
     CoSignModule,
     ProjectModule,
+    FlushModule,
+    DeployTraceModule,
+    AddressGroupModule,
   ],
   controllers: [HealthController],
   providers: [
