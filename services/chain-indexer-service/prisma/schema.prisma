@@ -12,11 +12,23 @@ datasource db {
 // Sync Cursors — tracks last indexed block per chain
 // ---------------------------------------------------------------------------
 
+enum IndexerStatus {
+  syncing
+  synced
+  stale
+  error
+}
+
 model SyncCursor {
-  id        BigInt   @id @default(autoincrement())
-  chainId   Int      @unique @map("chain_id")
-  lastBlock BigInt   @map("last_block")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id                   BigInt        @id @default(autoincrement())
+  chainId              Int           @unique @map("chain_id")
+  lastBlock            BigInt        @map("last_block")
+  latestFinalizedBlock BigInt        @default(0) @map("latest_finalized_block")
+  blocksBehind         Int           @default(0) @map("blocks_behind")
+  indexerStatus        IndexerStatus @default(syncing) @map("indexer_status")
+  lastError            String?       @db.Text @map("last_error")
+  lastErrorAt          DateTime?     @map("last_error_at")
+  updatedAt            DateTime      @updatedAt @map("updated_at")
 
   @@map("sync_cursors")
 }
@@ -83,4 +95,134 @@ model Token {
 
   @@unique([chainId, contractAddress], name: "uq_chain_contract")
   @@map("tokens")
+}
+
+// ---------------------------------------------------------------------------
+// Indexed Blocks — blocks processed by the indexer
+// ---------------------------------------------------------------------------
+
+model IndexedBlock {
+  id               BigInt   @id @default(autoincrement())
+  chainId          Int      @map("chain_id")
+  blockNumber      BigInt   @map("block_number")
+  blockHash        String   @db.VarChar(66) @map("block_hash")
+  parentHash       String   @db.VarChar(66) @map("parent_hash")
+  blockTimestamp   BigInt   @map("block_timestamp")
+  transactionCount Int      @default(0) @map("transaction_count")
+  eventsDetected   Int      @default(0) @map("events_detected")
+  indexedAt        DateTime @default(now()) @map("indexed_at")
+  isFinalized      Boolean  @default(false) @map("is_finalized")
+
+  @@unique([chainId, blockNumber], name: "uq_chain_block")
+  @@index([chainId, isFinalized, blockNumber], name: "idx_chain_finalized")
+  @@map("indexed_blocks")
+}
+
+// ---------------------------------------------------------------------------
+// Indexed Events — on-chain events matched to monitored addresses
+// ---------------------------------------------------------------------------
+
+enum IndexedEventType {
+  erc20_transfer
+  native_transfer
+  contract_deploy
+  forwarder_flush
+  approval
+  other
+}
+
+model IndexedEvent {
+  id              BigInt           @id @default(autoincrement())
+  chainId         Int              @map("chain_id")
+  blockNumber     BigInt           @map("block_number")
+  txHash          String           @db.VarChar(66) @map("tx_hash")
+  logIndex        Int              @map("log_index")
+  contractAddress String           @db.VarChar(42) @map("contract_address")
+  eventType       IndexedEventType @map("event_type")
+  fromAddress     String?          @db.VarChar(42) @map("from_address")
+  toAddress       String?          @db.VarChar(42) @map("to_address")
+  tokenId         BigInt?          @map("token_id")
+  amount          Decimal?         @db.Decimal(78, 0)
+  clientId        BigInt?          @map("client_id")
+  projectId       BigInt?          @map("project_id")
+  walletId        BigInt?          @map("wallet_id")
+  isInbound       Boolean?         @map("is_inbound")
+  rawData         Json?            @map("raw_data")
+  processedAt     DateTime?        @map("processed_at")
+
+  @@unique([chainId, txHash, logIndex], name: "uq_chain_tx_log")
+  @@index([chainId, blockNumber], name: "idx_chain_block")
+  @@index([clientId, projectId, eventType, blockNumber], name: "idx_client_project")
+  @@index([toAddress, chainId], name: "idx_to_address")
+  @@index([fromAddress, chainId], name: "idx_from_address")
+  @@map("indexed_events")
+}
+
+// ---------------------------------------------------------------------------
+// Materialized Balances — computed balances from finalized events
+// ---------------------------------------------------------------------------
+
+model MaterializedBalance {
+  id               BigInt   @id @default(autoincrement())
+  chainId          Int      @map("chain_id")
+  address          String   @db.VarChar(42)
+  tokenId          BigInt?  @map("token_id")
+  clientId         BigInt   @map("client_id")
+  projectId        BigInt   @map("project_id")
+  walletId         BigInt?  @map("wallet_id")
+  balance          Decimal  @default(0) @db.Decimal(78, 0)
+  lastUpdatedBlock BigInt   @map("last_updated_block")
+  lastUpdatedAt    DateTime @map("last_updated_at")
+
+  @@unique([chainId, address, tokenId], name: "uq_chain_addr_token")
+  @@index([clientId, projectId, chainId], name: "idx_client_project_bal")
+  @@map("materialized_balances")
+}
+
+// ---------------------------------------------------------------------------
+// Sync Gaps — missing block ranges detected for backfilling
+// ---------------------------------------------------------------------------
+
+enum SyncGapStatus {
+  detected
+  backfilling
+  resolved
+  failed
+}
+
+model SyncGap {
+  id             BigInt        @id @default(autoincrement())
+  chainId        Int           @map("chain_id")
+  gapStartBlock  BigInt        @map("gap_start_block")
+  gapEndBlock    BigInt        @map("gap_end_block")
+  detectedAt     DateTime      @default(now()) @map("detected_at")
+  status         SyncGapStatus @default(detected)
+  backfillJobId  BigInt?       @map("backfill_job_id")
+  resolvedAt     DateTime?     @map("resolved_at")
+  attemptCount   Int           @default(0) @map("attempt_count")
+  maxAttempts    Int           @default(5) @map("max_attempts")
+  lastError      String?       @db.Text @map("last_error")
+
+  @@index([chainId, status], name: "idx_chain_status")
+  @@map("sync_gaps")
+}
+
+// ---------------------------------------------------------------------------
+// Reorg Log — chain reorganization events
+// ---------------------------------------------------------------------------
+
+model ReorgLog {
+  id                    BigInt    @id @default(autoincrement())
+  chainId               Int       @map("chain_id")
+  reorgAtBlock          BigInt    @map("reorg_at_block")
+  oldBlockHash          String?   @db.VarChar(66) @map("old_block_hash")
+  newBlockHash          String?   @db.VarChar(66) @map("new_block_hash")
+  depth                 Int       @default(1)
+  detectedAt            DateTime  @default(now()) @map("detected_at")
+  reindexedAt           DateTime? @map("reindexed_at")
+  eventsInvalidated     Int       @default(0) @map("events_invalidated")
+  balancesRecalculated  Int       @default(0) @map("balances_recalculated")
+
+  @@index([chainId, detectedAt(sort: Desc)], name: "idx_chain_time")
+  @@map("reorg_log")
 }

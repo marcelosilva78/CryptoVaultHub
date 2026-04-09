@@ -13,6 +13,8 @@ import {
 } from '@nestjs/common';
 import { WebhookService } from './webhook.service';
 import { WebhookDeliveryService } from './webhook-delivery.service';
+import { DeadLetterService } from './dead-letter.service';
+import { ManualResendService } from './manual-resend.service';
 import {
   CreateWebhookDto,
   UpdateWebhookDto,
@@ -24,6 +26,8 @@ export class WebhookController {
   constructor(
     private readonly webhookService: WebhookService,
     private readonly deliveryService: WebhookDeliveryService,
+    private readonly deadLetterService: DeadLetterService,
+    private readonly manualResendService: ManualResendService,
   ) {}
 
   @Post()
@@ -77,5 +81,61 @@ export class WebhookController {
       success: true,
       deliveriesCreated: deliveries.length,
     };
+  }
+
+  @Get('deliveries/:id')
+  async getDeliveryDetail(
+    @Param('id', ParseIntPipe) id: number,
+    @Query('clientId') clientId?: string,
+  ) {
+    const detail = await this.deliveryService.getDeliveryDetail(BigInt(id));
+    if (!detail) {
+      return { success: false, error: 'Delivery not found' };
+    }
+    return { success: true, delivery: detail };
+  }
+
+  @Post('deliveries/:id/retry')
+  @HttpCode(HttpStatus.OK)
+  async retryDelivery(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { clientId: number },
+  ) {
+    const result = await this.deliveryService.deliverWebhook(
+      BigInt(id),
+      BigInt(0), // Will be resolved from delivery record
+    );
+    return { success: true, delivery: result };
+  }
+
+  @Post('deliveries/:id/resend')
+  @HttpCode(HttpStatus.OK)
+  async resendDelivery(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { clientId: number },
+  ) {
+    const result = await this.manualResendService.resendDelivery(
+      BigInt(id),
+      BigInt(body.clientId),
+    );
+    return { success: true, ...result };
+  }
+
+  @Get('dead-letters')
+  async listDeadLetters(
+    @Query('clientId') clientId: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('status') status?: string,
+  ) {
+    const result = await this.deadLetterService.listDeadLetters(
+      BigInt(clientId),
+      {
+        page: page ? parseInt(page, 10) : 1,
+        limit: limit ? parseInt(limit, 10) : 20,
+        status,
+      },
+    );
+    return { success: true, ...result };
   }
 }

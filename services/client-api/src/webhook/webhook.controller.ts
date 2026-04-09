@@ -490,4 +490,193 @@ The response includes the HTTP status code and response time from your endpoint.
     const result = await this.webhookService.retryDelivery(clientId, id);
     return { success: true, ...result };
   }
+
+  @Get('deliveries/:deliveryId')
+  @ClientAuth('read')
+  @ApiOperation({
+    summary: 'Get delivery detail with attempts',
+    description: `Returns the full detail of a specific webhook delivery, including every HTTP attempt made with full request/response data. Use this to debug delivery failures.
+
+**Attempt statuses:**
+- \`success\` — HTTP 2xx response received
+- \`failed\` — Non-2xx HTTP response received
+- \`timeout\` — Request timed out before receiving a response
+- \`error\` — Network error prevented the request from completing
+
+**Required scope:** \`read\``,
+  })
+  @ApiParam({
+    name: 'deliveryId',
+    type: String,
+    description: 'Unique delivery identifier',
+    example: 'dlv_01HX4N8B2K3M5P7Q9R1S',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Delivery detail with attempt history.',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        delivery: {
+          type: 'object',
+          properties: {
+            id: { type: 'integer', example: 1 },
+            deliveryCode: { type: 'string', example: 'dlv_01HX...' },
+            eventType: { type: 'string', example: 'deposit.confirmed' },
+            status: { type: 'string', example: 'sent' },
+            attempts: { type: 'integer', example: 1 },
+            correlationId: { type: 'string', nullable: true },
+            idempotencyKey: { type: 'string', nullable: true },
+            isManualResend: { type: 'boolean', example: false },
+            attempts_log: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  attemptNumber: { type: 'integer', example: 1 },
+                  status: { type: 'string', example: 'success' },
+                  responseStatus: { type: 'integer', example: 200 },
+                  responseTimeMs: { type: 'integer', example: 145 },
+                  timestamp: { type: 'string', format: 'date-time' },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 401, description: 'Missing or invalid API key.' })
+  @ApiResponse({ status: 403, description: 'API key does not have the `read` scope.' })
+  @ApiResponse({ status: 404, description: 'Delivery not found or does not belong to the authenticated client.' })
+  async getDeliveryDetail(
+    @Param('deliveryId') deliveryId: string,
+    @Req() req: Request,
+  ) {
+    const clientId = (req as any).clientId;
+    const result = await this.webhookService.getDeliveryDetail(
+      clientId,
+      deliveryId,
+    );
+    return { success: true, ...result };
+  }
+
+  @Post('deliveries/:deliveryId/resend')
+  @ClientAuth('write')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Manual resend of a delivery',
+    description: `Creates a new delivery with a fresh idempotency key linked to the original delivery. The new delivery is enqueued for immediate processing with the full retry lifecycle.
+
+Unlike retry (which re-attempts the same delivery), resend creates a brand new delivery record. This is useful when:
+- The original delivery was dead-lettered and you want to start fresh
+- You want a new idempotency key for the delivery
+- The original endpoint URL has changed
+
+**Required scope:** \`write\``,
+  })
+  @ApiParam({
+    name: 'deliveryId',
+    type: String,
+    description: 'Unique delivery identifier to resend',
+    example: 'dlv_01HX4N8B2K3M5P7Q9R1S',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Delivery resent successfully.',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        delivery: {
+          type: 'object',
+          properties: {
+            id: { type: 'integer', example: 42 },
+            deliveryCode: { type: 'string', example: 'dlv_new...' },
+            originalDeliveryId: { type: 'integer', example: 1 },
+            status: { type: 'string', example: 'queued' },
+            isManualResend: { type: 'boolean', example: true },
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 401, description: 'Missing or invalid API key.' })
+  @ApiResponse({ status: 403, description: 'API key does not have the `write` scope.' })
+  @ApiResponse({ status: 404, description: 'Delivery not found or does not belong to the authenticated client.' })
+  async resendDelivery(
+    @Param('deliveryId') deliveryId: string,
+    @Req() req: Request,
+  ) {
+    const clientId = (req as any).clientId;
+    const result = await this.webhookService.resendDelivery(
+      clientId,
+      deliveryId,
+    );
+    return { success: true, ...result };
+  }
+
+  @Get('dead-letters')
+  @ClientAuth('read')
+  @ApiOperation({
+    summary: 'List dead-lettered deliveries',
+    description: `Returns a paginated list of webhook deliveries that exhausted all retry attempts and were moved to the dead letter queue (DLQ). Dead-lettered deliveries can be resent manually.
+
+**Dead letter statuses:**
+- \`pending_review\` — Awaiting action (can be resent or discarded)
+- \`resent\` — A new delivery was created from this dead letter
+- \`discarded\` — Marked as not requiring further action
+
+**Required scope:** \`read\``,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Dead-lettered deliveries retrieved successfully.',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        deadLetters: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'integer', example: 1 },
+              deliveryId: { type: 'integer', example: 10 },
+              webhookId: { type: 'integer', example: 5 },
+              eventType: { type: 'string', example: 'deposit.confirmed' },
+              lastError: { type: 'string', example: 'HTTP 503' },
+              totalAttempts: { type: 'integer', example: 5 },
+              deadLetteredAt: { type: 'string', format: 'date-time' },
+              status: { type: 'string', example: 'pending_review' },
+            },
+          },
+        },
+        meta: {
+          type: 'object',
+          properties: {
+            page: { type: 'integer', example: 1 },
+            limit: { type: 'integer', example: 20 },
+            total: { type: 'integer', example: 5 },
+            totalPages: { type: 'integer', example: 1 },
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 401, description: 'Missing or invalid API key.' })
+  @ApiResponse({ status: 403, description: 'API key does not have the `read` scope.' })
+  async listDeadLetters(
+    @Query() query: ListDeliveriesQueryDto,
+    @Req() req: Request,
+  ) {
+    const clientId = (req as any).clientId;
+    const result = await this.webhookService.listDeadLetters(clientId, {
+      page: query.page ?? 1,
+      limit: query.limit ?? 20,
+      status: query.status,
+    });
+    return { success: true, ...result };
+  }
 }

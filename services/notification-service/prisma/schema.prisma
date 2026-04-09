@@ -12,14 +12,31 @@ datasource db {
 // Webhook configuration
 // ---------------------------------------------------------------------------
 
+enum RetryBackoffType {
+  exponential
+  linear
+  fixed
+}
+
 model Webhook {
-  id        BigInt   @id @default(autoincrement())
-  clientId  BigInt   @map("client_id")
-  url       String   @db.VarChar(500)
-  secret    String   @db.VarChar(128)
-  events    Json
-  isActive  Boolean  @default(true) @map("is_active")
-  createdAt DateTime @default(now()) @map("created_at")
+  id                  BigInt          @id @default(autoincrement())
+  clientId            BigInt          @map("client_id")
+  url                 String          @db.VarChar(500)
+  secret              String          @db.VarChar(128)
+  events              Json
+  isActive            Boolean         @default(true) @map("is_active")
+  retryMaxAttempts    Int             @default(5) @map("retry_max_attempts")
+  retryBackoffType    RetryBackoffType @default(exponential) @map("retry_backoff_type")
+  retryBackoffBaseMs  Int             @default(1000) @map("retry_backoff_base_ms")
+  retryBackoffMaxMs   Int             @default(3600000) @map("retry_backoff_max_ms")
+  retryJitter         Boolean         @default(true) @map("retry_jitter")
+  retryTimeoutMs      Int             @default(10000) @map("retry_timeout_ms")
+  retryOnStatusCodes  Json?           @map("retry_on_status_codes")
+  failOnStatusCodes   Json?           @map("fail_on_status_codes")
+  description         String?         @db.Text
+  createdAt           DateTime        @default(now()) @map("created_at")
+
+  deliveries WebhookDelivery[]
 
   @@unique([clientId, url])
   @@map("webhooks")
@@ -30,25 +47,39 @@ model Webhook {
 // ---------------------------------------------------------------------------
 
 model WebhookDelivery {
-  id             BigInt    @id @default(autoincrement())
-  deliveryCode   String    @unique @db.VarChar(50) @map("delivery_code")
-  webhookId      BigInt    @map("webhook_id")
-  clientId       BigInt    @map("client_id")
-  eventType      String    @db.VarChar(50) @map("event_type")
-  payload        Json
-  status         String    @default("queued") @db.VarChar(20)
-  httpStatus     Int?      @map("http_status")
-  responseBody   String?   @db.Text @map("response_body")
-  responseTimeMs Int?      @map("response_time_ms")
-  attempts       Int       @default(0)
-  maxAttempts    Int       @default(5) @map("max_attempts")
-  lastAttemptAt  DateTime? @map("last_attempt_at")
-  nextRetryAt    DateTime? @map("next_retry_at")
-  error          String?   @db.Text
-  createdAt      DateTime  @default(now()) @map("created_at")
+  id                 BigInt    @id @default(autoincrement())
+  deliveryCode       String    @unique @db.VarChar(50) @map("delivery_code")
+  webhookId          BigInt    @map("webhook_id")
+  clientId           BigInt    @map("client_id")
+  eventType          String    @db.VarChar(50) @map("event_type")
+  payload            Json
+  status             String    @default("queued") @db.VarChar(20)
+  httpStatus         Int?      @map("http_status")
+  responseBody       String?   @db.Text @map("response_body")
+  responseTimeMs     Int?      @map("response_time_ms")
+  attempts           Int       @default(0)
+  maxAttempts        Int       @default(5) @map("max_attempts")
+  lastAttemptAt      DateTime? @map("last_attempt_at")
+  nextRetryAt        DateTime? @map("next_retry_at")
+  error              String?   @db.Text
+  correlationId      String?   @db.VarChar(255) @map("correlation_id")
+  idempotencyKey     String?   @db.VarChar(255) @map("idempotency_key")
+  requestUrl         String?   @db.VarChar(2048) @map("request_url")
+  requestHeaders     Json?     @map("request_headers")
+  responseHeaders    Json?     @map("response_headers")
+  errorMessage       String?   @db.Text @map("error_message")
+  errorCode          String?   @db.VarChar(50) @map("error_code")
+  isManualResend     Boolean   @default(false) @map("is_manual_resend")
+  originalDeliveryId BigInt?   @map("original_delivery_id")
+  createdAt          DateTime  @default(now()) @map("created_at")
+
+  webhook  Webhook                  @relation(fields: [webhookId], references: [id])
+  attempts_log WebhookDeliveryAttempt[]
 
   @@index([webhookId, createdAt])
   @@index([status])
+  @@index([idempotencyKey], name: "idx_idempotency")
+  @@index([status, nextRetryAt], name: "idx_status_retry")
   @@map("webhook_deliveries")
 }
 
@@ -68,4 +99,68 @@ model EmailLog {
   createdAt DateTime  @default(now()) @map("created_at")
 
   @@map("email_logs")
+}
+
+// ---------------------------------------------------------------------------
+// Webhook Delivery Attempts — individual HTTP attempt records
+// ---------------------------------------------------------------------------
+
+enum DeliveryAttemptStatus {
+  success
+  failed
+  timeout
+  error
+}
+
+model WebhookDeliveryAttempt {
+  id              BigInt                @id @default(autoincrement())
+  deliveryId      BigInt                @map("delivery_id")
+  attemptNumber   Int                   @map("attempt_number")
+  status          DeliveryAttemptStatus
+  requestUrl      String                @db.VarChar(2048) @map("request_url")
+  requestHeaders  Json?                 @map("request_headers")
+  requestBody     Json?                 @map("request_body")
+  responseStatus  Int?                  @map("response_status")
+  responseHeaders Json?                 @map("response_headers")
+  responseBody    String?               @db.Text @map("response_body")
+  responseTimeMs  Int?                  @map("response_time_ms")
+  errorMessage    String?               @db.Text @map("error_message")
+  errorCode       String?               @db.VarChar(50) @map("error_code")
+  timestamp       DateTime              @default(now())
+
+  delivery WebhookDelivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+
+  @@index([deliveryId, attemptNumber], name: "idx_delivery")
+  @@map("webhook_delivery_attempts")
+}
+
+// ---------------------------------------------------------------------------
+// Webhook Dead Letters — exhausted deliveries awaiting review
+// ---------------------------------------------------------------------------
+
+enum DeadLetterStatus {
+  pending_review
+  resent
+  discarded
+}
+
+model WebhookDeadLetter {
+  id               BigInt           @id @default(autoincrement())
+  deliveryId       BigInt           @map("delivery_id")
+  webhookId        BigInt           @map("webhook_id")
+  clientId         BigInt           @map("client_id")
+  projectId        BigInt?          @map("project_id")
+  eventType        String           @db.VarChar(100) @map("event_type")
+  payload          Json
+  lastError        String?          @db.Text @map("last_error")
+  totalAttempts    Int              @map("total_attempts")
+  deadLetteredAt   DateTime         @default(now()) @map("dead_lettered_at")
+  status           DeadLetterStatus @default(pending_review)
+  resentAt         DateTime?        @map("resent_at")
+  resentDeliveryId BigInt?          @map("resent_delivery_id")
+  reviewedBy       BigInt?          @map("reviewed_by")
+
+  @@index([clientId, status], name: "idx_client_status")
+  @@index([eventType, deadLetteredAt], name: "idx_event_time")
+  @@map("webhook_dead_letters")
 }

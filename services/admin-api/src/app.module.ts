@@ -11,6 +11,7 @@ import { MonitoringModule } from './monitoring/monitoring.module';
 import { ProjectManagementModule } from './project-management/project-management.module';
 import { JobManagementModule } from './job-management/job-management.module';
 import { RpcManagementModule } from './rpc-management/rpc-management.module';
+import { SyncManagementModule } from './sync-management/sync-management.module';
 import { PostHogInterceptor } from './common/interceptors/posthog.interceptor';
 import { HealthController } from './common/health.controller';
 
@@ -30,6 +31,7 @@ import { HealthController } from './common/health.controller';
     ProjectManagementModule,
     JobManagementModule,
     RpcManagementModule,
+    SyncManagementModule,
   ],
   controllers: [HealthController],
   providers: [

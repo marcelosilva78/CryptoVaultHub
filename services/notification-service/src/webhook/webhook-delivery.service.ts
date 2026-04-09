@@ -6,22 +6,9 @@ import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../prisma/prisma.service';
 import { WebhookService } from './webhook.service';
-
-/**
- * Exponential backoff delays (in milliseconds) for retry attempts.
- * Attempt 1: 1s, 2: 5s, 3: 30s, 4: 2m, 5: 10m, 6: 1h
- */
-export const RETRY_DELAYS_MS = [
-  1_000,      // 1 second
-  5_000,      // 5 seconds
-  30_000,     // 30 seconds
-  120_000,    // 2 minutes
-  600_000,    // 10 minutes
-  3_600_000,  // 1 hour
-];
-
-const MAX_ATTEMPTS = 5;
-const DELIVERY_TIMEOUT_MS = 10_000;
+import { ConfigurableRetryService } from './configurable-retry.service';
+import { DeliveryAttemptRecorderService } from './delivery-attempt-recorder.service';
+import { DeadLetterService } from './dead-letter.service';
 
 @Injectable()
 export class WebhookDeliveryService {
@@ -30,6 +17,9 @@ export class WebhookDeliveryService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly webhookService: WebhookService,
+    private readonly retryService: ConfigurableRetryService,
+    private readonly attemptRecorder: DeliveryAttemptRecorderService,
+    private readonly deadLetterService: DeadLetterService,
     @InjectQueue('webhook-delivery') private readonly deliveryQueue: Queue,
   ) {}
 
@@ -57,6 +47,8 @@ export class WebhookDeliveryService {
 
     for (const webhook of webhooks) {
       const deliveryCode = `dlv_${uuidv4().replace(/-/g, '')}`;
+      const idempotencyKey = `idem_${uuidv4().replace(/-/g, '')}`;
+      const correlationId = `cor_${uuidv4().replace(/-/g, '')}`;
 
       const delivery = await this.prisma.webhookDelivery.create({
         data: {
@@ -66,7 +58,10 @@ export class WebhookDeliveryService {
           eventType,
           payload: payload as any,
           status: 'queued',
-          maxAttempts: MAX_ATTEMPTS,
+          maxAttempts: webhook.retryMaxAttempts ?? 5,
+          idempotencyKey,
+          correlationId,
+          requestUrl: webhook.url,
         },
       });
 
@@ -105,7 +100,7 @@ export class WebhookDeliveryService {
 
   /**
    * Deliver a webhook by sending an HTTP POST with HMAC signature.
-   * Returns the updated delivery record.
+   * Records every attempt and uses configurable retry logic.
    */
   async deliverWebhook(deliveryId: bigint, webhookId: bigint) {
     const delivery = await this.prisma.webhookDelivery.findUnique({
@@ -124,6 +119,7 @@ export class WebhookDeliveryService {
         data: {
           status: 'failed',
           error: `Webhook ${webhookId} not found`,
+          errorMessage: `Webhook ${webhookId} not found`,
           lastAttemptAt: new Date(),
         },
       });
@@ -139,26 +135,38 @@ export class WebhookDeliveryService {
         data: {
           status: 'failed',
           error: 'Webhook is inactive',
+          errorMessage: 'Webhook is inactive',
           lastAttemptAt: new Date(),
         },
       });
       return null;
     }
 
+    const retryConfig = this.retryService.extractConfig(webhook);
     const payloadStr = JSON.stringify(delivery.payload);
     const signature = this.computeSignature(payloadStr, webhook.secret);
+
+    const requestHeaders: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'X-Signature': `sha256=${signature}`,
+      'X-Event-Type': delivery.eventType,
+      'X-Delivery-Id': delivery.deliveryCode,
+      ...(delivery.idempotencyKey
+        ? { 'X-Idempotency-Key': delivery.idempotencyKey }
+        : {}),
+      ...(delivery.correlationId
+        ? { 'X-Correlation-Id': delivery.correlationId }
+        : {}),
+    };
+
+    const attemptNumber = delivery.attempts + 1;
     const startTime = Date.now();
 
     try {
       const response = await axios.post(webhook.url, payloadStr, {
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Signature': `sha256=${signature}`,
-          'X-Event-Type': delivery.eventType,
-          'X-Delivery-Id': delivery.deliveryCode,
-        },
-        timeout: DELIVERY_TIMEOUT_MS,
-        validateStatus: () => true, // Don't throw on non-2xx
+        headers: requestHeaders,
+        timeout: retryConfig.retryTimeoutMs,
+        validateStatus: () => true,
       });
 
       const responseTimeMs = Date.now() - startTime;
@@ -168,6 +176,29 @@ export class WebhookDeliveryService {
           ? response.data.slice(0, 2000)
           : JSON.stringify(response.data).slice(0, 2000);
 
+      const responseHeaders = response.headers
+        ? Object.fromEntries(
+            Object.entries(response.headers).map(([k, v]) => [
+              k,
+              String(v),
+            ]),
+          )
+        : null;
+
+      // Record the attempt
+      await this.attemptRecorder.recordAttempt({
+        deliveryId,
+        attemptNumber,
+        status: isSuccess ? 'success' : 'failed',
+        requestUrl: webhook.url,
+        requestHeaders,
+        requestBody: delivery.payload,
+        responseStatus: response.status,
+        responseHeaders,
+        responseBody,
+        responseTimeMs,
+      });
+
       if (isSuccess) {
         const updated = await this.prisma.webhookDelivery.update({
           where: { id: deliveryId },
@@ -176,7 +207,9 @@ export class WebhookDeliveryService {
             httpStatus: response.status,
             responseBody,
             responseTimeMs,
-            attempts: delivery.attempts + 1,
+            responseHeaders: responseHeaders as any,
+            requestHeaders: requestHeaders as any,
+            attempts: attemptNumber,
             lastAttemptAt: new Date(),
             nextRetryAt: null,
           },
@@ -187,42 +220,77 @@ export class WebhookDeliveryService {
         return updated;
       }
 
-      // Non-success HTTP status — schedule retry or dead-letter
+      // Non-success — determine retry or dead-letter
       return this.handleFailure(
         delivery,
+        webhook,
+        retryConfig,
         `HTTP ${response.status}`,
         response.status,
         responseBody,
         responseTimeMs,
+        responseHeaders,
+        requestHeaders,
+        attemptNumber,
       );
     } catch (error: any) {
       const responseTimeMs = Date.now() - startTime;
       const errorMessage = error.message || 'Unknown error';
+      const isTimeout = error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT';
+
+      // Record the failed attempt
+      await this.attemptRecorder.recordAttempt({
+        deliveryId,
+        attemptNumber,
+        status: isTimeout ? 'timeout' : 'error',
+        requestUrl: webhook.url,
+        requestHeaders,
+        requestBody: delivery.payload,
+        responseTimeMs,
+        errorMessage,
+        errorCode: error.code ?? null,
+      });
 
       return this.handleFailure(
         delivery,
+        webhook,
+        retryConfig,
         errorMessage,
         null,
         null,
         responseTimeMs,
+        null,
+        requestHeaders,
+        attemptNumber,
+        error.code,
       );
     }
   }
 
   /**
-   * Handle a delivery failure: schedule retry with backoff or dead-letter.
+   * Handle a delivery failure: schedule retry with configurable backoff or dead-letter.
    */
   private async handleFailure(
     delivery: any,
+    webhook: any,
+    retryConfig: any,
     errorMessage: string,
     httpStatus: number | null,
     responseBody: string | null,
     responseTimeMs: number,
+    responseHeaders: any,
+    requestHeaders: any,
+    attemptNumber: number,
+    errorCode?: string,
   ) {
-    const nextAttempt = delivery.attempts + 1;
+    const shouldRetry = this.retryService.shouldRetry(
+      retryConfig,
+      httpStatus,
+      attemptNumber,
+    );
 
-    if (nextAttempt >= delivery.maxAttempts) {
-      // Dead letter — max attempts reached
+    if (!shouldRetry) {
+      // Dead letter
       const updated = await this.prisma.webhookDelivery.update({
         where: { id: delivery.id },
         data: {
@@ -230,22 +298,31 @@ export class WebhookDeliveryService {
           httpStatus,
           responseBody,
           responseTimeMs,
-          attempts: nextAttempt,
+          responseHeaders: responseHeaders as any,
+          requestHeaders: requestHeaders as any,
+          attempts: attemptNumber,
           lastAttemptAt: new Date(),
           nextRetryAt: null,
           error: errorMessage,
+          errorMessage,
+          errorCode: errorCode ?? null,
         },
       });
 
+      // Move to dead letter queue
+      await this.deadLetterService.deadLetter(delivery.id, errorMessage);
+
       this.logger.warn(
-        `Delivery ${delivery.deliveryCode} dead-lettered after ${nextAttempt} attempts: ${errorMessage}`,
+        `Delivery ${delivery.deliveryCode} dead-lettered after ${attemptNumber} attempts: ${errorMessage}`,
       );
       return updated;
     }
 
-    // Schedule retry with exponential backoff
-    const delayMs =
-      RETRY_DELAYS_MS[nextAttempt - 1] || RETRY_DELAYS_MS[RETRY_DELAYS_MS.length - 1];
+    // Schedule retry with configurable backoff
+    const delayMs = this.retryService.computeDelay(
+      retryConfig,
+      attemptNumber,
+    );
     const nextRetryAt = new Date(Date.now() + delayMs);
 
     const updated = await this.prisma.webhookDelivery.update({
@@ -255,10 +332,14 @@ export class WebhookDeliveryService {
         httpStatus,
         responseBody,
         responseTimeMs,
-        attempts: nextAttempt,
+        responseHeaders: responseHeaders as any,
+        requestHeaders: requestHeaders as any,
+        attempts: attemptNumber,
         lastAttemptAt: new Date(),
         nextRetryAt,
         error: errorMessage,
+        errorMessage,
+        errorCode: errorCode ?? null,
       },
     });
 
@@ -278,7 +359,7 @@ export class WebhookDeliveryService {
     );
 
     this.logger.log(
-      `Delivery ${delivery.deliveryCode} retry ${nextAttempt}/${delivery.maxAttempts} in ${delayMs}ms`,
+      `Delivery ${delivery.deliveryCode} retry ${attemptNumber}/${retryConfig.retryMaxAttempts} in ${delayMs}ms`,
     );
 
     return updated;
@@ -300,6 +381,32 @@ export class WebhookDeliveryService {
     return deliveries.map((d) => this.formatDelivery(d));
   }
 
+  /**
+   * Get a single delivery with all attempts.
+   */
+  async getDeliveryDetail(deliveryId: bigint) {
+    const delivery = await this.prisma.webhookDelivery.findUnique({
+      where: { id: deliveryId },
+      include: { attempts_log: { orderBy: { attemptNumber: 'asc' } } },
+    });
+
+    if (!delivery) return null;
+
+    return {
+      ...this.formatDelivery(delivery),
+      attempts_log: delivery.attempts_log.map((a) => ({
+        id: Number(a.id),
+        attemptNumber: a.attemptNumber,
+        status: a.status,
+        requestUrl: a.requestUrl,
+        responseStatus: a.responseStatus,
+        responseTimeMs: a.responseTimeMs,
+        errorMessage: a.errorMessage,
+        timestamp: a.timestamp,
+      })),
+    };
+  }
+
   private formatDelivery(d: any) {
     return {
       id: Number(d.id),
@@ -316,6 +423,12 @@ export class WebhookDeliveryService {
       lastAttemptAt: d.lastAttemptAt,
       nextRetryAt: d.nextRetryAt,
       error: d.error,
+      correlationId: d.correlationId,
+      idempotencyKey: d.idempotencyKey,
+      isManualResend: d.isManualResend,
+      originalDeliveryId: d.originalDeliveryId
+        ? Number(d.originalDeliveryId)
+        : null,
       createdAt: d.createdAt,
     };
   }
