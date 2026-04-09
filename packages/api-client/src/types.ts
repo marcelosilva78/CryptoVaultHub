@@ -235,5 +235,17 @@ export interface BalanceInfo {
   usdValue: string;
 }
 
+// ── Client: Projects ────────────────────────────────────
+export interface Project {
+  id: string;
+  name: string;
+  slug: string;
+  status: 'active' | 'suspended' | 'archived';
+  isDefault: boolean;
+  chainIds: number[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ── Re-export PaginatedResponse for convenience ──────────
 export type { PaginatedResponse };

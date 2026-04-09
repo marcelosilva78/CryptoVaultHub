@@ -29,21 +29,36 @@ import type {
   WebhookDeliveryInfo,
   BalanceInfo,
   HealthStatus,
+  Project,
 } from './types';
 
 export class ClientApiClient {
+  private projectId: string | null = null;
+
   constructor(
     private baseUrl: string,
     private apiKey: string,
   ) {}
 
+  setProjectId(id: string | null) {
+    this.projectId = id;
+  }
+
+  getProjectId(): string | null {
+    return this.projectId;
+  }
+
   private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'X-API-Key': this.apiKey,
+    };
+    if (this.projectId) {
+      headers['X-Project-Id'] = this.projectId;
+    }
     const res = await fetch(`${this.baseUrl}${path}`, {
       method,
-      headers: {
-        'Content-Type': 'application/json',
-        'X-API-Key': this.apiKey,
-      },
+      headers,
       body: body ? JSON.stringify(body) : undefined,
     });
     if (!res.ok) {
@@ -169,6 +184,16 @@ export class ClientApiClient {
 
   async retryDelivery(deliveryId: number): Promise<WebhookDeliveryInfo> {
     return this.request('POST', `/client/v1/webhook-deliveries/${deliveryId}/retry`);
+  }
+
+  // ── Projects ─────────────────────────────────────────────
+
+  async getProjects(): Promise<Project[]> {
+    return this.request('GET', '/client/v1/projects');
+  }
+
+  async getProject(id: string): Promise<Project> {
+    return this.request('GET', `/client/v1/projects/${id}`);
   }
 
   // ── Tokens & Health ──────────────────────────────────────

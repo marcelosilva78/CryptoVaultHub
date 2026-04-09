@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Providers } from "@/components/providers";
 import { ClientAuthProvider } from "@/lib/auth-context";
 import { ThemeProvider } from "@/lib/theme-context";
+import { ProjectProvider } from "@/lib/project-context";
 import { LayoutShell } from "@/components/layout-shell";
 import "./globals.css";
 
@@ -23,7 +24,9 @@ export default function RootLayout({
         <Providers>
           <ThemeProvider>
             <ClientAuthProvider>
-              <LayoutShell>{children}</LayoutShell>
+              <ProjectProvider>
+                <LayoutShell>{children}</LayoutShell>
+              </ProjectProvider>
             </ClientAuthProvider>
           </ThemeProvider>
         </Providers>

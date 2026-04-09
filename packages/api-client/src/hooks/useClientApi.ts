@@ -15,6 +15,7 @@ import type {
   AddAddressDto,
   CreateWebhookDto,
   UpdateWebhookDto,
+  Project,
 } from '../types';
 
 // ── Singleton / context helper ───────────────────────────
@@ -32,6 +33,8 @@ function api(): ClientApiClient {
 // ── Query keys ───────────────────────────────────────────
 export const clientKeys = {
   all: ['client'] as const,
+  projects: () => [...clientKeys.all, 'projects'] as const,
+  project: (id: string) => [...clientKeys.all, 'project', id] as const,
   wallets: () => [...clientKeys.all, 'wallets'] as const,
   balances: (chainId: number) => [...clientKeys.all, 'balances', chainId] as const,
   depositAddresses: (params?: PaginationParams) => [...clientKeys.all, 'depositAddresses', params] as const,
@@ -44,6 +47,24 @@ export const clientKeys = {
   tokens: (chainId?: number) => [...clientKeys.all, 'tokens', chainId] as const,
   health: () => [...clientKeys.all, 'health'] as const,
 };
+
+// ── Projects ────────────────────────────────────────────
+
+export function useProjects() {
+  return useQuery({
+    queryKey: clientKeys.projects(),
+    queryFn: () => api().getProjects(),
+    enabled: !!_clientApi,
+  });
+}
+
+export function useProject(id: string) {
+  return useQuery({
+    queryKey: clientKeys.project(id),
+    queryFn: () => api().getProject(id),
+    enabled: !!_clientApi && !!id,
+  });
+}
 
 // ── Wallets ──────────────────────────────────────────────
 

@@ -30,6 +30,7 @@ export type {
   WebhookInfo,
   WebhookDeliveryInfo,
   BalanceInfo,
+  Project,
 } from './types';
 
 // Auth types
