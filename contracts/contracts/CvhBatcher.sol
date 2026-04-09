@@ -12,6 +12,7 @@ contract CvhBatcher {
     event BatchTransfer(address indexed sender, address recipient, uint256 value);
     event TransferGasLimitChange(uint256 newGasLimit);
     event BatchTransferLimitChange(uint256 newLimit);
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
 
     // --- State ---
     address public owner;
@@ -98,6 +99,16 @@ contract CvhBatcher {
     function setBatchTransferLimit(uint256 _batchTransferLimit) external onlyOwner {
         batchTransferLimit = _batchTransferLimit;
         emit BatchTransferLimitChange(_batchTransferLimit);
+    }
+
+    /**
+     * @notice Transfer ownership to a new address
+     * @param newOwner The new owner address
+     */
+    function transferOwnership(address newOwner) external onlyOwner {
+        require(newOwner != address(0), "CvhBatcher: zero address");
+        emit OwnershipTransferred(owner, newOwner);
+        owner = newOwner;
     }
 
     /**

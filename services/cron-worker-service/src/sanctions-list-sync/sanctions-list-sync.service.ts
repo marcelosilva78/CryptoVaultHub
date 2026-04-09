@@ -16,10 +16,10 @@ export interface SanctionsSyncResult {
 }
 
 interface ParsedSanctionEntry {
-  sdnId: string;
+  entityId: string;
   entityName: string;
-  cryptoAddress: string;
-  currency: string;
+  address: string;
+  addressType: string;
 }
 
 /**

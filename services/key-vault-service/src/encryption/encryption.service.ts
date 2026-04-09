@@ -25,7 +25,7 @@ export class EncryptionService {
       'VAULT_MASTER_PASSWORD',
     );
     this.kdfIterations = parseInt(
-      this.configService.get<string>('KDF_ITERATIONS', '100000'),
+      this.configService.get<string>('KDF_ITERATIONS', '600000'),
       10,
     );
   }

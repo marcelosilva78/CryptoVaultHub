@@ -4,21 +4,72 @@ import {
   BadRequestException,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { authenticator } from 'otplib';
 import * as qrcode from 'qrcode';
+import {
+  createCipheriv,
+  createDecipheriv,
+  randomBytes,
+  scryptSync,
+} from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class TotpService {
   private readonly logger = new Logger(TotpService.name);
   private readonly issuer = 'CryptoVaultHub';
+  private readonly encryptionKey: Buffer;
 
-  constructor(private readonly prisma: PrismaService) {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly configService: ConfigService,
+  ) {
     // Configure TOTP with 30-second window
     authenticator.options = {
       step: 30,
       window: 1,
     };
+
+    // Derive a 32-byte key from TOTP_ENCRYPTION_KEY env var using scrypt
+    const rawKey = this.configService.getOrThrow<string>('TOTP_ENCRYPTION_KEY');
+    this.encryptionKey = scryptSync(rawKey, 'totp-secret-salt', 32);
+  }
+
+  /**
+   * Encrypt a TOTP secret using AES-256-GCM before storage.
+   */
+  private encryptSecret(secret: string): string {
+    const iv = randomBytes(16);
+    const cipher = createCipheriv('aes-256-gcm', this.encryptionKey, iv);
+    const encrypted = Buffer.concat([
+      cipher.update(secret, 'utf-8'),
+      cipher.final(),
+    ]);
+    const authTag = cipher.getAuthTag();
+    // Store as iv:authTag:ciphertext in hex
+    return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted.toString('hex')}`;
+  }
+
+  /**
+   * Decrypt a TOTP secret from AES-256-GCM encrypted storage format.
+   */
+  private decryptSecret(encryptedValue: string): string {
+    const parts = encryptedValue.split(':');
+    if (parts.length !== 3) {
+      throw new BadRequestException('Invalid encrypted TOTP secret format');
+    }
+    const iv = Buffer.from(parts[0], 'hex');
+    const authTag = Buffer.from(parts[1], 'hex');
+    const ciphertext = Buffer.from(parts[2], 'hex');
+
+    const decipher = createDecipheriv('aes-256-gcm', this.encryptionKey, iv);
+    decipher.setAuthTag(authTag);
+    const decrypted = Buffer.concat([
+      decipher.update(ciphertext),
+      decipher.final(),
+    ]);
+    return decrypted.toString('utf-8');
   }
 
   /**
@@ -46,10 +97,13 @@ export class TotpService {
       secret,
     );
 
-    // Store the secret (not yet enabled)
+    // Encrypt the secret before storing in DB
+    const encryptedSecret = this.encryptSecret(secret);
+
+    // Store the encrypted secret (not yet enabled)
     await this.prisma.user.update({
       where: { id: userId },
-      data: { totpSecret: secret },
+      data: { totpSecret: encryptedSecret },
     });
 
     const qrCodeDataUrl = await qrcode.toDataURL(otpauthUrl);
@@ -71,9 +125,10 @@ export class TotpService {
       );
     }
 
+    const secret = this.decryptSecret(user.totpSecret);
     const isValid = authenticator.verify({
       token: code,
-      secret: user.totpSecret,
+      secret,
     });
 
     if (!isValid) {
@@ -103,9 +158,10 @@ export class TotpService {
       throw new BadRequestException('2FA is not enabled for this user');
     }
 
+    const secret = this.decryptSecret(user.totpSecret);
     return authenticator.verify({
       token: code,
-      secret: user.totpSecret,
+      secret,
     });
   }
 
@@ -120,9 +176,10 @@ export class TotpService {
       throw new BadRequestException('2FA is not enabled');
     }
 
+    const secret = this.decryptSecret(user.totpSecret);
     const isValid = authenticator.verify({
       token: code,
-      secret: user.totpSecret,
+      secret,
     });
     if (!isValid) {
       throw new BadRequestException('Invalid TOTP code');

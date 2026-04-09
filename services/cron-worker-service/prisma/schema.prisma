@@ -125,17 +125,17 @@ model Deposit {
 // ---------------------------------------------------------------------------
 
 model SanctionsEntry {
-  id            BigInt   @id @default(autoincrement())
-  listSource    String   @db.VarChar(20) @map("list_source")
-  entityName    String?  @db.VarChar(500) @map("entity_name")
-  cryptoAddress String   @db.VarChar(100) @map("crypto_address")
-  currency      String?  @db.VarChar(20)
-  sdnId         String?  @db.VarChar(50) @map("sdn_id")
-  isActive      Boolean  @default(true) @map("is_active")
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  id           BigInt   @id @default(autoincrement())
+  listSource   String   @db.VarChar(50) @map("list_source")
+  address      String   @db.VarChar(100)
+  addressType  String   @db.VarChar(20) @map("address_type")
+  entityName   String?  @db.VarChar(500) @map("entity_name")
+  entityId     String?  @db.VarChar(100) @map("entity_id")
+  isActive     Boolean  @default(true) @map("is_active")
+  lastSyncedAt DateTime @map("last_synced_at")
+  createdAt    DateTime @default(now()) @map("created_at")
 
-  @@unique([listSource, cryptoAddress], name: "uq_list_address")
-  @@index([cryptoAddress])
+  @@unique([listSource, address])
+  @@index([address])
   @@map("sanctions_entries")
 }

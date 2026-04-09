@@ -46,17 +46,19 @@ contract CvhForwarderFactory is CloneFactory {
 
     /**
      * @notice Predict the address of a forwarder clone
+     * @param deployer The address that will call createForwarder
      * @param parent The parent wallet address
      * @param feeAddress The fee address
      * @param salt User-provided salt
      * @return The predicted address
      */
     function computeForwarderAddress(
+        address deployer,
         address parent,
         address feeAddress,
         bytes32 salt
     ) external view returns (address) {
-        bytes32 finalSalt = keccak256(abi.encodePacked(parent, feeAddress, salt));
+        bytes32 finalSalt = keccak256(abi.encodePacked(deployer, parent, feeAddress, salt));
         return computeCloneAddress(implementationAddress, finalSalt);
     }
 }
