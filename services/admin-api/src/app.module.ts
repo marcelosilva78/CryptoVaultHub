@@ -7,6 +7,7 @@ import { TierManagementModule } from './tier-management/tier-management.module';
 import { ChainManagementModule } from './chain-management/chain-management.module';
 import { ComplianceManagementModule } from './compliance-management/compliance-management.module';
 import { MonitoringModule } from './monitoring/monitoring.module';
+import { ProjectManagementModule } from './project-management/project-management.module';
 import { PostHogInterceptor } from './common/interceptors/posthog.interceptor';
 import { HealthController } from './common/health.controller';
 
@@ -22,6 +23,7 @@ import { HealthController } from './common/health.controller';
     ChainManagementModule,
     ComplianceManagementModule,
     MonitoringModule,
+    ProjectManagementModule,
   ],
   controllers: [HealthController],
   providers: [

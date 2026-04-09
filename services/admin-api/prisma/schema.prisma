@@ -22,6 +22,7 @@ model Client {
 
   tier      Tier?               @relation(fields: [tierId], references: [id])
   overrides ClientTierOverride[]
+  projects  Project[]
 
   @@index([tierId], name: "idx_tier")
   @@index([slug], name: "idx_slug")
@@ -129,4 +130,29 @@ enum OverrideType {
   number
   boolean
   json
+}
+
+model Project {
+  id          BigInt        @id @default(autoincrement())
+  clientId    BigInt        @map("client_id")
+  name        String        @db.VarChar(200)
+  slug        String        @db.VarChar(100)
+  description String?       @db.VarChar(500)
+  isDefault   Boolean       @default(false) @map("is_default")
+  status      ProjectStatus @default(active)
+  settings    Json?
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  client Client @relation(fields: [clientId], references: [id])
+
+  @@unique([clientId, slug], name: "uq_client_slug")
+  @@index([clientId, status], name: "idx_client_status")
+  @@map("projects")
+}
+
+enum ProjectStatus {
+  active
+  archived
+  suspended
 }
