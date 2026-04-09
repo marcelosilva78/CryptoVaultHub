@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@cvh/config": "*",
+    "@cvh/job-client": "*",
     "@cvh/posthog": "*",
     "@cvh/types": "*",
     "@cvh/utils": "*",

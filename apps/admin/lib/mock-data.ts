@@ -989,6 +989,12 @@ export const navSections = [
     ],
   },
   {
+    title: "Infrastructure",
+    items: [
+      { label: "Jobs", href: "/jobs", icon: "Cog" },
+    ],
+  },
+  {
     title: "Config",
     items: [
       { label: "Tiers & Limits", href: "/tiers", icon: "Layers" },
