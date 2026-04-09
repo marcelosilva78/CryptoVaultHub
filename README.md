@@ -22,6 +22,7 @@ CryptoVaultHub is a B2B multi-tenant platform purpose-built for cryptocurrency e
 - [Smart Contract Deployment](#smart-contract-deployment)
 - [Project Structure](#project-structure)
 - [Documentation](#documentation)
+- [API Documentation (Swagger)](#api-documentation-swagger)
 - [Screenshots](#screenshots)
 - [License](#license)
 - [Contributing](#contributing)
@@ -785,6 +786,46 @@ CryptoVaultHub/
 | Admin API Reference | [docs/api/admin-api.md](docs/api/admin-api.md) | Admin API endpoint documentation |
 | Client API Reference | [docs/api/client-api.md](docs/api/client-api.md) | Client API endpoint documentation |
 | Visual Identity | [docs/identity/cryptovaulthub-visual-identity.md](docs/identity/cryptovaulthub-visual-identity.md) | Design system, tokens, component specifications |
+
+---
+
+## API Documentation (Swagger)
+
+CryptoVaultHub provides comprehensive, interactive API documentation following the **OpenAPI 3.0 specification** via Swagger UI. Both the Admin API and Client API have fully documented endpoints with detailed descriptions, request/response examples, authentication schemes, and error code references.
+
+### Client API Documentation (`/api/docs`)
+
+The Client API Swagger page documents all 18 endpoints across 7 categories, with:
+
+- **API Key authentication** (`X-API-Key` header) with scope-based access control (read/write/withdraw)
+- **Detailed endpoint descriptions** including the full deposit address generation flow (CREATE2, forwarder lifecycle), withdrawal status lifecycle (9 states), and webhook HMAC-SHA256 signature verification code
+- **Multiple request examples** per endpoint (ETH withdrawal, USDT on BSC, batch deposit generation)
+- **Complete request/response schemas** with field-level descriptions, types, constraints, and enums
+- **Error code reference** (400-500) with descriptions for each scenario
+- **Webhook events table** with all 7 event types and their descriptions
+- **Supported chains table** (Ethereum, BSC, Polygon, Arbitrum, Optimism, Avalanche, Base)
+
+![CryptoVaultHub Client API — Swagger Documentation](docs/screenshots/client-api-swagger.png)
+
+### Admin API Documentation (`/api/docs`)
+
+The Admin API Swagger page documents all 17 endpoints across 6 categories:
+
+- **JWT Bearer authentication** with role-based access (super_admin, admin, viewer)
+- **Client management** with custody mode and KYT level configuration
+- **Chain and token registry** management
+- **Tier configuration** with rate limits, resource quotas, and compliance levels
+- **Compliance alert** lifecycle management
+- **System monitoring** with health checks, queue status, and gas tank balances
+
+### Accessing Swagger UI
+
+| Service | URL | Authentication |
+|---------|-----|----------------|
+| Admin API | `http://localhost:3001/api/docs` | JWT Bearer Token |
+| Client API | `http://localhost:3002/api/docs` | API Key (X-API-Key) |
+
+> **Tip:** Both Swagger UIs support persistent authorization — enter your credentials once and they persist across page reloads. Use the "Try it out" feature to test endpoints directly from the documentation page.
 
 ---
 
