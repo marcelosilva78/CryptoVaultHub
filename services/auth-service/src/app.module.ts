@@ -1,8 +1,24 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
+import { PrismaModule } from './prisma/prisma.module';
+import { JwtAuthModule } from './jwt/jwt-auth.module';
+import { ApiKeyModule } from './api-key/api-key.module';
+import { TotpModule } from './totp/totp.module';
+import { RbacModule } from './rbac/rbac.module';
+import { AuthController } from './auth.controller';
 
 @Module({
-  imports: [],
-  controllers: [],
-  providers: [],
+  imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: ['.env', '../../.env'],
+    }),
+    PrismaModule,
+    JwtAuthModule,
+    ApiKeyModule,
+    TotpModule,
+    RbacModule,
+  ],
+  controllers: [AuthController],
 })
 export class AppModule {}

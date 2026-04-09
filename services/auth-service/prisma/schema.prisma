@@ -1,0 +1,80 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma-client"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           BigInt      @id @default(autoincrement())
+  email        String      @unique @db.VarChar(255)
+  passwordHash String      @map("password_hash") @db.VarChar(255)
+  name         String      @db.VarChar(200)
+  role         AdminRole   @default(viewer)
+  clientId     BigInt?     @map("client_id")
+  clientRole   ClientRole? @map("client_role")
+  isActive     Boolean     @default(true) @map("is_active")
+  totpSecret   String?     @map("totp_secret") @db.VarChar(64)
+  totpEnabled  Boolean     @default(false) @map("totp_enabled")
+  lastLoginAt  DateTime?   @map("last_login_at")
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+
+  sessions Session[]
+
+  @@index([clientId], name: "idx_client")
+  @@map("users")
+}
+
+model Session {
+  id               String   @id @db.VarChar(64)
+  userId           BigInt   @map("user_id")
+  refreshTokenHash String   @map("refresh_token_hash") @db.VarChar(64)
+  ipAddress        String?  @map("ip_address") @db.VarChar(45)
+  userAgent        String?  @map("user_agent") @db.VarChar(500)
+  expiresAt        DateTime @map("expires_at")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId], name: "idx_user")
+  @@index([expiresAt], name: "idx_expires")
+  @@map("sessions")
+}
+
+model ApiKey {
+  id           BigInt    @id @default(autoincrement())
+  clientId     BigInt    @map("client_id")
+  keyPrefix    String    @map("key_prefix") @db.VarChar(20)
+  keyHash      String    @unique @map("key_hash") @db.VarChar(64)
+  scopes       Json      @default("[\"read\"]")
+  ipAllowlist  Json?     @map("ip_allowlist")
+  allowedChains Json?    @map("allowed_chains")
+  isActive     Boolean   @default(true) @map("is_active")
+  label        String?   @db.VarChar(100)
+  expiresAt    DateTime? @map("expires_at")
+  lastUsedAt   DateTime? @map("last_used_at")
+  lastUsedIp   String?   @map("last_used_ip") @db.VarChar(45)
+  usageCount   BigInt    @default(0) @map("usage_count")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  revokedAt    DateTime? @map("revoked_at")
+
+  @@index([clientId], name: "idx_client")
+  @@index([keyHash], name: "idx_key_hash")
+  @@map("api_keys")
+}
+
+enum AdminRole {
+  super_admin
+  admin
+  viewer
+}
+
+enum ClientRole {
+  owner
+  admin
+  viewer
+}
