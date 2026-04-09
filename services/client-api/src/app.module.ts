@@ -13,6 +13,7 @@ import { ProjectModule } from './project/project.module';
 import { FlushModule } from './flush/flush.module';
 import { DeployTraceModule } from './deploy-trace/deploy-trace.module';
 import { AddressGroupModule } from './address-group/address-group.module';
+import { ExportModule } from './export/export.module';
 import { HealthController } from './common/health.controller';
 import { PostHogInterceptor } from './common/interceptors/posthog.interceptor';
 
@@ -34,6 +35,7 @@ import { PostHogInterceptor } from './common/interceptors/posthog.interceptor';
     FlushModule,
     DeployTraceModule,
     AddressGroupModule,
+    ExportModule,
   ],
   controllers: [HealthController],
   providers: [
