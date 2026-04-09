@@ -1,0 +1,20 @@
+# Dependencies
+node_modules
+
+# Build outputs
+dist
+.next
+
+# Test coverage
+coverage
+
+# Environment files
+.env
+
+# Turborepo
+.turbo
+
+# Smart contract artifacts
+artifacts
+cache
+typechain-types
