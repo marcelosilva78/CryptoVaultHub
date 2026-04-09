@@ -1,0 +1,141 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma-client"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Chains (shared reference)
+// ---------------------------------------------------------------------------
+
+model Chain {
+  id                      Int     @id @map("chain_id")
+  name                    String  @db.VarChar(50)
+  shortName               String  @db.VarChar(10) @map("short_name")
+  nativeCurrencySymbol    String  @db.VarChar(10) @map("native_currency_symbol")
+  nativeCurrencyDecimals  Int     @default(18) @map("native_currency_decimals")
+  rpcEndpoints            Json    @map("rpc_endpoints")
+  blockTimeSeconds        Decimal @db.Decimal(5, 2) @map("block_time_seconds")
+  confirmationsDefault    Int     @map("confirmations_default")
+  walletFactoryAddress    String? @db.VarChar(42) @map("wallet_factory_address")
+  forwarderFactoryAddress String? @db.VarChar(42) @map("forwarder_factory_address")
+  walletImplAddress       String? @db.VarChar(42) @map("wallet_impl_address")
+  forwarderImplAddress    String? @db.VarChar(42) @map("forwarder_impl_address")
+  multicall3Address       String  @default("0xcA11bde05977b3631167028862bE2a173976CA11") @db.VarChar(42) @map("multicall3_address")
+  explorerUrl             String? @db.VarChar(200) @map("explorer_url")
+  gasPriceStrategy        String  @default("eip1559") @db.VarChar(10) @map("gas_price_strategy")
+  isActive                Boolean @default(true) @map("is_active")
+  isTestnet               Boolean @default(false) @map("is_testnet")
+  createdAt               DateTime @default(now()) @map("created_at")
+
+  @@map("chains")
+}
+
+// ---------------------------------------------------------------------------
+// Tokens (shared reference)
+// ---------------------------------------------------------------------------
+
+model Token {
+  id              BigInt   @id @default(autoincrement())
+  chainId         Int      @map("chain_id")
+  contractAddress String   @db.VarChar(42) @map("contract_address")
+  symbol          String   @db.VarChar(20)
+  name            String   @db.VarChar(100)
+  decimals        Int      @db.TinyInt
+  isNative        Boolean  @default(false) @map("is_native")
+  isDefault       Boolean  @default(true) @map("is_default")
+  isActive        Boolean  @default(true) @map("is_active")
+  coingeckoId     String?  @db.VarChar(100) @map("coingecko_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@unique([chainId, contractAddress], name: "uq_chain_contract")
+  @@map("tokens")
+}
+
+// ---------------------------------------------------------------------------
+// Wallets and Deposit Addresses
+// ---------------------------------------------------------------------------
+
+model Wallet {
+  id         BigInt   @id @default(autoincrement())
+  clientId   BigInt   @map("client_id")
+  chainId    Int      @map("chain_id")
+  address    String   @db.VarChar(42)
+  walletType String   @db.VarChar(20) @map("wallet_type")
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@unique([clientId, chainId, walletType], name: "uq_client_chain_type")
+  @@map("wallets")
+}
+
+model DepositAddress {
+  id         BigInt   @id @default(autoincrement())
+  clientId   BigInt   @map("client_id")
+  chainId    Int      @map("chain_id")
+  walletId   BigInt   @map("wallet_id")
+  address    String   @db.VarChar(42)
+  externalId String   @db.VarChar(200) @map("external_id")
+  label      String?  @db.VarChar(200)
+  salt       String   @db.VarChar(66)
+  isDeployed Boolean  @default(false) @map("is_deployed")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@unique([clientId, chainId, externalId], name: "uq_client_chain_external")
+  @@index([address])
+  @@map("deposit_addresses")
+}
+
+// ---------------------------------------------------------------------------
+// Deposits (for sweep tracking)
+// ---------------------------------------------------------------------------
+
+model Deposit {
+  id                    BigInt    @id @default(autoincrement())
+  clientId              BigInt    @map("client_id")
+  chainId               Int       @map("chain_id")
+  forwarderAddress      String    @db.VarChar(42) @map("forwarder_address")
+  externalId            String    @db.VarChar(200) @map("external_id")
+  tokenId               BigInt    @map("token_id")
+  amount                String    @db.VarChar(78)
+  amountRaw             String    @db.VarChar(78) @map("amount_raw")
+  txHash                String    @db.VarChar(66) @map("tx_hash")
+  blockNumber           BigInt    @map("block_number")
+  fromAddress           String    @db.VarChar(42) @map("from_address")
+  status                String    @default("pending") @db.VarChar(20)
+  confirmations         Int       @default(0)
+  confirmationsRequired Int       @map("confirmations_required")
+  sweepTxHash           String?   @db.VarChar(66) @map("sweep_tx_hash")
+  kytResult             String?   @db.VarChar(20) @map("kyt_result")
+  detectedAt            DateTime  @default(now()) @map("detected_at")
+  confirmedAt           DateTime? @map("confirmed_at")
+  sweptAt               DateTime? @map("swept_at")
+
+  @@unique([txHash, forwarderAddress], name: "uq_tx_forwarder")
+  @@index([clientId, status])
+  @@map("deposits")
+}
+
+// ---------------------------------------------------------------------------
+// Sanctions entries (OFAC/EU/UN)
+// ---------------------------------------------------------------------------
+
+model SanctionsEntry {
+  id            BigInt   @id @default(autoincrement())
+  listSource    String   @db.VarChar(20) @map("list_source")
+  entityName    String?  @db.VarChar(500) @map("entity_name")
+  cryptoAddress String   @db.VarChar(100) @map("crypto_address")
+  currency      String?  @db.VarChar(20)
+  sdnId         String?  @db.VarChar(50) @map("sdn_id")
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@unique([listSource, cryptoAddress], name: "uq_list_address")
+  @@index([cryptoAddress])
+  @@map("sanctions_entries")
+}
