@@ -13,7 +13,7 @@ contract CvhForwarderFactory is CloneFactory {
     event ForwarderCreated(address forwarderAddress, address parentAddress, address feeAddress);
 
     // --- State ---
-    address public implementationAddress;
+    address public immutable implementationAddress;
 
     /**
      * @param _implementationAddress The CvhForwarder implementation address
@@ -38,7 +38,7 @@ contract CvhForwarderFactory is CloneFactory {
         bool _autoFlush721,
         bool _autoFlush1155
     ) external returns (address payable forwarder) {
-        bytes32 finalSalt = keccak256(abi.encodePacked(parent, feeAddress, salt));
+        bytes32 finalSalt = keccak256(abi.encodePacked(msg.sender, parent, feeAddress, salt));
         forwarder = createClone(implementationAddress, finalSalt);
         CvhForwarder(payable(forwarder)).init(parent, feeAddress, _autoFlush721, _autoFlush1155);
         emit ForwarderCreated(forwarder, parent, feeAddress);

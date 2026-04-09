@@ -5,6 +5,7 @@ import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
 import "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "./interfaces/IForwarder.sol";
 import "./TransferHelper.sol";
 
@@ -12,7 +13,7 @@ import "./TransferHelper.sol";
  * @title CvhWalletSimple
  * @notice 2-of-3 multisig wallet adapted from BitGo eth-multisig-v4
  */
-contract CvhWalletSimple is IERC721Receiver, ERC1155Holder {
+contract CvhWalletSimple is IERC721Receiver, ERC1155Holder, ReentrancyGuard {
     // --- Events ---
     event Deposited(address from, uint256 value, bytes data);
     event Transacted(
@@ -44,6 +45,11 @@ contract CvhWalletSimple is IERC721Receiver, ERC1155Holder {
     address[] public signers;
     mapping(address => bool) public isSigner;
     uint256[10] private recentSequenceIds;
+
+    // --- Constructor (disable init on implementation) ---
+    constructor() {
+        initialized = true;
+    }
 
     // --- Modifiers ---
     modifier onlySigner() {
@@ -101,7 +107,7 @@ contract CvhWalletSimple is IERC721Receiver, ERC1155Holder {
         uint256 expireTime,
         uint256 sequenceId,
         bytes calldata signature
-    ) external onlySigner {
+    ) external onlySigner nonReentrant {
         bytes32 operationHash = keccak256(
             abi.encode(
                 getNetworkId(),
@@ -114,7 +120,6 @@ contract CvhWalletSimple is IERC721Receiver, ERC1155Holder {
         );
 
         address otherSigner = _verifyMultiSig(
-            toAddress,
             operationHash,
             signature,
             expireTime,
@@ -142,9 +147,9 @@ contract CvhWalletSimple is IERC721Receiver, ERC1155Holder {
         uint256 expireTime,
         uint256 sequenceId,
         bytes calldata signature
-    ) external onlySigner {
+    ) external onlySigner nonReentrant {
         bytes32 operationHash = keccak256(
-            abi.encodePacked(
+            abi.encode(
                 getTokenNetworkId(),
                 toAddress,
                 value,
@@ -155,12 +160,16 @@ contract CvhWalletSimple is IERC721Receiver, ERC1155Holder {
         );
 
         address otherSigner = _verifyMultiSig(
-            toAddress,
             operationHash,
             signature,
             expireTime,
             sequenceId
         );
+
+        // IMPORTANT-7: Safe mode check for token transfers
+        if (safeMode) {
+            require(isSigner[toAddress], "Safe mode: can only send to signers");
+        }
 
         TransferHelper.safeTransfer(tokenContractAddress, toAddress, value);
 
@@ -181,7 +190,7 @@ contract CvhWalletSimple is IERC721Receiver, ERC1155Holder {
         uint256 expireTime,
         uint256 sequenceId,
         bytes calldata signature
-    ) external onlySigner {
+    ) external onlySigner nonReentrant {
         require(!safeMode, "CvhWalletSimple: batch not allowed in safe mode");
         require(recipients.length == values.length, "CvhWalletSimple: unequal lengths");
         require(recipients.length > 0, "CvhWalletSimple: empty batch");
@@ -198,7 +207,6 @@ contract CvhWalletSimple is IERC721Receiver, ERC1155Holder {
         );
 
         address otherSigner = _verifyMultiSig(
-            recipients[0],
             operationHash,
             signature,
             expireTime,
@@ -282,15 +290,11 @@ contract CvhWalletSimple is IERC721Receiver, ERC1155Holder {
      * @notice Verify multisig operation
      */
     function _verifyMultiSig(
-        address toAddress,
         bytes32 operationHash,
         bytes calldata signature,
         uint256 expireTime,
         uint256 sequenceId
     ) internal returns (address) {
-        // Silence unused variable warning
-        toAddress;
-
         require(expireTime >= block.timestamp, "CvhWalletSimple: expired");
 
         _tryInsertSequenceId(sequenceId);

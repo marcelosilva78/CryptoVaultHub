@@ -13,7 +13,7 @@ contract CvhWalletFactory is CloneFactory {
     event WalletCreated(address walletAddress, address[] allowedSigners);
 
     // --- State ---
-    address public implementationAddress;
+    address public immutable implementationAddress;
 
     /**
      * @param _implementationAddress The CvhWalletSimple implementation address
@@ -32,7 +32,7 @@ contract CvhWalletFactory is CloneFactory {
         address[] calldata allowedSigners,
         bytes32 salt
     ) external returns (address payable wallet) {
-        bytes32 finalSalt = keccak256(abi.encodePacked(allowedSigners, salt));
+        bytes32 finalSalt = keccak256(abi.encodePacked(msg.sender, allowedSigners, salt));
         wallet = createClone(implementationAddress, finalSalt);
         CvhWalletSimple(wallet).init(allowedSigners);
         emit WalletCreated(wallet, allowedSigners);
@@ -40,15 +40,17 @@ contract CvhWalletFactory is CloneFactory {
 
     /**
      * @notice Predict the address of a wallet clone
+     * @param deployer The address that will call createWallet
      * @param allowedSigners Array of 3 signer addresses
      * @param salt User-provided salt
      * @return The predicted address
      */
     function computeWalletAddress(
+        address deployer,
         address[] calldata allowedSigners,
         bytes32 salt
     ) external view returns (address) {
-        bytes32 finalSalt = keccak256(abi.encodePacked(allowedSigners, salt));
+        bytes32 finalSalt = keccak256(abi.encodePacked(deployer, allowedSigners, salt));
         return computeCloneAddress(implementationAddress, finalSalt);
     }
 }

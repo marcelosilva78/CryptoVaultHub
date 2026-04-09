@@ -25,6 +25,11 @@ contract CvhForwarder is IERC721Receiver, IERC1155Receiver, ERC165 {
     bool public autoFlush721;
     bool public autoFlush1155;
 
+    // --- Constructor (disable init on implementation) ---
+    constructor() {
+        initialized = true;
+    }
+
     // --- Modifiers ---
     modifier onlyAllowedAddress() {
         require(
@@ -54,6 +59,7 @@ contract CvhForwarder is IERC721Receiver, IERC1155Receiver, ERC165 {
     ) external {
         require(!initialized, "CvhForwarder: already initialized");
         require(_parentAddress != address(0), "CvhForwarder: zero parent");
+        require(_feeAddress != address(0), "CvhForwarder: zero fee address");
 
         parentAddress = payable(_parentAddress);
         feeAddress = _feeAddress;
