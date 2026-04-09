@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1440">
+<title>Client Dashboard - Light</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{width:1440px;height:900px;overflow:hidden;font-family:'Outfit',sans-serif;background:#F4F5F7;color:#111318;-webkit-font-smoothing:antialiased;}
+.sidebar{position:fixed;left:0;top:0;bottom:0;width:240px;background:#FFFFFF;border-right:1px solid #ECEDF0;display:flex;flex-direction:column;z-index:100;}
+.sidebar-logo{height:56px;display:flex;align-items:center;gap:10px;padding:0 20px;border-bottom:1px solid #ECEDF0;}
+.sidebar-logo span{font-size:15px;color:#111318;font-weight:700;letter-spacing:-0.02em;}.sidebar-logo .vault{color:#E2A828;}
+.client-info{padding:12px 20px;border-bottom:1px solid #ECEDF0;background:rgba(226,168,40,0.04);}
+.client-info .name{font-size:13px;font-weight:600;color:#111318;}
+.tier-badge{display:inline-flex;margin-top:4px;padding:2px 8px;border-radius:10px;font-size:9px;font-weight:600;background:rgba(226,168,40,0.08);color:#E2A828;text-transform:uppercase;letter-spacing:0.08em;}
+.nav-section{padding:12px;margin-top:4px;}
+.nav-label{font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:#9CA0AE;padding:0 12px;margin-bottom:6px;}
+.nav-item{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:6px;font-size:13px;font-weight:450;color:#5C6070;text-decoration:none;position:relative;margin-bottom:2px;}
+.nav-item:hover{background:#F0F1F3;color:#111318;}
+.nav-item.active{background:rgba(226,168,40,0.04);color:#E2A828;font-weight:600;}
+.nav-item.active::before{content:'';position:absolute;left:0;top:50%;transform:translateY(-50%);width:3px;height:18px;background:#E2A828;border-radius:0 3px 3px 0;}
+.nav-item .badge{margin-left:auto;background:#F5A623;color:#FFF;font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;}
+.sidebar-footer{padding:12px 16px;border-top:1px solid #ECEDF0;display:flex;align-items:center;gap:10px;}
+.avatar-sq{width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#FFF;background:#E2A828;border-radius:8px;}
+.user-info{flex:1;}.user-name{font-size:12px;font-weight:600;color:#111318;}.user-role{font-size:10px;color:#9CA0AE;}
+.header{position:fixed;top:0;left:240px;right:0;height:56px;z-index:99;display:flex;align-items:center;justify-content:space-between;padding:0 24px;border-bottom:1px solid #ECEDF0;background:rgba(244,245,247,0.85);backdrop-filter:blur(12px);}
+.breadcrumb{display:flex;align-items:center;gap:6px;font-size:13px;}.breadcrumb .crumb{color:#9CA0AE;}.breadcrumb .sep{color:#9CA0AE;font-size:10px;}.breadcrumb .crumb.active{color:#111318;font-weight:600;}
+.header-actions{display:flex;align-items:center;gap:8px;}
+.header-btn{padding:8px;border-radius:6px;color:#9CA0AE;background:none;border:none;cursor:pointer;display:flex;}
+.header-sep{width:1px;height:20px;background:#ECEDF0;margin:0 4px;}
+.mini-avatar{width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#FFF;background:linear-gradient(135deg,#E2A828,#C9941F);clip-path:polygon(50% 0%,93% 25%,93% 75%,50% 100%,7% 75%,7% 25%);}
+.notif-dot{position:absolute;top:6px;right:6px;width:8px;height:8px;background:#F6465D;border-radius:50%;}
+.main{margin-left:240px;margin-top:56px;padding:24px;}
+.welcome{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;}
+.welcome h1{font-size:20px;font-weight:700;letter-spacing:-0.02em;}
+.welcome .meta{font-size:12px;color:#5C6070;margin-top:4px;}
+.quick-actions{display:flex;gap:10px;}
+.btn-gold{background:#E2A828;color:#FFF;font-size:12px;font-weight:600;padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-family:'Outfit',sans-serif;}
+.btn-outline{background:none;color:#5C6070;border:1px solid #E2E4E8;font-size:12px;font-weight:600;padding:8px 16px;border-radius:6px;cursor:pointer;font-family:'Outfit',sans-serif;}
+.vault-card{background:#FFF;border:1px solid #E2E4E8;border-radius:10px;padding:20px;margin-bottom:20px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,0.04);}
+.vault-value{font-size:24px;font-weight:800;color:#111318;margin-top:4px;}
+.vault-label{font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:#9CA0AE;margin-top:4px;}
+.comp-bar{display:flex;height:6px;border-radius:10px;overflow:hidden;margin-top:12px;}
+.comp-legend{display:flex;justify-content:space-between;margin-top:8px;font-size:9px;color:#9CA0AE;}
+.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;}
+.stat-card{background:#FFF;border:1px solid #E2E4E8;border-radius:10px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,0.04);}
+.stat-label{font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.07em;color:#9CA0AE;margin-bottom:6px;}
+.stat-value{font-size:20px;font-weight:700;line-height:1;letter-spacing:-0.03em;}
+.stat-value.accent{color:#E2A828;}.stat-value.warn{color:#F5A623;}
+.stat-sub{font-size:11px;color:#9CA0AE;margin-top:6px;}
+.chart-card{background:#FFF;border:1px solid #E2E4E8;border-radius:10px;padding:16px;margin-bottom:20px;box-shadow:0 1px 3px rgba(0,0,0,0.04);}
+.chart-title{font-size:14px;font-weight:600;margin-bottom:12px;}
+.chart-area{height:160px;}
+.tx-card{background:#FFF;border:1px solid #E2E4E8;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.04);}
+.tx-header{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;border-bottom:1px solid #ECEDF0;}
+.tx-header h2{font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;}
+.live-dot{width:8px;height:8px;border-radius:50%;background:#E2A828;box-shadow:0 0 6px rgba(226,168,40,0.4);}
+.tx-header a{font-size:10px;font-weight:600;color:#E2A828;text-decoration:none;}
+.tx-row-header{display:grid;grid-template-columns:90px 65px 95px 24px 95px 1fr 80px;gap:8px;padding:8px 20px;background:#FFF;border-bottom:1px solid #ECEDF0;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.09em;color:#9CA0AE;}
+.tx-row{display:grid;grid-template-columns:90px 65px 95px 24px 95px 1fr 80px;gap:8px;align-items:center;padding:8px 20px;border-bottom:1px solid #ECEDF0;font-size:11px;}
+.tx-row:hover{background:#F0F1F3;}
+.tx-time{font-family:'JetBrains Mono',monospace;font-size:10px;color:#9CA0AE;}
+.tx-type{display:inline-flex;padding:2px 6px;border-radius:10px;font-size:9px;font-weight:600;text-transform:capitalize;}
+.tx-type.deposit{background:rgba(46,189,133,0.1);color:#2EBD85;}.tx-type.withdrawal{background:rgba(245,166,35,0.1);color:#F5A623;}.tx-type.sweep{background:rgba(226,168,40,0.08);color:#E2A828;}
+.tx-addr{font-family:'JetBrains Mono',monospace;font-size:10px;color:#5C6070;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}.tx-addr.to{color:#111318;}
+.tx-arrow{text-align:center;color:#9CA0AE;font-size:10px;}
+.tx-amount{text-align:right;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;}
+.tx-amount.deposit{color:#2EBD85;}.tx-amount.withdrawal{color:#F6465D;}.tx-amount.sweep{color:#E2A828;}
+.tx-status{display:inline-flex;padding:2px 6px;border-radius:10px;font-size:9px;font-weight:600;text-transform:capitalize;}
+.tx-status.confirmed{background:rgba(46,189,133,0.1);color:#2EBD85;}.tx-status.confirming{background:rgba(245,166,35,0.1);color:#F5A623;}
+</style>
+</head>
+<body>
+<aside class="sidebar">
+  <div class="sidebar-logo"><svg width="28" height="28" viewBox="0 0 40 40" fill="none"><path d="M20 2L36.5 11V29L20 38L3.5 29V11L20 2Z" stroke="#E2A828" stroke-width="2.5" stroke-linejoin="round" fill="none"/><circle cx="20" cy="16" r="4.5" fill="#E2A828"/><path d="M17 19L16 28H24L23 19" fill="#E2A828"/></svg><span>Crypto<span class="vault">Vault</span>Hub</span></div>
+  <div class="client-info"><div class="name">Corretora XYZ</div><div class="tier-badge">Business Tier</div></div>
+  <nav style="flex:1;overflow-y:auto;">
+    <div class="nav-section"><div class="nav-label">Main</div><a class="nav-item active" href="#">Dashboard</a><a class="nav-item" href="#">Wallets</a><a class="nav-item" href="#">Transactions</a></div>
+    <div class="nav-section"><div class="nav-label">Operations</div><a class="nav-item" href="#">Deposits <span class="badge">12</span></a><a class="nav-item" href="#">Withdrawals</a></div>
+    <div class="nav-section"><div class="nav-label">Integration</div><a class="nav-item" href="#">Webhooks</a><a class="nav-item" href="#">API Keys</a></div>
+    <div class="nav-section"><div class="nav-label">Settings</div><a class="nav-item" href="#">Security</a><a class="nav-item" href="#">Setup Wizard</a></div>
+  </nav>
+  <div class="sidebar-footer"><div class="avatar-sq">JS</div><div class="user-info"><div class="user-name">John Smith</div><div class="user-role">Admin</div></div></div>
+</aside>
+<header class="header">
+  <div class="breadcrumb"><span class="crumb">Client</span><span class="sep">&#8250;</span><span class="crumb active">Dashboard</span></div>
+  <div class="header-actions"><button class="header-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9CA0AE" stroke-width="2"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg></button><button class="header-btn" style="position:relative;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9CA0AE" stroke-width="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg><span class="notif-dot"></span></button><div class="header-sep"></div><div class="mini-avatar">JS</div></div>
+</header>
+<div class="main">
+  <div class="welcome"><div><h1>Welcome back, Corretora XYZ</h1><div class="meta">Corretora XYZ <span class="tier-badge" style="margin-left:8px;">Business Tier</span></div></div><div class="quick-actions"><button class="btn-gold">+ Generate Deposit Address</button><button class="btn-outline">New Withdrawal</button><button class="btn-outline">View Setup Wizard</button></div></div>
+  <div class="vault-card">
+    <svg viewBox="0 0 200 100" style="width:200px;height:100px;margin:0 auto;display:block;"><defs><linearGradient id="gg" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#E2A828"/><stop offset="100%" stop-color="#C9941F"/></linearGradient></defs><path d="M 20 80 A 80 80 0 0 1 180 80" fill="none" stroke="#ECEDF0" stroke-width="6" stroke-linecap="round" opacity="0.5"/><path d="M 20 80 A 80 80 0 0 1 170 30" fill="none" stroke="url(#gg)" stroke-width="6" stroke-linecap="round"/></svg>
+    <div class="vault-value">$2,847,100.00</div><div class="vault-label">Total Custody Balance</div>
+    <div class="comp-bar"><div style="width:58%;background:#E2A828;"></div><div style="width:28%;background:#B8892A;"></div><div style="width:14%;background:#8A6820;"></div></div>
+    <div class="comp-legend"><span>BSC 58%</span><span>ETH 28%</span><span>Polygon 14%</span></div>
+  </div>
+  <div class="stats-grid">
+    <div class="stat-card"><div class="stat-label">Active Wallets</div><div class="stat-value accent">2,340</div><div class="stat-sub">of 12,430 total</div></div>
+    <div class="stat-card"><div class="stat-label">Pending Deposits</div><div class="stat-value warn">12</div><div class="stat-sub">Awaiting confirmations</div></div>
+    <div class="stat-card"><div class="stat-label">Confirmed Today</div><div class="stat-value">247</div><div class="stat-sub">$123,400 volume</div></div>
+    <div class="stat-card"><div class="stat-label">Total Forwarders</div><div class="stat-value">12,430</div><div class="stat-sub">Across 3 chains</div></div>
+  </div>
+  <div class="chart-card"><div class="chart-title">Balance History (30 Days)</div><div class="chart-area">
+    <svg viewBox="0 0 1100 160" preserveAspectRatio="none" style="width:100%;height:100%;"><defs><linearGradient id="bf" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#E2A828" stop-opacity="0.15"/><stop offset="100%" stop-color="#E2A828" stop-opacity="0.02"/></linearGradient></defs>
+    <line x1="0" y1="40" x2="1100" y2="40" stroke="#ECEDF0" stroke-width="0.5"/><line x1="0" y1="80" x2="1100" y2="80" stroke="#ECEDF0" stroke-width="0.5"/><line x1="0" y1="120" x2="1100" y2="120" stroke="#ECEDF0" stroke-width="0.5"/>
+    <path d="M0 140 L80 130 L160 120 L240 125 L320 100 L400 95 L480 105 L560 80 L640 75 L720 60 L800 50 L880 45 L960 35 L1040 30 L1100 25 L1100 160 L0 160 Z" fill="url(#bf)"/><path d="M0 140 L80 130 L160 120 L240 125 L320 100 L400 95 L480 105 L560 80 L640 75 L720 60 L800 50 L880 45 L960 35 L1040 30 L1100 25" fill="none" stroke="#E2A828" stroke-width="2"/></svg></div></div>
+  <div class="tx-card">
+    <div class="tx-header"><h2><span class="live-dot"></span> Recent Transactions</h2><a href="#">View All</a></div>
+    <div class="tx-row-header"><span>Time</span><span>Type</span><span>From</span><span></span><span>To</span><span style="text-align:right;">Amount</span><span style="text-align:center;">Status</span></div>
+    <div class="tx-row"><span class="tx-time">Apr 9, 10:23</span><span><span class="tx-type deposit">deposit</span></span><span class="tx-addr">0xdF3e18...C7097</span><span class="tx-arrow">&rarr;</span><span class="tx-addr to">0x742d35...f2bD68</span><span class="tx-amount deposit" style="text-align:right;">+12,500.00 USDT</span><span style="text-align:center;"><span class="tx-status confirmed">confirmed</span></span></div>
+    <div class="tx-row"><span class="tx-time">Apr 9, 09:45</span><span><span class="tx-type withdrawal">withdrawal</span></span><span class="tx-addr">0x742d35...f2bD68</span><span class="tx-arrow">&rarr;</span><span class="tx-addr to">0x8Ba1f1...DBA72</span><span class="tx-amount withdrawal" style="text-align:right;">-5,000.00 USDC</span><span style="text-align:center;"><span class="tx-status confirmed">confirmed</span></span></div>
+    <div class="tx-row"><span class="tx-time">Apr 9, 09:12</span><span><span class="tx-type deposit">deposit</span></span><span class="tx-addr">0x5e6f7a...3e4f</span><span class="tx-arrow">&rarr;</span><span class="tx-addr to">0x3C44Cd...93BC</span><span class="tx-amount deposit" style="text-align:right;">+0.25 BNB</span><span style="text-align:center;"><span class="tx-status confirming">confirming</span></span></div>
+    <div class="tx-row"><span class="tx-time">Apr 9, 08:30</span><span><span class="tx-type sweep">sweep</span></span><span class="tx-addr">0x90F79b...3906</span><span class="tx-arrow">&rarr;</span><span class="tx-addr to">0x742d35...f2bD68</span><span class="tx-amount sweep" style="text-align:right;">+340.00 USDT</span><span style="text-align:center;"><span class="tx-status confirmed">confirmed</span></span></div>
+    <div class="tx-row"><span class="tx-time">Apr 8, 22:15</span><span><span class="tx-type deposit">deposit</span></span><span class="tx-addr">0xa1b2c3...abcd</span><span class="tx-arrow">&rarr;</span><span class="tx-addr to">0x15d34A...6A65</span><span class="tx-amount deposit" style="text-align:right;">+8,200.00 USDT</span><span style="text-align:center;"><span class="tx-status confirmed">confirmed</span></span></div>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1440">
+<title>Client Transactions - Dark</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{width:1440px;height:900px;overflow:hidden;font-family:'Outfit',sans-serif;background:#08090B;color:#E8E9ED;-webkit-font-smoothing:antialiased;}
+.sidebar{position:fixed;left:0;top:0;bottom:0;width:240px;background:#0D0F14;border-right:1px solid #151820;display:flex;flex-direction:column;z-index:100;}
+.sidebar-logo{height:56px;display:flex;align-items:center;gap:10px;padding:0 20px;border-bottom:1px solid #151820;}
+.sidebar-logo span{font-size:15px;color:#E8E9ED;font-weight:700;}.sidebar-logo .v{color:#E2A828;}
+.client-info{padding:12px 20px;border-bottom:1px solid #151820;background:rgba(226,168,40,0.06);}
+.client-info .name{font-size:13px;font-weight:600;color:#E8E9ED;}
+.tier-badge{display:inline-flex;margin-top:4px;padding:2px 8px;border-radius:10px;font-size:9px;font-weight:600;background:rgba(226,168,40,0.1);color:#E2A828;text-transform:uppercase;letter-spacing:0.08em;}
+.nav-section{padding:12px;margin-top:4px;}.nav-label{font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:#4E5364;padding:0 12px;margin-bottom:6px;}
+.nav-item{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:6px;font-size:13px;font-weight:450;color:#858A9B;text-decoration:none;position:relative;margin-bottom:2px;}
+.nav-item:hover{background:#22252F;}.nav-item.active{background:rgba(226,168,40,0.06);color:#E2A828;font-weight:600;}
+.nav-item.active::before{content:'';position:absolute;left:0;top:50%;transform:translateY(-50%);width:3px;height:18px;background:#E2A828;border-radius:0 3px 3px 0;}
+.nav-item .badge{margin-left:auto;background:#F5A623;color:#0D0F14;font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;}
+.sidebar-footer{padding:12px 16px;border-top:1px solid #151820;display:flex;align-items:center;gap:10px;}
+.avatar-sq{width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#0D0F14;background:#E2A828;border-radius:8px;}
+.user-info{flex:1;}.user-name{font-size:12px;font-weight:600;color:#E8E9ED;}.user-role{font-size:10px;color:#4E5364;}
+.header{position:fixed;top:0;left:240px;right:0;height:56px;z-index:99;display:flex;align-items:center;justify-content:space-between;padding:0 24px;border-bottom:1px solid #151820;background:rgba(8,9,11,0.85);backdrop-filter:blur(12px);}
+.breadcrumb{display:flex;align-items:center;gap:6px;font-size:13px;}.breadcrumb .crumb{color:#4E5364;}.breadcrumb .sep{color:#4E5364;}.breadcrumb .crumb.active{color:#E8E9ED;font-weight:600;}
+.header-actions{display:flex;align-items:center;gap:8px;}.header-btn{padding:8px;border-radius:6px;color:#4E5364;background:none;border:none;cursor:pointer;display:flex;}
+.header-sep{width:1px;height:20px;background:#151820;margin:0 4px;}
+.mini-avatar{width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#0D0F14;background:linear-gradient(135deg,#E2A828,#C9941F);clip-path:polygon(50% 0%,93% 25%,93% 75%,50% 100%,7% 75%,7% 25%);}
+.notif-dot{position:absolute;top:6px;right:6px;width:8px;height:8px;background:#F6465D;border-radius:50%;}
+.main{margin-left:240px;margin-top:56px;padding:24px;}
+.page-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;}
+.page-top h1{font-size:20px;font-weight:700;}.page-top p{font-size:12px;color:#4E5364;margin-top:2px;}
+.btn-outline{background:none;color:#858A9B;border:1px solid #1E2028;font-size:12px;font-weight:600;padding:6px 12px;border-radius:6px;cursor:pointer;font-family:'Outfit',sans-serif;display:inline-flex;align-items:center;gap:6px;}
+/* Stats */
+.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;}
+.stat-card{background:#111318;border:1px solid #1E2028;border-radius:10px;padding:14px;}
+.stat-label{font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.07em;color:#4E5364;margin-bottom:6px;}
+.stat-value{font-size:18px;font-weight:700;line-height:1;}.stat-value.success{color:#2EBD85;}.stat-value.warn{color:#F5A623;}
+.stat-sub{font-size:10px;color:#4E5364;margin-top:4px;}
+/* Filters */
+.filters{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center;}
+.filters select,.filters input{background:#0F1116;border:1px solid #1E2028;border-radius:6px;padding:5px 10px;font-size:11px;color:#E8E9ED;font-family:'Outfit',sans-serif;outline:none;}
+.filters input{width:160px;}
+/* Table */
+.table-card{background:#111318;border:1px solid #1E2028;border-radius:10px;overflow:hidden;}
+table{width:100%;border-collapse:collapse;}
+thead{background:#1A1D25;}
+th{text-align:left;padding:8px 12px;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.09em;color:#4E5364;white-space:nowrap;}
+td{padding:8px 12px;border-bottom:1px solid #151820;font-size:11px;white-space:nowrap;}
+tr:hover{background:#22252F;}
+.chev{color:#4E5364;font-size:10px;cursor:pointer;}
+.chev.open{transform:rotate(90deg);display:inline-block;}
+.mono{font-family:'JetBrains Mono',monospace;font-size:10px;color:#858A9B;}
+.badge{display:inline-flex;padding:2px 6px;border-radius:10px;font-size:9px;font-weight:600;text-transform:capitalize;}
+.badge.deposit{background:rgba(46,189,133,0.1);color:#2EBD85;}.badge.withdrawal{background:rgba(245,166,35,0.1);color:#F5A623;}.badge.sweep{background:rgba(226,168,40,0.1);color:#E2A828;}
+.badge.confirmed{background:rgba(46,189,133,0.1);color:#2EBD85;}.badge.confirming{background:rgba(245,166,35,0.1);color:#F5A623;}.badge.pending{background:rgba(226,168,40,0.1);color:#E2A828;}.badge.failed{background:rgba(246,70,93,0.1);color:#F6465D;}
+.badge .dot{width:5px;height:5px;border-radius:50%;margin-right:4px;display:inline-block;}
+.badge.confirmed .dot{background:#2EBD85;}.badge.confirming .dot{background:#F5A623;}.badge.pending .dot{background:#E2A828;}.badge.failed .dot{background:#F6465D;}
+.amount{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;}
+.amount.deposit{color:#2EBD85;}.amount.withdrawal{color:#F5A623;}.amount.sweep{color:#E2A828;}
+.chain-chip{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:#858A9B;}
+.chain-hex{width:14px;height:14px;display:flex;align-items:center;justify-content:center;font-size:7px;font-weight:700;color:#E2A828;background:rgba(226,168,40,0.1);clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);}
+.conf-bar{display:flex;gap:1px;align-items:center;}
+.conf-seg{width:8px;height:4px;border-radius:1px;background:#1E2028;}
+.conf-seg.filled{background:#2EBD85;}
+.conf-text{font-size:9px;color:#4E5364;margin-left:4px;}
+.tx-link{font-family:'JetBrains Mono',monospace;font-size:10px;color:#E2A828;text-decoration:none;}
+/* Expanded row */
+.expanded-row{background:#0D0F14;padding:16px 24px;}
+.exp-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:12px;}
+.exp-field label{font-size:8px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#4E5364;display:block;margin-bottom:2px;}
+.exp-field .val{font-size:11px;color:#858A9B;}.exp-field .val.mono{font-family:'JetBrains Mono',monospace;font-size:10px;word-break:break-all;}
+.json-box{background:#0F1116;border:1px solid #1E2028;border-radius:6px;padding:10px;font-family:'JetBrains Mono',monospace;font-size:9px;color:#858A9B;max-height:120px;overflow-y:auto;white-space:pre-wrap;}
+.json-box .k{color:#E2A828;}.json-box .s{color:#2EBD85;}.json-box .n{color:#F5A623;}
+.exp-actions{display:flex;gap:8px;margin-top:12px;}
+.btn-sm{font-size:11px;font-weight:600;padding:5px 12px;border-radius:6px;cursor:pointer;font-family:'Outfit',sans-serif;border:none;}
+.btn-sm.primary{background:#E2A828;color:#0D0F14;}.btn-sm.secondary{background:none;color:#858A9B;border:1px solid #1E2028;}
+</style>
+</head>
+<body>
+<aside class="sidebar">
+  <div class="sidebar-logo"><svg width="28" height="28" viewBox="0 0 40 40" fill="none"><path d="M20 2L36.5 11V29L20 38L3.5 29V11L20 2Z" stroke="#E2A828" stroke-width="2.5" stroke-linejoin="round" fill="none"/><circle cx="20" cy="16" r="4.5" fill="#E2A828"/><path d="M17 19L16 28H24L23 19" fill="#E2A828"/></svg><span>Crypto<span class="v">Vault</span>Hub</span></div>
+  <div class="client-info"><div class="name">Corretora XYZ</div><div class="tier-badge">Business Tier</div></div>
+  <nav style="flex:1;overflow-y:auto;">
+    <div class="nav-section"><div class="nav-label">Main</div><a class="nav-item" href="#">Dashboard</a><a class="nav-item" href="#">Wallets</a><a class="nav-item active" href="#">Transactions</a></div>
+    <div class="nav-section"><div class="nav-label">Operations</div><a class="nav-item" href="#">Deposits <span class="badge" style="background:#F5A623;color:#0D0F14;padding:1px 6px;border-radius:10px;margin-left:auto;">12</span></a><a class="nav-item" href="#">Withdrawals</a></div>
+    <div class="nav-section"><div class="nav-label">Integration</div><a class="nav-item" href="#">Webhooks</a><a class="nav-item" href="#">API Keys</a></div>
+    <div class="nav-section"><div class="nav-label">Settings</div><a class="nav-item" href="#">Security</a><a class="nav-item" href="#">Setup Wizard</a></div>
+  </nav>
+  <div class="sidebar-footer"><div class="avatar-sq">JS</div><div class="user-info"><div class="user-name">John Smith</div><div class="user-role">Admin</div></div></div>
+</aside>
+<header class="header">
+  <div class="breadcrumb"><span class="crumb">Client</span><span class="sep">&#8250;</span><span class="crumb active">Transactions</span></div>
+  <div class="header-actions"><button class="header-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4E5364" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/></svg></button><button class="header-btn" style="position:relative;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4E5364" stroke-width="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/></svg><span class="notif-dot"></span></button><div class="header-sep"></div><div class="mini-avatar">JS</div></div>
+</header>
+<div class="main">
+  <div class="page-top"><div><h1>Transactions</h1><p>Full traceability across all chains and operations</p></div><button class="btn-outline">Export CSV</button></div>
+  <div class="stats-grid">
+    <div class="stat-card"><div class="stat-label">Volume In</div><div class="stat-value success">$1,247,500</div><div class="stat-sub">$892,100 filtered</div></div>
+    <div class="stat-card"><div class="stat-label">Volume Out</div><div class="stat-value warn">$523,100</div><div class="stat-sub">$412,300 filtered</div></div>
+    <div class="stat-card"><div class="stat-label">Transaction Count</div><div class="stat-value">1,247</div><div class="stat-sub">892 shown</div></div>
+    <div class="stat-card"><div class="stat-label">Avg Confirmation</div><div class="stat-value">~3.2 min</div><div class="stat-sub">Across all chains</div></div>
+  </div>
+  <div class="filters">
+    <select><option>All Tokens</option></select><select><option>All Types</option></select><select><option>All Status</option></select><select><option>All Chains</option></select>
+    <input type="text" placeholder="Filter by address..."><input type="date"><input type="date">
+  </div>
+  <div class="table-card">
+    <table>
+      <thead><tr><th></th><th>Timestamp</th><th>Type</th><th>From / To</th><th>Amount</th><th>Token</th><th>Chain</th><th>Status</th><th>Confirmations</th><th>TX Hash</th></tr></thead>
+      <tbody>
+        <tr><td><span class="chev open">&#9654;</span></td><td class="mono">Apr 9, 10:23:45</td><td><span class="badge deposit">deposit</span></td><td><span class="mono">0xdF3e18...C7097 &rarr; 0x742d35...f2bD68</span></td><td><span class="amount deposit">+12,500.00</span></td><td>USDT</td><td><span class="chain-chip"><span class="chain-hex">B</span>BSC</span></td><td><span class="badge confirmed"><span class="dot"></span>confirmed</span></td><td><div class="conf-bar"><span class="conf-seg filled"></span><span class="conf-seg filled"></span><span class="conf-seg filled"></span><span class="conf-seg filled"></span><span class="conf-seg filled"></span><span class="conf-text">15/15</span></div></td><td><a class="tx-link" href="#">0x9f86d081...0a08</a></td></tr>
+        <tr><td colspan="10" style="padding:0;border:none;"><div class="expanded-row">
+          <div class="exp-grid">
+            <div class="exp-field"><label>Block Number</label><div class="val">#19,847,680</div></div>
+            <div class="exp-field"><label>Gas Used</label><div class="val">21,000</div></div>
+            <div class="exp-field"><label>Gas Price</label><div class="val">11.2 Gwei</div></div>
+            <div class="exp-field"><label>Gas Cost</label><div class="val">$0.84</div></div>
+          </div>
+          <div class="exp-grid" style="grid-template-columns:1fr 1fr;">
+            <div class="exp-field"><label>From (Full)</label><div class="val mono">0xdF3e18d64BC6A983f673Ab319CCaE4f1a57C7097</div></div>
+            <div class="exp-field"><label>To (Full)</label><div class="val mono">0x742d35Cc6634C0532925a3b844Bc9e7595f2bD68</div></div>
+          </div>
+          <div style="margin-top:8px;"><label style="font-size:8px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#4E5364;margin-bottom:4px;display:block;">Raw Transaction Data</label>
+            <div class="json-box">{
+  <span class="k">"hash"</span>: <span class="s">"0x9f86d081884c7d659a2feaa0c55ad015..."</span>,
+  <span class="k">"blockNumber"</span>: <span class="n">19847680</span>,
+  <span class="k">"from"</span>: <span class="s">"0xdF3e18d64BC6A983f673Ab319CCaE4f1a57C7097"</span>,
+  <span class="k">"value"</span>: <span class="s">"12500000000"</span>,
+  <span class="k">"status"</span>: <span class="n">1</span>
+}</div></div>
+          <div class="exp-actions"><button class="btn-sm primary">View Full Details</button><button class="btn-sm secondary">Copy TX Hash</button></div>
+        </div></td></tr>
+        <tr><td><span class="chev">&#9654;</span></td><td class="mono">Apr 9, 09:45:12</td><td><span class="badge withdrawal">withdrawal</span></td><td><span class="mono">0x742d35...f2bD68 &rarr; 0x8Ba1f1...DBA72</span></td><td><span class="amount withdrawal">-5,000.00</span></td><td>USDC</td><td><span class="chain-chip"><span class="chain-hex">E</span>ETH</span></td><td><span class="badge confirmed"><span class="dot"></span>confirmed</span></td><td><div class="conf-bar"><span class="conf-seg filled"></span><span class="conf-seg filled"></span><span class="conf-seg filled"></span><span class="conf-seg filled"></span><span class="conf-seg filled"></span><span class="conf-text">64/64</span></div></td><td><a class="tx-link" href="#">0xa1c9e0Dd...7b3f</a></td></tr>
+        <tr><td><span class="chev">&#9654;</span></td><td class="mono">Apr 9, 09:12:33</td><td><span class="badge deposit">deposit</span></td><td><span class="mono">0x5e6f7a...3e4f &rarr; 0x3C44Cd...93BC</span></td><td><span class="amount deposit">+0.25</span></td><td>BNB</td><td><span class="chain-chip"><span class="chain-hex">B</span>BSC</span></td><td><span class="badge confirming"><span class="dot"></span>confirming</span></td><td><div class="conf-bar"><span class="conf-seg filled"></span><span class="conf-seg filled"></span><span class="conf-seg filled"></span><span class="conf-seg"></span><span class="conf-seg"></span><span class="conf-text">8/15</span></div></td><td><a class="tx-link" href="#">0xb4e7f2Aa...3d5e</a></td></tr>
+        <tr><td><span class="chev">&#9654;</span></td><td class="mono">Apr 9, 08:30:01</td><td><span class="badge sweep">sweep</span></td><td><span class="mono">0x90F79b...3906 &rarr; 0x742d35...f2bD68</span></td><td><span class="amount sweep">+340.00</span></td><td>USDT</td><td><span class="chain-chip"><span class="chain-hex">B</span>BSC</span></td><td><span class="badge confirmed"><span class="dot"></span>confirmed</span></td><td><div class="conf-bar"><span class="conf-seg filled"></span><span class="conf-seg filled"></span><span class="conf-seg filled"></span><span class="conf-seg filled"></span><span class="conf-seg filled"></span><span class="conf-text">15/15</span></div></td><td><a class="tx-link" href="#">0x2d9f3c8b...6e7d</a></td></tr>
+        <tr><td><span class="chev">&#9654;</span></td><td class="mono">Apr 8, 22:15:44</td><td><span class="badge deposit">deposit</span></td><td><span class="mono">0xa1b2c3...abcd &rarr; 0x15d34A...6A65</span></td><td><span class="amount deposit">+8,200.00</span></td><td>USDT</td><td><span class="chain-chip"><span class="chain-hex">B</span>BSC</span></td><td><span class="badge confirmed"><span class="dot"></span>confirmed</span></td><td><div class="conf-bar"><span class="conf-seg filled"></span><span class="conf-seg filled"></span><span class="conf-seg filled"></span><span class="conf-seg filled"></span><span class="conf-seg filled"></span><span class="conf-text">15/15</span></div></td><td><a class="tx-link" href="#">0x7e4a2f9c...8b1a</a></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+</body>
+</html>

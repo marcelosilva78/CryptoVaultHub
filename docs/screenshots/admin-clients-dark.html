@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1440">
+<title>Admin Clients - Dark</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{width:1440px;height:900px;overflow:hidden;font-family:'Outfit',sans-serif;background:#08090B;color:#E8E9ED;-webkit-font-smoothing:antialiased;}
+.sidebar{position:fixed;left:0;top:0;bottom:0;width:240px;background:#0D0F14;border-right:1px solid #1E2028;display:flex;flex-direction:column;z-index:100;}
+.sidebar-logo{height:56px;display:flex;align-items:center;gap:10px;padding:0 20px;}.sidebar-logo span{font-size:15px;color:#E8E9ED;}.sidebar-logo b{font-weight:700;}
+.nav-section{padding:0 12px;margin-top:16px;}
+.nav-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:#4E5364;padding:0 12px;margin-bottom:6px;}
+.nav-item{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:6px;font-size:13px;font-weight:500;color:#858A9B;text-decoration:none;position:relative;margin-bottom:2px;}
+.nav-item:hover{background:#22252F;}.nav-item.active{background:rgba(226,168,40,0.10);color:#E2A828;font-weight:600;}
+.nav-item.active::before{content:'';position:absolute;left:0;top:50%;transform:translateY(-50%);width:3px;height:18px;background:#E2A828;border-radius:0 3px 3px 0;}
+.nav-badge{margin-left:auto;background:#F6465D;color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;}
+.sidebar-footer{padding:12px 16px;border-top:1px solid #151820;display:flex;align-items:center;gap:10px;}
+.avatar-hex{width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#0D0F14;background:linear-gradient(135deg,#E2A828,#C9941F);clip-path:polygon(50% 0%,93% 25%,93% 75%,50% 100%,7% 75%,7% 25%);}
+.user-info{flex:1;}.user-name{font-size:13px;font-weight:500;color:#E8E9ED;}.user-role{font-size:11px;color:#4E5364;}
+.header{position:fixed;top:0;left:240px;right:0;height:56px;z-index:99;display:flex;align-items:center;justify-content:space-between;padding:0 24px;border-bottom:1px solid #151820;background:rgba(8,9,11,0.85);backdrop-filter:blur(12px);}
+.breadcrumb{display:flex;align-items:center;gap:6px;font-size:13px;}.breadcrumb .sep{color:#4E5364;}.breadcrumb .crumb{color:#4E5364;}.breadcrumb .crumb.active{color:#E8E9ED;font-weight:600;}
+.header-actions{display:flex;align-items:center;gap:8px;}
+.header-btn{padding:8px;border-radius:6px;color:#4E5364;background:none;border:none;cursor:pointer;display:flex;}
+.header-sep{width:1px;height:20px;background:#151820;margin:0 4px;}
+.mini-avatar{width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#0D0F14;background:linear-gradient(135deg,#E2A828,#C9941F);clip-path:polygon(50% 0%,93% 25%,93% 75%,50% 100%,7% 75%,7% 25%);}
+.notif-dot{position:absolute;top:6px;right:6px;width:8px;height:8px;background:#F6465D;border-radius:50%;}
+.main{margin-left:240px;margin-top:56px;padding:24px;}
+/* Stats */
+.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;}
+.stat-card{background:#111318;border:1px solid #1E2028;border-radius:10px;padding:14px;}
+.stat-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#4E5364;margin-bottom:8px;}
+.stat-value{font-size:22px;font-weight:700;line-height:1;}
+.stat-value.accent{color:#E2A828;}.stat-value.success{color:#2EBD85;}.stat-value.error{color:#F6465D;}
+/* Table */
+.table-card{background:#111318;border:1px solid #1E2028;border-radius:10px;overflow:hidden;}
+.table-top{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;border-bottom:1px solid #151820;}
+.table-top h2{font-size:16px;font-weight:600;}
+.table-top-actions{display:flex;gap:8px;align-items:center;}
+.search-box{display:flex;align-items:center;gap:6px;background:#0F1116;border:1px solid #1E2028;border-radius:6px;padding:4px 10px;width:200px;}
+.search-box input{background:none;border:none;color:#E8E9ED;font-size:12px;outline:none;flex:1;font-family:'Outfit',sans-serif;}
+.search-box input::placeholder{color:#4E5364;}
+.search-icon{color:#4E5364;font-size:12px;}
+.btn-primary{background:#E2A828;color:#0D0F14;font-size:12px;font-weight:600;padding:6px 14px;border:none;border-radius:6px;cursor:pointer;font-family:'Outfit',sans-serif;}
+table{width:100%;border-collapse:collapse;}
+thead tr{background:#1A1D25;}
+th{text-align:left;padding:10px 16px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#4E5364;}
+td{padding:10px 16px;border-bottom:1px solid #151820;font-size:12px;}
+tr:hover{background:#22252F;}
+.client-name{font-weight:600;color:#E8E9ED;}.client-since{font-size:11px;color:#4E5364;}
+.badge{display:inline-flex;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;}
+.badge.accent{background:rgba(226,168,40,0.1);color:#E2A828;}
+.badge.success{background:rgba(46,189,133,0.1);color:#2EBD85;}
+.badge.success .dot{width:6px;height:6px;border-radius:50%;background:#2EBD85;margin-right:6px;}
+.badge.warning{background:rgba(245,166,35,0.1);color:#F5A623;}
+.badge.warning .dot{width:6px;height:6px;border-radius:50%;background:#F5A623;margin-right:6px;}
+.badge.error{background:rgba(246,70,93,0.1);color:#F6465D;}
+.badge.error .dot{width:6px;height:6px;border-radius:50%;background:#F6465D;margin-right:6px;}
+.chain-text{font-size:11px;color:#858A9B;}
+.mono{font-family:'JetBrains Mono',monospace;font-size:11px;color:#858A9B;}
+.vol{color:#2EBD85;font-family:'JetBrains Mono',monospace;font-size:11px;}
+.view-btn{background:none;color:#858A9B;border:1px solid #1E2028;border-radius:6px;padding:4px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif;}
+.view-btn:hover{border-color:#E2A828;color:#E8E9ED;}
+</style>
+</head>
+<body>
+<aside class="sidebar">
+  <div class="sidebar-logo"><svg width="28" height="28" viewBox="0 0 100 100" fill="none"><path d="M50 4L91 27L91 73L50 96L9 73L9 27Z" fill="#E2A828"/><circle cx="50" cy="40" r="12" fill="#0D0F14"/><rect x="45" y="48" width="10" height="24" rx="2" fill="#0D0F14"/><rect x="55" y="58" width="6" height="4" rx="1" fill="#0D0F14"/><rect x="55" y="65" width="4" height="3" rx="1" fill="#0D0F14"/></svg><span>Crypto<b>Vault</b>Hub</span></div>
+  <nav style="flex:1;overflow-y:auto;">
+    <div class="nav-section"><div class="nav-label">Principal</div><a class="nav-item" href="#">Dashboard</a><a class="nav-item active" href="#">Clients</a><a class="nav-item" href="#">Traceability</a></div>
+    <div class="nav-section"><div class="nav-label">Analytics</div><a class="nav-item" href="#">Overview</a><a class="nav-item" href="#">Operations</a><a class="nav-item" href="#">Compliance</a></div>
+    <div class="nav-section"><div class="nav-label">Blockchain</div><a class="nav-item" href="#">Chains</a><a class="nav-item" href="#">Tokens</a><a class="nav-item" href="#">Gas Tanks</a></div>
+    <div class="nav-section"><div class="nav-label">Config</div><a class="nav-item" href="#">Tiers & Limits</a><a class="nav-item" href="#">Compliance <span class="nav-badge">3</span></a><a class="nav-item" href="#">Monitoring</a></div>
+  </nav>
+  <div class="sidebar-footer"><div class="avatar-hex">MS</div><div class="user-info"><div class="user-name">Marcelo Silva</div><div class="user-role">Admin</div></div></div>
+</aside>
+<header class="header">
+  <div class="breadcrumb"><span class="crumb">Admin</span><span class="sep">&#8250;</span><span class="crumb active">Client Management</span></div>
+  <div class="header-actions"><button class="header-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4E5364" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg></button><button class="header-btn" style="position:relative;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4E5364" stroke-width="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg><span class="notif-dot"></span></button><div class="header-sep"></div><div class="mini-avatar">MS</div></div>
+</header>
+<div class="main">
+  <div class="stats-grid">
+    <div class="stat-card"><div class="stat-label">Total Clients</div><div class="stat-value accent">38</div></div>
+    <div class="stat-card"><div class="stat-label">Active</div><div class="stat-value success">34</div></div>
+    <div class="stat-card"><div class="stat-label">Pending</div><div class="stat-value" style="color:#F5A623;">2</div></div>
+    <div class="stat-card"><div class="stat-label">Suspended</div><div class="stat-value error">2</div></div>
+  </div>
+  <div class="table-card">
+    <div class="table-top">
+      <h2>All Clients</h2>
+      <div class="table-top-actions">
+        <div class="search-box"><span class="search-icon">&#128269;</span><input type="text" placeholder="Search clients..."></div>
+        <button class="btn-primary">+ New Client</button>
+      </div>
+    </div>
+    <table>
+      <thead><tr><th>Client</th><th>Tier</th><th>Chains</th><th>Forwarders</th><th>Volume 24h</th><th>Balance</th><th>Status</th><th>Actions</th></tr></thead>
+      <tbody>
+        <tr><td><div class="client-name">Corretora XYZ</div><div class="client-since">Since 2025-06</div></td><td><span class="badge accent">Business</span></td><td class="chain-text">BSC, ETH, Polygon</td><td class="mono">4,521</td><td class="vol">$347,200</td><td class="mono">$847,231</td><td><span class="badge success"><span class="dot"></span>Active</span></td><td><button class="view-btn">View</button></td></tr>
+        <tr><td><div class="client-name">PayGateway International</div><div class="client-since">Since 2025-03</div></td><td><span class="badge accent">Enterprise</span></td><td class="chain-text">BSC, ETH, Polygon, Arbitrum</td><td class="mono">12,847</td><td class="vol">$1,205,400</td><td class="mono">$4,215,890</td><td><span class="badge success"><span class="dot"></span>Active</span></td><td><button class="view-btn">View</button></td></tr>
+        <tr><td><div class="client-name">Exchange ABC</div><div class="client-since">Since 2025-11</div></td><td><span class="badge accent">Starter</span></td><td class="chain-text">BSC</td><td class="mono">89</td><td class="vol">$12,500</td><td class="mono">$3,120</td><td><span class="badge warning"><span class="dot"></span>Pending</span></td><td><button class="view-btn">View</button></td></tr>
+        <tr><td><div class="client-name">CryptoPay Solutions</div><div class="client-since">Since 2025-08</div></td><td><span class="badge accent">Business</span></td><td class="chain-text">BSC, ETH</td><td class="mono">2,340</td><td class="vol">$89,700</td><td class="mono">$215,430</td><td><span class="badge success"><span class="dot"></span>Active</span></td><td><button class="view-btn">View</button></td></tr>
+        <tr><td><div class="client-name">MerchantPro</div><div class="client-since">Since 2026-01</div></td><td><span class="badge accent">Starter</span></td><td class="chain-text">BSC, Polygon</td><td class="mono">156</td><td class="vol">$5,400</td><td class="mono">$8,745</td><td><span class="badge success"><span class="dot"></span>Active</span></td><td><button class="view-btn">View</button></td></tr>
+        <tr><td><div class="client-name">BlockFin Services</div><div class="client-since">Since 2025-09</div></td><td><span class="badge accent">Enterprise</span></td><td class="chain-text">ETH, Arbitrum, Base</td><td class="mono">8,912</td><td class="vol">$523,800</td><td class="mono">$2,147,000</td><td><span class="badge success"><span class="dot"></span>Active</span></td><td><button class="view-btn">View</button></td></tr>
+        <tr><td><div class="client-name">TokenSwap Ltd</div><div class="client-since">Since 2025-07</div></td><td><span class="badge accent">Business</span></td><td class="chain-text">BSC, ETH</td><td class="mono">1,203</td><td class="vol">$0</td><td class="mono">$45,200</td><td><span class="badge error"><span class="dot"></span>Suspended</span></td><td><button class="view-btn">View</button></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+</body>
+</html>

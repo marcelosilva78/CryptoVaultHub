@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1440">
+<title>Admin Traceability - Dark</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{width:1440px;height:900px;overflow:hidden;font-family:'Outfit',sans-serif;background:#08090B;color:#E8E9ED;-webkit-font-smoothing:antialiased;}
+.sidebar{position:fixed;left:0;top:0;bottom:0;width:240px;background:#0D0F14;border-right:1px solid #1E2028;display:flex;flex-direction:column;z-index:100;}
+.sidebar-logo{height:56px;display:flex;align-items:center;gap:10px;padding:0 20px;}
+.sidebar-logo span{font-size:15px;letter-spacing:-0.02em;color:#E8E9ED;}.sidebar-logo b{font-weight:700;}
+.nav-section{padding:0 12px;margin-top:16px;}
+.nav-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:#4E5364;padding:0 12px;margin-bottom:6px;}
+.nav-item{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:6px;font-size:13px;font-weight:500;color:#858A9B;text-decoration:none;position:relative;margin-bottom:2px;}
+.nav-item:hover{background:#22252F;color:#E8E9ED;}
+.nav-item.active{background:rgba(226,168,40,0.10);color:#E2A828;font-weight:600;}
+.nav-item.active::before{content:'';position:absolute;left:0;top:50%;transform:translateY(-50%);width:3px;height:18px;background:#E2A828;border-radius:0 3px 3px 0;}
+.nav-badge{margin-left:auto;background:#F6465D;color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;}
+.sidebar-footer{padding:12px 16px;border-top:1px solid #151820;display:flex;align-items:center;gap:10px;}
+.avatar-hex{width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#0D0F14;background:linear-gradient(135deg,#E2A828,#C9941F);clip-path:polygon(50% 0%,93% 25%,93% 75%,50% 100%,7% 75%,7% 25%);}
+.user-info{flex:1;}.user-name{font-size:13px;font-weight:500;color:#E8E9ED;}.user-role{font-size:11px;color:#4E5364;}
+.header{position:fixed;top:0;left:240px;right:0;height:56px;z-index:99;display:flex;align-items:center;justify-content:space-between;padding:0 24px;border-bottom:1px solid #151820;background:rgba(8,9,11,0.85);backdrop-filter:blur(12px);}
+.breadcrumb{display:flex;align-items:center;gap:6px;font-size:13px;}.breadcrumb .sep{color:#4E5364;font-size:10px;}.breadcrumb .crumb{color:#4E5364;}.breadcrumb .crumb.active{color:#E8E9ED;font-weight:600;}
+.header-actions{display:flex;align-items:center;gap:8px;}
+.header-btn{padding:8px;border-radius:6px;color:#4E5364;background:none;border:none;cursor:pointer;display:flex;align-items:center;}
+.header-sep{width:1px;height:20px;background:#151820;margin:0 4px;}
+.mini-avatar{width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#0D0F14;background:linear-gradient(135deg,#E2A828,#C9941F);clip-path:polygon(50% 0%,93% 25%,93% 75%,50% 100%,7% 75%,7% 25%);}
+.notif-dot{position:absolute;top:6px;right:6px;width:8px;height:8px;background:#F6465D;border-radius:50%;}
+.main{margin-left:240px;margin-top:56px;padding:24px;}
+/* Page specific */
+.page-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;}
+.page-top h1{font-size:20px;font-weight:700;letter-spacing:-0.02em;}
+.page-top p{font-size:12px;color:#4E5364;margin-top:2px;}
+.client-select{display:flex;gap:8px;margin-bottom:16px;}
+.client-select select{background:#0F1116;border:1px solid #1E2028;border-radius:6px;padding:6px 12px;font-size:13px;color:#E8E9ED;font-family:'Outfit',sans-serif;outline:none;}
+.summary-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;}
+.sum-card{background:#111318;border:1px solid #1E2028;border-radius:10px;padding:14px;}
+.sum-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#4E5364;margin-bottom:6px;}
+.sum-value{font-size:20px;font-weight:700;color:#E8E9ED;}
+.sum-value.accent{color:#E2A828;}
+.sum-value.success{color:#2EBD85;}
+/* Wallet accordion */
+.wallet-accordion{background:#111318;border:1px solid #1E2028;border-radius:10px;overflow:hidden;margin-bottom:16px;}
+.wallet-header{display:flex;align-items:center;gap:12px;padding:14px 20px;cursor:pointer;border-bottom:1px solid #151820;}
+.wallet-header:hover{background:#1A1D25;}
+.wallet-chevron{color:#4E5364;font-size:12px;transition:transform 0.15s;}
+.wallet-chevron.open{transform:rotate(90deg);}
+.wallet-addr{font-family:'JetBrains Mono',monospace;font-size:12px;color:#E8E9ED;}
+.wallet-chain-badge{display:inline-flex;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;background:rgba(226,168,40,0.1);color:#E2A828;}
+.wallet-balance{margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:12px;color:#2EBD85;}
+.wallet-body{padding:16px 20px;background:#0D0F14;border-bottom:1px solid #151820;}
+.wallet-body-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;}
+.wb-field label{font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#4E5364;margin-bottom:4px;display:block;}
+.wb-field .val{font-family:'JetBrains Mono',monospace;font-size:11px;color:#858A9B;word-break:break-all;}
+/* Token table */
+.token-tbl{width:100%;border-collapse:collapse;margin-bottom:16px;}
+.token-tbl th{text-align:left;padding:6px 12px;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#4E5364;border-bottom:1px solid #151820;}
+.token-tbl td{padding:6px 12px;font-size:11px;color:#858A9B;font-family:'JetBrains Mono',monospace;border-bottom:1px solid #151820;}
+.token-tbl td:last-child{color:#2EBD85;}
+/* JSON viewer */
+.json-viewer{background:#0F1116;border:1px solid #1E2028;border-radius:8px;padding:12px;font-family:'JetBrains Mono',monospace;font-size:10px;color:#858A9B;max-height:180px;overflow-y:auto;white-space:pre-wrap;line-height:1.5;}
+.json-viewer .key{color:#E2A828;}.json-viewer .str{color:#2EBD85;}.json-viewer .num{color:#F5A623;}
+.json-label{font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#4E5364;margin-bottom:6px;}
+/* Forwarders */
+.fwd-row{display:grid;grid-template-columns:1fr 120px 100px 80px;gap:8px;padding:6px 12px;font-size:11px;border-bottom:1px solid #151820;}
+.fwd-row:first-child{font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#4E5364;}
+.fwd-addr{font-family:'JetBrains Mono',monospace;color:#858A9B;}
+.fwd-bal{font-family:'JetBrains Mono',monospace;color:#E8E9ED;}
+.fwd-time{color:#4E5364;font-size:10px;}
+.fwd-status{display:inline-flex;padding:1px 6px;border-radius:10px;font-size:9px;font-weight:600;}
+.fwd-status.active{background:rgba(46,189,133,0.1);color:#2EBD85;}
+.fwd-status.inactive{background:rgba(78,83,100,0.2);color:#4E5364;}
+</style>
+</head>
+<body>
+<!-- Sidebar -->
+<aside class="sidebar">
+  <div class="sidebar-logo"><svg width="28" height="28" viewBox="0 0 100 100" fill="none"><path d="M50 4L91 27L91 73L50 96L9 73L9 27Z" fill="#E2A828"/><circle cx="50" cy="40" r="12" fill="#0D0F14"/><rect x="45" y="48" width="10" height="24" rx="2" fill="#0D0F14"/><rect x="55" y="58" width="6" height="4" rx="1" fill="#0D0F14"/><rect x="55" y="65" width="4" height="3" rx="1" fill="#0D0F14"/></svg><span>Crypto<b>Vault</b>Hub</span></div>
+  <nav style="flex:1;overflow-y:auto;">
+    <div class="nav-section"><div class="nav-label">Principal</div><a class="nav-item" href="#">Dashboard</a><a class="nav-item" href="#">Clients</a><a class="nav-item active" href="#">Traceability</a></div>
+    <div class="nav-section"><div class="nav-label">Analytics</div><a class="nav-item" href="#">Overview</a><a class="nav-item" href="#">Operations</a><a class="nav-item" href="#">Compliance</a></div>
+    <div class="nav-section"><div class="nav-label">Blockchain</div><a class="nav-item" href="#">Chains</a><a class="nav-item" href="#">Tokens</a><a class="nav-item" href="#">Gas Tanks</a></div>
+    <div class="nav-section"><div class="nav-label">Config</div><a class="nav-item" href="#">Tiers & Limits</a><a class="nav-item" href="#">Compliance <span class="nav-badge">3</span></a><a class="nav-item" href="#">Monitoring</a></div>
+  </nav>
+  <div class="sidebar-footer"><div class="avatar-hex">MS</div><div class="user-info"><div class="user-name">Marcelo Silva</div><div class="user-role">Admin</div></div></div>
+</aside>
+
+<header class="header">
+  <div class="breadcrumb"><span class="crumb">Admin</span><span class="sep">&#8250;</span><span class="crumb active">Transaction Traceability</span></div>
+  <div class="header-actions"><button class="header-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4E5364" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg></button><button class="header-btn" style="position:relative;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4E5364" stroke-width="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg><span class="notif-dot"></span></button><div class="header-sep"></div><div class="mini-avatar">MS</div></div>
+</header>
+
+<div class="main">
+  <div class="page-top"><div><h1>Traceability</h1><p>Full transaction and wallet traceability per client</p></div></div>
+
+  <div class="client-select">
+    <select><option>Corretora XYZ</option><option>PayGateway International</option><option>Exchange ABC</option></select>
+  </div>
+
+  <div class="summary-grid">
+    <div class="sum-card"><div class="sum-label">Total Balance</div><div class="sum-value accent">$847,231.54</div></div>
+    <div class="sum-card"><div class="sum-label">Total Wallets</div><div class="sum-value">3</div></div>
+    <div class="sum-card"><div class="sum-label">Active Wallets</div><div class="sum-value success">3</div></div>
+    <div class="sum-card"><div class="sum-label">Total Transactions</div><div class="sum-value">1,247</div></div>
+  </div>
+
+  <!-- Wallet accordion expanded -->
+  <div class="wallet-accordion">
+    <div class="wallet-header">
+      <span class="wallet-chevron open">&#9654;</span>
+      <span class="wallet-chain-badge">BSC</span>
+      <span class="wallet-addr">0x742d35Cc...f2BDe4</span>
+      <span class="wallet-balance">$4,312.50</span>
+    </div>
+    <div class="wallet-body">
+      <div class="wallet-body-grid">
+        <div class="wb-field"><label>Contract Address</label><div class="val">0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0</div></div>
+        <div class="wb-field"><label>Owner Address</label><div class="val">0xdF3e18d64BC6A983f673Ab319CCaE4f1a57C7097</div></div>
+        <div class="wb-field"><label>Deployment TX</label><div class="val">0xa16081f360e3847006db660bae...001e</div></div>
+        <div class="wb-field"><label>Created At</label><div class="val">2026-01-15 09:23:41 UTC</div></div>
+      </div>
+
+      <div class="json-label">Token Balances</div>
+      <table class="token-tbl">
+        <thead><tr><th>Token</th><th>Amount</th><th>USD</th></tr></thead>
+        <tbody>
+          <tr><td>BNB</td><td>12.5000</td><td>$4,312.50</td></tr>
+          <tr><td>USDT (BEP-20)</td><td>500,000.00</td><td>$500,000.00</td></tr>
+          <tr><td>USDC (BEP-20)</td><td>340,000.00</td><td>$340,000.00</td></tr>
+          <tr><td>BUSD</td><td>2,850.00</td><td>$2,850.00</td></tr>
+        </tbody>
+      </table>
+
+      <div class="json-label">Forwarders (5)</div>
+      <div class="fwd-row"><span>Address</span><span>Balance</span><span>Last Deposit</span><span>Status</span></div>
+      <div class="fwd-row"><span class="fwd-addr">0x3C44Cd...93BC</span><span class="fwd-bal">0.00 BNB</span><span class="fwd-time">2h ago</span><span class="fwd-status active">Active</span></div>
+      <div class="fwd-row"><span class="fwd-addr">0x90F79b...3906</span><span class="fwd-bal">0.05 BNB</span><span class="fwd-time">1d ago</span><span class="fwd-status active">Active</span></div>
+      <div class="fwd-row"><span class="fwd-addr">0x15d34A...6A65</span><span class="fwd-bal">0.00 BNB</span><span class="fwd-time">3d ago</span><span class="fwd-status active">Active</span></div>
+
+      <div style="margin-top:16px;">
+        <div class="json-label">Creation JSON</div>
+        <div class="json-viewer">{
+  <span class="key">"clientId"</span>: <span class="str">"client_cxyz_001"</span>,
+  <span class="key">"chain"</span>: <span class="str">"BSC"</span>,
+  <span class="key">"chainId"</span>: <span class="num">56</span>,
+  <span class="key">"type"</span>: <span class="str">"CvhWalletSimple"</span>,
+  <span class="key">"factory"</span>: <span class="str">"0x5FbDB2315678afecb367f032d93F642f64180aa3"</span>,
+  <span class="key">"owner"</span>: <span class="str">"0xdF3e18d64BC6A983f673Ab319CCaE4f1a57C7097"</span>,
+  <span class="key">"version"</span>: <span class="str">"1.2.0"</span>,
+  <span class="key">"gasUsed"</span>: <span class="str">"245,891"</span>,
+  <span class="key">"blockNumber"</span>: <span class="num">35892147</span>
+}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Collapsed wallets -->
+  <div class="wallet-accordion">
+    <div class="wallet-header"><span class="wallet-chevron">&#9654;</span><span class="wallet-chain-badge">Ethereum</span><span class="wallet-addr">0x8f3a21Bb...3c4d</span><span class="wallet-balance">$3,840.00</span></div>
+  </div>
+  <div class="wallet-accordion" style="margin-top:0;">
+    <div class="wallet-header"><span class="wallet-chevron">&#9654;</span><span class="wallet-chain-badge">Polygon</span><span class="wallet-addr">0xa1c9e0Dd...5a7c</span><span class="wallet-balance">$912.50</span></div>
+  </div>
+</div>
+</body>
+</html>

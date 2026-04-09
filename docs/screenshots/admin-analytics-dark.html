@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1440">
+<title>Admin Analytics - Dark</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{width:1440px;height:900px;overflow:hidden;font-family:'Outfit',sans-serif;background:#08090B;color:#E8E9ED;-webkit-font-smoothing:antialiased;}
+.sidebar{position:fixed;left:0;top:0;bottom:0;width:240px;background:#0D0F14;border-right:1px solid #1E2028;display:flex;flex-direction:column;z-index:100;}
+.sidebar-logo{height:56px;display:flex;align-items:center;gap:10px;padding:0 20px;}.sidebar-logo span{font-size:15px;color:#E8E9ED;}.sidebar-logo b{font-weight:700;}
+.nav-section{padding:0 12px;margin-top:16px;}
+.nav-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:#4E5364;padding:0 12px;margin-bottom:6px;}
+.nav-item{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:6px;font-size:13px;font-weight:500;color:#858A9B;text-decoration:none;position:relative;margin-bottom:2px;}
+.nav-item:hover{background:#22252F;}.nav-item.active{background:rgba(226,168,40,0.10);color:#E2A828;font-weight:600;}
+.nav-item.active::before{content:'';position:absolute;left:0;top:50%;transform:translateY(-50%);width:3px;height:18px;background:#E2A828;border-radius:0 3px 3px 0;}
+.nav-badge{margin-left:auto;background:#F6465D;color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;}
+.sidebar-footer{padding:12px 16px;border-top:1px solid #151820;display:flex;align-items:center;gap:10px;}
+.avatar-hex{width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#0D0F14;background:linear-gradient(135deg,#E2A828,#C9941F);clip-path:polygon(50% 0%,93% 25%,93% 75%,50% 100%,7% 75%,7% 25%);}
+.user-info{flex:1;}.user-name{font-size:13px;font-weight:500;color:#E8E9ED;}.user-role{font-size:11px;color:#4E5364;}
+.header{position:fixed;top:0;left:240px;right:0;height:56px;z-index:99;display:flex;align-items:center;justify-content:space-between;padding:0 24px;border-bottom:1px solid #151820;background:rgba(8,9,11,0.85);backdrop-filter:blur(12px);}
+.breadcrumb{display:flex;align-items:center;gap:6px;font-size:13px;}.breadcrumb .sep{color:#4E5364;}.breadcrumb .crumb{color:#4E5364;}.breadcrumb .crumb.active{color:#E8E9ED;font-weight:600;}
+.header-actions{display:flex;align-items:center;gap:8px;}
+.header-btn{padding:8px;border-radius:6px;color:#4E5364;background:none;border:none;cursor:pointer;display:flex;}
+.header-sep{width:1px;height:20px;background:#151820;margin:0 4px;}
+.mini-avatar{width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#0D0F14;background:linear-gradient(135deg,#E2A828,#C9941F);clip-path:polygon(50% 0%,93% 25%,93% 75%,50% 100%,7% 75%,7% 25%);}
+.notif-dot{position:absolute;top:6px;right:6px;width:8px;height:8px;background:#F6465D;border-radius:50%;}
+.main{margin-left:240px;margin-top:56px;padding:24px;}
+/* Filter bar */
+.filter-bar{display:flex;gap:8px;margin-bottom:20px;}
+.filter-bar select,.filter-bar input{background:#0F1116;border:1px solid #1E2028;border-radius:6px;padding:6px 12px;font-size:12px;color:#E8E9ED;font-family:'Outfit',sans-serif;outline:none;}
+/* KPI grid */
+.kpi-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:20px;}
+.kpi-card{background:#111318;border:1px solid #1E2028;border-radius:10px;padding:14px;overflow:hidden;position:relative;}
+.kpi-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:#4E5364;margin-bottom:6px;}
+.kpi-value{font-size:18px;font-weight:700;color:#E8E9ED;margin-bottom:4px;}
+.kpi-change{font-size:11px;font-weight:600;}.kpi-change.up{color:#2EBD85;}.kpi-change.down{color:#F6465D;}
+/* Chart cards */
+.chart-card{background:#111318;border:1px solid #1E2028;border-radius:10px;padding:16px;margin-bottom:16px;overflow:hidden;}
+.chart-title{font-size:14px;font-weight:600;color:#E8E9ED;margin-bottom:12px;}
+.chart-area{height:200px;position:relative;overflow:hidden;}
+/* Simulated area chart */
+.area-chart{width:100%;height:100%;position:relative;}
+.area-chart svg{width:100%;height:100%;}
+/* Grid layout */
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;}
+/* Bar chart simulation */
+.bar-chart{display:flex;align-items:flex-end;gap:6px;height:180px;padding-top:20px;}
+.bar-group{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;}
+.bar{width:100%;border-radius:3px 3px 0 0;min-width:20px;}
+.bar-label{font-size:9px;color:#4E5364;text-align:center;}
+</style>
+</head>
+<body>
+<aside class="sidebar">
+  <div class="sidebar-logo"><svg width="28" height="28" viewBox="0 0 100 100" fill="none"><path d="M50 4L91 27L91 73L50 96L9 73L9 27Z" fill="#E2A828"/><circle cx="50" cy="40" r="12" fill="#0D0F14"/><rect x="45" y="48" width="10" height="24" rx="2" fill="#0D0F14"/><rect x="55" y="58" width="6" height="4" rx="1" fill="#0D0F14"/><rect x="55" y="65" width="4" height="3" rx="1" fill="#0D0F14"/></svg><span>Crypto<b>Vault</b>Hub</span></div>
+  <nav style="flex:1;overflow-y:auto;">
+    <div class="nav-section"><div class="nav-label">Principal</div><a class="nav-item" href="#">Dashboard</a><a class="nav-item" href="#">Clients</a><a class="nav-item" href="#">Traceability</a></div>
+    <div class="nav-section"><div class="nav-label">Analytics</div><a class="nav-item active" href="#">Overview</a><a class="nav-item" href="#">Operations</a><a class="nav-item" href="#">Compliance</a></div>
+    <div class="nav-section"><div class="nav-label">Blockchain</div><a class="nav-item" href="#">Chains</a><a class="nav-item" href="#">Tokens</a><a class="nav-item" href="#">Gas Tanks</a></div>
+    <div class="nav-section"><div class="nav-label">Config</div><a class="nav-item" href="#">Tiers & Limits</a><a class="nav-item" href="#">Compliance <span class="nav-badge">3</span></a><a class="nav-item" href="#">Monitoring</a></div>
+  </nav>
+  <div class="sidebar-footer"><div class="avatar-hex">MS</div><div class="user-info"><div class="user-name">Marcelo Silva</div><div class="user-role">Admin</div></div></div>
+</aside>
+<header class="header">
+  <div class="breadcrumb"><span class="crumb">Admin</span><span class="sep">&#8250;</span><span class="crumb">Analytics</span><span class="sep">&#8250;</span><span class="crumb active">Overview</span></div>
+  <div class="header-actions"><button class="header-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4E5364" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg></button><button class="header-btn" style="position:relative;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4E5364" stroke-width="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg><span class="notif-dot"></span></button><div class="header-sep"></div><div class="mini-avatar">MS</div></div>
+</header>
+<div class="main">
+  <!-- Filter bar -->
+  <div class="filter-bar">
+    <select><option>Last 90 Days</option></select>
+    <select><option>All Chains</option></select>
+    <select><option>All Tokens</option></select>
+    <select><option>All Clients</option></select>
+  </div>
+
+  <!-- KPI Cards -->
+  <div class="kpi-grid">
+    <div class="kpi-card"><div class="kpi-label">Total AUM</div><div class="kpi-value">$12.8M</div><div class="kpi-change up">+5.2%</div></div>
+    <div class="kpi-card"><div class="kpi-label">Volume 24h</div><div class="kpi-value">$2.4M</div><div class="kpi-change up">+12.1%</div></div>
+    <div class="kpi-card"><div class="kpi-label">Volume 7d</div><div class="kpi-value">$14.7M</div><div class="kpi-change up">+8.7%</div></div>
+    <div class="kpi-card"><div class="kpi-label">Volume 30d</div><div class="kpi-value">$52.3M</div><div class="kpi-change down">-2.1%</div></div>
+    <div class="kpi-card"><div class="kpi-label">Active Clients</div><div class="kpi-value">38</div><div class="kpi-change up">+5.5%</div></div>
+    <div class="kpi-card"><div class="kpi-label">TX Count 24h</div><div class="kpi-value">1,247</div><div class="kpi-change up">+18.3%</div></div>
+  </div>
+
+  <!-- Area Chart -->
+  <div class="chart-card">
+    <div class="chart-title">Daily Volume (Last 90 Days)</div>
+    <div class="chart-area">
+      <svg viewBox="0 0 1100 200" preserveAspectRatio="none" style="width:100%;height:100%;">
+        <defs><linearGradient id="ag1" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#E2A828" stop-opacity="0.3"/><stop offset="100%" stop-color="#E2A828" stop-opacity="0.02"/></linearGradient></defs>
+        <!-- Grid lines -->
+        <line x1="0" y1="50" x2="1100" y2="50" stroke="#1E2028" stroke-width="0.5"/>
+        <line x1="0" y1="100" x2="1100" y2="100" stroke="#1E2028" stroke-width="0.5"/>
+        <line x1="0" y1="150" x2="1100" y2="150" stroke="#1E2028" stroke-width="0.5"/>
+        <!-- Area fill -->
+        <path d="M0 180 L50 160 L100 140 L150 155 L200 120 L250 100 L300 110 L350 90 L400 95 L450 70 L500 80 L550 60 L600 55 L650 65 L700 45 L750 50 L800 35 L850 40 L900 30 L950 45 L1000 25 L1050 35 L1100 20 L1100 200 L0 200 Z" fill="url(#ag1)"/>
+        <!-- Line -->
+        <path d="M0 180 L50 160 L100 140 L150 155 L200 120 L250 100 L300 110 L350 90 L400 95 L450 70 L500 80 L550 60 L600 55 L650 65 L700 45 L750 50 L800 35 L850 40 L900 30 L950 45 L1000 25 L1050 35 L1100 20" fill="none" stroke="#E2A828" stroke-width="2"/>
+      </svg>
+    </div>
+  </div>
+
+  <!-- Bar Charts Grid -->
+  <div class="grid-2">
+    <div class="chart-card">
+      <div class="chart-title">Volume by Chain</div>
+      <div class="bar-chart">
+        <div class="bar-group"><div class="bar" style="height:85%;background:#E2A828;"></div><div class="bar-label">ETH</div></div>
+        <div class="bar-group"><div class="bar" style="height:65%;background:#C9941F;"></div><div class="bar-label">BSC</div></div>
+        <div class="bar-group"><div class="bar" style="height:45%;background:#B8892A;"></div><div class="bar-label">Polygon</div></div>
+        <div class="bar-group"><div class="bar" style="height:30%;background:#8A6820;"></div><div class="bar-label">Arbitrum</div></div>
+        <div class="bar-group"><div class="bar" style="height:15%;background:rgba(226,168,40,0.3);"></div><div class="bar-label">Base</div></div>
+      </div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Deposits vs Withdrawals</div>
+      <div class="bar-chart">
+        <div class="bar-group"><div class="bar" style="height:80%;background:#2EBD85;"></div><div class="bar" style="height:45%;background:#F6465D;margin-top:4px;"></div><div class="bar-label">Jan</div></div>
+        <div class="bar-group"><div class="bar" style="height:70%;background:#2EBD85;"></div><div class="bar" style="height:55%;background:#F6465D;margin-top:4px;"></div><div class="bar-label">Feb</div></div>
+        <div class="bar-group"><div class="bar" style="height:90%;background:#2EBD85;"></div><div class="bar" style="height:40%;background:#F6465D;margin-top:4px;"></div><div class="bar-label">Mar</div></div>
+        <div class="bar-group"><div class="bar" style="height:60%;background:#2EBD85;"></div><div class="bar" style="height:35%;background:#F6465D;margin-top:4px;"></div><div class="bar-label">Apr</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

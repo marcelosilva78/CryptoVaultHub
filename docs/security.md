@@ -40,7 +40,7 @@ The same derived key works on ALL EVM chains (identical address on Ethereum, BSC
 The Key Vault Service is the sole custodian of private key material:
 
 - Runs in an isolated Docker network (`vault-net`) with ZERO internet access
-- Communicates ONLY with the Core Wallet Service via `InternalServiceGuard` (shared secret in `X-Internal-Service-Key` header) + Docker network isolation
+- Communicates ONLY with the Core Wallet Service via `InternalServiceGuard` (shared secret in `X-Internal-Service-Key` header with timing-safe comparison) + Docker network isolation
 - Stateless between requests -- no intermediate state stored
 - All key operations are recorded in an append-only `key_vault_audit` table
 
@@ -64,7 +64,8 @@ All private keys are encrypted at rest using a two-layer envelope encryption sch
 ```
                  +---------------------+
                  | Master Password     |
-                 | (from environment)  |
+                 | (VAULT_MASTER_      |
+                 |  PASSWORD env var)  |
                  +----------+----------+
                             |
                      PBKDF2-HMAC-SHA512
@@ -98,29 +99,39 @@ All private keys are encrypted at rest using a two-layer envelope encryption sch
 
 ### Encryption Process
 
-1. Generate a random 256-bit DEK (Data Encryption Key)
-2. Generate a random 32-byte salt
-3. Derive KEK from master password via PBKDF2 (600,000 iterations, SHA-512, per OWASP 2024 recommendation)
-4. Encrypt private key with DEK using AES-256-GCM (produces ciphertext + IV + authTag)
-5. Wrap DEK with KEK using AES-256-GCM (produces encryptedDek)
-6. Zero DEK and KEK from memory immediately
-7. Store: ciphertext, IV, authTag, salt, encryptedDek in database
+1. Generate a random 256-bit DEK (Data Encryption Key) via `crypto.randomBytes(32)`
+2. Generate a random 32-byte salt via `crypto.randomBytes(32)`
+3. Derive KEK from master password via `pbkdf2Sync(masterPassword, salt, 600000, 32, 'sha512')` (per OWASP 2024 recommendation for PBKDF2-SHA512)
+4. Encrypt private key with DEK using `createCipheriv('aes-256-gcm', dek, iv)` (produces ciphertext + authTag)
+5. Wrap DEK with KEK using `createCipheriv('aes-256-gcm', kek, dekIv)` (produces encryptedDek = dekIv + ciphertext + authTag)
+6. Zero DEK and KEK from memory immediately via `.fill(0)`
+7. Store in database: ciphertext, IV, authTag, salt, encryptedDek
 
 ### Decryption Process
 
-1. Derive KEK from master password + stored salt via PBKDF2
-2. Unwrap DEK from encryptedDek using KEK + AES-256-GCM
-3. Decrypt ciphertext using DEK + IV + authTag via AES-256-GCM
-4. Zero KEK and DEK from memory immediately
-5. Return plaintext (zeroed after use by caller)
+1. Derive KEK from master password + stored salt via `pbkdf2Sync`
+2. Extract dekIv (first 16 bytes), dekCiphertext, and dekAuthTag (last 16 bytes) from encryptedDek
+3. Unwrap DEK from encryptedDek using KEK + `createDecipheriv('aes-256-gcm', kek, dekIv)`
+4. Decrypt ciphertext using DEK + IV + authTag via `createDecipheriv('aes-256-gcm', dek, iv)`
+5. Zero KEK and DEK from memory immediately via `.fill(0)`
+6. Return plaintext (zeroed after use by caller)
 
 ### Implementation
 
 The encryption is implemented in `services/key-vault-service/src/encryption/encryption.service.ts` using Node.js native `crypto` module:
+
 - `createCipheriv('aes-256-gcm', ...)` for encryption
 - `createDecipheriv('aes-256-gcm', ...)` for decryption
 - `pbkdf2Sync(masterPassword, salt, iterations, 32, 'sha512')` for KEK derivation
 - `randomBytes(32)` for DEK and salt generation
+- Iteration count configurable via `KDF_ITERATIONS` env var (default: 600000)
+
+### Memory Safety
+
+All sensitive buffers are explicitly zeroed after use:
+- DEK is `.fill(0)` after wrapping
+- KEK is `.fill(0)` after use
+- Plaintext buffer is `.fill(0)` after conversion to string (in `decryptToString`)
 
 ## Shamir's Secret Sharing
 
@@ -236,70 +247,84 @@ Submit sendMultiSig() with both signatures
 Internet
     |
     v
-[public-net] -- Kong, Admin Panel, Client Portal, Grafana
+[public-net] -- Kong, Admin Panel, Client Portal
     |
     v (Kong routes to internal services)
-[internal-net] -- All NestJS services, Redis
+[internal-net] (internal: true) -- All NestJS services, Redis
     |
     | (Core Wallet bridges to vault-net)
     v
-[vault-net] -- Key Vault Service ONLY
+[vault-net] (internal: true) -- Key Vault Service ONLY
     |
-    X (no route to internet, no route to public-net)
+    X (no route to internet, no route to public-net, no route to monitoring-net)
 
 [monitoring-net] -- PostHog, Prometheus, Loki, Jaeger, ClickHouse, Kafka
 ```
 
 ### Key Security Properties
 
-1. **Key Vault has ZERO internet access**: `vault-net` is an internal Docker bridge network. The Key Vault container has no route to the internet.
+1. **Key Vault has ZERO internet access**: `vault-net` is an internal Docker bridge network. The Key Vault container has no route to the internet, no route to Redis, no route to any service other than Core Wallet Service.
 2. **internal-net is internal**: Marked `internal: true` in docker-compose, meaning no external access is possible.
 3. **Core Wallet is the sole bridge**: Only the Core Wallet Service exists on both `internal-net` and `vault-net`.
 4. **Monitoring is separated**: Observability stack runs on its own network, with select bridges to `internal-net` for metric scraping.
 
-### Inter-Service Authentication (INTERNAL_SERVICE_KEY)
+### Inter-Service Authentication (InternalServiceGuard)
 
 Communication between Core Wallet Service and Key Vault Service (and other internal services such as Notification Service) is authenticated using a shared secret (`INTERNAL_SERVICE_KEY`):
 
 - The calling service includes the secret in the `X-Internal-Service-Key` HTTP header
-- The receiving service validates the header using `InternalServiceGuard`, which performs a timing-safe comparison (`crypto.timingSafeEqual`) to prevent timing attacks
-- If the key is missing or invalid, the request is rejected with `401 Unauthorized`
+- The receiving service validates the header using `InternalServiceGuard`, which:
+  1. Checks that `INTERNAL_SERVICE_KEY` is configured (throws `UnauthorizedException` if not)
+  2. Verifies the header is present and has the same length as the expected key
+  3. Performs `crypto.timingSafeEqual(Buffer.from(serviceKey), Buffer.from(expectedKey))` to prevent timing attacks
+- If the key is missing, has different length, or does not match: request is rejected with `401 Unauthorized`
 - Docker network isolation (`vault-net`) ensures only the Core Wallet Service can reach the Key Vault
 
 This approach relies on two layers of defense:
 1. **Network isolation**: `vault-net` is an internal Docker bridge with no external access
 2. **Shared secret validation**: Prevents unauthorized requests even within the Docker network
 
+**Implementation**: `services/key-vault-service/src/common/guards/internal-service.guard.ts`
+
+```typescript
+@Injectable()
+export class InternalServiceGuard implements CanActivate {
+  canActivate(context: ExecutionContext): boolean {
+    const request = context.switchToHttp().getRequest();
+    const serviceKey = request.headers['x-internal-service-key'];
+    const expectedKey = process.env.INTERNAL_SERVICE_KEY;
+
+    if (!expectedKey) {
+      throw new UnauthorizedException('INTERNAL_SERVICE_KEY is not configured');
+    }
+
+    if (
+      !serviceKey ||
+      serviceKey.length !== expectedKey.length ||
+      !timingSafeEqual(Buffer.from(serviceKey), Buffer.from(expectedKey))
+    ) {
+      throw new UnauthorizedException('Invalid or missing internal service key');
+    }
+
+    return true;
+  }
+}
+```
+
+Identical guard implementations exist in:
+- `services/core-wallet-service/src/common/guards/internal-service.guard.ts`
+- `services/notification-service/src/common/guards/internal-service.guard.ts`
+
 ### Planned: mTLS Configuration
 
 > **Note**: mTLS between Core Wallet Service and Key Vault Service is planned but not yet implemented. The current implementation uses `InternalServiceGuard` with shared secret + Docker network isolation (see above).
 
-When implemented, mTLS will add certificate-based mutual authentication:
-
-```bash
-# Generate CA
-openssl genrsa -out ca-key.pem 4096
-openssl req -x509 -new -key ca-key.pem -days 3650 -out ca-cert.pem \
-  -subj "/CN=CVH Internal CA"
-
-# Generate Key Vault server cert
-openssl genrsa -out vault-key.pem 2048
-openssl req -new -key vault-key.pem -out vault.csr \
-  -subj "/CN=key-vault-service"
-openssl x509 -req -in vault.csr -CA ca-cert.pem -CAkey ca-key.pem \
-  -CAcreateserial -out vault-cert.pem -days 365
-
-# Generate Core Wallet client cert
-openssl genrsa -out wallet-key.pem 2048
-openssl req -new -key wallet-key.pem -out wallet.csr \
-  -subj "/CN=core-wallet-service"
-openssl x509 -req -in wallet.csr -CA ca-cert.pem -CAkey ca-key.pem \
-  -CAcreateserial -out wallet-cert.pem -days 365
-```
+When implemented, mTLS will add certificate-based mutual authentication as a third layer of defense.
 
 ### Verification
 
 To verify Key Vault network isolation from inside the container:
+
 ```bash
 docker exec key-vault-service ping -c 1 google.com          # Should FAIL
 docker exec key-vault-service ping -c 1 admin-api           # Should FAIL
@@ -312,15 +337,16 @@ docker exec key-vault-service ping -c 1 core-wallet-service # Should SUCCEED
 ### JWT Authentication (Admin Panel, Client Portal)
 
 - Users authenticate via `POST /auth/login` with email + password
-- On success, receive access token (short-lived, default 15m) and refresh token (default 7d)
+- On success (without 2FA): receive access token (short-lived, default 15m) and refresh token (default 7d)
 - Access tokens are signed JWTs containing: userId, email, role, clientId
 - Refresh tokens are hashed (SHA-256) and stored in `cvh_auth.sessions`
 - Sessions track: IP address, user agent, expiry
 - 2FA (TOTP) is mandatory for admin users, configurable for client users
+- Login attempts are tracked per IP and email with lockout after excessive failures
 
 ### API Key Authentication (Client API)
 
-- API keys are created via `POST /auth/api-keys` with configurable:
+- API keys are created via `POST /auth/api-keys` (requires super_admin, admin, or owner role) with configurable:
   - **Scopes**: `read`, `write`, `withdraw`
   - **IP Allowlist**: Restrict key usage to specific IPs (JSON array)
   - **Allowed Chains**: Restrict key to specific chain IDs (JSON array)
@@ -335,10 +361,28 @@ docker exec key-vault-service ping -c 1 core-wallet-service # Should SUCCEED
 ### Two-Factor Authentication (TOTP)
 
 - Based on TOTP (Time-based One-Time Password, RFC 6238)
-- Setup: `POST /auth/2fa/setup` returns a `secret` and `otpauth://` URI for QR code
-- Verification: `POST /auth/2fa/verify` with a code to enable 2FA
-- Login: If 2FA enabled, `POST /auth/login` returns `requires2fa: true` -- client submits TOTP code
-- Disable: `POST /auth/2fa/disable` with a valid code
+- TOTP library: `otplib` with `authenticator` module
+- Configuration: 30-second step, 1-step window tolerance
+- Setup: `POST /auth/2fa/setup` generates a secret, returns `otpauth://` URI for QR code scanning
+- Verification: `POST /auth/2fa/verify` with a code from the authenticator app enables 2FA
+- Login with 2FA: `POST /auth/login` returns `requires2fa: true` with an opaque challenge token (JWT, 2m TTL, purpose: `2fa_challenge`)
+- Challenge verification: `POST /auth/2fa/challenge` with challenge token and TOTP code
+- Disable: `POST /auth/2fa/disable` requires both a valid TOTP code AND the user's password (verified via bcrypt)
+
+**TOTP Secret Encryption**:
+- Secrets are encrypted at rest using AES-256-GCM
+- Per-operation random salt: each encryption generates a fresh 16-byte salt
+- Key derivation: `scryptSync(rawEncryptionKey, salt, 32)` derives a unique 32-byte key per operation
+- Storage format: `salt:iv:authTag:ciphertext` (all hex-encoded, 4-part format)
+- Legacy support: 3-part format (without salt) is supported for backward compatibility using a static-derived key
+
+**Login Security**:
+- Login attempts tracked per IP and email via `checkAndTrackLoginAttempt()`
+- Successful login resets attempt counters via `resetLoginAttempts()`
+- TOTP attempt rate limiting via `checkTotpAttempt()`
+- Challenge tokens are opaque JWTs (contain userId but are signed and short-lived), preventing user ID enumeration
+
+**Implementation**: `services/auth-service/src/totp/totp.service.ts`
 
 ### RBAC (Role-Based Access Control)
 
@@ -356,15 +400,18 @@ docker exec key-vault-service ping -c 1 core-wallet-service # Should SUCCEED
 | `admin` | CRUD on wallets, addresses, webhooks |
 | `viewer` | Read-only access to client data |
 
+**Implementation**: `@AdminAuth()` decorator in `services/auth-service/src/rbac/admin-auth.decorator.ts` combines `AuthGuard('jwt')` with role checking. Used as `@AdminAuth('super_admin', 'admin')` to restrict endpoints to specific roles.
+
 ## On-Chain Transaction Security
 
 ### 2-of-3 Multisig (CvhWalletSimple)
 
-- 3 signers initialized at wallet creation: platformKey, clientKey, backupKey
+- 3 signers initialized at wallet creation (immutable after init)
 - Every withdrawal requires 2 of 3 signer signatures
 - Signer 1: `msg.sender` (the transaction sender)
 - Signer 2: Verified via `ecrecover` from the provided ECDSA signature
 - Signers must be different (cannot self-sign)
+- Contract uses OpenZeppelin `ReentrancyGuard` for reentrancy protection
 
 ### Replay Protection
 
@@ -372,7 +419,7 @@ docker exec key-vault-service ping -c 1 core-wallet-service # Should SUCCEED
 - Each operation consumes a unique sequence ID from the window
 - Duplicate sequence IDs are rejected by the contract
 - **Network ID**: `block.chainid` is included in the operation hash
-- Different network ID suffixes: base for ETH, `-ERC20` for tokens, `-Batch` for batches
+- Different network ID suffixes: base chain ID for ETH, `<chainId>-ERC20` for tokens, `<chainId>-Batch` for batches
 - Prevents cross-chain and cross-type replay attacks
 
 ### Signature Malleability Protection
@@ -395,18 +442,77 @@ docker exec key-vault-service ping -c 1 core-wallet-service # Should SUCCEED
 - Transactions with `expireTime < block.timestamp` are rejected
 - Prevents stale or delayed operations from being executed
 
+### Contract Access Control
+
+- **CvhBatcher**: Uses OpenZeppelin `Ownable2Step` for two-step ownership transfer (prevents accidental ownership loss). Admin functions (setTransferGasLimit, setBatchTransferLimit, recover) are owner-only.
+- **CvhForwarder**: `onlyAllowedAddress` modifier restricts flush operations to parent wallet or feeAddress. `onlyParent` modifier restricts `callFromParent` to the parent wallet only.
+- **Factories**: No access control on create/compute (anyone can deploy, but initialization parameters are validated).
+
 ## Rate Limiting
 
 Multi-level rate limiting is applied via Kong API Gateway:
 
 | Level | Mechanism | Configuration |
 |-------|-----------|---------------|
-| Global per service | Kong rate-limiting plugin | Admin API: 50/s, Client API: 100/s |
-| Per-Tenant | Tier-based limits | Synced from `cvh_admin.tiers` |
-| Per-Endpoint | Tier endpoint rate limits | Custom limits per API endpoint |
-| Request size | Kong request-size-limiting | 1 MB maximum payload |
+| Per-service (Admin API) | Kong rate-limiting plugin | 50 requests/second |
+| Per-service (Client API) | Kong rate-limiting plugin | 100 requests/second |
+| Per-service (Auth Service) | Kong rate-limiting plugin | 10 requests/second |
+| Request size | Kong request-size-limiting plugin | 1 MB maximum payload |
+| Per-tenant | Tier-based limits | Synced from `cvh_admin.tiers` |
+| Per-endpoint | Tier endpoint rate limits | Custom limits per API endpoint |
+| Login attempts | In-app (Auth Service) | Per IP + email tracking with lockout |
+| TOTP attempts | In-app (Auth Service) | Per user rate limiting |
 
-Rate limiting is backed by Redis for distributed consistency across multiple Kong instances.
+Rate limiting is backed by Redis (`policy: redis`) for distributed consistency across multiple Kong instances.
+
+**Configuration**: `infra/kong/kong.yml`
+
+## Redis Authentication
+
+Redis is configured with password authentication via the `requirepass` directive:
+
+```
+redis-server --requirepass ${REDIS_PASSWORD}
+```
+
+All services connect to Redis with the password provided via the `REDIS_PASSWORD` environment variable. This prevents unauthorized access to:
+- BullMQ job queues (confirmation tracking, webhook delivery)
+- Redis Streams (deposit event publishing)
+- Rate limiting state
+- Any cached data
+
+## CORS Restrictions
+
+Kong enforces CORS restrictions via a global plugin:
+
+```yaml
+plugins:
+  - name: cors
+    config:
+      origins:
+        - "http://localhost:3010"
+        - "http://localhost:3011"
+        - "https://admin.cryptovaulthub.com"
+        - "https://portal.cryptovaulthub.com"
+      methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"]
+      headers: ["Content-Type", "Authorization", "X-API-Key"]
+```
+
+Only requests from the listed origins are allowed. In production, replace localhost origins with actual production domain names.
+
+## Input Validation
+
+All API inputs are validated using NestJS DTOs with `class-validator` decorators:
+
+- Every endpoint has a corresponding DTO class with validation rules
+- Ethereum address format validation for blockchain-related inputs
+- Request size limited to 1 MB at the Kong gateway level
+- Prisma ORM parameterizes all database queries (SQL injection prevention)
+
+**Example DTO patterns**:
+- `LoginDto`: email (IsEmail), password (IsString, MinLength)
+- `CreateApiKeyDto`: clientId (IsInt), scopes (IsArray, IsEnum), ipAllowlist (IsOptional, IsArray)
+- `Verify2faChallengeDto`: challengeToken (IsString), code (IsString, Length(6))
 
 ## Webhook Security
 
@@ -415,17 +521,39 @@ Rate limiting is backed by Redis for distributed consistency across multiple Kon
 - Signature sent in `X-CVH-Signature` header
 - Clients must verify the signature before processing the payload
 - Retry policy: exponential backoff with jitter, up to Dead Letter Queue (DLQ)
-- Delivery log tracks: HTTP status, response time, retry count
+- Delivery log tracks: HTTP status, response body, response time, retry count
 
 ## Audit Trail
 
-Every action in the platform is captured via PostHog:
+Every action in the platform is captured via multiple mechanisms:
 
-- **API Requests**: Full request/response with headers and timing (via NestJS interceptor in each service)
-- **Webhook Deliveries**: Payload, response, HTTP status, latency
-- **Blockchain Events**: Deposits, sweeps, withdrawals, failures
-- **Compliance Actions**: Screenings, alert resolution, status changes
-- **Admin Actions**: Client management, tier changes, key generation
-- **Key Vault Operations**: Key generation, signing, Shamir operations (append-only `key_vault_audit` table)
+| Source | What Is Captured | Storage |
+|--------|------------------|---------|
+| PostHog interceptor (all services) | API requests/responses, headers, timing | PostHog (ClickHouse) |
+| Key Vault audit | Key generation, signing, Shamir operations | `cvh_keyvault.key_vault_audit` (append-only) |
+| Admin audit log | Client management, tier changes, compliance actions | `cvh_admin.audit_logs` |
+| Webhook delivery log | Payload, HTTP status, response, latency, retry count | `cvh_notifications.webhook_deliveries` |
+| Structured logs (Loki) | All service logs with trace IDs | Loki |
+| Distributed traces (Jaeger) | Cross-service operation traces | Jaeger |
 
 All events are correlated via `trace_id` shared with Loki logs and Jaeger distributed traces, enabling complete end-to-end debugging for any support case.
+
+## Security Summary Table
+
+| Layer | Mechanism | Details |
+|-------|-----------|---------|
+| Key Storage | AES-256-GCM envelope encryption | PBKDF2-derived KEK (600k iterations, SHA-512), per-key random salt |
+| Key Isolation | vault-net Docker network | Zero internet access, InternalServiceGuard + timing-safe comparison |
+| Transaction Auth | 2-of-3 on-chain multisig | ReentrancyGuard, replay protection, signature malleability prevention |
+| API Auth (Web) | JWT + bcryptjs | SHA-256 hashed refresh tokens, session tracking, login lockout |
+| API Auth (Client) | SHA-256 hashed API keys | Scoped (read/write/withdraw), IP-restricted, chain-restricted, expirable |
+| 2FA | TOTP (RFC 6238) | AES-256-GCM encrypted secrets, per-operation random salt via scrypt |
+| Rate Limiting | Kong + Redis | Per-service (10-100/s), per-tenant, per-endpoint, 1MB request size |
+| CORS | Kong global plugin | Restricted to known origins only |
+| Redis | requirepass | Password authentication on all Redis connections |
+| Input Validation | class-validator + Prisma | DTO decorators, parameterized queries |
+| Contract Security | Ownable2Step, ReentrancyGuard | Two-step ownership, reentrancy protection, custom error types |
+| Webhook Integrity | HMAC-SHA256 | Per-endpoint signing secret, X-CVH-Signature header |
+| Key Backup | Shamir's Secret Sharing | 3-of-5 threshold, individually encrypted shares |
+| Memory Safety | Explicit buffer zeroing | .fill(0) on all DEK, KEK, and plaintext buffers |
+| Audit | PostHog + key_vault_audit + Loki + Jaeger | Full event capture, trace ID correlation |
