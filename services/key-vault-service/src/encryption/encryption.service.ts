@@ -1,0 +1,141 @@
+import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import {
+  createCipheriv,
+  createDecipheriv,
+  randomBytes,
+  pbkdf2Sync,
+} from 'crypto';
+
+export interface EncryptedPayload {
+  ciphertext: Buffer;
+  iv: Buffer;
+  authTag: Buffer;
+  salt: Buffer;
+  encryptedDek: Buffer;
+}
+
+@Injectable()
+export class EncryptionService {
+  private readonly masterPassword: string;
+  private readonly kdfIterations: number;
+
+  constructor(private readonly configService: ConfigService) {
+    this.masterPassword = this.configService.getOrThrow<string>(
+      'VAULT_MASTER_PASSWORD',
+    );
+    this.kdfIterations = parseInt(
+      this.configService.get<string>('KDF_ITERATIONS', '100000'),
+      10,
+    );
+  }
+
+  /**
+   * Derive a Key Encryption Key (KEK) from master password using PBKDF2.
+   */
+  deriveKEK(salt: Buffer, iterations?: number): Buffer {
+    return pbkdf2Sync(
+      this.masterPassword,
+      salt,
+      iterations ?? this.kdfIterations,
+      32,
+      'sha512',
+    );
+  }
+
+  /**
+   * Encrypt plaintext using envelope encryption:
+   * 1. Generate random DEK (Data Encryption Key)
+   * 2. Encrypt plaintext with DEK using AES-256-GCM
+   * 3. Wrap DEK with KEK (derived from master password)
+   */
+  encrypt(plaintext: Buffer): EncryptedPayload {
+    // Generate random DEK
+    const dek = randomBytes(32);
+    const salt = randomBytes(32);
+
+    // Derive KEK from master password
+    const kek = this.deriveKEK(salt);
+
+    // Encrypt plaintext with DEK
+    const iv = randomBytes(16);
+    const cipher = createCipheriv('aes-256-gcm', dek, iv);
+    const ciphertext = Buffer.concat([
+      cipher.update(plaintext),
+      cipher.final(),
+    ]);
+    const authTag = cipher.getAuthTag();
+
+    // Wrap DEK with KEK
+    const dekIv = randomBytes(16);
+    const dekCipher = createCipheriv('aes-256-gcm', kek, dekIv);
+    const encryptedDek = Buffer.concat([
+      dekIv,
+      dekCipher.update(dek),
+      dekCipher.final(),
+      dekCipher.getAuthTag(),
+    ]);
+
+    // Zero sensitive material
+    dek.fill(0);
+    kek.fill(0);
+
+    return { ciphertext, iv, authTag, salt, encryptedDek };
+  }
+
+  /**
+   * Decrypt ciphertext using envelope encryption:
+   * 1. Derive KEK from master password
+   * 2. Unwrap DEK using KEK
+   * 3. Decrypt ciphertext with DEK
+   */
+  decrypt(payload: EncryptedPayload): Buffer {
+    const { ciphertext, iv, authTag, salt, encryptedDek } = payload;
+
+    // Derive KEK
+    const kek = this.deriveKEK(salt);
+
+    // Unwrap DEK
+    const dekIv = encryptedDek.subarray(0, 16);
+    const dekCiphertext = encryptedDek.subarray(16, encryptedDek.length - 16);
+    const dekAuthTag = encryptedDek.subarray(encryptedDek.length - 16);
+
+    const dekDecipher = createDecipheriv('aes-256-gcm', kek, dekIv);
+    dekDecipher.setAuthTag(dekAuthTag);
+    const dek = Buffer.concat([
+      dekDecipher.update(dekCiphertext),
+      dekDecipher.final(),
+    ]);
+
+    // Decrypt data with DEK
+    const decipher = createDecipheriv('aes-256-gcm', dek, iv);
+    decipher.setAuthTag(authTag);
+    const plaintext = Buffer.concat([
+      decipher.update(ciphertext),
+      decipher.final(),
+    ]);
+
+    // Zero sensitive material
+    kek.fill(0);
+    dek.fill(0);
+
+    return plaintext;
+  }
+
+  /**
+   * Encrypt a string and return all components needed for DB storage.
+   */
+  encryptString(plaintext: string): EncryptedPayload {
+    return this.encrypt(Buffer.from(plaintext, 'utf-8'));
+  }
+
+  /**
+   * Decrypt and return as string.
+   */
+  decryptToString(payload: EncryptedPayload): string {
+    const buf = this.decrypt(payload);
+    const str = buf.toString('utf-8');
+    buf.fill(0);
+    return str;
+  }
+}

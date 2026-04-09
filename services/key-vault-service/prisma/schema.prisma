@@ -1,0 +1,87 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma-client"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model MasterSeed {
+  id            BigInt   @id @default(autoincrement())
+  seedId        String   @unique @map("seed_id") @db.VarChar(64)
+  encryptedSeed Bytes    @map("encrypted_seed") @db.Blob
+  encryptedDek  Bytes    @map("encrypted_dek") @db.Blob
+  iv            Bytes    @db.VarBinary(16)
+  authTag       Bytes    @map("auth_tag") @db.VarBinary(16)
+  salt          Bytes    @db.VarBinary(32)
+  kdfIterations Int      @default(100000) @map("kdf_iterations")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@map("master_seeds")
+}
+
+model DerivedKey {
+  id             BigInt    @id @default(autoincrement())
+  clientId       BigInt    @map("client_id")
+  keyType        KeyType   @map("key_type")
+  chainScope     String    @default("evm") @map("chain_scope") @db.VarChar(10)
+  publicKey      String    @map("public_key") @db.VarChar(130)
+  address        String    @db.VarChar(42)
+  derivationPath String    @map("derivation_path") @db.VarChar(50)
+  encryptedKey   Bytes     @map("encrypted_key") @db.Blob
+  encryptedDek   Bytes     @map("encrypted_dek") @db.Blob
+  iv             Bytes     @db.VarBinary(16)
+  authTag        Bytes     @map("auth_tag") @db.VarBinary(16)
+  salt           Bytes     @db.VarBinary(32)
+  isActive       Boolean   @default(true) @map("is_active")
+  lastUsedAt     DateTime? @map("last_used_at")
+  signCount      BigInt    @default(0) @map("sign_count")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  @@unique([clientId, keyType], name: "uq_client_keytype")
+  @@index([address], name: "idx_address")
+  @@map("derived_keys")
+}
+
+model ShamirShare {
+  id              BigInt    @id @default(autoincrement())
+  clientId        BigInt    @map("client_id")
+  shareIndex      Int       @map("share_index") @db.TinyInt
+  custodian       String    @db.VarChar(50)
+  encryptedShare  Bytes     @map("encrypted_share") @db.Blob
+  encryptedDek    Bytes     @map("encrypted_dek") @db.Blob
+  iv              Bytes     @db.VarBinary(16)
+  authTag         Bytes     @map("auth_tag") @db.VarBinary(16)
+  salt            Bytes     @db.VarBinary(32)
+  isDistributed   Boolean   @default(false) @map("is_distributed")
+  distributedAt   DateTime? @map("distributed_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  @@unique([clientId, shareIndex], name: "uq_client_share")
+  @@map("shamir_shares")
+}
+
+model KeyVaultAudit {
+  id          BigInt   @id @default(autoincrement())
+  operation   String   @db.VarChar(50)
+  clientId    BigInt?  @map("client_id")
+  keyType     String?  @map("key_type") @db.VarChar(20)
+  address     String?  @db.VarChar(42)
+  txHash      String?  @map("tx_hash") @db.VarChar(66)
+  chainId     Int?     @map("chain_id")
+  requestedBy String   @map("requested_by") @db.VarChar(100)
+  metadata    Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([clientId, operation, createdAt], name: "idx_client_op")
+  @@map("key_vault_audit")
+}
+
+enum KeyType {
+  platform
+  client
+  backup
+  gas_tank
+}
