@@ -21,6 +21,9 @@ interface JsonViewerProps {
  * - text-muted for null and punctuation
  */
 function syntaxHighlight(json: string): string {
+  // Escape HTML entities first to prevent XSS via dangerouslySetInnerHTML
+  json = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
   // First, wrap punctuation (braces, brackets, colons, commas) in muted spans
   let result = json.replace(
     /("(\\u[\da-fA-F]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?)/g,

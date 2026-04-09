@@ -7,6 +7,7 @@ import { WebhookModule } from './webhook/webhook.module';
 import { EmailModule } from './email/email.module';
 import { EventConsumerModule } from './event-consumer/event-consumer.module';
 import { InternalServiceGuard } from './common/guards/internal-service.guard';
+import { HealthController } from './common/health.controller';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { InternalServiceGuard } from './common/guards/internal-service.guard';
     EmailModule,
     EventConsumerModule,
   ],
+  controllers: [HealthController],
   providers: [
     {
       provide: APP_GUARD,

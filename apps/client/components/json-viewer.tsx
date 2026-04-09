@@ -19,6 +19,9 @@ interface JsonViewerProps {
  *   text-muted for null / punctuation
  */
 function syntaxHighlight(json: string): string {
+  // Escape HTML entities first to prevent XSS via dangerouslySetInnerHTML
+  json = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
   return json.replace(
     /("(\\u[\da-fA-F]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?)/g,
     (match) => {

@@ -108,7 +108,7 @@ Detailed reference for every feature in CryptoVaultHub, organized by functional 
 
 **Services Involved**: Core Wallet Service (address computation), Chain Indexer Service (monitoring the address for deposits).
 
-**Key Property**: `address = CREATE2(factory, keccak256(parent, feeAddress, salt), proxyBytecodeHash)` -- fully deterministic and predictable.
+**Key Property**: `address = CREATE2(factory, keccak256(msg.sender, parent, feeAddress, salt), proxyBytecodeHash)` -- fully deterministic and predictable.
 
 **API Endpoints**:
 - `POST /deposit-addresses/generate` -- Generate single address
@@ -244,8 +244,8 @@ Detailed reference for every feature in CryptoVaultHub, organized by functional 
 **Batch Types**:
 - `CvhWalletSimple.sendMultiSigBatch()`: Send ETH to up to 255 recipients in a single multisig transaction.
 - `CvhForwarder.batchFlushERC20Tokens()`: Flush multiple ERC-20 tokens from a forwarder in one transaction.
-- `CvhBatcher.batchTransfer()`: Distribute ETH to multiple addresses (standalone, not multisig).
-- `CvhBatcher.batchTransferToken()`: Distribute ERC-20 tokens to multiple addresses (requires prior approval).
+- `CvhBatcher.batchTransfer()`: Owner-only. Distribute ETH to multiple addresses (standalone, not multisig).
+- `CvhBatcher.batchTransferToken()`: Owner-only. Distribute ERC-20 tokens to multiple addresses (requires prior approval).
 - `POST /deposit-addresses/batch`: Generate up to 100 deposit addresses in a single API call.
 
 **Services Involved**: Core Wallet Service (batch address generation), Cron Worker Service (batch flush), blockchain (batch contract calls).
@@ -597,7 +597,7 @@ Master Seed (256 bits, BIP-39 24 words)
 
 **Description**: Prometheus scrapes metrics from Kong and all NestJS services at 15-second intervals.
 
-**Scrape Targets**: Kong Admin (`:8001`), Admin API (`:3001`), Client API (`:3002`), Core Wallet (`:3004`), Chain Indexer (`:3006`), Notification (`:3007`).
+**Scrape Targets**: Kong Admin (`:8001`), Admin API (`:3001`), Client API (`:3002`), Auth Service (`:3003`), Core Wallet (`:3004`), Chain Indexer (`:3006`), Notification (`:3007`), Cron Worker (`:3008`).
 
 **Configuration**: `infra/prometheus/prometheus.yml`
 

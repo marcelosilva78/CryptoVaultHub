@@ -4,8 +4,7 @@ import { useState, useCallback } from "react";
 import { Copy, Check, Eye, EyeOff, ExternalLink, ChevronDown, Download, AlertTriangle } from "lucide-react";
 import { Badge } from "@/components/badge";
 import { JsonViewer } from "@/components/json-viewer";
-import { cn } from "@/lib/utils";
-import { shortenAddress } from "@/lib/utils";
+import { cn, shortenAddress } from "@/lib/utils";
 
 // ─── Types ─────────────────────────────────────────────────
 export interface WalletData {

@@ -1,4 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  HttpException,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 
@@ -14,25 +19,43 @@ export class WalletService {
     );
   }
 
+  private get headers() {
+    return { 'X-Internal-Service-Key': process.env.INTERNAL_SERVICE_KEY || '' };
+  }
+
   async listWallets(clientId: number) {
-    const response = await axios.get(
-      `${this.coreWalletUrl}/wallets`,
-      {
-        params: { clientId },
-        timeout: 10000,
-      },
-    );
-    return response.data;
+    try {
+      const { data } = await axios.get(
+        `${this.coreWalletUrl}/wallets/${clientId}`,
+        {
+          headers: this.headers,
+          timeout: 10000,
+        },
+      );
+      return data;
+    } catch (error) {
+      if (error.response) {
+        throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
+      }
+      throw new InternalServerErrorException('Downstream service unavailable');
+    }
   }
 
   async getBalances(clientId: number, chainId: number) {
-    const response = await axios.get(
-      `${this.coreWalletUrl}/wallets/${chainId}/balances`,
-      {
-        params: { clientId },
-        timeout: 10000,
-      },
-    );
-    return response.data;
+    try {
+      const { data } = await axios.get(
+        `${this.coreWalletUrl}/wallets/${clientId}/${chainId}/balances`,
+        {
+          headers: this.headers,
+          timeout: 10000,
+        },
+      );
+      return data;
+    } catch (error) {
+      if (error.response) {
+        throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
+      }
+      throw new InternalServerErrorException('Downstream service unavailable');
+    }
   }
 }

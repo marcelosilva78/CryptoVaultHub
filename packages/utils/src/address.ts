@@ -21,23 +21,24 @@ export function computeCreate2Address(
 }
 
 export function computeForwarderSalt(
+  deployer: string,
   parentAddress: string,
   feeAddress: string,
   userSalt: string,
 ): string {
   return ethers.keccak256(
-    ethers.AbiCoder.defaultAbiCoder().encode(
-      ['address', 'address', 'bytes32'],
-      [parentAddress, feeAddress, userSalt],
+    ethers.solidityPacked(
+      ['address', 'address', 'address', 'bytes32'],
+      [deployer, parentAddress, feeAddress, userSalt],
     ),
   );
 }
 
-export function computeWalletSalt(signers: string[], userSalt: string): string {
+export function computeWalletSalt(deployer: string, signers: string[], userSalt: string): string {
   return ethers.keccak256(
-    ethers.AbiCoder.defaultAbiCoder().encode(
-      ['address[]', 'bytes32'],
-      [signers, userSalt],
+    ethers.solidityPacked(
+      ['address', 'address[]', 'bytes32'],
+      [deployer, signers, userSalt],
     ),
   );
 }

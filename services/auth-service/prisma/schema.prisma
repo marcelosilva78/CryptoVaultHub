@@ -17,7 +17,7 @@ model User {
   clientId     BigInt?     @map("client_id")
   clientRole   ClientRole? @map("client_role")
   isActive     Boolean     @default(true) @map("is_active")
-  totpSecret   String?     @map("totp_secret") @db.VarChar(64)
+  totpSecret   String?     @map("totp_secret") @db.VarChar(300)
   totpEnabled  Boolean     @default(false) @map("totp_enabled")
   lastLoginAt  DateTime?   @map("last_login_at")
   createdAt    DateTime    @default(now()) @map("created_at")

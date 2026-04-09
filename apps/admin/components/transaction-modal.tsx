@@ -4,8 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { X, ChevronDown, Copy, Check } from "lucide-react";
 import { JsonViewer } from "@/components/json-viewer";
 import { Badge } from "@/components/badge";
-import { cn } from "@/lib/utils";
-import { shortenAddress } from "@/lib/utils";
+import { cn, shortenAddress } from "@/lib/utils";
 
 // ─── Types ─────────────────────────────────────────────────
 export interface TransactionDetail {

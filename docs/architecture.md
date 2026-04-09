@@ -399,11 +399,11 @@ CryptoVaultHub implements a comprehensive visual identity documented in `docs/id
 
 - **Surfaces**: page, sidebar, card, elevated, hover, input (separate values for dark/light mode)
 - **Text**: primary, secondary, muted (separate values for dark/light mode)
-- **Accent**: primary (#E2A828), hover, subtle, muted
+- **Accent**: primary (#E2A828), hover, subtle, glow, text
 - **Status**: success (green), error (red), warning (amber) -- only for functional feedback
 - **Borders**: default, strong, accent
 - **Radius**: card (8px), button (8px), input (6px), badge (6px), modal (12px)
-- **Typography**: heading (24px), stat (28px), body (14px), code (13px), display (32px)
+- **Typography**: heading (20px), stat (28px), body (13px), code (12px), display (32px)
 
 All values are defined as semantic Tailwind CSS tokens in `tailwind.config`. No hardcoded values in components.
 
@@ -421,6 +421,6 @@ All values are defined as semantic Tailwind CSS tokens in `tailwind.config`. No 
 - **Redis as Backbone**: BullMQ queues and Redis Streams decouple producers from consumers. Redis handles rate limiting state, job queues, and inter-service messaging.
 - **Multicall3 Batching**: Single RPC call queries 500+ balances, dramatically reducing RPC costs for balance monitoring.
 - **EIP-1167 Proxies**: Forwarder deployment costs approximately 45,000 gas (vs. 2M+ for full contract deployment). All forwarders share one implementation contract.
-- **Lazy Deployment**: Forwarder addresses are computed (free) via CREATE2 and deployed only when needed for ERC-20 flushing. ETH can be received at the address before the contract exists.
+- **Lazy Deployment**: Forwarder addresses are computed (free) via `computeForwarderAddress(deployer, parent, feeAddress, salt)` using CREATE2 and deployed only when needed for ERC-20 flushing. ETH can be received at the address before the contract exists.
 - **Per-Service Databases**: 8 separate MySQL databases prevent cross-service coupling and enable independent scaling. Each service uses its own Prisma schema.
 - **API Client SDK**: The `@cvh/api-client` package with TanStack Query hooks provides type-safe API access with automatic caching, deduplication, and background refetching for both frontend applications.

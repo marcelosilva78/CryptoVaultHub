@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
-import { Sidebar } from "@/components/sidebar";
-import { Header } from "@/components/header";
 import { Providers } from "@/components/providers";
 import { ClientAuthProvider } from "@/lib/auth-context";
 import { ThemeProvider } from "@/lib/theme-context";
+import { LayoutShell } from "@/components/layout-shell";
 import "./globals.css";
 
 export const dynamic = "force-dynamic";
@@ -24,11 +23,7 @@ export default function RootLayout({
         <Providers>
           <ThemeProvider>
             <ClientAuthProvider>
-              <Sidebar />
-              <Header />
-              <main className="ml-sidebar-w mt-header-h p-content-p min-h-[calc(100vh-56px)] animate-fade-in">
-                {children}
-              </main>
+              <LayoutShell>{children}</LayoutShell>
             </ClientAuthProvider>
           </ThemeProvider>
         </Providers>

@@ -39,6 +39,10 @@ export class MonitoringService {
     };
   }
 
+  private get headers() {
+    return { 'X-Internal-Service-Key': process.env.INTERNAL_SERVICE_KEY || '' };
+  }
+
   async getHealth(): Promise<{
     overall: string;
     services: ServiceHealth[];
@@ -48,6 +52,7 @@ export class MonitoringService {
         const start = Date.now();
         try {
           const response = await axios.get(`${url}/health`, {
+            headers: this.headers,
             timeout: 5000,
           });
           return {
@@ -90,7 +95,7 @@ export class MonitoringService {
     try {
       const response = await axios.get(
         `${this.services['notification-service']}/queues/status`,
-        { timeout: 5000 },
+        { headers: this.headers, timeout: 5000 },
       );
       return response.data;
     } catch (err) {
@@ -103,7 +108,7 @@ export class MonitoringService {
     try {
       const response = await axios.get(
         `${this.services['core-wallet-service']}/gas-tanks`,
-        { timeout: 10000 },
+        { headers: this.headers, timeout: 10000 },
       );
       return response.data;
     } catch (err) {

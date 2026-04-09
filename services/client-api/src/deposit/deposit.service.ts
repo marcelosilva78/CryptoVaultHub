@@ -1,4 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  HttpException,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 
@@ -14,17 +19,28 @@ export class DepositService {
     );
   }
 
+  private get headers() {
+    return { 'X-Internal-Service-Key': process.env.INTERNAL_SERVICE_KEY || '' };
+  }
+
   async generateDepositAddress(
     clientId: number,
     chainId: number,
     data: { label?: string; callbackUrl?: string },
   ) {
-    const response = await axios.post(
-      `${this.coreWalletUrl}/wallets/${chainId}/deposit-address`,
-      { clientId, ...data },
-      { timeout: 30000 },
-    );
-    return response.data;
+    try {
+      const { data: result } = await axios.post(
+        `${this.coreWalletUrl}/deposit-addresses/generate`,
+        { clientId, chainId, ...data },
+        { headers: this.headers, timeout: 30000 },
+      );
+      return result;
+    } catch (error) {
+      if (error.response) {
+        throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
+      }
+      throw new InternalServerErrorException('Downstream service unavailable');
+    }
   }
 
   async batchGenerateAddresses(
@@ -32,26 +48,41 @@ export class DepositService {
     chainId: number,
     data: { count: number; labelPrefix?: string },
   ) {
-    const response = await axios.post(
-      `${this.coreWalletUrl}/wallets/${chainId}/deposit-addresses/batch`,
-      { clientId, ...data },
-      { timeout: 60000 },
-    );
-    return response.data;
+    try {
+      const { data: result } = await axios.post(
+        `${this.coreWalletUrl}/deposit-addresses/batch`,
+        { clientId, chainId, ...data },
+        { headers: this.headers, timeout: 60000 },
+      );
+      return result;
+    } catch (error) {
+      if (error.response) {
+        throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
+      }
+      throw new InternalServerErrorException('Downstream service unavailable');
+    }
   }
 
   async listDepositAddresses(
     clientId: number,
     params: { page?: number; limit?: number },
   ) {
-    const response = await axios.get(
-      `${this.coreWalletUrl}/deposit-addresses`,
-      {
-        params: { clientId, ...params },
-        timeout: 10000,
-      },
-    );
-    return response.data;
+    try {
+      const { data } = await axios.get(
+        `${this.coreWalletUrl}/deposit-addresses/${clientId}`,
+        {
+          headers: this.headers,
+          params,
+          timeout: 10000,
+        },
+      );
+      return data;
+    } catch (error) {
+      if (error.response) {
+        throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
+      }
+      throw new InternalServerErrorException('Downstream service unavailable');
+    }
   }
 
   async listDeposits(
@@ -65,24 +96,40 @@ export class DepositService {
       toDate?: string;
     },
   ) {
-    const response = await axios.get(
-      `${this.coreWalletUrl}/deposits`,
-      {
-        params: { clientId, ...params },
-        timeout: 10000,
-      },
-    );
-    return response.data;
+    try {
+      const { data } = await axios.get(
+        `${this.coreWalletUrl}/deposits`,
+        {
+          headers: this.headers,
+          params: { clientId, ...params },
+          timeout: 10000,
+        },
+      );
+      return data;
+    } catch (error) {
+      if (error.response) {
+        throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
+      }
+      throw new InternalServerErrorException('Downstream service unavailable');
+    }
   }
 
   async getDeposit(clientId: number, depositId: string) {
-    const response = await axios.get(
-      `${this.coreWalletUrl}/deposits/${depositId}`,
-      {
-        params: { clientId },
-        timeout: 10000,
-      },
-    );
-    return response.data;
+    try {
+      const { data } = await axios.get(
+        `${this.coreWalletUrl}/deposits/${depositId}`,
+        {
+          headers: this.headers,
+          params: { clientId },
+          timeout: 10000,
+        },
+      );
+      return data;
+    } catch (error) {
+      if (error.response) {
+        throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
+      }
+      throw new InternalServerErrorException('Downstream service unavailable');
+    }
   }
 }

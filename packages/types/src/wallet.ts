@@ -3,7 +3,7 @@ export interface Wallet {
   clientId: number;
   chainId: number;
   address: string;
-  walletType: 'hot' | 'gas_tank';
+  walletType: 'hot' | 'cold' | 'gas_tank';
   isActive: boolean;
   createdAt: Date;
 }

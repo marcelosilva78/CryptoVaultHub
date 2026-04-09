@@ -499,9 +499,11 @@ Scrape targets (15s interval):
 - Kong Admin API (`:8001`)
 - Admin API (`:3001`)
 - Client API (`:3002`)
+- Auth Service (`:3003`)
 - Core Wallet Service (`:3004`)
 - Chain Indexer Service (`:3006`)
 - Notification Service (`:3007`)
+- Cron Worker Service (`:3008`)
 
 Access: `http://localhost:9090`
 

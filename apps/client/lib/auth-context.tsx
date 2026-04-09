@@ -53,6 +53,7 @@ export function ClientAuthProvider({ children }: { children: ReactNode }) {
       tier: 'Business',
     });
     localStorage.setItem('cvh_client_token', 'mock-jwt-token');
+    document.cookie = 'cvh_client_token=mock-jwt-token; path=/; max-age=86400';
     return {};
   };
 
@@ -67,6 +68,7 @@ export function ClientAuthProvider({ children }: { children: ReactNode }) {
       tier: 'Business',
     });
     localStorage.setItem('cvh_client_token', 'mock-api-key-token');
+    document.cookie = 'cvh_client_token=mock-api-key-token; path=/; max-age=86400';
   };
 
   const verify2FA = async (code: string) => {
@@ -76,6 +78,7 @@ export function ClientAuthProvider({ children }: { children: ReactNode }) {
   const logout = () => {
     setUser(null);
     localStorage.removeItem('cvh_client_token');
+    document.cookie = 'cvh_client_token=; path=/; max-age=0';
     window.location.href = '/login';
   };
 

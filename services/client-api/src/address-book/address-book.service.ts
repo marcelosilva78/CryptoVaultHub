@@ -1,4 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  HttpException,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 
@@ -14,6 +19,10 @@ export class AddressBookService {
     );
   }
 
+  private get headers() {
+    return { 'X-Internal-Service-Key': process.env.INTERNAL_SERVICE_KEY || '' };
+  }
+
   async addAddress(
     clientId: number,
     data: {
@@ -23,26 +32,41 @@ export class AddressBookService {
       notes?: string;
     },
   ) {
-    const response = await axios.post(
-      `${this.coreWalletUrl}/address-book`,
-      { clientId, ...data },
-      { timeout: 10000 },
-    );
-    return response.data;
+    try {
+      const { data: result } = await axios.post(
+        `${this.coreWalletUrl}/address-book`,
+        { clientId, ...data },
+        { headers: this.headers, timeout: 10000 },
+      );
+      return result;
+    } catch (error) {
+      if (error.response) {
+        throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
+      }
+      throw new InternalServerErrorException('Downstream service unavailable');
+    }
   }
 
   async listAddresses(
     clientId: number,
     params: { page?: number; limit?: number; chainId?: number },
   ) {
-    const response = await axios.get(
-      `${this.coreWalletUrl}/address-book`,
-      {
-        params: { clientId, ...params },
-        timeout: 10000,
-      },
-    );
-    return response.data;
+    try {
+      const { data } = await axios.get(
+        `${this.coreWalletUrl}/address-book`,
+        {
+          headers: this.headers,
+          params: { clientId, ...params },
+          timeout: 10000,
+        },
+      );
+      return data;
+    } catch (error) {
+      if (error.response) {
+        throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
+      }
+      throw new InternalServerErrorException('Downstream service unavailable');
+    }
   }
 
   async updateAddress(
@@ -50,22 +74,37 @@ export class AddressBookService {
     addressId: string,
     data: { label?: string; notes?: string },
   ) {
-    const response = await axios.patch(
-      `${this.coreWalletUrl}/address-book/${addressId}`,
-      { clientId, ...data },
-      { timeout: 10000 },
-    );
-    return response.data;
+    try {
+      const { data: result } = await axios.patch(
+        `${this.coreWalletUrl}/address-book/${addressId}`,
+        { clientId, ...data },
+        { headers: this.headers, timeout: 10000 },
+      );
+      return result;
+    } catch (error) {
+      if (error.response) {
+        throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
+      }
+      throw new InternalServerErrorException('Downstream service unavailable');
+    }
   }
 
   async disableAddress(clientId: number, addressId: string) {
-    const response = await axios.delete(
-      `${this.coreWalletUrl}/address-book/${addressId}`,
-      {
-        data: { clientId },
-        timeout: 10000,
-      },
-    );
-    return response.data;
+    try {
+      const { data } = await axios.delete(
+        `${this.coreWalletUrl}/address-book/${addressId}`,
+        {
+          headers: this.headers,
+          data: { clientId },
+          timeout: 10000,
+        },
+      );
+      return data;
+    } catch (error) {
+      if (error.response) {
+        throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
+      }
+      throw new InternalServerErrorException('Downstream service unavailable');
+    }
   }
 }

@@ -167,6 +167,7 @@ function createForwarder(
 
 // Predict the address of a forwarder clone (no deployment)
 function computeForwarderAddress(
+    address deployer,
     address parent,
     address feeAddress,
     bytes32 salt
@@ -175,7 +176,7 @@ function computeForwarderAddress(
 
 **Key Properties**:
 - `implementationAddress`: set in constructor, points to CvhForwarder implementation
-- Salt binding: `finalSalt = keccak256(abi.encodePacked(parent, feeAddress, salt))`
+- Salt binding: `finalSalt = keccak256(abi.encodePacked(msg.sender, parent, feeAddress, salt))` (in `createForwarder`); `keccak256(abi.encodePacked(deployer, parent, feeAddress, salt))` (in `computeForwarderAddress`)
 - Deterministic: `computeForwarderAddress` returns the exact address before deployment
 - Lazy deployment: compute address first, deploy only when needed (for ERC-20 flushing)
 
@@ -202,6 +203,7 @@ function createWallet(
 
 // Predict the address of a wallet clone
 function computeWalletAddress(
+    address deployer,
     address[] calldata allowedSigners,
     bytes32 salt
 ) external view returns (address);
@@ -209,7 +211,7 @@ function computeWalletAddress(
 
 **Key Properties**:
 - `implementationAddress`: set in constructor, points to CvhWalletSimple implementation
-- Salt binding: `finalSalt = keccak256(abi.encodePacked(allowedSigners, salt))`
+- Salt binding: `finalSalt = keccak256(abi.encodePacked(msg.sender, allowedSigners, salt))` (in `createWallet`); `keccak256(abi.encodePacked(deployer, allowedSigners, salt))` (in `computeWalletAddress`)
 - Creates and initializes wallet in a single transaction
 
 **Events**:
@@ -227,18 +229,18 @@ function computeWalletAddress(
 **Interfaces**:
 
 ```solidity
-// Batch transfer ETH (msg.value split among recipients)
+// Batch transfer ETH (msg.value split among recipients, onlyOwner)
 function batchTransfer(
     address[] calldata recipients,
     uint256[] calldata values
-) external payable;
+) external payable onlyOwner;
 
-// Batch transfer ERC-20 tokens (requires prior approval)
+// Batch transfer ERC-20 tokens (requires prior approval, onlyOwner)
 function batchTransferToken(
     address tokenAddress,
     address[] calldata recipients,
     uint256[] calldata values
-) external;
+) external onlyOwner;
 
 // Admin: set gas limit per individual transfer
 function setTransferGasLimit(uint256 _transferGasLimit) external;
@@ -254,7 +256,7 @@ function recover(address payable to) external;
 - Default gas limit per transfer: 30,000
 - Default max batch size: 255 recipients
 - Excess ETH sent with `batchTransfer` is refunded to `msg.sender`
-- Owner-only admin functions for adjusting limits and recovering funds
+- Owner-only: `batchTransfer`, `batchTransferToken`, and all admin functions (adjusting limits and recovering funds)
 - No zero-address recipients allowed
 
 **Events**:
@@ -302,7 +304,7 @@ address = keccak256(0xff ++ factory ++ salt ++ keccak256(bytecode))[12:]
 ### Forwarder Address Computation
 
 ```
-salt = keccak256(parentAddress, feeAddress, userSalt)
+salt = keccak256(msg.sender, parentAddress, feeAddress, userSalt)
 bytecode = EIP-1167 proxy pointing to CvhForwarder implementation
 address = CREATE2(factory, salt, bytecodeHash)
 ```
@@ -310,7 +312,7 @@ address = CREATE2(factory, salt, bytecodeHash)
 ### Wallet Address Computation
 
 ```
-salt = keccak256(allowedSigners, userSalt)
+salt = keccak256(msg.sender, allowedSigners, userSalt)
 bytecode = EIP-1167 proxy pointing to CvhWalletSimple implementation
 address = CREATE2(factory, salt, bytecodeHash)
 ```

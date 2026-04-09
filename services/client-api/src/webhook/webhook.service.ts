@@ -1,4 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  HttpException,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 
@@ -14,6 +19,10 @@ export class WebhookService {
     );
   }
 
+  private get headers() {
+    return { 'X-Internal-Service-Key': process.env.INTERNAL_SERVICE_KEY || '' };
+  }
+
   async createWebhook(
     clientId: number,
     data: {
@@ -23,26 +32,41 @@ export class WebhookService {
       isActive?: boolean;
     },
   ) {
-    const response = await axios.post(
-      `${this.notificationUrl}/webhooks`,
-      { clientId, ...data },
-      { timeout: 10000 },
-    );
-    return response.data;
+    try {
+      const { data: result } = await axios.post(
+        `${this.notificationUrl}/webhooks`,
+        { clientId, ...data },
+        { headers: this.headers, timeout: 10000 },
+      );
+      return result;
+    } catch (error) {
+      if (error.response) {
+        throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
+      }
+      throw new InternalServerErrorException('Downstream service unavailable');
+    }
   }
 
   async listWebhooks(
     clientId: number,
     params: { page?: number; limit?: number },
   ) {
-    const response = await axios.get(
-      `${this.notificationUrl}/webhooks`,
-      {
-        params: { clientId, ...params },
-        timeout: 10000,
-      },
-    );
-    return response.data;
+    try {
+      const { data } = await axios.get(
+        `${this.notificationUrl}/webhooks/client/${clientId}`,
+        {
+          headers: this.headers,
+          params,
+          timeout: 10000,
+        },
+      );
+      return data;
+    } catch (error) {
+      if (error.response) {
+        throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
+      }
+      throw new InternalServerErrorException('Downstream service unavailable');
+    }
   }
 
   async updateWebhook(
@@ -55,32 +79,54 @@ export class WebhookService {
       isActive?: boolean;
     },
   ) {
-    const response = await axios.patch(
-      `${this.notificationUrl}/webhooks/${webhookId}`,
-      { clientId, ...data },
-      { timeout: 10000 },
-    );
-    return response.data;
+    try {
+      const { data: result } = await axios.patch(
+        `${this.notificationUrl}/webhooks/${webhookId}`,
+        { clientId, ...data },
+        { headers: this.headers, timeout: 10000 },
+      );
+      return result;
+    } catch (error) {
+      if (error.response) {
+        throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
+      }
+      throw new InternalServerErrorException('Downstream service unavailable');
+    }
   }
 
   async deleteWebhook(clientId: number, webhookId: string) {
-    const response = await axios.delete(
-      `${this.notificationUrl}/webhooks/${webhookId}`,
-      {
-        data: { clientId },
-        timeout: 10000,
-      },
-    );
-    return response.data;
+    try {
+      const { data } = await axios.delete(
+        `${this.notificationUrl}/webhooks/${webhookId}`,
+        {
+          headers: this.headers,
+          data: { clientId },
+          timeout: 10000,
+        },
+      );
+      return data;
+    } catch (error) {
+      if (error.response) {
+        throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
+      }
+      throw new InternalServerErrorException('Downstream service unavailable');
+    }
   }
 
   async testWebhook(clientId: number, webhookId: string) {
-    const response = await axios.post(
-      `${this.notificationUrl}/webhooks/${webhookId}/test`,
-      { clientId },
-      { timeout: 30000 },
-    );
-    return response.data;
+    try {
+      const { data } = await axios.post(
+        `${this.notificationUrl}/webhooks/${webhookId}/test`,
+        { clientId },
+        { headers: this.headers, timeout: 30000 },
+      );
+      return data;
+    } catch (error) {
+      if (error.response) {
+        throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
+      }
+      throw new InternalServerErrorException('Downstream service unavailable');
+    }
   }
 
   async listDeliveries(
@@ -88,22 +134,37 @@ export class WebhookService {
     webhookId: string,
     params: { page?: number; limit?: number; status?: string },
   ) {
-    const response = await axios.get(
-      `${this.notificationUrl}/webhooks/${webhookId}/deliveries`,
-      {
-        params: { clientId, ...params },
-        timeout: 10000,
-      },
-    );
-    return response.data;
+    try {
+      const { data } = await axios.get(
+        `${this.notificationUrl}/webhooks/${webhookId}/deliveries`,
+        {
+          headers: this.headers,
+          params: { clientId, ...params },
+          timeout: 10000,
+        },
+      );
+      return data;
+    } catch (error) {
+      if (error.response) {
+        throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
+      }
+      throw new InternalServerErrorException('Downstream service unavailable');
+    }
   }
 
   async retryDelivery(clientId: number, deliveryId: string) {
-    const response = await axios.post(
-      `${this.notificationUrl}/webhooks/deliveries/${deliveryId}/retry`,
-      { clientId },
-      { timeout: 30000 },
-    );
-    return response.data;
+    try {
+      const { data } = await axios.post(
+        `${this.notificationUrl}/webhooks/deliveries/${deliveryId}/retry`,
+        { clientId },
+        { headers: this.headers, timeout: 30000 },
+      );
+      return data;
+    } catch (error) {
+      if (error.response) {
+        throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
+      }
+      throw new InternalServerErrorException('Downstream service unavailable');
+    }
   }
 }

@@ -3,6 +3,7 @@ import {
   IsString,
   IsOptional,
   MinLength,
+  Length,
   IsArray,
   IsNumber,
   IsBoolean,
@@ -32,6 +33,7 @@ export class Setup2faDto {
 
 export class Verify2faDto {
   @IsString()
+  @Length(6, 6)
   code!: string;
 }
 
@@ -43,11 +45,13 @@ export class Verify2faChallengeDto {
   challengeToken!: string;
 
   @IsString()
+  @Length(6, 6)
   code!: string;
 }
 
 export class Disable2faDto {
   @IsString()
+  @Length(6, 6)
   code!: string;
 
   @IsString()

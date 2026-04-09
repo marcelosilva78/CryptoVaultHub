@@ -6,6 +6,9 @@ pragma solidity 0.8.27;
  * @notice EIP-1167 minimal proxy deployer using CREATE2
  */
 contract CloneFactory {
+    // --- Custom Errors ---
+    error CloneCreationFailed();
+
     /**
      * @notice Deploys a minimal proxy (EIP-1167) clone of `target` using CREATE2
      * @param target The implementation contract address
@@ -22,7 +25,7 @@ contract CloneFactory {
             mstore(add(clone, 0x28), 0x5af43d82803e903d91602b57fd5bf30000000000000000000000000000000000)
             result := create2(0, clone, 0x37, salt)
         }
-        require(result != address(0), "CloneFactory: CREATE2 failed");
+        if (result == address(0)) revert CloneCreationFailed();
     }
 
     /**

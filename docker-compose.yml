@@ -257,14 +257,8 @@ services:
       - MYSQL_PORT=${MYSQL_PORT}
       - MYSQL_USER=${MYSQL_USER}
       - MYSQL_PASSWORD=${MYSQL_PASSWORD}
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
       - INTERNAL_SERVICE_KEY=${INTERNAL_SERVICE_KEY}
       - VAULT_MASTER_PASSWORD=${VAULT_MASTER_PASSWORD}
-    depends_on:
-      redis:
-        condition: service_healthy
     networks:
       - vault-net
     restart: unless-stopped

@@ -1,19 +1,26 @@
+# Builder stage - install and build
 FROM node:20-alpine AS builder
 WORKDIR /app
-COPY package.json package-lock.json turbo.json tsconfig.base.json ./
-COPY packages/ ./packages/
 ARG SERVICE_PATH
-COPY ${SERVICE_PATH}/ ./${SERVICE_PATH}/
-RUN npm ci --workspace=@cvh/types --workspace=@cvh/config --workspace=@cvh/utils
-RUN npx turbo build --filter=${SERVICE_PATH}
+COPY package*.json turbo.json ./
+COPY packages/ packages/
+COPY ${SERVICE_PATH}/ ${SERVICE_PATH}/
+RUN npm ci
+RUN npx turbo build --filter=./${SERVICE_PATH}
 
+# Runner stage
 FROM node:20-alpine AS runner
 WORKDIR /app
-RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nestjs
-COPY --from=builder --chown=nestjs:nodejs /app/ ./
-USER nestjs
-ARG PORT=3000
-ENV PORT=${PORT}
-EXPOSE ${PORT}
 ARG SERVICE_PATH
+ARG PORT=3000
+ENV NODE_ENV=production
+ENV PORT=${PORT}
+RUN addgroup -g 1001 nestjs && adduser -u 1001 -G nestjs -s /bin/sh -D nestjs
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/${SERVICE_PATH}/dist ./${SERVICE_PATH}/dist
+COPY --from=builder /app/${SERVICE_PATH}/package.json ./${SERVICE_PATH}/
+COPY --from=builder /app/packages ./packages
+USER nestjs
+EXPOSE ${PORT}
+WORKDIR /app/${SERVICE_PATH}
 CMD ["node", "dist/main.js"]

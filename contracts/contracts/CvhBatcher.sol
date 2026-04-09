@@ -48,20 +48,25 @@ contract CvhBatcher is Ownable2Step {
         if (recipients.length == 0) revert EmptyBatch();
         if (recipients.length > batchTransferLimit) revert ExceedsBatchLimit();
 
-        uint256 totalSent = 0;
+        // Pre-check total required ETH before any transfers
+        uint256 totalRequired = 0;
+        for (uint256 i = 0; i < recipients.length;) {
+            totalRequired += values[i];
+            unchecked { ++i; }
+        }
+        if (totalRequired > msg.value) revert InsufficientETH();
+
+        // Execute transfers
         for (uint256 i = 0; i < recipients.length;) {
             if (recipients[i] == address(0)) revert ZeroAddressRecipient();
             (bool success, ) = recipients[i].call{value: values[i], gas: transferGasLimit}("");
             if (!success) revert TransferFailed();
-            totalSent += values[i];
             emit BatchTransfer(msg.sender, recipients[i], values[i]);
             unchecked { ++i; }
         }
 
-        if (totalSent > msg.value) revert InsufficientETH();
-
         // Refund excess
-        uint256 excess = msg.value - totalSent;
+        uint256 excess = msg.value - totalRequired;
         if (excess > 0) {
             (bool refundSuccess, ) = msg.sender.call{value: excess}("");
             if (!refundSuccess) revert RefundFailed();

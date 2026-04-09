@@ -37,6 +37,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Will connect to auth-service API
     setUser({ id: 1, email, name: 'Admin', role: 'super_admin' });
     localStorage.setItem('cvh_admin_token', 'mock-jwt-token');
+    document.cookie = 'cvh_admin_token=mock-jwt-token; path=/; max-age=86400';
     return {};
   };
 
@@ -47,6 +48,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = () => {
     setUser(null);
     localStorage.removeItem('cvh_admin_token');
+    document.cookie = 'cvh_admin_token=; path=/; max-age=0';
     window.location.href = '/login';
   };
 

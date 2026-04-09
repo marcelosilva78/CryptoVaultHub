@@ -1,4 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  HttpException,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 
@@ -14,6 +19,10 @@ export class WithdrawalService {
     );
   }
 
+  private get headers() {
+    return { 'X-Internal-Service-Key': process.env.INTERNAL_SERVICE_KEY || '' };
+  }
+
   async createWithdrawal(
     clientId: number,
     data: {
@@ -26,12 +35,19 @@ export class WithdrawalService {
       callbackUrl?: string;
     },
   ) {
-    const response = await axios.post(
-      `${this.coreWalletUrl}/withdrawals`,
-      { clientId, ...data },
-      { timeout: 30000 },
-    );
-    return response.data;
+    try {
+      const { data: result } = await axios.post(
+        `${this.coreWalletUrl}/withdrawals/create`,
+        { clientId, ...data },
+        { headers: this.headers, timeout: 30000 },
+      );
+      return result;
+    } catch (error) {
+      if (error.response) {
+        throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
+      }
+      throw new InternalServerErrorException('Downstream service unavailable');
+    }
   }
 
   async listWithdrawals(
@@ -45,24 +61,40 @@ export class WithdrawalService {
       toDate?: string;
     },
   ) {
-    const response = await axios.get(
-      `${this.coreWalletUrl}/withdrawals`,
-      {
-        params: { clientId, ...params },
-        timeout: 10000,
-      },
-    );
-    return response.data;
+    try {
+      const { data } = await axios.get(
+        `${this.coreWalletUrl}/withdrawals/${clientId}`,
+        {
+          headers: this.headers,
+          params,
+          timeout: 10000,
+        },
+      );
+      return data;
+    } catch (error) {
+      if (error.response) {
+        throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
+      }
+      throw new InternalServerErrorException('Downstream service unavailable');
+    }
   }
 
   async getWithdrawal(clientId: number, withdrawalId: string) {
-    const response = await axios.get(
-      `${this.coreWalletUrl}/withdrawals/${withdrawalId}`,
-      {
-        params: { clientId },
-        timeout: 10000,
-      },
-    );
-    return response.data;
+    try {
+      const { data } = await axios.get(
+        `${this.coreWalletUrl}/withdrawals/${withdrawalId}`,
+        {
+          headers: this.headers,
+          params: { clientId },
+          timeout: 10000,
+        },
+      );
+      return data;
+    } catch (error) {
+      if (error.response) {
+        throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
+      }
+      throw new InternalServerErrorException('Downstream service unavailable');
+    }
   }
 }
