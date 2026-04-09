@@ -1,0 +1,25 @@
+_format_version: "3.0"
+_transform: true
+
+services:
+  - name: admin-api
+    url: http://admin-api:3001
+    routes:
+      - name: admin-routes
+        paths:
+          - /admin
+        strip_path: false
+  - name: client-api
+    url: http://client-api:3002
+    routes:
+      - name: client-routes
+        paths:
+          - /client
+        strip_path: false
+  - name: auth-service
+    url: http://auth-service:3003
+    routes:
+      - name: auth-routes
+        paths:
+          - /auth
+        strip_path: false

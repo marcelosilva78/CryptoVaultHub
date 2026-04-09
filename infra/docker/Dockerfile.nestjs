@@ -1,0 +1,16 @@
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY package.json package-lock.json turbo.json tsconfig.base.json ./
+COPY packages/ ./packages/
+ARG SERVICE_PATH
+COPY ${SERVICE_PATH}/ ./${SERVICE_PATH}/
+RUN npm ci --workspace=@cvh/types --workspace=@cvh/config --workspace=@cvh/utils
+RUN npx turbo build --filter=${SERVICE_PATH}
+
+FROM node:20-alpine AS runner
+WORKDIR /app
+RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nestjs
+COPY --from=builder --chown=nestjs:nodejs /app/ ./
+USER nestjs
+EXPOSE 3000
+CMD ["node", "dist/main.js"]

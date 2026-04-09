@@ -1,0 +1,21 @@
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY package.json package-lock.json turbo.json tsconfig.base.json ./
+COPY packages/ ./packages/
+ARG APP_PATH
+COPY ${APP_PATH}/ ./${APP_PATH}/
+RUN npm ci
+RUN npx turbo build --filter=${APP_PATH}
+
+FROM node:20-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
+ARG APP_PATH
+COPY --from=builder --chown=nextjs:nodejs /app/${APP_PATH}/.next ./.next
+COPY --from=builder --chown=nextjs:nodejs /app/${APP_PATH}/public ./public
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/${APP_PATH}/package.json ./
+USER nextjs
+EXPOSE 3000
+CMD ["npx", "next", "start"]
