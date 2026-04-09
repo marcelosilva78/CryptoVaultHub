@@ -91,7 +91,85 @@ services:
       - monitoring-net
       - internal-net
 
+  # ─── PostHog Stack ─────────────────────────────────────────
+
+  posthog-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: posthog
+      POSTGRES_USER: posthog
+      POSTGRES_PASSWORD: posthog
+    volumes:
+      - posthog-pg-data:/var/lib/postgresql/data
+    networks:
+      - monitoring-net
+
+  posthog-redis:
+    image: redis:7-alpine
+    networks:
+      - monitoring-net
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:23.12
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+    networks:
+      - monitoring-net
+
+  zookeeper:
+    image: bitnami/zookeeper:3.9
+    environment:
+      ALLOW_ANONYMOUS_LOGIN: "yes"
+    networks:
+      - monitoring-net
+
+  kafka:
+    image: bitnami/kafka:3.6
+    environment:
+      KAFKA_CFG_ZOOKEEPER_CONNECT: zookeeper:2181
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+    depends_on:
+      - zookeeper
+    networks:
+      - monitoring-net
+
+  posthog-web:
+    image: posthog/posthog:latest
+    environment:
+      DATABASE_URL: postgres://posthog:posthog@posthog-postgres:5432/posthog
+      REDIS_URL: redis://posthog-redis:6379
+      CLICKHOUSE_HOST: clickhouse
+      KAFKA_HOSTS: kafka:9092
+    ports:
+      - "8010:8000"
+    depends_on:
+      - posthog-postgres
+      - posthog-redis
+      - clickhouse
+      - kafka
+    networks:
+      - monitoring-net
+      - internal-net
+
+  posthog-worker:
+    image: posthog/posthog:latest
+    command: ./bin/docker-worker-celery --with-scheduler
+    environment:
+      DATABASE_URL: postgres://posthog:posthog@posthog-postgres:5432/posthog
+      REDIS_URL: redis://posthog-redis:6379
+      CLICKHOUSE_HOST: clickhouse
+      KAFKA_HOSTS: kafka:9092
+    depends_on:
+      - posthog-postgres
+      - posthog-redis
+      - clickhouse
+      - kafka
+    networks:
+      - monitoring-net
+
 volumes:
   redis-data:
   prometheus-data:
   grafana-data:
+  posthog-pg-data:
+  clickhouse-data:
