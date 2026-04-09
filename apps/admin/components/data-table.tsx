@@ -18,24 +18,28 @@ export function DataTable({
   return (
     <div
       className={cn(
-        "bg-bg-secondary border border-border-subtle rounded-lg overflow-hidden",
+        "bg-surface-card border border-border-default rounded-card shadow-card overflow-hidden",
         className
       )}
     >
       {(title || actions) && (
         <div className="flex items-center justify-between px-5 py-4 border-b border-border-subtle">
-          {title && <div className="text-sm font-semibold">{title}</div>}
+          {title && (
+            <div className="text-sm font-semibold font-display text-text-primary">
+              {title}
+            </div>
+          )}
           {actions && <div className="flex gap-2">{actions}</div>}
         </div>
       )}
       <div className="overflow-x-auto">
         <table className="w-full border-collapse">
-          <thead className="bg-bg-tertiary">
+          <thead className="bg-surface-elevated">
             <tr>
               {headers.map((header) => (
                 <th
                   key={header}
-                  className="text-left px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-text-muted border-b border-border-subtle"
+                  className="text-left px-4 py-2.5 text-micro font-semibold uppercase tracking-[0.08em] text-text-muted border-b border-border-subtle font-display"
                 >
                   {header}
                 </th>
@@ -61,8 +65,9 @@ export function TableCell({
   return (
     <td
       className={cn(
-        "px-4 py-3 text-[13px] border-b border-border-subtle",
+        "px-4 py-3 text-body border-b border-border-subtle text-text-primary",
         mono && "font-mono",
+        !mono && "font-display",
         className
       )}
     >
@@ -83,8 +88,8 @@ export function TableRow({
   return (
     <tr
       className={cn(
-        "transition-colors hover:[&>td]:bg-bg-hover",
-        highlight && "bg-red-dim",
+        "transition-colors duration-fast hover:[&>td]:bg-surface-hover",
+        highlight && "bg-status-error-subtle",
         className
       )}
     >

@@ -10,10 +10,12 @@ import { GenerateAddressModal } from "@/components/generate-address-modal";
 import { useDeposits } from "@cvh/api-client/hooks";
 import { depositKPIs, deposits, walletAddresses } from "@/lib/mock-data";
 
+/** Hexagonal clip-path for chain avatars */
+const hexClip = "polygon(50% 0%, 93% 25%, 93% 75%, 50% 100%, 7% 75%, 7% 25%)";
+
 export default function DepositsPage() {
-  // API hook with mock data fallback
   const { data: apiDeposits } = useDeposits();
-  void apiDeposits; // Falls back to deposits mock data below
+  void apiDeposits;
 
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedAddress, setSelectedAddress] = useState<string | null>(null);
@@ -24,43 +26,44 @@ export default function DepositsPage() {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-[18px]">
+      {/* Page header */}
+      <div className="flex justify-between items-center mb-section-gap">
         <div>
-          <div className="text-[18px] font-bold">Deposits</div>
-          <div className="text-[11px] text-cvh-text-muted mt-0.5">
+          <h1 className="text-heading font-display text-text-primary">Deposits</h1>
+          <p className="text-caption text-text-muted mt-0.5 font-display">
             Generate deposit addresses and track incoming funds
-          </div>
+          </p>
         </div>
         <button
           onClick={() => setModalOpen(true)}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] font-display text-[11px] font-semibold cursor-pointer transition-colors bg-cvh-accent text-white border-none hover:bg-cvh-accent-dim"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-button font-display text-caption font-semibold cursor-pointer transition-colors duration-fast bg-accent-primary text-accent-text border-none hover:bg-accent-hover"
         >
           + Generate Deposit Address
         </button>
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-3 gap-3.5 mb-[22px]">
+      <div className="grid grid-cols-3 gap-stat-grid-gap mb-section-gap">
         <StatCard
           label="Deposits (24h)"
           value={depositKPIs.deposits24h.toString()}
-          valueColor="text-cvh-green"
+          valueColor="text-status-success"
         />
         <StatCard
           label="Volume (24h)"
           value="$123,400"
-          valueColor="text-cvh-green"
+          valueColor="text-status-success"
         />
         <StatCard
           label="Confirming Now"
           value={depositKPIs.confirmingNow.toString()}
-          valueColor="text-cvh-orange"
+          valueColor="text-status-warning"
         />
       </div>
 
       {/* Deposit Addresses with QR */}
-      <div className="bg-cvh-bg-secondary border border-cvh-border-subtle rounded-cvh-lg p-[18px] mb-3.5">
-        <div className="text-[13px] font-semibold mb-3">Deposit Addresses</div>
+      <div className="bg-surface-card border border-border-default rounded-card p-card-p mb-section-gap shadow-card">
+        <div className="text-subheading font-display mb-3">Deposit Addresses</div>
         <div className="grid grid-cols-4 gap-2">
           {walletAddresses.filter((w) => w.deployed).slice(0, 4).map((w) => (
             <button
@@ -70,50 +73,60 @@ export default function DepositsPage() {
                   selectedAddress === w.address ? null : w.address
                 )
               }
-              className={`p-3 rounded-cvh border text-left cursor-pointer transition-all font-display ${
+              className={`p-3 rounded-card border text-left cursor-pointer transition-all duration-fast font-display ${
                 selectedAddress === w.address
-                  ? "bg-[rgba(59,130,246,0.12)] border-cvh-accent"
-                  : "bg-cvh-bg-tertiary border-cvh-border hover:border-cvh-text-muted"
+                  ? "bg-accent-subtle border-accent-primary"
+                  : "bg-surface-input border-border-default hover:border-text-muted"
               }`}
             >
-              <div className="text-[12px] font-semibold truncate">{w.label}</div>
-              <div className="font-mono text-[10px] text-cvh-accent mt-0.5 truncate">
+              <div className="flex items-center gap-2 mb-1">
+                {/* Hexagonal chain avatar */}
+                <div
+                  className="w-5 h-5 bg-accent-primary flex items-center justify-center text-[8px] font-bold text-accent-text shrink-0"
+                  style={{ clipPath: hexClip }}
+                >
+                  {w.chain.slice(0, 2)}
+                </div>
+                <div className="text-body font-semibold truncate">{w.label}</div>
+              </div>
+              <div className="font-mono text-micro text-accent-primary mt-0.5 truncate">
                 {w.address}
               </div>
-              <div className="text-[10px] text-cvh-text-muted mt-1">
+              <div className="text-micro text-text-muted mt-1 font-display">
                 {w.chain} - {w.tokens.join(", ")}
               </div>
             </button>
           ))}
         </div>
 
+        {/* Selected address detail with QR */}
         {selectedWallet && (
-          <div className="mt-3 p-3 bg-cvh-bg-tertiary rounded-[6px] flex items-center gap-4 animate-fade-up">
+          <div className="mt-3 p-4 bg-surface-elevated rounded-card flex items-center gap-4 animate-fade-in border border-border-subtle">
             <QrCode value={selectedWallet.addressFull} size={120} />
             <div className="flex-1">
-              <div className="text-[13px] font-bold mb-1">{selectedWallet.label}</div>
-              <div className="font-mono text-[11px] text-cvh-accent mb-2 break-all">
+              <div className="text-subheading font-display mb-1">{selectedWallet.label}</div>
+              <div className="font-mono text-code text-accent-primary mb-2 break-all">
                 {selectedWallet.addressFull}
               </div>
-              <div className="grid grid-cols-3 gap-2 text-[11px]">
+              <div className="grid grid-cols-3 gap-2 text-caption font-display">
                 <div>
-                  <span className="text-cvh-text-muted">Chain:</span>{" "}
-                  {selectedWallet.chain}
+                  <span className="text-text-muted">Chain:</span>{" "}
+                  <span className="text-text-primary">{selectedWallet.chain}</span>
                 </div>
                 <div>
-                  <span className="text-cvh-text-muted">Tokens:</span>{" "}
-                  {selectedWallet.tokens.join(", ")}
+                  <span className="text-text-muted">Tokens:</span>{" "}
+                  <span className="text-text-primary">{selectedWallet.tokens.join(", ")}</span>
                 </div>
                 <div>
-                  <span className="text-cvh-text-muted">Deposits:</span>{" "}
-                  {selectedWallet.depositCount}
+                  <span className="text-text-muted">Deposits:</span>{" "}
+                  <span className="text-text-primary">{selectedWallet.depositCount}</span>
                 </div>
               </div>
               <button
                 onClick={() => {
                   navigator.clipboard.writeText(selectedWallet.addressFull);
                 }}
-                className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-[6px] font-display text-[10px] font-semibold cursor-pointer transition-colors bg-transparent text-cvh-text-secondary border border-cvh-border hover:border-cvh-text-secondary hover:text-cvh-text-primary"
+                className="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1 rounded-button font-display text-micro font-semibold cursor-pointer transition-colors duration-fast bg-transparent text-text-secondary border border-border-default hover:border-accent-primary hover:text-text-primary"
               >
                 Copy Address
               </button>
@@ -127,18 +140,18 @@ export default function DepositsPage() {
         title="Deposit History"
         actions={
           <>
-            <select className="bg-cvh-bg-tertiary border border-cvh-border rounded-[6px] px-2 py-1 text-[11px] text-cvh-text-primary font-display outline-none focus:border-cvh-accent cursor-pointer">
+            <select className="bg-surface-input border border-border-default rounded-input px-2 py-1 text-caption text-text-primary font-display outline-none focus:border-border-focus cursor-pointer transition-colors duration-fast">
               <option>All Chains</option>
               <option>BSC</option>
               <option>ETH</option>
               <option>Polygon</option>
             </select>
-            <select className="bg-cvh-bg-tertiary border border-cvh-border rounded-[6px] px-2 py-1 text-[11px] text-cvh-text-primary font-display outline-none focus:border-cvh-accent cursor-pointer">
+            <select className="bg-surface-input border border-border-default rounded-input px-2 py-1 text-caption text-text-primary font-display outline-none focus:border-border-focus cursor-pointer transition-colors duration-fast">
               <option>All Status</option>
               <option>Confirming</option>
               <option>Confirmed</option>
             </select>
-            <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] font-display text-[11px] font-semibold cursor-pointer transition-colors bg-transparent text-cvh-text-secondary border border-cvh-border hover:border-cvh-text-secondary hover:text-cvh-text-primary">
+            <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-button font-display text-caption font-semibold cursor-pointer transition-colors duration-fast bg-transparent text-text-secondary border border-border-default hover:border-accent-primary hover:text-text-primary">
               Export CSV
             </button>
           </>
@@ -156,40 +169,40 @@ export default function DepositsPage() {
         ]}
       >
         {deposits.map((d, i) => (
-          <tr key={i} className="hover:bg-cvh-bg-hover">
-            <td className="px-[14px] py-2.5 border-b border-cvh-border-subtle font-mono text-[11px] whitespace-nowrap">
+          <tr key={i} className="hover:bg-surface-hover transition-colors duration-fast">
+            <td className="px-[14px] py-2.5 border-b border-border-subtle font-mono text-code whitespace-nowrap">
               {d.date}
             </td>
-            <td className="px-[14px] py-2.5 border-b border-cvh-border-subtle font-mono text-[11px] text-cvh-accent cursor-pointer hover:underline">
+            <td className="px-[14px] py-2.5 border-b border-border-subtle font-mono text-code text-accent-primary cursor-pointer hover:underline">
               {d.address}
             </td>
-            <td className="px-[14px] py-2.5 border-b border-cvh-border-subtle text-[11px] font-mono">
+            <td className="px-[14px] py-2.5 border-b border-border-subtle text-caption font-mono">
               {d.externalId}
             </td>
-            <td className="px-[14px] py-2.5 border-b border-cvh-border-subtle text-[12.5px] font-semibold">
+            <td className="px-[14px] py-2.5 border-b border-border-subtle text-body font-semibold font-display">
               {d.token}
             </td>
-            <td className="px-[14px] py-2.5 border-b border-cvh-border-subtle text-[11px]">
+            <td className="px-[14px] py-2.5 border-b border-border-subtle text-caption font-display">
               {d.chain}
             </td>
-            <td className="px-[14px] py-2.5 border-b border-cvh-border-subtle font-mono text-cvh-green">
+            <td className="px-[14px] py-2.5 border-b border-border-subtle font-mono text-status-success">
               {d.amount}
             </td>
-            <td className="px-[14px] py-2.5 border-b border-cvh-border-subtle">
+            <td className="px-[14px] py-2.5 border-b border-border-subtle">
               <ConfirmationBar
                 confirmations={d.confirmations}
                 required={d.confirmationsRequired}
               />
             </td>
-            <td className="px-[14px] py-2.5 border-b border-cvh-border-subtle">
+            <td className="px-[14px] py-2.5 border-b border-border-subtle">
               <Badge
-                variant={d.status === "Confirmed" ? "green" : "orange"}
+                variant={d.status === "Confirmed" ? "success" : "warning"}
               >
                 {d.status}
               </Badge>
             </td>
-            <td className="px-[14px] py-2.5 border-b border-cvh-border-subtle">
-              <span className="font-mono text-[10px] text-cvh-accent cursor-pointer hover:underline">
+            <td className="px-[14px] py-2.5 border-b border-border-subtle">
+              <span className="font-mono text-micro text-accent-primary cursor-pointer hover:underline">
                 {d.txHash.length > 16 ? `${d.txHash.slice(0, 10)}...${d.txHash.slice(-6)}` : d.txHash}
               </span>
             </td>

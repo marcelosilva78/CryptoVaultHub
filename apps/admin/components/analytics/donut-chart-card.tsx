@@ -6,18 +6,29 @@ import {
   Pie,
   Cell,
   Tooltip,
+  Label,
 } from "recharts";
+
+/** Gold-tone palette for donut segments — monochromatic, never rainbow */
+const GOLD_PALETTE = [
+  "var(--chart-primary)",
+  "var(--chart-secondary)",
+  "var(--chart-tertiary)",
+  "var(--chart-faded)",
+];
 
 interface DonutChartCardProps {
   title: string;
-  data: { name: string; value: number; color: string }[];
+  data: { name: string; value: number; color?: string }[];
   height?: number;
 }
 
 export function DonutChartCard({ title, data, height = 280 }: DonutChartCardProps) {
+  const total = data.reduce((sum, d) => sum + d.value, 0);
+
   return (
-    <div className="bg-bg-secondary border border-border-subtle rounded-lg p-5">
-      <h3 className="mb-4 text-[13px] font-semibold text-text-primary">{title}</h3>
+    <div className="rounded-card border border-border-default bg-surface-card p-card-p shadow-card">
+      <h3 className="mb-4 font-display text-subheading text-text-primary">{title}</h3>
       <div className="flex items-center gap-4">
         <div className="flex-1">
           <ResponsiveContainer width="100%" height={height}>
@@ -32,31 +43,47 @@ export function DonutChartCard({ title, data, height = 280 }: DonutChartCardProp
                 dataKey="value"
                 stroke="none"
               >
-                {data.map((entry, idx) => (
-                  <Cell key={idx} fill={entry.color} />
+                {data.map((_entry, idx) => (
+                  <Cell
+                    key={idx}
+                    fill={GOLD_PALETTE[idx % GOLD_PALETTE.length]}
+                  />
                 ))}
+                {/* Center total value — text-primary, Outfit 700 */}
+                <Label
+                  value={total}
+                  position="center"
+                  style={{
+                    fontSize: "22px",
+                    fontWeight: 700,
+                    fontFamily: "Outfit, sans-serif",
+                    fill: "var(--text-primary)",
+                  }}
+                />
               </Pie>
               <Tooltip
                 contentStyle={{
-                  backgroundColor: "var(--bg-elevated)",
-                  border: "1px solid var(--border)",
-                  borderRadius: "var(--radius)",
+                  backgroundColor: "var(--surface-elevated)",
+                  border: "1px solid var(--border-default)",
+                  borderRadius: "8px",
                   fontSize: 12,
+                  fontFamily: "Outfit, sans-serif",
                   color: "var(--text-primary)",
                 }}
               />
             </PieChart>
           </ResponsiveContainer>
         </div>
+        {/* Legend: text-secondary, small color squares */}
         <div className="flex flex-col gap-2 min-w-[120px]">
-          {data.map((d) => (
-            <div key={d.name} className="flex items-center gap-2 text-xs">
+          {data.map((d, idx) => (
+            <div key={d.name} className="flex items-center gap-2 font-display text-xs">
               <span
-                className="h-2.5 w-2.5 rounded-full flex-shrink-0"
-                style={{ backgroundColor: d.color }}
+                className="h-2.5 w-2.5 flex-shrink-0 rounded-[2px]"
+                style={{ backgroundColor: GOLD_PALETTE[idx % GOLD_PALETTE.length] }}
               />
-              <span className="text-text-muted">{d.name}</span>
-              <span className="ml-auto text-text-primary font-medium">{d.value}%</span>
+              <span className="text-text-secondary">{d.name}</span>
+              <span className="ml-auto font-medium text-text-primary">{d.value}%</span>
             </div>
           ))}
         </div>

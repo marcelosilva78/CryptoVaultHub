@@ -11,20 +11,23 @@ interface StatCardProps {
 
 export function StatCard({ label, value, sub, valueColor }: StatCardProps) {
   return (
-    <div className="bg-cvh-bg-secondary border border-cvh-border-subtle rounded-cvh-lg p-[18px] relative overflow-hidden transition-colors hover:border-cvh-border">
-      <div className="text-[10px] font-semibold uppercase tracking-[0.07em] text-cvh-text-muted mb-1.5">
+    <div className="group bg-surface-card border border-border-default rounded-card p-card-p relative overflow-hidden transition-all duration-fast hover:border-border-focus shadow-card">
+      {/* Hover accent line */}
+      <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-accent-primary to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-fast" />
+
+      <div className="text-micro font-semibold uppercase tracking-[0.07em] text-text-muted mb-2 font-display">
         {label}
       </div>
       <div
         className={cn(
-          "text-[26px] font-bold tracking-[-0.03em] leading-none",
-          valueColor || "text-cvh-text-primary"
+          "text-stat tracking-[-0.03em] leading-none font-display",
+          valueColor || "text-text-primary"
         )}
       >
         {value}
       </div>
       {sub && (
-        <div className="text-[11px] text-cvh-text-muted mt-1.5">{sub}</div>
+        <div className="text-caption text-text-muted mt-1.5 font-display">{sub}</div>
       )}
     </div>
   );

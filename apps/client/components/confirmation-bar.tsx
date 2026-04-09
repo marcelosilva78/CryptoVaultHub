@@ -7,7 +7,6 @@ interface ConfirmationBarProps {
 
 export function ConfirmationBar({ confirmations, required }: ConfirmationBarProps) {
   const isComplete = confirmations >= required;
-  // For display, we show up to 12 blocks max, or the required number if <= 15
   const displayBlocks = Math.min(required, 15);
   const filledBlocks = Math.min(confirmations, displayBlocks);
   const hasPartial = !isComplete && confirmations < required;
@@ -16,11 +15,11 @@ export function ConfirmationBar({ confirmations, required }: ConfirmationBarProp
     <div className="flex items-center gap-1.5">
       <div className="flex gap-[2px] w-20">
         {Array.from({ length: displayBlocks }).map((_, i) => {
-          let bgColor = "bg-cvh-bg-elevated";
+          let bgColor = "bg-surface-elevated";
           if (i < filledBlocks) {
-            bgColor = "bg-cvh-green";
+            bgColor = "bg-status-success";
           } else if (i === filledBlocks && hasPartial) {
-            bgColor = "bg-cvh-orange";
+            bgColor = "bg-status-warning";
           }
           return (
             <div
@@ -31,8 +30,8 @@ export function ConfirmationBar({ confirmations, required }: ConfirmationBarProp
         })}
       </div>
       <span
-        className={`font-mono text-[10px] ${
-          isComplete ? "text-cvh-green" : "text-cvh-orange"
+        className={`font-mono text-micro ${
+          isComplete ? "text-status-success" : "text-status-warning"
         }`}
       >
         {confirmations}/{required}

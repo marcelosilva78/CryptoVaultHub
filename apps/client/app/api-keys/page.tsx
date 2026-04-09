@@ -7,52 +7,106 @@ import { apiKeys } from "@/lib/mock-data";
 
 export default function ApiKeysPage() {
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [createdKey, setCreatedKey] = useState<string | null>(null);
+  const [copiedKey, setCopiedKey] = useState(false);
+
+  const handleGenerateKey = () => {
+    // Simulated key generation
+    setCreatedKey("cvh_sk_live_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0");
+    setShowCreateForm(false);
+  };
+
+  const handleCopyKey = async () => {
+    if (createdKey) {
+      await navigator.clipboard.writeText(createdKey);
+      setCopiedKey(true);
+      setTimeout(() => setCopiedKey(false), 2000);
+    }
+  };
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-[18px]">
+      {/* Page header */}
+      <div className="flex justify-between items-center mb-section-gap">
         <div>
-          <div className="text-[18px] font-bold">API Keys</div>
-          <div className="text-[11px] text-cvh-text-muted mt-0.5">
+          <h1 className="text-heading font-display text-text-primary">API Keys</h1>
+          <p className="text-caption text-text-muted mt-0.5 font-display">
             Manage API keys for programmatic access to CryptoVaultHub
-          </div>
+          </p>
         </div>
         <button
-          onClick={() => setShowCreateForm(!showCreateForm)}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] font-display text-[11px] font-semibold cursor-pointer transition-colors bg-cvh-accent text-white border-none hover:bg-cvh-accent-dim"
+          onClick={() => { setShowCreateForm(!showCreateForm); setCreatedKey(null); }}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-button font-display text-caption font-semibold cursor-pointer transition-colors duration-fast bg-accent-primary text-accent-text border-none hover:bg-accent-hover"
         >
           + Create Key
         </button>
       </div>
 
+      {/* Created Key Modal - Show full key ONCE */}
+      {createdKey && (
+        <div className="bg-surface-card border-2 border-accent-primary rounded-card p-card-p mb-section-gap shadow-glow animate-fade-in">
+          <div className="flex items-center gap-2 mb-3">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--status-warning)" strokeWidth="2">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+              <line x1="12" y1="9" x2="12" y2="13" />
+              <line x1="12" y1="17" x2="12.01" y2="17" />
+            </svg>
+            <span className="text-subheading font-display text-status-warning">Save this key now - it will not be shown again</span>
+          </div>
+          <div className="bg-surface-page border border-border-subtle rounded-input p-3 mb-3">
+            <div className="font-mono text-code text-accent-primary break-all select-all">
+              {createdKey}
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={handleCopyKey}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-button font-display text-caption font-semibold cursor-pointer transition-colors duration-fast border ${
+                copiedKey
+                  ? "bg-status-success-subtle text-status-success border-status-success"
+                  : "bg-accent-primary text-accent-text border-accent-primary hover:bg-accent-hover"
+              }`}
+            >
+              {copiedKey ? "Copied!" : "Copy Key"}
+            </button>
+            <button
+              onClick={() => setCreatedKey(null)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-button font-display text-caption font-semibold cursor-pointer transition-colors duration-fast bg-transparent text-text-secondary border border-border-default hover:border-accent-primary hover:text-text-primary"
+            >
+              I saved it
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Create Key Form */}
       {showCreateForm && (
-        <div className="bg-cvh-bg-secondary border border-cvh-border-subtle rounded-cvh-lg p-[18px] mb-3.5 animate-fade-up">
-          <div className="text-[13px] font-bold mb-3">Create New API Key</div>
-          <div className="grid grid-cols-2 gap-3.5 mb-3.5">
+        <div className="bg-surface-card border border-border-default rounded-card p-card-p mb-section-gap animate-fade-in shadow-card">
+          <div className="text-subheading font-display mb-3">Create New API Key</div>
+          <div className="grid grid-cols-2 gap-stat-grid-gap mb-3.5">
             <div>
-              <label className="block text-[11px] font-semibold text-cvh-text-secondary mb-1 uppercase tracking-[0.06em]">
+              <label className="block text-micro font-semibold text-text-muted mb-1 uppercase tracking-[0.06em] font-display">
                 Label
               </label>
               <input
                 type="text"
                 placeholder="e.g. Production, Staging"
-                className="w-full bg-cvh-bg-tertiary border border-cvh-border rounded-[6px] px-3 py-2 text-cvh-text-primary font-display text-[13px] outline-none focus:border-cvh-accent"
+                className="w-full bg-surface-input border border-border-default rounded-input px-3 py-2 text-text-primary font-display text-body outline-none focus:border-border-focus transition-colors duration-fast"
               />
             </div>
             <div>
-              <label className="block text-[11px] font-semibold text-cvh-text-secondary mb-1 uppercase tracking-[0.06em]">
+              <label className="block text-micro font-semibold text-text-muted mb-1 uppercase tracking-[0.06em] font-display">
                 IP Allowlist (CIDR)
               </label>
               <input
                 type="text"
                 placeholder="e.g. 203.0.113.0/24 or leave blank for any"
-                className="w-full bg-cvh-bg-tertiary border border-cvh-border rounded-[6px] px-3 py-2 text-cvh-text-primary font-mono text-[13px] outline-none focus:border-cvh-accent"
+                className="w-full bg-surface-input border border-border-default rounded-input px-3 py-2 text-text-primary font-mono text-body outline-none focus:border-border-focus transition-colors duration-fast"
               />
             </div>
           </div>
           <div className="mb-3.5">
-            <label className="block text-[11px] font-semibold text-cvh-text-secondary mb-1.5 uppercase tracking-[0.06em]">
+            <label className="block text-micro font-semibold text-text-muted mb-1.5 uppercase tracking-[0.06em] font-display">
               Scopes
             </label>
             <div className="flex gap-2">
@@ -63,12 +117,16 @@ export default function ApiKeysPage() {
               ].map((scope) => (
                 <label
                   key={scope.name}
-                  className="flex items-center gap-1.5 text-[11px] px-3 py-2 rounded-[6px] cursor-pointer transition-colors bg-cvh-bg-tertiary border border-cvh-border hover:border-cvh-text-muted"
+                  className="flex items-center gap-1.5 text-caption px-3 py-2 rounded-input cursor-pointer transition-colors duration-fast bg-surface-input border border-border-default hover:border-accent-primary font-display"
                 >
-                  <input type="checkbox" className="accent-cvh-accent" defaultChecked={scope.name !== "withdraw"} />
+                  <input
+                    type="checkbox"
+                    style={{ accentColor: "var(--accent-primary)" }}
+                    defaultChecked={scope.name !== "withdraw"}
+                  />
                   <div>
                     <span className="font-semibold capitalize">{scope.name}</span>
-                    <span className="text-cvh-text-muted ml-1 text-[10px]">
+                    <span className="text-text-muted ml-1 text-micro">
                       -- {scope.desc}
                     </span>
                   </div>
@@ -79,11 +137,14 @@ export default function ApiKeysPage() {
           <div className="flex gap-2">
             <button
               onClick={() => setShowCreateForm(false)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] font-display text-[11px] font-semibold cursor-pointer transition-colors bg-transparent text-cvh-text-secondary border border-cvh-border hover:border-cvh-text-secondary hover:text-cvh-text-primary"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-button font-display text-caption font-semibold cursor-pointer transition-colors duration-fast bg-transparent text-text-secondary border border-border-default hover:border-accent-primary hover:text-text-primary"
             >
               Cancel
             </button>
-            <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] font-display text-[11px] font-semibold cursor-pointer transition-colors bg-cvh-accent text-white border-none hover:bg-cvh-accent-dim">
+            <button
+              onClick={handleGenerateKey}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-button font-display text-caption font-semibold cursor-pointer transition-colors duration-fast bg-accent-primary text-accent-text border-none hover:bg-accent-hover"
+            >
               Generate Key
             </button>
           </div>
@@ -103,19 +164,20 @@ export default function ApiKeysPage() {
         ]}
       >
         {apiKeys.map((k) => (
-          <tr key={k.key} className="hover:bg-cvh-bg-hover">
-            <td className="px-[14px] py-2.5 border-b border-cvh-border-subtle font-mono text-[11px]">
+          <tr key={k.key} className="hover:bg-surface-hover transition-colors duration-fast">
+            {/* Masked key in font-mono */}
+            <td className="px-[14px] py-2.5 border-b border-border-subtle font-mono text-code">
               {k.key}
             </td>
-            <td className="px-[14px] py-2.5 border-b border-cvh-border-subtle text-[12.5px] font-semibold">
+            <td className="px-[14px] py-2.5 border-b border-border-subtle text-body font-semibold font-display">
               {k.label}
             </td>
-            <td className="px-[14px] py-2.5 border-b border-cvh-border-subtle">
+            <td className="px-[14px] py-2.5 border-b border-border-subtle">
               <div className="flex gap-1">
                 {k.scopes.map((s) => (
                   <Badge
                     key={s.name}
-                    variant={s.color}
+                    variant="accent"
                     className="text-[9px]"
                   >
                     {s.name}
@@ -124,24 +186,24 @@ export default function ApiKeysPage() {
               </div>
             </td>
             <td
-              className={`px-[14px] py-2.5 border-b border-cvh-border-subtle font-mono text-[10px] ${
-                k.ipAllowlist === "Any" ? "text-cvh-text-muted" : ""
+              className={`px-[14px] py-2.5 border-b border-border-subtle font-mono text-micro ${
+                k.ipAllowlist === "Any" ? "text-text-muted" : "text-text-primary"
               }`}
             >
               {k.ipAllowlist}
             </td>
-            <td className="px-[14px] py-2.5 border-b border-cvh-border-subtle font-mono text-[11px]">
+            <td className="px-[14px] py-2.5 border-b border-border-subtle font-mono text-code">
               {k.lastUsed}
             </td>
-            <td className="px-[14px] py-2.5 border-b border-cvh-border-subtle font-mono">
+            <td className="px-[14px] py-2.5 border-b border-border-subtle font-mono text-code">
               {k.requests24h}
             </td>
-            <td className="px-[14px] py-2.5 border-b border-cvh-border-subtle">
+            <td className="px-[14px] py-2.5 border-b border-border-subtle">
               <div className="flex gap-1.5">
-                <button className="inline-flex items-center px-2 py-[3px] rounded-[6px] font-display text-[10px] font-semibold cursor-pointer transition-colors bg-transparent text-cvh-text-secondary border border-cvh-border hover:border-cvh-text-secondary hover:text-cvh-text-primary">
+                <button className="inline-flex items-center px-2 py-[3px] rounded-button font-display text-micro font-semibold cursor-pointer transition-colors duration-fast bg-transparent text-text-secondary border border-border-default hover:border-accent-primary hover:text-text-primary">
                   Edit
                 </button>
-                <button className="inline-flex items-center px-2 py-[3px] rounded-[6px] font-display text-[10px] font-semibold cursor-pointer transition-colors bg-[rgba(239,68,68,0.1)] text-cvh-red border border-[rgba(239,68,68,0.2)]">
+                <button className="inline-flex items-center px-2 py-[3px] rounded-button font-display text-micro font-semibold cursor-pointer transition-colors duration-fast bg-status-error-subtle text-status-error border border-status-error-subtle hover:border-status-error">
                   Revoke
                 </button>
               </div>
@@ -151,8 +213,8 @@ export default function ApiKeysPage() {
       </DataTable>
 
       {/* Security Note */}
-      <div className="mt-3.5 p-3 bg-cvh-bg-tertiary rounded-[6px] text-[11px] text-cvh-text-muted">
-        <span className="font-semibold text-cvh-orange">Security Note:</span>{" "}
+      <div className="mt-section-gap p-3 bg-surface-elevated rounded-input text-caption text-text-muted font-display border border-border-subtle">
+        <span className="font-semibold text-status-warning">Security Note:</span>{" "}
         API keys provide full programmatic access to your CryptoVaultHub account.
         Always restrict IP allowlists in production, use the minimum required scopes,
         and rotate keys periodically. Keys with the &quot;withdraw&quot; scope require 2FA confirmation before creation.

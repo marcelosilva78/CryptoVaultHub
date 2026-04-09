@@ -1,11 +1,13 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { X, ChevronDown, ChevronRight, Copy, Check } from "lucide-react";
+import { X, ChevronDown, Copy, Check } from "lucide-react";
 import { JsonViewer } from "@/components/json-viewer";
 import { Badge } from "@/components/badge";
 import { cn } from "@/lib/utils";
+import { shortenAddress } from "@/lib/utils";
 
+// ─── Types ─────────────────────────────────────────────────
 export interface TransactionDetail {
   txHash: string;
   blockNumber: number;
@@ -60,6 +62,21 @@ interface TransactionModalProps {
   onClose: () => void;
 }
 
+// ─── Status badge variant ──────────────────────────────────
+const statusColors: Record<string, "success" | "warning" | "error"> = {
+  confirmed: "success",
+  pending: "warning",
+  failed: "error",
+};
+
+const typeLabels: Record<string, string> = {
+  deposit: "Deposit",
+  withdrawal: "Withdrawal",
+  sweep: "Sweep",
+  internal: "Internal",
+};
+
+// ─── Collapsible Section (forensic dossi style) ───────────
 function CollapsibleSection({
   title,
   defaultOpen = false,
@@ -77,27 +94,35 @@ function CollapsibleSection({
     <div className="border-b border-border-subtle last:border-b-0">
       <button
         onClick={() => setOpen(!open)}
-        className="w-full flex items-center gap-2 px-5 py-3 text-left hover:bg-bg-hover transition-colors"
+        className="w-full flex items-center gap-3 px-5 py-3 text-left hover:bg-surface-hover transition-colors duration-fast group"
       >
-        {open ? (
-          <ChevronDown className="w-3.5 h-3.5 text-text-muted flex-shrink-0" />
-        ) : (
-          <ChevronRight className="w-3.5 h-3.5 text-text-muted flex-shrink-0" />
-        )}
-        <span className="text-xs font-semibold uppercase tracking-[0.06em] text-text-secondary">
+        <ChevronDown
+          className={cn(
+            "w-3.5 h-3.5 text-text-muted flex-shrink-0 transition-transform duration-normal",
+            !open && "-rotate-90"
+          )}
+        />
+        <span className="font-display text-caption font-semibold uppercase tracking-[0.08em] text-text-secondary">
           {title}
         </span>
+        {/* Horizontal line extending to right edge (official form style) */}
+        <div className="flex-1 h-px bg-border-subtle" />
         {badge && (
-          <Badge variant="neutral" className="ml-auto text-[10px]">
+          <Badge variant="neutral" className="text-[10px] flex-shrink-0">
             {badge}
           </Badge>
         )}
       </button>
-      {open && <div className="px-5 pb-4">{children}</div>}
+      {open && (
+        <div className="px-5 pb-4 animate-fade-in">
+          {children}
+        </div>
+      )}
     </div>
   );
 }
 
+// ─── Copyable 2-column field ───────────────────────────────
 function CopyableField({ label, value, mono = true }: { label: string; value: string; mono?: boolean }) {
   const [copied, setCopied] = useState(false);
 
@@ -109,12 +134,12 @@ function CopyableField({ label, value, mono = true }: { label: string; value: st
 
   return (
     <div className="flex items-start justify-between gap-4 py-1.5">
-      <span className="text-[11px] text-text-muted whitespace-nowrap min-w-[140px]">{label}</span>
+      <span className="text-caption font-display text-text-muted whitespace-nowrap min-w-[140px]">{label}</span>
       <div className="flex items-center gap-1.5 min-w-0">
         <span
           className={cn(
-            "text-[11px] text-text-primary truncate",
-            mono && "font-mono"
+            "text-caption text-text-primary truncate",
+            mono ? "font-mono" : "font-display"
           )}
           title={value}
         >
@@ -122,11 +147,11 @@ function CopyableField({ label, value, mono = true }: { label: string; value: st
         </span>
         <button
           onClick={handleCopy}
-          className="flex-shrink-0 text-text-muted hover:text-text-primary transition-colors"
+          className="flex-shrink-0 text-text-muted hover:text-text-primary transition-colors duration-fast"
           title="Copy"
         >
           {copied ? (
-            <Check className="w-3 h-3 text-green" />
+            <Check className="w-3 h-3 text-status-success" />
           ) : (
             <Copy className="w-3 h-3" />
           )}
@@ -136,22 +161,11 @@ function CopyableField({ label, value, mono = true }: { label: string; value: st
   );
 }
 
-const statusColors: Record<string, "green" | "orange" | "red"> = {
-  confirmed: "green",
-  pending: "orange",
-  failed: "red",
-};
-
-const typeLabels: Record<string, string> = {
-  deposit: "Deposit",
-  withdrawal: "Withdrawal",
-  sweep: "Sweep",
-  internal: "Internal",
-};
-
+// ─── Modal Component ───────────────────────────────────────
 export function TransactionModal({ transaction, onClose }: TransactionModalProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
 
+  // ESC key handler
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -160,6 +174,7 @@ export function TransactionModal({ transaction, onClose }: TransactionModalProps
     return () => document.removeEventListener("keydown", handleEsc);
   }, [onClose]);
 
+  // Lock body scroll
   useEffect(() => {
     if (transaction) {
       document.body.style.overflow = "hidden";
@@ -181,33 +196,52 @@ export function TransactionModal({ transaction, onClose }: TransactionModalProps
         if (e.target === overlayRef.current) onClose();
       }}
     >
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+      {/* Backdrop: blur 4px per identity spec */}
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-[4px]" />
 
-      {/* Modal */}
-      <div className="relative w-full max-w-[760px] max-h-[90vh] bg-bg-secondary border border-border-subtle rounded-lg overflow-hidden flex flex-col animate-fade-in">
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border-subtle flex-shrink-0">
-          <div className="flex items-center gap-3">
-            <h3 className="text-sm font-semibold">Transaction Details</h3>
+      {/* Modal: fade-in from bottom (12px translateY) */}
+      <div
+        className="relative w-full max-w-[760px] max-h-[90vh] bg-surface-card border border-border-default rounded-modal overflow-hidden flex flex-col shadow-float animate-fade-in"
+      >
+        {/* ─── Fixed Header ──────────────────────── */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border-subtle flex-shrink-0 bg-surface-card">
+          <div className="flex items-center gap-3 min-w-0">
+            {/* Tx hash in mono (truncated + copy) */}
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="font-mono text-code text-text-primary truncate" title={tx.txHash}>
+                {shortenAddress(tx.txHash, 10)}
+              </span>
+              <CopyableInline text={tx.txHash} />
+            </div>
+
+            {/* Status badge */}
             <Badge variant={statusColors[tx.status] || "neutral"} dot>
               {tx.status.charAt(0).toUpperCase() + tx.status.slice(1)}
             </Badge>
+
+            {/* Type badge */}
             <Badge variant="neutral">
               {typeLabels[tx.type] || tx.type}
             </Badge>
           </div>
-          <button
-            onClick={onClose}
-            className="text-text-muted hover:text-text-primary transition-colors p-1"
-          >
-            <X className="w-4.5 h-4.5" />
-          </button>
+
+          <div className="flex items-center gap-3 flex-shrink-0">
+            {/* Full timestamp */}
+            <span className="text-[10px] font-display text-text-muted">
+              {tx.timestampUtc}
+            </span>
+            <button
+              onClick={onClose}
+              className="text-text-muted hover:text-text-primary transition-colors duration-fast p-1"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
-        {/* Scrollable Content */}
+        {/* ─── Scrollable Content ────────────────── */}
         <div className="overflow-y-auto flex-1">
-          {/* Core Info */}
+          {/* Transaction Info */}
           <CollapsibleSection title="Transaction Info" defaultOpen>
             <div className="space-y-0">
               <CopyableField label="Transaction Hash" value={tx.txHash} />
@@ -218,12 +252,12 @@ export function TransactionModal({ transaction, onClose }: TransactionModalProps
               <CopyableField label="Chain" value={`${tx.chain} (Chain ID: ${tx.chainId})`} mono={false} />
               <CopyableField label="Type" value={typeLabels[tx.type] || tx.type} mono={false} />
               <div className="flex items-start justify-between gap-4 py-1.5">
-                <span className="text-[11px] text-text-muted whitespace-nowrap min-w-[140px]">Status</span>
+                <span className="text-caption font-display text-text-muted whitespace-nowrap min-w-[140px]">Status</span>
                 <div className="flex items-center gap-2">
                   <Badge variant={statusColors[tx.status] || "neutral"} dot>
                     {tx.status.charAt(0).toUpperCase() + tx.status.slice(1)}
                   </Badge>
-                  <span className="text-[11px] text-text-muted font-mono">
+                  <span className="text-caption text-text-muted font-mono">
                     {tx.confirmations}/{tx.requiredConfirmations} confirmations
                   </span>
                 </div>
@@ -231,7 +265,7 @@ export function TransactionModal({ transaction, onClose }: TransactionModalProps
             </div>
           </CollapsibleSection>
 
-          {/* Addresses and Value */}
+          {/* Addresses & Value */}
           <CollapsibleSection title="Addresses & Value" defaultOpen>
             <div className="space-y-0">
               <CopyableField label="From" value={tx.from} />
@@ -246,7 +280,7 @@ export function TransactionModal({ transaction, onClose }: TransactionModalProps
             </div>
           </CollapsibleSection>
 
-          {/* Gas */}
+          {/* Gas Details */}
           <CollapsibleSection title="Gas Details">
             <div className="space-y-0">
               <CopyableField label="Gas Used" value={tx.gasUsed} />
@@ -259,18 +293,18 @@ export function TransactionModal({ transaction, onClose }: TransactionModalProps
           {/* Input Data */}
           <CollapsibleSection title="Input Data" badge={tx.inputData === "0x" ? "Empty" : "Has Data"}>
             {tx.inputData === "0x" ? (
-              <div className="text-[11px] text-text-muted italic">No input data (simple transfer)</div>
+              <div className="text-caption font-display text-text-muted italic">No input data (simple transfer)</div>
             ) : (
               <div className="space-y-3">
                 <div>
-                  <div className="text-[10px] text-text-muted uppercase tracking-[0.06em] mb-1.5">Raw Input</div>
-                  <div className="bg-bg-primary border border-border-subtle rounded-[var(--radius)] p-3 font-mono text-[10px] text-text-secondary break-all leading-relaxed">
+                  <div className="text-micro font-display text-text-muted uppercase tracking-[0.06em] mb-1.5">Raw Input</div>
+                  <div className="bg-surface-page border border-border-subtle rounded-card p-3 font-mono text-[10px] text-text-secondary break-all leading-relaxed">
                     {tx.inputData}
                   </div>
                 </div>
                 {tx.decodedInput && (
                   <div>
-                    <div className="text-[10px] text-text-muted uppercase tracking-[0.06em] mb-1.5">Decoded</div>
+                    <div className="text-micro font-display text-text-muted uppercase tracking-[0.06em] mb-1.5">Decoded</div>
                     <JsonViewer data={tx.decodedInput} maxHeight="200px" />
                   </div>
                 )}
@@ -281,29 +315,29 @@ export function TransactionModal({ transaction, onClose }: TransactionModalProps
           {/* Event Logs */}
           <CollapsibleSection title="Event Logs" badge={`${tx.logs.length} log${tx.logs.length !== 1 ? "s" : ""}`}>
             {tx.logs.length === 0 ? (
-              <div className="text-[11px] text-text-muted italic">No event logs</div>
+              <div className="text-caption font-display text-text-muted italic">No event logs</div>
             ) : (
               <div className="space-y-3">
                 {tx.logs.map((log, i) => (
-                  <div key={i} className="bg-bg-primary border border-border-subtle rounded-[var(--radius)] p-3">
+                  <div key={i} className="bg-surface-page border border-border-subtle rounded-card p-3">
                     <div className="flex items-center gap-2 mb-2">
                       <Badge variant="neutral" className="text-[10px]">Log #{log.logIndex}</Badge>
                       {log.decoded && (
-                        <Badge variant="blue" className="text-[10px]">{log.decoded.event}</Badge>
+                        <Badge variant="accent" className="text-[10px]">{log.decoded.event}</Badge>
                       )}
                     </div>
                     <div className="space-y-1 text-[10px]">
                       <CopyableField label="Contract" value={log.address} />
                       {log.topics.map((topic, ti) => (
                         <div key={ti} className="flex items-start gap-4 py-0.5">
-                          <span className="text-text-muted whitespace-nowrap min-w-[140px]">Topic {ti}</span>
+                          <span className="text-text-muted font-display whitespace-nowrap min-w-[140px]">Topic {ti}</span>
                           <span className="font-mono text-text-secondary break-all">{topic}</span>
                         </div>
                       ))}
                       {log.decoded && (
                         <div className="mt-2">
-                          <div className="text-text-muted uppercase tracking-[0.06em] mb-1">Decoded Args</div>
-                          <JsonViewer data={log.decoded.args} maxHeight="120px" />
+                          <div className="text-text-muted font-display uppercase tracking-[0.06em] mb-1">Decoded Args</div>
+                          <JsonViewer data={log.decoded.args} maxHeight="120px" showLineNumbers={false} />
                         </div>
                       )}
                     </div>
@@ -319,14 +353,14 @@ export function TransactionModal({ transaction, onClose }: TransactionModalProps
             badge={`${tx.internalTransactions.length} trace${tx.internalTransactions.length !== 1 ? "s" : ""}`}
           >
             {tx.internalTransactions.length === 0 ? (
-              <div className="text-[11px] text-text-muted italic">No internal transactions</div>
+              <div className="text-caption font-display text-text-muted italic">No internal transactions</div>
             ) : (
               <div className="space-y-2">
                 {tx.internalTransactions.map((itx, i) => (
-                  <div key={i} className="bg-bg-primary border border-border-subtle rounded-[var(--radius)] p-3 text-[11px]">
+                  <div key={i} className="bg-surface-page border border-border-subtle rounded-card p-3 text-caption">
                     <div className="flex items-center gap-2 mb-1.5">
                       <Badge variant="neutral" className="text-[10px]">{itx.type}</Badge>
-                      <span className="font-mono text-green font-semibold">{itx.value}</span>
+                      <span className="font-mono text-status-success font-semibold">{itx.value}</span>
                     </div>
                     <CopyableField label="From" value={itx.from} />
                     <CopyableField label="To" value={itx.to} />
@@ -337,12 +371,35 @@ export function TransactionModal({ transaction, onClose }: TransactionModalProps
             )}
           </CollapsibleSection>
 
-          {/* Raw Transaction JSON */}
+          {/* Full Transaction JSON */}
           <CollapsibleSection title="Full Transaction JSON">
-            <JsonViewer data={tx.rawTransaction} maxHeight="500px" />
+            <JsonViewer data={tx.rawTransaction} maxHeight="500px" showDownload />
           </CollapsibleSection>
         </div>
       </div>
     </div>
+  );
+}
+
+// ─── Inline copy button (for header) ───────────────────────
+function CopyableInline({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+
+  return (
+    <button
+      onClick={() => {
+        navigator.clipboard.writeText(text);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }}
+      className="flex-shrink-0 text-text-muted hover:text-text-primary transition-colors duration-fast"
+      title="Copy full hash"
+    >
+      {copied ? (
+        <Check className="w-3 h-3 text-status-success" />
+      ) : (
+        <Copy className="w-3 h-3" />
+      )}
+    </button>
   );
 }

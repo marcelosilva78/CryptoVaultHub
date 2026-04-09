@@ -2,66 +2,163 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import {
+  LayoutDashboard,
+  Wallet,
+  ArrowLeftRight,
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  Webhook,
+  KeyRound,
+  ShieldCheck,
+  Wand2,
+  LogOut,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
-import { navSections } from "@/lib/mock-data";
 import { useClientAuth } from "@/lib/auth-context";
+
+interface NavItem {
+  label: string;
+  href: string;
+  icon: React.ElementType;
+  badge?: number;
+}
+
+interface NavSection {
+  title: string;
+  items: NavItem[];
+}
+
+const navSections: NavSection[] = [
+  {
+    title: "Main",
+    items: [
+      { label: "Dashboard", href: "/", icon: LayoutDashboard },
+      { label: "Wallets", href: "/wallets", icon: Wallet },
+      { label: "Transactions", href: "/transactions", icon: ArrowLeftRight },
+    ],
+  },
+  {
+    title: "Operations",
+    items: [
+      { label: "Deposits", href: "/deposits", icon: ArrowDownToLine, badge: 12 },
+      { label: "Withdrawals", href: "/withdrawals", icon: ArrowUpFromLine },
+    ],
+  },
+  {
+    title: "Integration",
+    items: [
+      { label: "Webhooks", href: "/webhooks", icon: Webhook },
+      { label: "API Keys", href: "/api-keys", icon: KeyRound },
+    ],
+  },
+  {
+    title: "Settings",
+    items: [
+      { label: "Security", href: "/security", icon: ShieldCheck },
+      { label: "Setup Wizard", href: "/setup", icon: Wand2 },
+    ],
+  },
+];
+
+/* Hexagon + keyhole logo SVG */
+function LogoIcon({ size = 28 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 40 40"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      {/* Hexagon outline */}
+      <path
+        d="M20 2L36.5 11V29L20 38L3.5 29V11L20 2Z"
+        stroke="var(--accent-primary)"
+        strokeWidth="2.5"
+        strokeLinejoin="round"
+        fill="none"
+      />
+      {/* Keyhole circle */}
+      <circle cx="20" cy="16" r="4.5" fill="var(--accent-primary)" />
+      {/* Keyhole body */}
+      <path
+        d="M17 19L16 28H24L23 19"
+        fill="var(--accent-primary)"
+      />
+    </svg>
+  );
+}
 
 export function Sidebar() {
   const pathname = usePathname();
   const { user, logout } = useClientAuth();
 
-  const clientName = user?.clientName ?? 'Client';
-  const clientTier = user?.tier ?? 'Standard';
-  const userName = user?.name ?? 'User';
-  const userInitials = userName.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2);
-  const userRole = user?.role ?? 'User';
+  const clientName = user?.clientName ?? "Client";
+  const clientTier = user?.tier ?? "Standard";
+  const userName = user?.name ?? "User";
+  const initials = userName
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+  const userRole = user?.role ?? "User";
+
+  const isActive = (href: string) => {
+    if (href === "/") return pathname === "/";
+    return pathname.startsWith(href);
+  };
 
   return (
-    <aside className="fixed left-0 top-0 bottom-0 w-[220px] bg-cvh-bg-secondary border-r border-cvh-border-subtle flex flex-col z-[100]">
-      {/* Logo */}
-      <div className="h-[54px] flex items-center gap-2.5 px-[18px] border-b border-cvh-border-subtle">
-        <div className="w-[26px] h-[26px] bg-gradient-to-br from-cvh-accent to-cvh-purple rounded-[6px] flex items-center justify-center text-[12px] font-extrabold text-white">
-          V
-        </div>
-        <div className="font-bold text-sm">
-          Crypto<span className="text-cvh-accent">Vault</span>Hub
+    <aside className="fixed left-0 top-0 bottom-0 w-sidebar-w bg-surface-sidebar border-r border-border-subtle flex flex-col z-[100]">
+      {/* Logo + Wordmark */}
+      <div className="h-header-h flex items-center gap-2.5 px-5 border-b border-border-subtle">
+        <LogoIcon size={28} />
+        <div className="font-bold text-[15px] tracking-tight font-display">
+          <span className="text-text-primary">Crypto</span>
+          <span className="text-accent-primary font-[700]">Vault</span>
+          <span className="text-text-primary">Hub</span>
         </div>
       </div>
 
       {/* Client Info */}
-      <div className="px-[18px] py-[14px] border-b border-cvh-border-subtle bg-[rgba(59,130,246,0.12)]">
-        <div className="text-[13px] font-bold">{clientName}</div>
-        <div className="text-[10px] text-cvh-accent font-semibold uppercase tracking-[0.08em]">
-          {clientTier} Tier
+      <div className="px-5 py-3 border-b border-border-subtle bg-accent-subtle">
+        <div className="text-[13px] font-semibold text-text-primary font-display">
+          {clientName}
         </div>
+        <span className="inline-flex items-center mt-1 px-2 py-0.5 rounded-badge text-micro font-semibold bg-accent-subtle text-accent-primary uppercase tracking-[0.08em]">
+          {clientTier} Tier
+        </span>
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 p-[10px_6px] overflow-y-auto">
+      <nav className="flex-1 p-3 overflow-y-auto">
         {navSections.map((section) => (
-          <div key={section.title} className="mb-4">
-            <div className="text-[9px] font-bold uppercase tracking-[0.12em] text-cvh-text-muted px-3 mb-1">
+          <div key={section.title} className="mb-5">
+            <div className="text-micro font-semibold uppercase tracking-[0.1em] text-text-muted px-3 mb-1.5 font-display">
               {section.title}
             </div>
             {section.items.map((item) => {
-              const isActive = pathname === item.href;
+              const active = isActive(item.href);
+              const Icon = item.icon;
               return (
                 <Link
                   key={item.href}
                   href={item.href}
                   className={cn(
-                    "flex items-center gap-[9px] px-3 py-[7px] rounded-[6px] cursor-pointer transition-all text-[12.5px] font-[450] text-cvh-text-secondary no-underline",
-                    "hover:bg-cvh-bg-hover hover:text-cvh-text-primary",
-                    isActive &&
-                      "bg-[rgba(59,130,246,0.12)] text-cvh-accent font-semibold"
+                    "flex items-center gap-2.5 px-3 py-2 rounded-button text-body font-[450] text-text-secondary relative transition-all duration-fast font-display no-underline",
+                    "hover:bg-surface-hover hover:text-text-primary",
+                    active && "bg-accent-glow text-accent-primary font-semibold"
                   )}
                 >
-                  <span className="text-sm w-[18px] text-center">
-                    {item.icon}
-                  </span>
-                  {item.label}
+                  {active && (
+                    <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-[18px] bg-accent-primary rounded-r-[3px]" />
+                  )}
+                  <Icon className="w-4 h-4 flex-shrink-0" />
+                  <span>{item.label}</span>
                   {item.badge && (
-                    <span className="ml-auto bg-cvh-accent text-white text-[9px] font-bold px-[5px] py-[1px] rounded-lg">
+                    <span className="ml-auto bg-status-warning text-accent-text text-micro font-bold px-1.5 py-[1px] rounded-pill min-w-[18px] text-center">
                       {item.badge}
                     </span>
                   )}
@@ -73,28 +170,22 @@ export function Sidebar() {
       </nav>
 
       {/* Footer */}
-      <div className="px-[14px] py-[10px] border-t border-cvh-border-subtle flex items-center gap-2">
-        <div className="w-7 h-7 bg-gradient-to-br from-cvh-accent to-cvh-teal rounded-full flex items-center justify-center text-[10px] font-bold text-white">
-          {userInitials}
+      <div className="p-3 px-4 border-t border-border-subtle flex items-center gap-2.5">
+        <div className="w-8 h-8 bg-accent-primary rounded-card flex items-center justify-center text-caption font-bold text-accent-text">
+          {initials}
         </div>
         <div className="flex-1">
-          <div className="text-[11px] font-semibold">
+          <div className="text-caption font-semibold text-text-primary font-display">
             {userName}
           </div>
-          <div className="text-[9px] text-cvh-text-muted">
-            {userRole}
-          </div>
+          <div className="text-micro text-text-muted font-display">{userRole}</div>
         </div>
         <button
           onClick={logout}
-          className="p-1 rounded-[6px] text-cvh-text-muted hover:text-red-400 hover:bg-[rgba(239,68,68,0.12)] transition-all"
+          className="p-1.5 rounded-button text-text-muted hover:text-status-error hover:bg-status-error-subtle transition-all duration-fast"
           title="Logout"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-            <polyline points="16 17 21 12 16 7" />
-            <line x1="21" y1="12" x2="9" y2="12" />
-          </svg>
+          <LogOut className="w-3.5 h-3.5" />
         </button>
       </div>
     </aside>

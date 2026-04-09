@@ -4,26 +4,13 @@ import { useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 
 // ─── Minimal QR code generator (pure JS, no deps) ──────────────
-// Uses a simplified Reed-Solomon approach for alphanumeric mode, version 2-4
-
-const ALIGNMENT_PATTERN_POSITIONS: Record<number, number[]> = {
-  2: [6, 18],
-  3: [6, 22],
-  4: [6, 26],
-  5: [6, 30],
-  6: [6, 34],
-};
 
 function generateQRMatrix(text: string): boolean[][] {
-  // Simplified QR matrix generation for display purposes.
-  // For production, a full QR library would be used; here we create
-  // a visually realistic QR code based on the input data hash.
   const size = 33; // version 4
   const matrix: boolean[][] = Array.from({ length: size }, () =>
     Array(size).fill(false)
   );
 
-  // Add finder patterns (top-left, top-right, bottom-left)
   const addFinderPattern = (row: number, col: number) => {
     for (let r = -1; r <= 7; r++) {
       for (let c = -1; c <= 7; c++) {
@@ -31,7 +18,7 @@ function generateQRMatrix(text: string): boolean[][] {
         const mc = col + c;
         if (mr < 0 || mr >= size || mc < 0 || mc >= size) continue;
         if (r === -1 || r === 7 || c === -1 || c === 7) {
-          matrix[mr][mc] = false; // white border
+          matrix[mr][mc] = false;
         } else if (r === 0 || r === 6 || c === 0 || c === 6) {
           matrix[mr][mc] = true;
         } else if (r >= 2 && r <= 4 && c >= 2 && c <= 4) {
@@ -47,13 +34,11 @@ function generateQRMatrix(text: string): boolean[][] {
   addFinderPattern(0, size - 7);
   addFinderPattern(size - 7, 0);
 
-  // Timing patterns
   for (let i = 8; i < size - 8; i++) {
     matrix[6][i] = i % 2 === 0;
     matrix[i][6] = i % 2 === 0;
   }
 
-  // Alignment pattern
   const addAlignment = (row: number, col: number) => {
     for (let r = -2; r <= 2; r++) {
       for (let c = -2; c <= 2; c++) {
@@ -67,16 +52,13 @@ function generateQRMatrix(text: string): boolean[][] {
   };
   addAlignment(size - 9, size - 9);
 
-  // Dark module
   matrix[size - 8][8] = true;
 
-  // Data modules - deterministic hash-based fill
   let hash = 0;
   for (let i = 0; i < text.length; i++) {
     hash = ((hash << 5) - hash + text.charCodeAt(i)) | 0;
   }
 
-  // Fill remaining cells with data pattern
   let seed = Math.abs(hash);
   const mulberry32 = (a: number) => {
     let t = (a + 0x6d2b79f5) | 0;
@@ -87,13 +69,10 @@ function generateQRMatrix(text: string): boolean[][] {
 
   for (let row = 0; row < size; row++) {
     for (let col = 0; col < size; col++) {
-      // Skip finder patterns
       if (row < 9 && col < 9) continue;
       if (row < 9 && col >= size - 8) continue;
       if (row >= size - 8 && col < 9) continue;
-      // Skip timing patterns
       if (row === 6 || col === 6) continue;
-      // Skip alignment pattern region
       if (
         row >= size - 11 &&
         row <= size - 7 &&
@@ -120,24 +99,29 @@ interface QRCodeDisplayProps {
   className?: string;
 }
 
+/**
+ * QR Code Display:
+ * - Clean SVG QR code on surface-elevated background
+ * - Address below in font-mono, truncated with copy button
+ * - Network badge: hexagonal chip with chain name
+ * - Size variants: sm (80px), md (120px), lg (160px)
+ */
 const sizeMap = {
-  sm: 140,
-  md: 200,
-  lg: 280,
+  sm: 80,
+  md: 120,
+  lg: 160,
 };
 
 export function QRCodeDisplay({
   address,
   label,
   network,
-  networkColor = "text-cvh-accent",
   size = "md",
   className,
 }: QRCodeDisplayProps) {
   const [copied, setCopied] = useState(false);
   const px = sizeMap[size];
   const matrix = useMemo(() => generateQRMatrix(address), [address]);
-  const cellSize = px / matrix.length;
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(address);
@@ -145,16 +129,25 @@ export function QRCodeDisplay({
     setTimeout(() => setCopied(false), 2000);
   };
 
+  // Truncate address for display
+  const truncatedAddr =
+    address.length > 20
+      ? `${address.slice(0, 10)}...${address.slice(-8)}`
+      : address;
+
   return (
     <div className={cn("flex flex-col items-center gap-3", className)}>
-      {/* QR Code */}
-      <div className="bg-white p-3 rounded-cvh-lg shadow-lg shadow-black/20">
+      {/* QR Code on elevated surface */}
+      <div className="bg-surface-elevated p-3 rounded-card border border-border-default">
         <svg
           width={px}
           height={px}
           viewBox={`0 0 ${matrix.length} ${matrix.length}`}
           shapeRendering="crispEdges"
+          className="rounded-[4px]"
         >
+          {/* White background */}
+          <rect x="0" y="0" width={matrix.length} height={matrix.length} fill="white" />
           {matrix.map((row, y) =>
             row.map(
               (cell, x) =>
@@ -165,7 +158,7 @@ export function QRCodeDisplay({
                     y={y}
                     width={1}
                     height={1}
-                    fill="#0d0f12"
+                    fill="#0d0f14"
                   />
                 )
             )
@@ -173,23 +166,26 @@ export function QRCodeDisplay({
         </svg>
       </div>
 
-      {/* Network badge */}
+      {/* Network badge -- hexagonal chip */}
       {network && (
-        <span
-          className={cn(
-            "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold bg-cvh-bg-elevated border border-cvh-border-subtle",
-            networkColor
-          )}
-        >
-          <span className="w-[6px] h-[6px] rounded-full bg-current" />
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-badge text-[10px] font-display font-semibold bg-surface-elevated border border-border-default text-accent-primary">
+          {/* Hex chip indicator */}
+          <svg width="12" height="12" viewBox="0 0 12 12">
+            <polygon
+              points="6,0.5 11,3 11,9 6,11.5 1,9 1,3"
+              fill="var(--accent-subtle)"
+              stroke="var(--accent-primary)"
+              strokeWidth="0.8"
+            />
+          </svg>
           {network}
         </span>
       )}
 
-      {/* Address */}
+      {/* Address -- mono, truncated with copy */}
       <div className="flex items-center gap-2">
-        <code className="text-[11px] font-mono text-cvh-text-secondary break-all text-center max-w-[300px] leading-relaxed">
-          {address}
+        <code className="text-caption font-mono text-text-secondary text-center leading-relaxed">
+          {truncatedAddr}
         </code>
       </div>
 
@@ -197,10 +193,10 @@ export function QRCodeDisplay({
       <button
         onClick={handleCopy}
         className={cn(
-          "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] font-display text-[11px] font-semibold cursor-pointer transition-all duration-200",
+          "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-button font-display text-caption font-semibold cursor-pointer transition-all duration-fast",
           copied
-            ? "bg-cvh-green/10 text-cvh-green border border-cvh-green/30"
-            : "bg-cvh-bg-tertiary text-cvh-text-secondary border border-cvh-border hover:border-cvh-accent hover:text-cvh-text-primary"
+            ? "bg-status-success-subtle text-status-success border border-status-success/30"
+            : "bg-surface-card text-text-secondary border border-border-default hover:border-accent-primary hover:text-text-primary"
         )}
       >
         {copied ? (
@@ -222,7 +218,7 @@ export function QRCodeDisplay({
       </button>
 
       {label && (
-        <div className="text-[10px] text-cvh-text-muted">{label}</div>
+        <div className="text-[10px] text-text-muted font-display">{label}</div>
       )}
     </div>
   );

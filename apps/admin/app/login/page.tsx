@@ -4,6 +4,59 @@ import { useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 
+/* Hexagon + Keyhole Logo (48px) */
+function VaultLogo() {
+  return (
+    <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+      {/* Hexagon outline */}
+      <polygon
+        points="24,2 43,13 43,35 24,46 5,35 5,13"
+        fill="none"
+        stroke="var(--accent-primary)"
+        strokeWidth="2.5"
+        strokeLinejoin="round"
+      />
+      {/* Keyhole circle */}
+      <circle cx="24" cy="19" r="5" fill="var(--accent-primary)" />
+      {/* Keyhole body */}
+      <path
+        d="M21 22 L24 34 L27 22 Z"
+        fill="var(--accent-primary)"
+      />
+    </svg>
+  );
+}
+
+/* Blockchain topology background pattern */
+function TopologyPattern() {
+  return (
+    <svg
+      className="fixed inset-0 w-full h-full pointer-events-none"
+      style={{ opacity: 0.03 }}
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <defs>
+        <pattern id="topo" x="0" y="0" width="80" height="80" patternUnits="userSpaceOnUse">
+          <circle cx="10" cy="10" r="1.5" fill="var(--accent-primary)" />
+          <circle cx="50" cy="10" r="1.5" fill="var(--accent-primary)" />
+          <circle cx="30" cy="40" r="1.5" fill="var(--accent-primary)" />
+          <circle cx="70" cy="45" r="1.5" fill="var(--accent-primary)" />
+          <circle cx="10" cy="70" r="1.5" fill="var(--accent-primary)" />
+          <circle cx="60" cy="75" r="1.5" fill="var(--accent-primary)" />
+          <line x1="10" y1="10" x2="50" y2="10" stroke="var(--accent-primary)" strokeWidth="0.5" />
+          <line x1="50" y1="10" x2="30" y2="40" stroke="var(--accent-primary)" strokeWidth="0.5" />
+          <line x1="10" y1="10" x2="30" y2="40" stroke="var(--accent-primary)" strokeWidth="0.5" />
+          <line x1="30" y1="40" x2="70" y2="45" stroke="var(--accent-primary)" strokeWidth="0.5" />
+          <line x1="30" y1="40" x2="10" y2="70" stroke="var(--accent-primary)" strokeWidth="0.5" />
+          <line x1="70" y1="45" x2="60" y2="75" stroke="var(--accent-primary)" strokeWidth="0.5" />
+          <line x1="10" y1="70" x2="60" y2="75" stroke="var(--accent-primary)" strokeWidth="0.5" />
+        </pattern>
+      </defs>
+      <rect width="100%" height="100%" fill="url(#topo)" />
+    </svg>
+  );
+}
+
 export default function AdminLoginPage() {
   const router = useRouter();
   const { login, verify2FA } = useAuth();
@@ -57,36 +110,40 @@ export default function AdminLoginPage() {
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-[#0a0a0c]">
-      <div className="w-full max-w-[400px] mx-4">
+    <div className="flex items-center justify-center min-h-screen bg-surface-page relative">
+      <TopologyPattern />
+
+      <div className="w-full max-w-[400px] mx-4 relative z-10">
         {/* Branding */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 bg-gradient-to-br from-[#d4a843] to-[#b8922e] rounded-[12px] mb-4">
-            <span className="text-2xl font-extrabold text-black">V</span>
+          <div className="flex justify-center mb-4">
+            <VaultLogo />
           </div>
-          <h1 className="text-xl font-bold text-[#e8e8ed] tracking-tight">
-            Crypto<span className="text-[#d4a843]">Vault</span>Hub
+          <h1 className="text-heading font-display text-text-primary tracking-tight">
+            Crypto<span className="font-bold">Vault</span>Hub
           </h1>
-          <p className="text-sm text-[#55556a] mt-1">Admin Panel</p>
+          <p className="text-body text-text-muted mt-1 font-display">Admin Panel</p>
         </div>
 
         {/* Card */}
-        <div className="bg-[#111114] border border-[#1e1e28] rounded-[12px] p-6">
+        <div className="bg-surface-card border border-border-default rounded-modal p-6 shadow-card">
           {!show2FA ? (
             <form onSubmit={handleLogin}>
-              <h2 className="text-lg font-semibold text-[#e8e8ed] mb-1">Sign in</h2>
-              <p className="text-xs text-[#55556a] mb-6">
+              <h2 className="text-subheading font-semibold text-text-primary font-display mb-1">
+                Sign in
+              </h2>
+              <p className="text-caption text-text-muted mb-6 font-display">
                 Enter your credentials to access the admin dashboard.
               </p>
 
               {error && (
-                <div className="mb-4 px-3 py-2.5 bg-[rgba(248,113,113,0.12)] border border-[rgba(248,113,113,0.25)] rounded-[8px] text-[#f87171] text-xs">
+                <div className="mb-4 px-3 py-2.5 bg-status-error-subtle border border-status-error/25 rounded-card text-status-error text-caption font-display">
                   {error}
                 </div>
               )}
 
               <div className="mb-4">
-                <label htmlFor="email" className="block text-xs font-medium text-[#8888a0] mb-1.5">
+                <label htmlFor="email" className="block text-caption font-medium text-text-secondary mb-1.5 font-display">
                   Email
                 </label>
                 <input
@@ -96,12 +153,12 @@ export default function AdminLoginPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="admin@cryptovaulthub.com"
-                  className="w-full bg-[#18181c] border border-[#2a2a35] rounded-[8px] px-3 py-2.5 text-sm text-[#e8e8ed] placeholder-[#55556a] outline-none transition-all focus:border-[#d4a843] focus:ring-1 focus:ring-[rgba(212,168,67,0.3)]"
+                  className="w-full bg-surface-input border border-border-default rounded-input px-3 py-2.5 text-body text-text-primary placeholder:text-text-muted outline-none transition-all duration-fast focus:border-border-focus focus:ring-1 focus:ring-accent-glow font-display"
                 />
               </div>
 
               <div className="mb-4">
-                <label htmlFor="password" className="block text-xs font-medium text-[#8888a0] mb-1.5">
+                <label htmlFor="password" className="block text-caption font-medium text-text-secondary mb-1.5 font-display">
                   Password
                 </label>
                 <input
@@ -111,7 +168,7 @@ export default function AdminLoginPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Enter your password"
-                  className="w-full bg-[#18181c] border border-[#2a2a35] rounded-[8px] px-3 py-2.5 text-sm text-[#e8e8ed] placeholder-[#55556a] outline-none transition-all focus:border-[#d4a843] focus:ring-1 focus:ring-[rgba(212,168,67,0.3)]"
+                  className="w-full bg-surface-input border border-border-default rounded-input px-3 py-2.5 text-body text-text-primary placeholder:text-text-muted outline-none transition-all duration-fast focus:border-border-focus focus:ring-1 focus:ring-accent-glow font-display"
                 />
               </div>
 
@@ -121,20 +178,30 @@ export default function AdminLoginPage() {
                     type="checkbox"
                     checked={rememberMe}
                     onChange={(e) => setRememberMe(e.target.checked)}
-                    className="w-3.5 h-3.5 rounded border-[#2a2a35] bg-[#18181c] text-[#d4a843] focus:ring-[#d4a843] focus:ring-offset-0"
+                    className="w-3.5 h-3.5 rounded border-border-default bg-surface-input text-accent-primary focus:ring-accent-primary focus:ring-offset-0 accent-[var(--accent-primary)]"
                   />
-                  <span className="text-xs text-[#8888a0]">Remember me</span>
+                  <span className="text-caption text-text-secondary font-display">Remember me</span>
                 </label>
               </div>
 
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="w-full bg-gradient-to-r from-[#d4a843] to-[#b8922e] text-black font-semibold text-sm py-2.5 rounded-[8px] transition-all hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="w-full bg-accent-primary text-accent-text font-semibold text-body py-2.5 rounded-button transition-colors duration-fast hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 font-display"
               >
                 {isSubmitting ? (
                   <>
-                    <div className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />
+                    <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24">
+                      <polygon
+                        points="12,1 22,6.5 22,17.5 12,23 2,17.5 2,6.5"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeDasharray="60"
+                        strokeDashoffset="15"
+                        opacity="0.6"
+                      />
+                    </svg>
                     Signing in...
                   </>
                 ) : (
@@ -144,19 +211,21 @@ export default function AdminLoginPage() {
             </form>
           ) : (
             <form onSubmit={handle2FA}>
-              <h2 className="text-lg font-semibold text-[#e8e8ed] mb-1">Two-Factor Authentication</h2>
-              <p className="text-xs text-[#55556a] mb-6">
+              <h2 className="text-subheading font-semibold text-text-primary font-display mb-1">
+                Two-Factor Authentication
+              </h2>
+              <p className="text-caption text-text-muted mb-6 font-display">
                 Enter the 6-digit code from your authenticator app.
               </p>
 
               {error && (
-                <div className="mb-4 px-3 py-2.5 bg-[rgba(248,113,113,0.12)] border border-[rgba(248,113,113,0.25)] rounded-[8px] text-[#f87171] text-xs">
+                <div className="mb-4 px-3 py-2.5 bg-status-error-subtle border border-status-error/25 rounded-card text-status-error text-caption font-display">
                   {error}
                 </div>
               )}
 
               <div className="mb-6">
-                <label htmlFor="totp" className="block text-xs font-medium text-[#8888a0] mb-1.5">
+                <label htmlFor="totp" className="block text-caption font-medium text-text-secondary mb-1.5 font-display">
                   Verification Code
                 </label>
                 <input
@@ -169,18 +238,28 @@ export default function AdminLoginPage() {
                   value={totpCode}
                   onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ''))}
                   placeholder="000000"
-                  className="w-full bg-[#18181c] border border-[#2a2a35] rounded-[8px] px-3 py-2.5 text-sm text-[#e8e8ed] placeholder-[#55556a] outline-none text-center tracking-[0.3em] text-lg font-mono transition-all focus:border-[#d4a843] focus:ring-1 focus:ring-[rgba(212,168,67,0.3)]"
+                  className="w-full bg-surface-input border border-border-default rounded-input px-3 py-2.5 text-text-primary placeholder:text-text-muted outline-none text-center tracking-[0.3em] text-lg font-mono transition-all duration-fast focus:border-border-focus focus:ring-1 focus:ring-accent-glow"
                 />
               </div>
 
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="w-full bg-gradient-to-r from-[#d4a843] to-[#b8922e] text-black font-semibold text-sm py-2.5 rounded-[8px] transition-all hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="w-full bg-accent-primary text-accent-text font-semibold text-body py-2.5 rounded-button transition-colors duration-fast hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 font-display"
               >
                 {isSubmitting ? (
                   <>
-                    <div className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />
+                    <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24">
+                      <polygon
+                        points="12,1 22,6.5 22,17.5 12,23 2,17.5 2,6.5"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeDasharray="60"
+                        strokeDashoffset="15"
+                        opacity="0.6"
+                      />
+                    </svg>
                     Verifying...
                   </>
                 ) : (
@@ -191,7 +270,7 @@ export default function AdminLoginPage() {
               <button
                 type="button"
                 onClick={() => { setShow2FA(false); setError(''); }}
-                className="w-full mt-3 text-xs text-[#8888a0] hover:text-[#e8e8ed] transition-colors"
+                className="w-full mt-3 text-caption text-text-muted hover:text-text-primary transition-colors duration-fast font-display"
               >
                 Back to login
               </button>
@@ -199,7 +278,7 @@ export default function AdminLoginPage() {
           )}
         </div>
 
-        <p className="text-center text-[10px] text-[#55556a] mt-6">
+        <p className="text-center text-micro text-text-muted mt-6 font-display">
           CryptoVaultHub &copy; {new Date().getFullYear()}. All rights reserved.
         </p>
       </div>

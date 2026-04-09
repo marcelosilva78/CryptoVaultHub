@@ -4,6 +4,7 @@ import { Sidebar } from "@/components/sidebar";
 import { Header } from "@/components/header";
 import { Providers } from "@/components/providers";
 import { AuthProvider } from "@/lib/auth-context";
+import { ThemeProvider } from "@/lib/theme-context";
 
 export const dynamic = "force-dynamic";
 
@@ -21,13 +22,15 @@ export default function RootLayout({
     <html lang="en">
       <body>
         <Providers>
-          <AuthProvider>
-            <Sidebar />
-            <Header />
-            <main className="ml-[var(--sidebar-w)] mt-[var(--header-h)] p-6 min-h-[calc(100vh-var(--header-h))]">
-              <div className="animate-fade-in">{children}</div>
-            </main>
-          </AuthProvider>
+          <ThemeProvider>
+            <AuthProvider>
+              <Sidebar />
+              <Header />
+              <main className="ml-sidebar-w mt-header-h p-content-p min-h-[calc(100vh-56px)] bg-surface-page">
+                <div className="animate-fade-in">{children}</div>
+              </main>
+            </AuthProvider>
+          </ThemeProvider>
         </Providers>
       </body>
     </html>

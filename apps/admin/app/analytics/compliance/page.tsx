@@ -16,11 +16,11 @@ import {
 
 export default function ComplianceAnalyticsPage() {
   return (
-    <div className="space-y-6">
+    <div className="space-y-section-gap">
       <AnalyticsFilterBar />
 
       {/* Resolution Time KPIs */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-stat-grid-gap lg:grid-cols-4">
         <KpiCard
           title="Avg Resolution Time"
           value={analyticsResolutionTime.avgResolution}
@@ -48,65 +48,80 @@ export default function ComplianceAnalyticsPage() {
         />
       </div>
 
-      {/* Screenings per Day */}
+      {/* Screenings per Day — gold for screenings, red for hits (flagged = negative) */}
       <BarChartCard
         title="Screenings per Day (Last 30 Days)"
         data={analyticsScreeningsPerDay}
         xKey="date"
         bars={[
-          { key: "screenings", color: "#3b82f6", name: "Screenings" },
-          { key: "hits", color: "#ef4444", name: "Hits" },
+          { key: "screenings", color: "var(--chart-primary)", name: "Screenings" },
+          { key: "hits", color: "var(--chart-down)", name: "Hits" },
         ]}
         height={300}
       />
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {/* Hit Rate Trend */}
+      <div className="grid grid-cols-1 gap-section-gap lg:grid-cols-2">
+        {/* Hit Rate Trend — gold monochromatic */}
         <AreaChartCard
           title="Hit Rate Trend (%)"
           data={analyticsHitRateTrend}
           xKey="date"
-          yKeys={[{ key: "hitRate", color: "#f59e0b", name: "Hit Rate %" }]}
+          yKeys={[
+            { key: "hitRate", color: "var(--chart-primary)", name: "Hit Rate %" },
+          ]}
           height={260}
           formatValue={(v) => `${v.toFixed(1)}%`}
         />
 
-        {/* Alerts by Severity */}
+        {/* Alerts by Severity — gold tones for stacked severity levels */}
         <BarChartCard
           title="Alerts by Severity"
           data={analyticsAlertsBySeverity.filter((_, i) => i % 2 === 0)}
           xKey="date"
           bars={[
-            { key: "critical", color: "#ef4444", name: "Critical", stackId: "sev" },
-            { key: "high", color: "#f59e0b", name: "High", stackId: "sev" },
-            { key: "medium", color: "#3b82f6", name: "Medium", stackId: "sev" },
-            { key: "low", color: "#64748b", name: "Low", stackId: "sev" },
+            { key: "critical", color: "var(--chart-down)", name: "Critical", stackId: "sev" },
+            { key: "high", color: "var(--chart-primary)", name: "High", stackId: "sev" },
+            { key: "medium", color: "var(--chart-secondary)", name: "Medium", stackId: "sev" },
+            { key: "low", color: "var(--chart-tertiary)", name: "Low", stackId: "sev" },
           ]}
           height={260}
         />
       </div>
 
       {/* Active KYT Alerts */}
-      <div className="bg-bg-secondary border border-border-subtle rounded-lg p-5">
-        <h3 className="mb-4 text-[13px] font-semibold text-text-primary">Active KYT Alerts</h3>
+      <div className="rounded-card border border-border-default bg-surface-card p-card-p shadow-card">
+        <h3 className="mb-4 font-display text-subheading text-text-primary">
+          Active KYT Alerts
+        </h3>
         <div className="space-y-2">
           {complianceAlerts.map((alert, idx) => {
             const severityStyles: Record<string, string> = {
-              Critical: "bg-red-dim text-red",
-              High: "bg-orange-dim text-orange",
-              Medium: "bg-blue-dim text-blue",
+              Critical: "bg-status-error-subtle text-status-error",
+              High: "bg-status-warning-subtle text-status-warning",
+              Medium: "bg-accent-subtle text-accent-primary",
             };
             return (
               <div
                 key={idx}
-                className="flex items-center gap-4 rounded-[var(--radius)] border border-border-subtle bg-bg-tertiary p-3 hover:bg-bg-hover transition-colors"
+                className="flex items-center gap-4 rounded-card border border-border-subtle bg-surface-elevated p-3 transition-colors duration-fast hover:bg-surface-hover"
               >
-                <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${severityStyles[alert.severity] ?? "bg-bg-elevated text-text-muted"}`}>
+                <span
+                  className={`inline-flex items-center rounded-badge px-2 py-0.5 font-display text-micro font-semibold ${
+                    severityStyles[alert.severity] ??
+                    "bg-surface-elevated text-text-muted"
+                  }`}
+                >
                   {alert.severity}
                 </span>
-                <span className="text-xs text-text-primary font-mono">{alert.address}</span>
-                <span className="text-xs text-text-secondary flex-1">{alert.match}</span>
-                <span className="text-xs text-text-muted">{alert.client}</span>
+                <span className="font-mono text-xs text-text-primary">
+                  {alert.address}
+                </span>
+                <span className="flex-1 font-display text-xs text-text-secondary">
+                  {alert.match}
+                </span>
+                <span className="font-display text-xs text-text-muted">
+                  {alert.client}
+                </span>
               </div>
             );
           })}
@@ -119,7 +134,7 @@ export default function ComplianceAnalyticsPage() {
         columns={[
           { header: "List", accessor: "name" },
           { header: "Entries", accessor: "entries", align: "right" },
-          { header: "Crypto Addrs", accessor: "cryptoAddrs", align: "right" },
+          { header: "Crypto Addrs", accessor: "cryptoAddrs", align: "right", mono: true },
           { header: "Last Sync", accessor: "lastSync" },
           { header: "Status", accessor: "status" },
         ]}
@@ -127,24 +142,42 @@ export default function ComplianceAnalyticsPage() {
       />
 
       {/* Blocked Addresses Summary */}
-      <div className="bg-bg-secondary border border-border-subtle rounded-lg p-5">
-        <h3 className="mb-4 text-[13px] font-semibold text-text-primary">Blocked Address Summary</h3>
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          <div className="rounded-[var(--radius)] bg-bg-tertiary border border-border-subtle p-4">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.06em] text-text-muted mb-1">Total Blocked</div>
-            <div className="text-2xl font-bold text-red tracking-tight">18</div>
+      <div className="rounded-card border border-border-default bg-surface-card p-card-p shadow-card">
+        <h3 className="mb-4 font-display text-subheading text-text-primary">
+          Blocked Address Summary
+        </h3>
+        <div className="grid grid-cols-2 gap-stat-grid-gap lg:grid-cols-4">
+          <div className="rounded-card border border-border-subtle bg-surface-elevated p-4">
+            <div className="mb-1 font-display text-micro uppercase tracking-widest text-text-muted">
+              Total Blocked
+            </div>
+            <div className="font-display text-[24px] font-bold tracking-tight text-status-error">
+              18
+            </div>
           </div>
-          <div className="rounded-[var(--radius)] bg-bg-tertiary border border-border-subtle p-4">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.06em] text-text-muted mb-1">OFAC Matches</div>
-            <div className="text-2xl font-bold text-orange tracking-tight">7</div>
+          <div className="rounded-card border border-border-subtle bg-surface-elevated p-4">
+            <div className="mb-1 font-display text-micro uppercase tracking-widest text-text-muted">
+              OFAC Matches
+            </div>
+            <div className="font-display text-[24px] font-bold tracking-tight text-status-warning">
+              7
+            </div>
           </div>
-          <div className="rounded-[var(--radius)] bg-bg-tertiary border border-border-subtle p-4">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.06em] text-text-muted mb-1">EU Sanctions</div>
-            <div className="text-2xl font-bold text-blue tracking-tight">5</div>
+          <div className="rounded-card border border-border-subtle bg-surface-elevated p-4">
+            <div className="mb-1 font-display text-micro uppercase tracking-widest text-text-muted">
+              EU Sanctions
+            </div>
+            <div className="font-display text-[24px] font-bold tracking-tight text-accent-primary">
+              5
+            </div>
           </div>
-          <div className="rounded-[var(--radius)] bg-bg-tertiary border border-border-subtle p-4">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.06em] text-text-muted mb-1">Mixer/Tornado</div>
-            <div className="text-2xl font-bold text-purple tracking-tight">6</div>
+          <div className="rounded-card border border-border-subtle bg-surface-elevated p-4">
+            <div className="mb-1 font-display text-micro uppercase tracking-widest text-text-muted">
+              Mixer/Tornado
+            </div>
+            <div className="font-display text-[24px] font-bold tracking-tight text-accent-hover">
+              6
+            </div>
           </div>
         </div>
       </div>

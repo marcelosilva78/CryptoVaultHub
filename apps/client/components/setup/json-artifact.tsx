@@ -13,25 +13,36 @@ interface JsonArtifactProps {
   className?: string;
 }
 
+/**
+ * JSON Artifact:
+ * - Same syntax highlighting as admin (gold keys, green strings, blue numbers, amber booleans)
+ * - Collapsible with smooth height animation
+ * - Line numbers in text-muted
+ * - Copy JSON + Download as .json buttons
+ * - Title header: Outfit 600, with document icon
+ */
 function syntaxHighlight(json: string): string {
   return json.replace(
-    /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g,
+    /("(\\u[\da-fA-F]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?)/g,
     (match) => {
-      let cls = "text-blue-400"; // number
+      // Key (string followed by colon)
       if (/^"/.test(match)) {
         if (/:$/.test(match)) {
-          cls = "text-cyan-400"; // key
-          match = match.replace(/:$/, "");
-          return `<span class="${cls}">${match}</span>:`;
-        } else {
-          cls = "text-green-400"; // string
+          return `<span style="color:#E2A828">${match}</span>`;
         }
-      } else if (/true|false/.test(match)) {
-        cls = "text-purple-400"; // boolean
-      } else if (/null/.test(match)) {
-        cls = "text-gray-500"; // null
+        // String value
+        return `<span style="color:#2EBD85">${match}</span>`;
       }
-      return `<span class="${cls}">${match}</span>`;
+      // Boolean
+      if (/true|false/.test(match)) {
+        return `<span style="color:#F5A623">${match}</span>`;
+      }
+      // Null
+      if (/null/.test(match)) {
+        return `<span style="color:var(--text-muted)">${match}</span>`;
+      }
+      // Number
+      return `<span style="color:#60A5FA">${match}</span>`;
     }
   );
 }
@@ -82,17 +93,17 @@ export function JsonArtifact({
   return (
     <div
       className={cn(
-        "border border-cvh-border-subtle rounded-cvh-lg overflow-hidden transition-all duration-300",
-        expanded ? "bg-cvh-bg-secondary" : "bg-cvh-bg-tertiary",
+        "border border-border-default rounded-card overflow-hidden transition-all duration-normal",
+        expanded ? "bg-surface-card" : "bg-surface-elevated",
         className
       )}
     >
-      {/* Header */}
+      {/* Header -- Outfit 600, with document icon */}
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-2.5 px-4 py-3 text-left cursor-pointer transition-colors hover:bg-cvh-bg-hover group"
+        className="w-full flex items-center gap-2.5 px-4 py-3 text-left cursor-pointer transition-colors duration-fast hover:bg-surface-hover group"
       >
-        {/* Expand icon */}
+        {/* Expand chevron */}
         <svg
           width="14"
           height="14"
@@ -103,36 +114,44 @@ export function JsonArtifact({
           strokeLinecap="round"
           strokeLinejoin="round"
           className={cn(
-            "text-cvh-text-muted transition-transform duration-200",
+            "text-text-muted transition-transform duration-normal flex-shrink-0",
             expanded && "rotate-90"
           )}
         >
           <polyline points="9 18 15 12 9 6" />
         </svg>
 
-        {icon && <span className="text-cvh-accent">{icon}</span>}
+        {/* Document icon */}
+        {icon ? (
+          <span className="text-accent-primary flex-shrink-0">{icon}</span>
+        ) : (
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-accent-primary flex-shrink-0">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <polyline points="14 2 14 8 20 8" />
+          </svg>
+        )}
 
-        <span className="text-[12px] font-semibold text-cvh-text-primary flex-1">
+        <span className="text-[12px] font-display font-semibold text-text-primary flex-1">
           {title}
         </span>
 
-        <span className="text-[10px] text-cvh-text-muted font-mono">
+        <span className="text-[10px] text-text-muted font-mono">
           {lines.length} lines
         </span>
       </button>
 
-      {/* Content */}
+      {/* Content -- smooth reveal */}
       {expanded && (
-        <div className="border-t border-cvh-border-subtle animate-fade-up">
+        <div className="border-t border-border-subtle animate-fade-in">
           {/* Toolbar */}
-          <div className="flex items-center gap-2 px-4 py-2 bg-cvh-bg-tertiary border-b border-cvh-border-subtle">
+          <div className="flex items-center gap-2 px-4 py-2 bg-surface-elevated border-b border-border-subtle">
             <button
               onClick={handleCopy}
               className={cn(
-                "inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-semibold transition-all",
+                "inline-flex items-center gap-1 px-2 py-1 rounded-input text-[10px] font-display font-semibold transition-all duration-fast cursor-pointer",
                 copied
-                  ? "bg-cvh-green/10 text-cvh-green"
-                  : "bg-cvh-bg-elevated text-cvh-text-secondary hover:text-cvh-text-primary"
+                  ? "bg-status-success-subtle text-status-success"
+                  : "bg-surface-card text-text-secondary hover:text-text-primary border border-border-default"
               )}
             >
               {copied ? (
@@ -154,36 +173,49 @@ export function JsonArtifact({
             </button>
             <button
               onClick={handleDownload}
-              className="inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-semibold bg-cvh-bg-elevated text-cvh-text-secondary hover:text-cvh-text-primary transition-all"
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-input text-[10px] font-display font-semibold bg-surface-card text-text-secondary hover:text-text-primary transition-all duration-fast cursor-pointer border border-border-default"
             >
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                 <polyline points="7 10 12 15 17 10" />
                 <line x1="12" y1="15" x2="12" y2="3" />
               </svg>
-              Download
+              Download .json
             </button>
           </div>
 
-          {/* JSON Display */}
+          {/* JSON Display with line numbers */}
           <div
-            className="overflow-auto font-mono text-[11px] leading-[1.6]"
+            className="bg-surface-page overflow-auto"
             style={{ maxHeight }}
           >
-            <table className="w-full border-collapse">
-              <tbody>
-                {highlightedLines.map((line, i) => (
-                  <tr key={i} className="hover:bg-cvh-bg-hover/50">
-                    <td className="px-3 py-0 text-right text-cvh-text-muted/40 select-none w-[40px] text-[10px]">
-                      {i + 1}
-                    </td>
-                    <td className="px-3 py-0 whitespace-pre">
-                      <span dangerouslySetInnerHTML={{ __html: line }} />
-                    </td>
-                  </tr>
+            <div className="flex">
+              {/* Line numbers */}
+              <div className="flex-shrink-0 py-3 pl-3 pr-2 select-none border-r border-border-subtle">
+                {lines.map((_, i) => (
+                  <div
+                    key={i}
+                    className="text-text-muted font-mono text-[10px] leading-[1.6] text-right pr-1"
+                    style={{ minWidth: "24px" }}
+                  >
+                    {i + 1}
+                  </div>
                 ))}
-              </tbody>
-            </table>
+              </div>
+
+              {/* Code */}
+              <div className="flex-1 p-3 overflow-x-auto">
+                <pre className="font-mono text-code leading-[1.6]">
+                  {highlightedLines.map((line, i) => (
+                    <div
+                      key={i}
+                      className="hover:bg-surface-hover/30"
+                      dangerouslySetInnerHTML={{ __html: line || "&nbsp;" }}
+                    />
+                  ))}
+                </pre>
+              </div>
+            </div>
           </div>
         </div>
       )}

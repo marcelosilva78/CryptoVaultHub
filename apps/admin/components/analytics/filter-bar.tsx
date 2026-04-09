@@ -9,24 +9,24 @@ export function AnalyticsFilterBar() {
   const [client, setClient] = useState("All Clients");
 
   const selectClass =
-    "rounded-[var(--radius)] border border-border bg-bg-tertiary px-3 py-1.5 text-[11px] text-text-secondary outline-none focus:border-accent/50 transition-colors cursor-pointer font-[inherit]";
+    "rounded-input border border-border-default bg-surface-input px-3 py-1.5 font-display text-[11px] text-text-secondary outline-none focus:border-border-focus focus:ring-1 focus:ring-accent-glow transition-colors duration-fast cursor-pointer";
 
   return (
-    <div className="flex items-center gap-3 mb-6 flex-wrap">
-      <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-text-muted mr-1">
+    <div className="flex items-center gap-3 rounded-card border border-border-default bg-surface-card p-4 flex-wrap">
+      <span className="font-display text-micro uppercase tracking-widest text-text-muted mr-1">
         Filters
       </span>
 
-      {/* Date range */}
-      <div className="flex rounded-[var(--radius)] border border-border overflow-hidden">
+      {/* Date range picker */}
+      <div className="flex overflow-hidden rounded-input border border-border-default">
         {["24h", "7d", "30d", "90d"].map((r) => (
           <button
             key={r}
             onClick={() => setDateRange(r)}
-            className={`px-3 py-1.5 text-[11px] font-semibold transition-colors ${
+            className={`px-3 py-1.5 font-display text-[11px] font-semibold transition-colors duration-fast ${
               dateRange === r
-                ? "bg-accent-glow text-accent"
-                : "text-text-muted hover:text-text-secondary hover:bg-bg-hover"
+                ? "bg-accent-subtle text-accent-primary"
+                : "text-text-muted hover:text-text-secondary hover:bg-surface-hover"
             }`}
           >
             {r}
@@ -34,7 +34,7 @@ export function AnalyticsFilterBar() {
         ))}
       </div>
 
-      {/* Chain filter */}
+      {/* Chain selector */}
       <select
         value={chain}
         onChange={(e) => setChain(e.target.value)}
@@ -47,7 +47,7 @@ export function AnalyticsFilterBar() {
         ))}
       </select>
 
-      {/* Client filter */}
+      {/* Client selector */}
       <select
         value={client}
         onChange={(e) => setClient(e.target.value)}
@@ -61,10 +61,11 @@ export function AnalyticsFilterBar() {
       </select>
 
       <div className="ml-auto flex items-center gap-3">
-        <span className="text-[10px] text-text-muted font-mono">
+        <span className="font-mono text-[10px] text-text-muted">
           Last refresh: just now
         </span>
-        <button className="bg-bg-tertiary border border-border rounded-[var(--radius)] px-3 py-1.5 text-[11px] text-text-secondary font-semibold hover:border-accent hover:text-text-primary transition-all">
+        {/* Apply/Refresh button: accent-primary */}
+        <button className="rounded-button bg-accent-primary px-4 py-1.5 font-display text-[11px] font-semibold text-accent-text transition-colors duration-fast hover:bg-accent-hover">
           Refresh
         </button>
       </div>

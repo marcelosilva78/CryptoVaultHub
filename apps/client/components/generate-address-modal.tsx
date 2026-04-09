@@ -15,14 +15,16 @@ export function GenerateAddressModal({ open, onClose }: GenerateAddressModalProp
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="bg-cvh-bg-secondary border border-cvh-border rounded-cvh-lg p-6 w-[480px] max-h-[80vh] overflow-y-auto animate-fade-up">
-        <div className="text-base font-bold mb-4">Generate Deposit Address</div>
+      <div className="bg-surface-card border border-border-default rounded-modal p-6 w-[480px] max-h-[80vh] overflow-y-auto animate-fade-up shadow-float">
+        <div className="text-subheading font-bold mb-4 font-display">
+          Generate Deposit Address
+        </div>
 
         <div className="mb-3.5">
-          <label className="block text-[11px] font-semibold text-cvh-text-secondary mb-1 uppercase tracking-[0.06em]">
+          <label className="block text-caption font-semibold text-text-secondary mb-1 uppercase tracking-[0.06em] font-display">
             Chain
           </label>
-          <select className="w-full bg-cvh-bg-tertiary border border-cvh-border rounded-[6px] px-3 py-2 text-cvh-text-primary font-display text-[13px] outline-none focus:border-cvh-accent transition-colors">
+          <select className="w-full bg-surface-input border border-border-default rounded-input px-3 py-2 text-text-primary font-display text-body outline-none focus:border-border-focus transition-colors duration-fast">
             <option>BSC (BNB Smart Chain)</option>
             <option>Ethereum</option>
             <option>Polygon</option>
@@ -30,43 +32,43 @@ export function GenerateAddressModal({ open, onClose }: GenerateAddressModalProp
         </div>
 
         <div className="mb-3.5">
-          <label className="block text-[11px] font-semibold text-cvh-text-secondary mb-1 uppercase tracking-[0.06em]">
+          <label className="block text-caption font-semibold text-text-secondary mb-1 uppercase tracking-[0.06em] font-display">
             External ID (your user identifier)
           </label>
           <input
             type="text"
             placeholder="e.g. user-joao-123"
-            className="w-full bg-cvh-bg-tertiary border border-cvh-border rounded-[6px] px-3 py-2 text-cvh-text-primary font-mono text-[13px] outline-none focus:border-cvh-accent transition-colors"
+            className="w-full bg-surface-input border border-border-default rounded-input px-3 py-2 text-text-primary font-mono text-body outline-none focus:border-border-focus transition-colors duration-fast"
           />
         </div>
 
         <div className="mb-3.5">
-          <label className="block text-[11px] font-semibold text-cvh-text-secondary mb-1 uppercase tracking-[0.06em]">
+          <label className="block text-caption font-semibold text-text-secondary mb-1 uppercase tracking-[0.06em] font-display">
             Label
           </label>
           <input
             type="text"
             placeholder="e.g. Joao Silva - Deposit"
-            className="w-full bg-cvh-bg-tertiary border border-cvh-border rounded-[6px] px-3 py-2 text-cvh-text-primary font-display text-[13px] outline-none focus:border-cvh-accent transition-colors"
+            className="w-full bg-surface-input border border-border-default rounded-input px-3 py-2 text-text-primary font-display text-body outline-none focus:border-border-focus transition-colors duration-fast"
           />
         </div>
 
-        <div className="p-2.5 bg-cvh-bg-tertiary rounded-[6px] text-[11px] text-cvh-text-muted">
+        <div className="p-2.5 bg-surface-elevated rounded-input text-caption text-text-muted font-display">
           The address is computed via CREATE2 and will be deployed automatically
           when the first deposit arrives. Supports all enabled tokens for this
           chain.
         </div>
 
-        <div className="flex justify-end gap-2 mt-[18px]">
+        <div className="flex justify-end gap-2 mt-5">
           <button
             onClick={onClose}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] font-display text-[11px] font-semibold cursor-pointer transition-colors bg-transparent text-cvh-text-secondary border border-cvh-border hover:border-cvh-text-secondary hover:text-cvh-text-primary"
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-button font-display text-caption font-semibold cursor-pointer transition-all duration-fast bg-transparent text-text-secondary border border-border-default hover:border-accent-primary hover:text-text-primary"
           >
             Cancel
           </button>
           <button
             onClick={onClose}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] font-display text-[11px] font-semibold cursor-pointer transition-colors bg-cvh-accent text-white border-none hover:bg-cvh-accent-dim"
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-button font-display text-caption font-semibold cursor-pointer transition-all duration-fast bg-accent-primary text-accent-text hover:bg-accent-hover"
           >
             Generate Address
           </button>

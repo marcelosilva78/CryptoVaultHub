@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 
-type BadgeVariant = "green" | "red" | "orange" | "blue" | "neutral" | "purple" | "accent";
+type BadgeVariant = "success" | "error" | "warning" | "accent" | "neutral";
 
 interface BadgeProps {
   variant: BadgeVariant;
@@ -10,20 +10,26 @@ interface BadgeProps {
 }
 
 const variantStyles: Record<BadgeVariant, string> = {
-  green: "bg-green-dim text-green",
-  red: "bg-red-dim text-red",
-  orange: "bg-orange-dim text-orange",
-  blue: "bg-blue-dim text-blue",
-  neutral: "bg-bg-elevated text-text-secondary",
-  purple: "bg-[var(--purple-dim)] text-purple",
-  accent: "bg-accent-glow text-accent",
+  success: "bg-status-success-subtle text-status-success",
+  error: "bg-status-error-subtle text-status-error",
+  warning: "bg-status-warning-subtle text-status-warning",
+  accent: "bg-accent-subtle text-accent-primary",
+  neutral: "bg-surface-elevated text-text-secondary",
+};
+
+const dotColorStyles: Record<BadgeVariant, string> = {
+  success: "bg-status-success",
+  error: "bg-status-error",
+  warning: "bg-status-warning",
+  accent: "bg-accent-primary",
+  neutral: "bg-text-muted",
 };
 
 export function Badge({ variant, children, dot, className }: BadgeProps) {
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-[5px] px-2.5 py-[3px] rounded-full text-[11px] font-semibold",
+        "inline-flex items-center gap-[5px] px-2.5 py-[3px] rounded-badge text-caption font-semibold font-display",
         variantStyles[variant],
         className
       )}
@@ -31,14 +37,8 @@ export function Badge({ variant, children, dot, className }: BadgeProps) {
       {dot && (
         <span
           className={cn(
-            "w-1.5 h-1.5 rounded-full inline-block",
-            variant === "green" && "bg-green",
-            variant === "red" && "bg-red",
-            variant === "orange" && "bg-orange",
-            variant === "blue" && "bg-blue",
-            variant === "purple" && "bg-purple",
-            variant === "accent" && "bg-accent",
-            variant === "neutral" && "bg-text-muted"
+            "w-1.5 h-1.5 rounded-pill inline-block",
+            dotColorStyles[variant]
           )}
         />
       )}

@@ -16,18 +16,20 @@ import {
 
 function StatusBadge({ status }: { status: "healthy" | "degraded" | "down" }) {
   const styles = {
-    healthy: "bg-green-dim text-green",
-    degraded: "bg-orange-dim text-orange",
-    down: "bg-red-dim text-red",
+    healthy: "bg-status-success-subtle text-status-success",
+    degraded: "bg-status-warning-subtle text-status-warning",
+    down: "bg-status-error-subtle text-status-error",
   };
   const dotStyles = {
-    healthy: "bg-green",
-    degraded: "bg-orange",
-    down: "bg-red",
+    healthy: "bg-status-success",
+    degraded: "bg-status-warning",
+    down: "bg-status-error",
   };
   return (
-    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${styles[status]}`}>
-      <span className={`h-1.5 w-1.5 rounded-full ${dotStyles[status]}`} />
+    <span
+      className={`inline-flex items-center gap-1 rounded-badge px-2 py-0.5 font-display text-micro font-semibold ${styles[status]}`}
+    >
+      <span className={`h-1.5 w-1.5 rounded-pill ${dotStyles[status]}`} />
       {status}
     </span>
   );
@@ -40,28 +42,26 @@ function MiniSparkline({ data, color }: { data: number[]; color: string }) {
   const h = 24;
   const w = 100;
   const points = data
-    .map((v, i) => `${(i / (data.length - 1)) * w},${h - ((v - min) / range) * h}`)
+    .map(
+      (v, i) =>
+        `${(i / (data.length - 1)) * w},${h - ((v - min) / range) * h}`
+    )
     .join(" ");
 
   return (
     <svg width={w} height={h} className="inline-block">
-      <polyline
-        points={points}
-        fill="none"
-        stroke={color}
-        strokeWidth="1.5"
-      />
+      <polyline points={points} fill="none" stroke={color} strokeWidth="1.5" />
     </svg>
   );
 }
 
 export default function OperationsAnalyticsPage() {
   return (
-    <div className="space-y-6">
+    <div className="space-y-section-gap">
       <AnalyticsFilterBar />
 
       {/* Sweep Performance KPIs */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-stat-grid-gap lg:grid-cols-4">
         <KpiCard
           title="Avg Detect to Sweep"
           value={analyticsSweepPerformance.avgDetectToSweep}
@@ -91,67 +91,83 @@ export default function OperationsAnalyticsPage() {
         />
       </div>
 
-      {/* Webhook Delivery */}
+      {/* Webhook Delivery — gold monochromatic */}
       <AreaChartCard
         title="Webhook Delivery Success Rate (30 Days)"
         data={analyticsWebhookDelivery}
         xKey="date"
         yKeys={[
-          { key: "successRate", color: "#22c55e", name: "Success Rate %" },
+          {
+            key: "successRate",
+            color: "var(--chart-primary)",
+            name: "Success Rate %",
+          },
         ]}
         height={280}
         formatValue={(v) => `${v.toFixed(1)}%`}
       />
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-section-gap lg:grid-cols-2">
         <AreaChartCard
           title="Webhooks Sent per Day"
           data={analyticsWebhookDelivery}
           xKey="date"
           yKeys={[
-            { key: "totalSent", color: "#3b82f6", name: "Total Sent" },
-            { key: "failed", color: "#ef4444", name: "Failed" },
+            {
+              key: "totalSent",
+              color: "var(--chart-primary)",
+              name: "Total Sent",
+            },
+            {
+              key: "failed",
+              color: "var(--chart-down)",
+              name: "Failed",
+            },
           ]}
           height={260}
         />
 
-        {/* Failed Transactions */}
+        {/* Failed Transactions — monospace for tx IDs and addresses */}
         <AnalyticsDataTable
           title="Recent Failed Transactions"
           columns={[
-            { header: "Tx ID", accessor: "id" },
+            { header: "Tx ID", accessor: "id", mono: true },
             { header: "Chain", accessor: "chain" },
             { header: "Type", accessor: "type" },
             { header: "Error", accessor: "error" },
-            { header: "Amount", accessor: "amount", align: "right" },
+            { header: "Amount", accessor: "amount", align: "right", mono: true },
           ]}
           data={analyticsFailedTransactions}
         />
       </div>
 
       {/* RPC Health */}
-      <div className="bg-bg-secondary border border-border-subtle rounded-lg p-5">
-        <h3 className="mb-4 text-[13px] font-semibold text-text-primary">
+      <div className="rounded-card border border-border-default bg-surface-card p-card-p shadow-card">
+        <h3 className="mb-4 font-display text-subheading text-text-primary">
           RPC Health per Chain
         </h3>
         <div className="grid gap-3">
           {analyticsRpcHealth.map((rpc) => (
             <div
               key={rpc.chain}
-              className="flex items-center gap-4 rounded-[var(--radius)] border border-border-subtle bg-bg-tertiary p-3"
+              className="flex items-center gap-4 rounded-card border border-border-subtle bg-surface-elevated p-3 transition-colors duration-fast hover:bg-surface-hover"
             >
-              <span className="w-24 text-[13px] font-medium text-text-primary">
+              <span className="w-24 font-display text-body font-medium text-text-primary">
                 {rpc.chain}
               </span>
               <StatusBadge status={rpc.status} />
               <MiniSparkline
                 data={rpc.latency}
-                color={rpc.status === "degraded" ? "var(--orange)" : "var(--green)"}
+                color={
+                  rpc.status === "degraded"
+                    ? "var(--status-warning)"
+                    : "var(--status-success)"
+                }
               />
-              <span className="text-xs text-text-muted font-mono">
+              <span className="font-mono text-xs text-text-muted">
                 Avg: {rpc.avgLatency}ms
               </span>
-              <span className="ml-auto text-xs text-text-muted font-mono">
+              <span className="ml-auto font-mono text-xs text-text-muted">
                 {rpc.uptime}% uptime
               </span>
             </div>
@@ -159,23 +175,31 @@ export default function OperationsAnalyticsPage() {
         </div>
       </div>
 
-      {/* Gas Prices Trend */}
+      {/* Gas Prices Trend — gold tones for multiple chains */}
       <AreaChartCard
         title="Gas Prices Trend (30 Days)"
         data={analyticsGasPricesTrend}
         xKey="date"
         yKeys={[
-          { key: "ethereum", color: "#3b82f6", name: "Ethereum (Gwei)" },
-          { key: "polygon", color: "#8b5cf6", name: "Polygon (Gwei)" },
+          {
+            key: "ethereum",
+            color: "var(--chart-primary)",
+            name: "Ethereum (Gwei)",
+          },
+          {
+            key: "polygon",
+            color: "var(--chart-secondary)",
+            name: "Polygon (Gwei)",
+          },
         ]}
         height={280}
         formatValue={(v) => `${v} Gwei`}
       />
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-section-gap lg:grid-cols-2">
         {/* Gas Tank Balances */}
-        <div className="bg-bg-secondary border border-border-subtle rounded-lg p-5">
-          <h3 className="mb-4 text-[13px] font-semibold text-text-primary">
+        <div className="rounded-card border border-border-default bg-surface-card p-card-p shadow-card">
+          <h3 className="mb-4 font-display text-subheading text-text-primary">
             Gas Tank Balances
           </h3>
           <div className="space-y-3">
@@ -187,25 +211,30 @@ export default function OperationsAnalyticsPage() {
               return (
                 <div key={tank.chain} className="space-y-1">
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-text-secondary">{tank.chain}</span>
+                    <span className="font-display text-text-secondary">
+                      {tank.chain}
+                    </span>
                     <div className="flex items-center gap-2">
                       {tank.status === "warning" && (
-                        <span className="text-orange text-[10px] font-semibold">
+                        <span className="font-display text-micro font-semibold text-status-warning">
                           LOW
                         </span>
                       )}
-                      <span className="text-text-primary font-medium font-mono">
-                        {tank.balance.toLocaleString()} (${tank.usdValue.toLocaleString()})
+                      <span className="font-mono font-medium text-text-primary">
+                        {tank.balance.toLocaleString()} ($
+                        {tank.usdValue.toLocaleString()})
                       </span>
                     </div>
                   </div>
-                  <div className="h-1.5 rounded-full bg-bg-elevated">
+                  <div className="h-1.5 rounded-pill bg-surface-elevated">
                     <div
-                      className="h-full rounded-full transition-all"
+                      className="h-full rounded-pill transition-all duration-normal"
                       style={{
                         width: `${pct}%`,
                         backgroundColor:
-                          tank.status === "warning" ? "var(--orange)" : "var(--green)",
+                          tank.status === "warning"
+                            ? "var(--status-warning)"
+                            : "var(--status-success)",
                       }}
                     />
                   </div>
@@ -216,33 +245,39 @@ export default function OperationsAnalyticsPage() {
         </div>
 
         {/* Queue Depths */}
-        <div className="bg-bg-secondary border border-border-subtle rounded-lg p-5">
-          <h3 className="mb-4 text-[13px] font-semibold text-text-primary">
+        <div className="rounded-card border border-border-default bg-surface-card p-card-p shadow-card">
+          <h3 className="mb-4 font-display text-subheading text-text-primary">
             Queue Depths
           </h3>
           <div className="space-y-3">
             {analyticsQueueDepths.map((q) => {
               const pct = (q.depth / q.maxDepth) * 100;
               const color =
-                pct > 50 ? "var(--red)" : pct > 20 ? "var(--orange)" : "var(--green)";
+                pct > 50
+                  ? "var(--status-error)"
+                  : pct > 20
+                    ? "var(--status-warning)"
+                    : "var(--status-success)";
               return (
                 <div key={q.queue} className="space-y-1">
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-text-secondary font-mono">{q.queue}</span>
-                    <span className="text-text-primary font-medium font-mono">
+                    <span className="font-mono text-text-secondary">
+                      {q.queue}
+                    </span>
+                    <span className="font-mono font-medium text-text-primary">
                       {q.depth.toLocaleString()}{" "}
                       <span className="text-text-muted">
                         / {q.maxDepth.toLocaleString()}
                       </span>
                     </span>
                   </div>
-                  <div className="h-1.5 rounded-full bg-bg-elevated">
+                  <div className="h-1.5 rounded-pill bg-surface-elevated">
                     <div
-                      className="h-full rounded-full transition-all"
+                      className="h-full rounded-pill transition-all duration-normal"
                       style={{ width: `${pct}%`, backgroundColor: color }}
                     />
                   </div>
-                  <span className="text-[10px] text-text-muted font-mono">
+                  <span className="font-mono text-[10px] text-text-muted">
                     Avg processing: {q.avgProcessingMs}ms
                   </span>
                 </div>

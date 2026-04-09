@@ -5,10 +5,13 @@ import { Badge } from "@/components/badge";
 import { cn } from "@/lib/utils";
 import { useTiers } from "@cvh/api-client/hooks";
 import { presetTiers, customTiers } from "@/lib/mock-data";
+import type { ComponentProps } from "react";
 
-const tierNameColors: Record<string, string> = {
-  Business: "text-accent",
-  Enterprise: "text-purple",
+/* Map legacy color names to semantic badge variants */
+const badgeMap: Record<string, ComponentProps<typeof Badge>["variant"]> = {
+  blue: "accent",
+  purple: "accent",
+  neutral: "neutral",
 };
 
 export default function TiersPage() {
@@ -19,41 +22,36 @@ export default function TiersPage() {
   return (
     <>
       {/* Preset Tiers */}
-      <div className="text-[13px] font-semibold text-text-secondary uppercase tracking-[0.05em] mb-5">
+      <div className="text-body font-semibold text-text-secondary uppercase tracking-[0.05em] mb-5 font-display">
         Preset Tiers
       </div>
-      <div className="grid grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-4 gap-4 mb-section-gap">
         {presetTiers.map((tier) => (
           <div
             key={tier.name}
             className={cn(
-              "bg-bg-secondary border border-border-subtle rounded-lg p-6 text-center transition-all cursor-pointer hover:border-accent",
+              "bg-surface-card border border-border-default rounded-card p-6 text-center transition-all duration-fast cursor-pointer hover:border-accent-primary shadow-card",
               tier.selected &&
-                "border-accent shadow-[0_0_20px_var(--accent-glow)]"
+                "border-accent-primary shadow-glow"
             )}
           >
-            <div
-              className={cn(
-                "text-lg font-bold mb-1",
-                tierNameColors[tier.name]
-              )}
-            >
+            <div className="text-heading font-bold mb-1 text-accent-primary font-display">
               {tier.name}
             </div>
-            <div className="text-[11px] text-text-muted mb-4">
+            <div className="text-caption text-text-muted mb-4 font-display">
               {tier.description}
             </div>
             {tier.features.map((feat) => (
               <div
                 key={feat.label}
-                className="text-[11px] text-text-secondary py-1 border-b border-border-subtle last:border-b-0"
+                className="text-caption text-text-secondary py-1 border-b border-border-subtle last:border-b-0 font-display"
               >
                 <strong className="text-text-primary">{feat.value}</strong>{" "}
                 {feat.label}
               </div>
             ))}
             <div className="mt-3">
-              <Badge variant={tier.badgeColor}>
+              <Badge variant={badgeMap[tier.badgeColor] ?? "neutral"}>
                 {tier.clients} clients
               </Badge>
             </div>
@@ -61,24 +59,24 @@ export default function TiersPage() {
         ))}
 
         {/* Custom Tier Card */}
-        <div className="bg-bg-secondary border border-border-subtle border-dashed rounded-lg p-6 text-center transition-all cursor-pointer hover:border-accent">
-          <div className="text-lg font-bold text-text-muted mb-1">
+        <div className="bg-surface-card border border-border-default border-dashed rounded-card p-6 text-center transition-all duration-fast cursor-pointer hover:border-accent-primary shadow-card">
+          <div className="text-heading font-bold text-text-muted mb-1 font-display">
             + Custom
           </div>
-          <div className="text-[11px] text-text-muted mb-4">
+          <div className="text-caption text-text-muted mb-4 font-display">
             Create from any base tier
           </div>
           <div className="py-[30px]">
-            <div className="text-4xl text-text-muted opacity-50">+</div>
+            <div className="text-4xl text-text-muted opacity-50 font-display">+</div>
           </div>
-          <div className="text-[11px] text-text-muted">
+          <div className="text-caption text-text-muted font-display">
             Select base {"\u2192"} customize {"\u2192"} save
           </div>
         </div>
       </div>
 
       {/* Custom Tiers Table */}
-      <div className="text-[13px] font-semibold text-text-secondary uppercase tracking-[0.05em] mb-3">
+      <div className="text-body font-semibold text-text-secondary uppercase tracking-[0.05em] mb-3 font-display">
         Custom Tiers
       </div>
       <DataTable
@@ -92,14 +90,20 @@ export default function TiersPage() {
       >
         {customTiers.map((tier) => (
           <TableRow key={tier.name}>
-            <TableCell className="font-semibold">{tier.name}</TableCell>
             <TableCell>
-              <Badge variant={tier.basedOnColor}>{tier.basedOn}</Badge>
+              <span className="font-semibold font-display text-text-primary">
+                {tier.name}
+              </span>
             </TableCell>
-            <TableCell className="text-[11px]">{tier.overrides}</TableCell>
+            <TableCell>
+              <Badge variant={badgeMap[tier.basedOnColor] ?? "neutral"}>
+                {tier.basedOn}
+              </Badge>
+            </TableCell>
+            <TableCell className="text-caption">{tier.overrides}</TableCell>
             <TableCell>{tier.assignedTo}</TableCell>
             <TableCell>
-              <button className="bg-transparent text-text-secondary border border-border rounded-[var(--radius)] px-3 py-1 text-[11px] font-semibold hover:border-text-secondary hover:text-text-primary transition-all">
+              <button className="bg-transparent text-text-secondary border border-border-default rounded-button px-3 py-1 text-caption font-semibold hover:border-accent-primary hover:text-text-primary transition-all duration-fast font-display">
                 Edit
               </button>
             </TableCell>

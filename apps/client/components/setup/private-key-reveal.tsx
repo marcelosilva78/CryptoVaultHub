@@ -9,6 +9,15 @@ interface PrivateKeyRevealProps {
   className?: string;
 }
 
+/**
+ * Private Key Reveal:
+ * - Blurred overlay (backdrop-blur-[8px]) with accent-subtle tint
+ * - "Reveal Private Key" button: outline style, status-warning border
+ * - Confirmation dialog: surface-elevated, warning icon, risk text, checkbox, reveal button
+ * - When revealed: surface-page background (darkest), font-mono, accent-primary text
+ * - Auto-hide countdown: 60s timer visible, accent-primary countdown ring (SVG stroke-dashoffset)
+ * - Mnemonic grid: 4x3 grid of word cards, each with number in text-muted and word in text-primary mono
+ */
 export function PrivateKeyReveal({
   privateKey,
   mnemonic,
@@ -59,14 +68,19 @@ export function PrivateKeyReveal({
 
   const mnemonicWords = mnemonic?.split(" ") || [];
 
+  // Countdown ring geometry
+  const ringRadius = 15;
+  const ringCircumference = 2 * Math.PI * ringRadius;
+  const ringOffset = ringCircumference * (1 - countdown / 60);
+
   return (
     <div className={cn("space-y-3", className)}>
-      {/* Reveal button / Blurred area */}
+      {/* Hidden state: blurred overlay */}
       {!revealed ? (
         <div className="relative">
           {/* Blurred preview */}
-          <div className="bg-cvh-bg-tertiary border border-cvh-border-subtle rounded-cvh p-4 select-none">
-            <div className="blur-[8px] pointer-events-none font-mono text-[12px] text-cvh-text-secondary leading-relaxed">
+          <div className="bg-surface-card border border-border-default rounded-card p-4 select-none">
+            <div className="blur-[8px] pointer-events-none font-mono text-code text-text-secondary leading-relaxed">
               0x7a4f8e2c1b9d3f5a6e8c0d2b4f6a8e1c3d5f7b9a0c2e4f6a8b0d2e4f6a8c0e2d4f6a8b0
             </div>
             {mnemonic && (
@@ -74,7 +88,7 @@ export function PrivateKeyReveal({
                 {Array.from({ length: 12 }).map((_, i) => (
                   <div
                     key={i}
-                    className="bg-cvh-bg-elevated rounded px-2 py-1 text-[10px] text-cvh-text-muted"
+                    className="bg-surface-elevated rounded-input px-2 py-1 text-[10px] text-text-muted"
                   >
                     {i + 1}. xxxxxxx
                   </div>
@@ -83,20 +97,13 @@ export function PrivateKeyReveal({
             )}
           </div>
 
-          {/* Overlay button */}
-          <div className="absolute inset-0 flex items-center justify-center bg-cvh-bg-tertiary/60 backdrop-blur-[2px] rounded-cvh">
+          {/* Overlay with accent-subtle tint */}
+          <div className="absolute inset-0 flex items-center justify-center bg-accent-subtle backdrop-blur-[8px] rounded-card">
             <button
               onClick={() => setShowDialog(true)}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-cvh text-[12px] font-semibold bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 hover:border-red-500/40 transition-all cursor-pointer"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-button text-caption font-display font-semibold bg-transparent text-status-warning border-2 border-status-warning/40 hover:bg-status-warning-subtle hover:border-status-warning/60 transition-all duration-fast cursor-pointer"
             >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
                 <path d="M7 11V7a5 5 0 0 1 10 0v4" />
               </svg>
@@ -105,13 +112,48 @@ export function PrivateKeyReveal({
           </div>
         </div>
       ) : (
-        <div className="space-y-3 animate-fade-up">
-          {/* Auto-hide timer */}
+        <div className="space-y-3 animate-fade-in">
+          {/* Auto-hide timer with countdown ring */}
           <div className="flex items-center justify-between">
-            <span className="text-[10px] text-amber-400 font-semibold flex items-center gap-1.5">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="10" />
-                <polyline points="12 6 12 12 16 14" />
+            <span className="text-micro text-status-warning font-display font-semibold flex items-center gap-2">
+              {/* SVG countdown ring */}
+              <svg width="34" height="34" viewBox="0 0 34 34" className="flex-shrink-0">
+                {/* Background ring */}
+                <circle
+                  cx="17"
+                  cy="17"
+                  r={ringRadius}
+                  fill="none"
+                  stroke="var(--border-default)"
+                  strokeWidth="2"
+                />
+                {/* Countdown ring */}
+                <circle
+                  cx="17"
+                  cy="17"
+                  r={ringRadius}
+                  fill="none"
+                  stroke="var(--accent-primary)"
+                  strokeWidth="2"
+                  strokeDasharray={ringCircumference}
+                  strokeDashoffset={ringOffset}
+                  strokeLinecap="round"
+                  transform="rotate(-90 17 17)"
+                  className="transition-all duration-[1000ms] ease-linear"
+                />
+                {/* Timer text */}
+                <text
+                  x="17"
+                  y="17"
+                  textAnchor="middle"
+                  dominantBaseline="central"
+                  fontSize="9"
+                  fontFamily="Outfit"
+                  fontWeight="700"
+                  fill="var(--accent-primary)"
+                >
+                  {countdown}
+                </text>
               </svg>
               Auto-hiding in {countdown}s
             </span>
@@ -120,71 +162,64 @@ export function PrivateKeyReveal({
                 setRevealed(false);
                 setAcknowledged(false);
               }}
-              className="text-[10px] text-cvh-text-muted hover:text-cvh-text-primary transition-colors cursor-pointer"
+              className="text-micro text-text-muted hover:text-text-primary transition-colors duration-fast cursor-pointer font-display"
             >
               Hide now
             </button>
           </div>
 
-          {/* Private Key */}
-          <div className="bg-cvh-bg-tertiary border border-red-500/20 rounded-cvh p-4">
+          {/* Private Key -- surface-page (darkest), mono, accent-primary text */}
+          <div className="bg-surface-page border border-status-warning/20 rounded-card p-4">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-red-400">
+              <span className="text-micro font-display font-bold uppercase tracking-wider text-status-warning">
                 Private Key
               </span>
               <button
                 onClick={handleCopyKey}
                 className={cn(
-                  "inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold transition-all cursor-pointer",
+                  "inline-flex items-center gap-1 px-2 py-0.5 rounded-input text-[10px] font-display font-semibold transition-all duration-fast cursor-pointer",
                   copied
-                    ? "bg-cvh-green/10 text-cvh-green"
-                    : "bg-cvh-bg-elevated text-cvh-text-secondary hover:text-cvh-text-primary"
+                    ? "bg-status-success-subtle text-status-success"
+                    : "bg-surface-elevated text-text-secondary hover:text-text-primary"
                 )}
               >
                 {copied ? "Copied!" : "Copy"}
               </button>
             </div>
-            <code className="block font-mono text-[11px] text-cvh-text-primary break-all leading-relaxed select-all">
+            <code className="block font-mono text-code text-accent-primary break-all leading-relaxed select-all">
               {privateKey}
             </code>
           </div>
 
-          {/* Mnemonic grid */}
+          {/* Mnemonic grid: 4x3 grid */}
           {mnemonic && mnemonicWords.length > 0 && (
-            <div className="bg-cvh-bg-tertiary border border-red-500/20 rounded-cvh p-4">
+            <div className="bg-surface-page border border-status-warning/20 rounded-card p-4">
               <div className="flex items-center justify-between mb-3">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-red-400">
+                <span className="text-micro font-display font-bold uppercase tracking-wider text-status-warning">
                   Recovery Phrase
                 </span>
                 <button
                   onClick={handleCopyMnemonic}
                   className={cn(
-                    "inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold transition-all cursor-pointer",
+                    "inline-flex items-center gap-1 px-2 py-0.5 rounded-input text-[10px] font-display font-semibold transition-all duration-fast cursor-pointer",
                     mnemonicCopied
-                      ? "bg-cvh-green/10 text-cvh-green"
-                      : "bg-cvh-bg-elevated text-cvh-text-secondary hover:text-cvh-text-primary"
+                      ? "bg-status-success-subtle text-status-success"
+                      : "bg-surface-elevated text-text-secondary hover:text-text-primary"
                   )}
                 >
                   {mnemonicCopied ? "Copied!" : "Copy"}
                 </button>
               </div>
-              <div
-                className={cn(
-                  "grid gap-2",
-                  mnemonicWords.length <= 12
-                    ? "grid-cols-4"
-                    : "grid-cols-6"
-                )}
-              >
+              <div className="grid grid-cols-4 gap-2">
                 {mnemonicWords.map((word, i) => (
                   <div
                     key={i}
-                    className="bg-cvh-bg-elevated border border-cvh-border-subtle rounded-[4px] px-2 py-1.5 text-center"
+                    className="bg-surface-card border border-border-subtle rounded-input px-2 py-1.5 text-center"
                   >
-                    <span className="text-[9px] text-cvh-text-muted mr-1">
+                    <span className="text-[9px] text-text-muted mr-1 font-display">
                       {i + 1}.
                     </span>
-                    <span className="text-[11px] font-mono text-cvh-text-primary font-medium">
+                    <span className="text-caption font-mono text-text-primary font-medium">
                       {word}
                     </span>
                   </div>
@@ -194,7 +229,7 @@ export function PrivateKeyReveal({
           )}
 
           {/* Security warning */}
-          <div className="flex items-start gap-2 p-3 bg-amber-500/5 border border-amber-500/15 rounded-cvh">
+          <div className="flex items-start gap-2 p-3 bg-status-warning-subtle border border-status-warning/15 rounded-card">
             <svg
               width="14"
               height="14"
@@ -202,13 +237,13 @@ export function PrivateKeyReveal({
               fill="none"
               stroke="currentColor"
               strokeWidth="2"
-              className="text-amber-400 mt-0.5 flex-shrink-0"
+              className="text-status-warning mt-0.5 flex-shrink-0"
             >
               <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
               <line x1="12" y1="9" x2="12" y2="13" />
               <line x1="12" y1="17" x2="12.01" y2="17" />
             </svg>
-            <div className="text-[10px] text-amber-300/80 leading-relaxed">
+            <div className="text-[10px] text-status-warning/80 font-display leading-relaxed">
               <strong>Never share your private key or recovery phrase.</strong>{" "}
               Anyone with access can control your wallet and all its funds.
               Store this information offline in a secure location.
@@ -220,9 +255,13 @@ export function PrivateKeyReveal({
       {/* Confirmation dialog */}
       {showDialog && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-[4px] z-[300] flex items-center justify-center">
-          <div className="bg-cvh-bg-secondary border border-cvh-border rounded-cvh-lg p-6 w-[420px] animate-fade-up">
+          <div className="bg-surface-elevated border border-border-default rounded-modal p-6 w-[420px] shadow-float animate-fade-up">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center">
+              {/* Warning icon in hexagonal shape */}
+              <div
+                className="w-10 h-10 flex items-center justify-center bg-status-warning-subtle"
+                style={{ clipPath: "polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)" }}
+              >
                 <svg
                   width="20"
                   height="20"
@@ -230,7 +269,7 @@ export function PrivateKeyReveal({
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="2"
-                  className="text-red-400"
+                  className="text-status-warning"
                 >
                   <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
                   <line x1="12" y1="9" x2="12" y2="13" />
@@ -238,16 +277,16 @@ export function PrivateKeyReveal({
                 </svg>
               </div>
               <div>
-                <div className="text-[14px] font-bold text-cvh-text-primary">
+                <div className="text-subheading font-display text-text-primary">
                   Reveal Private Key
                 </div>
-                <div className="text-[11px] text-cvh-text-muted">
+                <div className="text-caption text-text-muted font-display">
                   This action exposes sensitive data
                 </div>
               </div>
             </div>
 
-            <div className="bg-red-500/5 border border-red-500/15 rounded-cvh p-3 mb-4 text-[11px] text-red-300/80 leading-relaxed">
+            <div className="bg-status-error-subtle border border-status-error/15 rounded-card p-3 mb-4 text-caption text-status-error/80 font-display leading-relaxed">
               Your private key gives <strong>full control</strong> of this
               wallet. Never share it with anyone. Store it securely offline.
               CryptoVaultHub will never ask for your private key.
@@ -258,9 +297,9 @@ export function PrivateKeyReveal({
                 type="checkbox"
                 checked={acknowledged}
                 onChange={(e) => setAcknowledged(e.target.checked)}
-                className="mt-0.5 accent-cvh-accent w-3.5 h-3.5 cursor-pointer"
+                className="mt-0.5 accent-accent-primary w-3.5 h-3.5 cursor-pointer"
               />
-              <span className="text-[11px] text-cvh-text-secondary group-hover:text-cvh-text-primary transition-colors">
+              <span className="text-caption text-text-secondary font-display group-hover:text-text-primary transition-colors duration-fast">
                 I understand the risks and will store my private key securely
               </span>
             </label>
@@ -271,7 +310,7 @@ export function PrivateKeyReveal({
                   setShowDialog(false);
                   setAcknowledged(false);
                 }}
-                className="px-3 py-1.5 rounded-[6px] text-[11px] font-semibold text-cvh-text-secondary border border-cvh-border hover:border-cvh-text-secondary hover:text-cvh-text-primary transition-colors cursor-pointer"
+                className="px-3 py-1.5 rounded-button text-caption font-display font-semibold text-text-secondary border border-border-default hover:border-text-secondary hover:text-text-primary transition-all duration-fast cursor-pointer"
               >
                 Cancel
               </button>
@@ -279,10 +318,10 @@ export function PrivateKeyReveal({
                 onClick={handleReveal}
                 disabled={!acknowledged}
                 className={cn(
-                  "px-3 py-1.5 rounded-[6px] text-[11px] font-semibold transition-all cursor-pointer",
+                  "px-3 py-1.5 rounded-button text-caption font-display font-semibold transition-all duration-fast cursor-pointer",
                   acknowledged
-                    ? "bg-red-500 text-white hover:bg-red-600"
-                    : "bg-cvh-bg-elevated text-cvh-text-muted cursor-not-allowed"
+                    ? "bg-status-warning text-accent-text hover:bg-status-warning/90"
+                    : "bg-surface-hover text-text-muted cursor-not-allowed"
                 )}
               >
                 Reveal Key

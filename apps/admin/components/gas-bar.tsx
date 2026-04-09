@@ -7,13 +7,13 @@ interface GasBarProps {
 
 export function GasBar({ percent, status }: GasBarProps) {
   return (
-    <div className="h-2 bg-bg-elevated rounded-full overflow-hidden mt-2">
+    <div className="h-2 bg-surface-elevated rounded-pill overflow-hidden mt-2">
       <div
         className={cn(
-          "h-full rounded-full transition-all duration-500",
+          "h-full rounded-pill transition-all duration-normal",
           status === "low"
-            ? "bg-gradient-to-r from-red to-orange"
-            : "bg-gradient-to-r from-green to-accent"
+            ? "bg-status-error"
+            : "bg-accent-primary"
         )}
         style={{ width: `${percent}%` }}
       />

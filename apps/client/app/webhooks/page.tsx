@@ -29,84 +29,90 @@ const samplePayload = {
 };
 
 export default function WebhooksPage() {
-  // API hook with mock data fallback
   const { data: apiWebhooks } = useWebhooks();
-  void apiWebhooks; // Falls back to webhookConfig mock data below
+  void apiWebhooks;
 
   const [showPayload, setShowPayload] = useState<string | null>(null);
   const [testSent, setTestSent] = useState(false);
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-[18px]">
+      {/* Page header */}
+      <div className="flex justify-between items-center mb-section-gap">
         <div>
-          <div className="text-[18px] font-bold">Webhooks</div>
-          <div className="text-[11px] text-cvh-text-muted mt-0.5">
+          <h1 className="text-heading font-display text-text-primary">Webhooks</h1>
+          <p className="text-caption text-text-muted mt-0.5 font-display">
             Configure real-time notifications for deposits, withdrawals, and system events
-          </div>
+          </p>
         </div>
-        <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] font-display text-[11px] font-semibold cursor-pointer transition-colors bg-cvh-accent text-white border-none hover:bg-cvh-accent-dim">
+        <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-button font-display text-caption font-semibold cursor-pointer transition-colors duration-fast bg-accent-primary text-accent-text border-none hover:bg-accent-hover">
           + New Webhook
         </button>
       </div>
 
-      {/* Webhook Card */}
-      <div className="bg-cvh-bg-secondary border border-cvh-border-subtle rounded-cvh-lg p-[18px] mb-3.5">
+      {/* Webhook Endpoint Card */}
+      <div className="bg-surface-card border border-border-default rounded-card p-card-p mb-section-gap shadow-card">
         <div className="flex justify-between items-center mb-3">
-          <div>
-            <div className="text-[13px] font-bold">{webhookConfig.name}</div>
-            <div className="font-mono text-[11px] text-cvh-accent mt-0.5">
-              {webhookConfig.url}
+          <div className="flex items-center gap-3">
+            {/* Status LED - green for active, red for inactive */}
+            <span className="w-2.5 h-2.5 rounded-pill bg-status-success animate-pulse-gold shrink-0" />
+            <div>
+              <div className="text-subheading font-display">{webhookConfig.name}</div>
+              <div className="font-mono text-code text-accent-primary mt-0.5">
+                {webhookConfig.url}
+              </div>
             </div>
           </div>
           <div className="flex items-center gap-2.5">
-            <Badge variant="green" dot>
+            <Badge variant="success" dot>
               Active &middot; {webhookConfig.successRate}% success
             </Badge>
+            {/* Test Delivery button - outline style */}
             <button
               onClick={() => {
                 setTestSent(true);
                 setTimeout(() => setTestSent(false), 3000);
               }}
-              className={`inline-flex items-center px-2 py-[3px] rounded-[6px] font-display text-[10px] font-semibold cursor-pointer transition-colors border ${
+              className={`inline-flex items-center px-2.5 py-[4px] rounded-button font-display text-micro font-semibold cursor-pointer transition-all duration-fast border ${
                 testSent
-                  ? "bg-[rgba(34,197,94,0.1)] text-cvh-green border-[rgba(34,197,94,0.2)]"
-                  : "bg-transparent text-cvh-text-secondary border-cvh-border hover:border-cvh-text-secondary hover:text-cvh-text-primary"
+                  ? "bg-status-success-subtle text-status-success border-status-success"
+                  : "bg-transparent text-text-secondary border-border-default hover:border-accent-primary hover:text-text-primary"
               }`}
             >
               {testSent ? "Test Sent!" : "Test Delivery"}
             </button>
-            <button className="inline-flex items-center px-2 py-[3px] rounded-[6px] font-display text-[10px] font-semibold cursor-pointer transition-colors bg-transparent text-cvh-text-secondary border border-cvh-border hover:border-cvh-text-secondary hover:text-cvh-text-primary">
+            <button className="inline-flex items-center px-2.5 py-[4px] rounded-button font-display text-micro font-semibold cursor-pointer transition-colors duration-fast bg-transparent text-text-secondary border border-border-default hover:border-accent-primary hover:text-text-primary">
               Edit
             </button>
           </div>
         </div>
 
-        <div className="text-[11px] text-cvh-text-muted mb-2.5">
+        <div className="text-caption text-text-muted mb-2.5 font-display">
           Secret:{" "}
-          <span className="font-mono">{webhookConfig.secret}</span>
-          <button className="bg-transparent border-none text-cvh-accent cursor-pointer text-[10px] font-display ml-1.5 hover:underline">
+          <span className="font-mono text-code">{webhookConfig.secret}</span>
+          <button className="bg-transparent border-none text-accent-primary cursor-pointer text-micro font-display ml-1.5 hover:underline font-semibold">
             Regenerate
           </button>
         </div>
 
-        <div className="text-[10px] font-semibold text-cvh-text-muted uppercase tracking-[0.08em] mb-1.5">
+        <div className="text-micro font-semibold text-text-muted uppercase tracking-[0.08em] mb-1.5 font-display">
           Enabled Events
         </div>
         <div className="grid grid-cols-3 gap-1.5">
           {webhookEvents.map((evt) => (
             <label
               key={evt.name}
-              className={`flex items-center gap-1.5 text-[11px] px-2 py-[5px] rounded cursor-pointer transition-colors ${
+              className={`flex items-center gap-1.5 text-caption px-2.5 py-[5px] rounded-input cursor-pointer transition-colors duration-fast font-display ${
                 evt.enabled
-                  ? "bg-[rgba(59,130,246,0.12)] text-cvh-accent"
-                  : "bg-cvh-bg-tertiary text-cvh-text-secondary hover:bg-cvh-bg-hover"
+                  ? "bg-accent-subtle text-accent-primary"
+                  : "bg-surface-input text-text-secondary hover:bg-surface-hover"
               }`}
             >
               <input
                 type="checkbox"
                 defaultChecked={evt.enabled}
-                className="accent-cvh-accent"
+                className="accent-accent-primary"
+                style={{ accentColor: "var(--accent-primary)" }}
               />
               {evt.name}
             </label>
@@ -115,12 +121,12 @@ export default function WebhooksPage() {
       </div>
 
       {/* Sample Payload */}
-      <div className="bg-cvh-bg-secondary border border-cvh-border-subtle rounded-cvh-lg p-[18px] mb-3.5">
+      <div className="bg-surface-card border border-border-default rounded-card p-card-p mb-section-gap shadow-card">
         <div className="flex items-center justify-between mb-2">
-          <div className="text-[13px] font-semibold">Sample Payload</div>
+          <div className="text-subheading font-display">Sample Payload</div>
           <button
             onClick={() => navigator.clipboard.writeText(JSON.stringify(samplePayload, null, 2))}
-            className="inline-flex items-center px-2 py-[3px] rounded-[6px] font-display text-[10px] font-semibold cursor-pointer transition-colors bg-transparent text-cvh-text-secondary border border-cvh-border hover:border-cvh-text-secondary hover:text-cvh-text-primary"
+            className="inline-flex items-center px-2.5 py-[4px] rounded-button font-display text-micro font-semibold cursor-pointer transition-colors duration-fast bg-transparent text-text-secondary border border-border-default hover:border-accent-primary hover:text-text-primary"
           >
             Copy
           </button>
@@ -128,11 +134,11 @@ export default function WebhooksPage() {
         <JsonViewer data={samplePayload} maxHeight="200px" />
       </div>
 
-      {/* Recent Deliveries */}
+      {/* Delivery Log */}
       <DataTable
         title="Delivery Log"
         actions={
-          <select className="bg-cvh-bg-tertiary border border-cvh-border rounded-[6px] px-2 py-1 text-[11px] text-cvh-text-primary font-display outline-none focus:border-cvh-accent cursor-pointer">
+          <select className="bg-surface-input border border-border-default rounded-input px-2 py-1 text-caption text-text-primary font-display outline-none focus:border-border-focus cursor-pointer transition-colors duration-fast">
             <option>All Status</option>
             <option>Sent</option>
             <option>Failed</option>
@@ -151,17 +157,17 @@ export default function WebhooksPage() {
         {webhookDeliveries.map((d) => (
           <tr
             key={d.id}
-            className={`hover:bg-cvh-bg-hover ${
-              d.failed ? "bg-[rgba(239,68,68,0.05)]" : ""
+            className={`hover:bg-surface-hover transition-colors duration-fast ${
+              d.failed ? "bg-status-error-subtle" : ""
             }`}
           >
-            <td className="px-[14px] py-2.5 border-b border-cvh-border-subtle font-mono text-[10px]">
+            <td className="px-[14px] py-2.5 border-b border-border-subtle font-mono text-micro">
               {d.id}
             </td>
-            <td className="px-[14px] py-2.5 border-b border-cvh-border-subtle">
+            <td className="px-[14px] py-2.5 border-b border-border-subtle">
               <Badge
                 variant={
-                  d.event.startsWith("deposit") ? "green" : "orange"
+                  d.event.startsWith("deposit") ? "success" : "warning"
                 }
                 className="text-[9px]"
               >
@@ -169,31 +175,31 @@ export default function WebhooksPage() {
               </Badge>
             </td>
             <td
-              className={`px-[14px] py-2.5 border-b border-cvh-border-subtle font-mono ${
-                d.httpStatus === 200 ? "text-cvh-green" : "text-cvh-red"
+              className={`px-[14px] py-2.5 border-b border-border-subtle font-mono text-code ${
+                d.httpStatus === 200 ? "text-status-success" : "text-status-error"
               }`}
             >
               {d.httpStatus}
             </td>
-            <td className="px-[14px] py-2.5 border-b border-cvh-border-subtle font-mono">
+            <td className="px-[14px] py-2.5 border-b border-border-subtle font-mono text-code">
               {d.latency}
             </td>
             <td
-              className={`px-[14px] py-2.5 border-b border-cvh-border-subtle font-mono ${
-                d.failed ? "text-cvh-red" : ""
+              className={`px-[14px] py-2.5 border-b border-border-subtle font-mono text-code ${
+                d.failed ? "text-status-error" : ""
               }`}
             >
               {d.attempts}
             </td>
-            <td className="px-[14px] py-2.5 border-b border-cvh-border-subtle">
-              <Badge variant={d.failed ? "red" : "green"}>
+            <td className="px-[14px] py-2.5 border-b border-border-subtle">
+              <Badge variant={d.failed ? "error" : "success"}>
                 {d.status}
               </Badge>
             </td>
-            <td className="px-[14px] py-2.5 border-b border-cvh-border-subtle">
+            <td className="px-[14px] py-2.5 border-b border-border-subtle">
               <div className="flex gap-1.5">
                 {d.failed && (
-                  <button className="inline-flex items-center px-2 py-[3px] rounded-[6px] font-display text-[10px] font-semibold cursor-pointer transition-colors bg-cvh-accent text-white border-none hover:bg-cvh-accent-dim">
+                  <button className="inline-flex items-center px-2 py-[3px] rounded-button font-display text-micro font-semibold cursor-pointer transition-colors duration-fast bg-accent-primary text-accent-text border-none hover:bg-accent-hover">
                     Retry
                   </button>
                 )}
@@ -201,10 +207,10 @@ export default function WebhooksPage() {
                   onClick={() =>
                     setShowPayload(showPayload === d.id ? null : d.id)
                   }
-                  className={`inline-flex items-center px-2 py-[3px] rounded-[6px] font-display text-[10px] font-semibold cursor-pointer transition-colors border ${
+                  className={`inline-flex items-center px-2 py-[3px] rounded-button font-display text-micro font-semibold cursor-pointer transition-colors duration-fast border ${
                     showPayload === d.id
-                      ? "bg-[rgba(59,130,246,0.12)] text-cvh-accent border-cvh-accent"
-                      : "bg-transparent text-cvh-text-secondary border-cvh-border hover:border-cvh-text-secondary hover:text-cvh-text-primary"
+                      ? "bg-accent-subtle text-accent-primary border-accent-primary"
+                      : "bg-transparent text-text-secondary border-border-default hover:border-accent-primary hover:text-text-primary"
                   }`}
                 >
                   Payload
@@ -217,7 +223,7 @@ export default function WebhooksPage() {
 
       {/* Payload viewer */}
       {showPayload && (
-        <div className="mt-2 animate-fade-up">
+        <div className="mt-2 animate-fade-in">
           <JsonViewer data={samplePayload} maxHeight="250px" />
         </div>
       )}

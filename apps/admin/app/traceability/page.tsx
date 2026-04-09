@@ -588,37 +588,38 @@ const mockTransactions: Record<string, MockTransaction[]> = {
   })),
 };
 
-// ─── Type icons ─────────────────────────────────────────────
+// ─── Type icons: using semantic status colors per identity ──
 const typeIcons: Record<string, { icon: React.ElementType; color: string }> = {
-  deposit: { icon: ArrowDownLeft, color: "text-green" },
-  withdrawal: { icon: ArrowUpRight, color: "text-red" },
-  sweep: { icon: RefreshCw, color: "text-blue" },
-  internal: { icon: Shuffle, color: "text-purple" },
+  deposit: { icon: ArrowDownLeft, color: "text-status-success" },
+  withdrawal: { icon: ArrowUpRight, color: "text-status-error" },
+  sweep: { icon: RefreshCw, color: "text-accent-primary" },
+  internal: { icon: Shuffle, color: "text-text-secondary" },
 };
 
-const statusColor: Record<string, "green" | "orange" | "red"> = {
-  confirmed: "green",
-  pending: "orange",
-  failed: "red",
+const statusColor: Record<string, "success" | "warning" | "error"> = {
+  confirmed: "success",
+  pending: "warning",
+  failed: "error",
 };
 
-// ─── Copy helper ────────────────────────────────────────────
+// ─── Inline Copy helper ────────────────────────────────────
 function InlineCopy({ text, display }: { text: string; display?: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <span className="inline-flex items-center gap-1">
-      <span className="font-mono text-[11px] text-blue cursor-pointer hover:underline" title={text}>
+      <span className="font-mono text-caption text-text-primary cursor-pointer hover:text-accent-primary transition-colors duration-fast" title={text}>
         {display || shortenAddress(text, 6)}
       </span>
       <button
-        onClick={() => {
+        onClick={(e) => {
+          e.stopPropagation();
           navigator.clipboard.writeText(text);
           setCopied(true);
           setTimeout(() => setCopied(false), 2000);
         }}
-        className="text-text-muted hover:text-text-primary transition-colors"
+        className="text-text-muted hover:text-text-primary transition-colors duration-fast"
       >
-        {copied ? <Check className="w-2.5 h-2.5 text-green" /> : <Copy className="w-2.5 h-2.5" />}
+        {copied ? <Check className="w-2.5 h-2.5 text-status-success" /> : <Copy className="w-2.5 h-2.5" />}
       </button>
     </span>
   );
@@ -696,45 +697,47 @@ export default function TraceabilityPage() {
 
   return (
     <>
-      {/* Page Title */}
-      <div className="flex items-center justify-between mb-6">
+      {/* ─── Page Title ──────────────────────────── */}
+      <div className="flex items-center justify-between mb-section-gap">
         <div>
-          <h2 className="text-[22px] font-bold tracking-tight">Transaction Traceability</h2>
-          <p className="text-xs text-text-muted mt-0.5">
+          <h2 className="text-heading font-display font-bold tracking-tight text-text-primary">
+            Transaction Traceability
+          </h2>
+          <p className="text-caption font-display text-text-muted mt-0.5">
             Full transparency view -- wallets, transactions, and on-chain data for any client
           </p>
         </div>
       </div>
 
-      {/* Client Selector */}
-      <div className="bg-bg-secondary border border-border-subtle rounded-lg p-5 mb-6">
-        <div className="text-[10px] font-semibold uppercase tracking-[0.06em] text-text-muted mb-2">
+      {/* ─── Client Selector ─────────────────────── */}
+      <div className="bg-surface-card border border-border-default rounded-card p-card-p mb-section-gap">
+        <div className="text-micro font-display font-semibold uppercase tracking-[0.06em] text-text-muted mb-2">
           Select Client
         </div>
         <div className="relative">
           <button
             onClick={() => setClientDropdownOpen(!clientDropdownOpen)}
             className={cn(
-              "w-full flex items-center justify-between bg-bg-tertiary border rounded-[var(--radius)] px-4 py-2.5 text-left transition-all",
-              clientDropdownOpen ? "border-accent" : "border-border hover:border-text-secondary"
+              "w-full flex items-center justify-between bg-surface-input border rounded-input px-4 py-2.5 text-left transition-all duration-fast",
+              clientDropdownOpen ? "border-border-focus" : "border-border-default hover:border-text-secondary"
             )}
           >
             {selectedClient ? (
               <div className="flex items-center gap-3">
-                <span className="text-sm font-semibold">{selectedClient.name}</span>
+                <span className="text-body font-display font-semibold text-text-primary">{selectedClient.name}</span>
                 <Badge variant="neutral" className="text-[10px]">{selectedClient.tier}</Badge>
-                <span className="text-[11px] text-text-muted font-mono">{selectedClient.id}</span>
+                <span className="text-caption text-text-muted font-mono">{selectedClient.id}</span>
               </div>
             ) : (
-              <span className="text-sm text-text-muted">Choose a client to view traceability data...</span>
+              <span className="text-body font-display text-text-muted">Choose a client to view traceability data...</span>
             )}
-            <ChevronDown className={cn("w-4 h-4 text-text-muted transition-transform", clientDropdownOpen && "rotate-180")} />
+            <ChevronDown className={cn("w-4 h-4 text-text-muted transition-transform duration-normal", clientDropdownOpen && "rotate-180")} />
           </button>
 
           {clientDropdownOpen && (
             <>
               <div className="fixed inset-0 z-[50]" onClick={() => setClientDropdownOpen(false)} />
-              <div className="absolute top-full left-0 right-0 mt-1 bg-bg-elevated border border-border rounded-[var(--radius)] z-[51] shadow-xl shadow-black/30 overflow-hidden">
+              <div className="absolute top-full left-0 right-0 mt-1 bg-surface-elevated border border-border-default rounded-input z-[51] shadow-float overflow-hidden">
                 <div className="flex items-center gap-2 px-3 py-2 border-b border-border-subtle">
                   <Search className="w-3.5 h-3.5 text-text-muted" />
                   <input
@@ -742,7 +745,7 @@ export default function TraceabilityPage() {
                     placeholder="Search clients..."
                     value={clientSearch}
                     onChange={(e) => setClientSearch(e.target.value)}
-                    className="bg-transparent border-none text-text-primary text-xs outline-none flex-1 font-[inherit]"
+                    className="bg-transparent border-none text-text-primary text-caption font-display outline-none flex-1 placeholder:text-text-muted"
                     autoFocus
                   />
                 </div>
@@ -756,17 +759,17 @@ export default function TraceabilityPage() {
                       setExpandedTxIds(new Set());
                     }}
                     className={cn(
-                      "w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-bg-hover transition-colors",
+                      "w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-surface-hover transition-colors duration-fast",
                       selectedClientId === client.id && "bg-accent-glow"
                     )}
                   >
-                    <span className="text-sm font-semibold">{client.name}</span>
+                    <span className="text-body font-display font-semibold text-text-primary">{client.name}</span>
                     <Badge variant="neutral" className="text-[10px]">{client.tier}</Badge>
                     <span className="text-[10px] text-text-muted font-mono ml-auto">{client.id}</span>
                   </button>
                 ))}
                 {filteredClients.length === 0 && (
-                  <div className="px-4 py-3 text-xs text-text-muted text-center">No clients found</div>
+                  <div className="px-4 py-3 text-caption font-display text-text-muted text-center">No clients found</div>
                 )}
               </div>
             </>
@@ -774,65 +777,71 @@ export default function TraceabilityPage() {
         </div>
       </div>
 
-      {/* Summary Cards (shown when client is selected) */}
+      {/* ─── Summary Cards (grid-cols-4 + 1) ─────── */}
       {clientSummary && (
-        <div className="grid grid-cols-5 gap-4 mb-6 animate-fade-in">
+        <div className="grid grid-cols-4 gap-stat-grid-gap mb-section-gap animate-fade-in">
           <StatCard label="Total Balance (USD)" value={clientSummary.totalBalanceUsd} color="accent" />
-          <StatCard label="Crypto Holdings" value={clientSummary.totalBalanceCrypto.split(" + ")[0]} subtitle={clientSummary.totalBalanceCrypto.split(" + ").slice(1).join(" + ")} />
-          <StatCard label="Total Wallets" value={String(clientSummary.totalWallets)} />
-          <StatCard label="Active Wallets" value={String(clientSummary.activeWallets)} color="green" />
-          <StatCard label="Total Transactions" value={clientSummary.totalTransactions.toLocaleString()} color="blue" />
+          <StatCard
+            label="Crypto Holdings"
+            value={clientSummary.totalBalanceCrypto.split(" + ")[0]}
+            subtitle={clientSummary.totalBalanceCrypto.split(" + ").slice(1).join(" + ")}
+            mono
+          />
+          <StatCard label="Wallets" value={`${clientSummary.activeWallets}/${clientSummary.totalWallets}`} subtitle="Active / Total" />
+          <StatCard label="Total Transactions" value={clientSummary.totalTransactions.toLocaleString()} />
         </div>
       )}
 
-      {/* No client selected state */}
+      {/* ─── No client selected ──────────────────── */}
       {!selectedClientId && (
-        <div className="bg-bg-secondary border border-border-subtle rounded-lg p-16 text-center">
-          <div className="text-text-muted text-sm mb-2">Select a client above to view their complete traceability data</div>
-          <div className="text-text-muted text-[11px]">Includes wallets, deposit addresses, transactions, and full on-chain details</div>
+        <div className="bg-surface-card border border-border-default rounded-card p-16 text-center">
+          <div className="text-text-muted text-body font-display mb-2">Select a client above to view their complete traceability data</div>
+          <div className="text-text-muted text-caption font-display">Includes wallets, deposit addresses, transactions, and full on-chain details</div>
         </div>
       )}
 
-      {/* Wallets Section */}
+      {/* ─── Wallets Section ─────────────────────── */}
       {selectedClientId && wallets.length > 0 && (
-        <div className="mb-6 animate-fade-in">
-          <div className="text-[13px] font-semibold text-text-secondary uppercase tracking-[0.05em] mb-3">
+        <div className="mb-section-gap animate-fade-in">
+          <div className="text-subheading font-display font-semibold text-text-secondary uppercase tracking-[0.05em] mb-3">
             Wallets
           </div>
           <WalletAccordion wallets={wallets} />
         </div>
       )}
 
-      {/* Transactions Section */}
+      {/* ─── Transactions Section ────────────────── */}
       {selectedClientId && (
         <div className="animate-fade-in">
-          <div className="text-[13px] font-semibold text-text-secondary uppercase tracking-[0.05em] mb-3">
-            Transactions
-            <Badge variant="neutral" className="ml-2 text-[10px]">{filteredTransactions.length} results</Badge>
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-subheading font-display font-semibold text-text-secondary uppercase tracking-[0.05em]">
+              Transactions
+            </span>
+            <Badge variant="neutral" className="text-[10px]">{filteredTransactions.length} results</Badge>
           </div>
 
           {/* Filters */}
           <TransactionFilters filters={filters} onChange={setFilters} />
 
           {/* Transaction Table */}
-          <div className="bg-bg-secondary border border-border-subtle rounded-lg overflow-hidden">
-            {/* Header */}
-            <div className="grid grid-cols-[32px_160px_80px_1fr_120px_70px_80px_80px_100px] gap-2 items-center px-4 py-2.5 bg-bg-tertiary border-b border-border-subtle">
+          <div className="bg-surface-card border border-border-default rounded-card overflow-hidden shadow-card">
+            {/* Table header */}
+            <div className="grid grid-cols-[32px_160px_80px_1fr_120px_70px_80px_80px_100px] gap-2 items-center px-4 py-2.5 bg-surface-elevated border-b border-border-subtle">
               <div />
-              <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-text-muted">Date / Time</div>
-              <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-text-muted">Type</div>
-              <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-text-muted">From / To</div>
-              <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-text-muted">Amount</div>
-              <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-text-muted">Chain</div>
-              <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-text-muted">Status</div>
-              <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-text-muted">Confirms</div>
-              <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-text-muted">Tx Hash</div>
+              <div className="text-micro font-display font-semibold uppercase tracking-[0.08em] text-text-muted">Date / Time</div>
+              <div className="text-micro font-display font-semibold uppercase tracking-[0.08em] text-text-muted">Type</div>
+              <div className="text-micro font-display font-semibold uppercase tracking-[0.08em] text-text-muted">From / To</div>
+              <div className="text-micro font-display font-semibold uppercase tracking-[0.08em] text-text-muted">Amount</div>
+              <div className="text-micro font-display font-semibold uppercase tracking-[0.08em] text-text-muted">Chain</div>
+              <div className="text-micro font-display font-semibold uppercase tracking-[0.08em] text-text-muted">Status</div>
+              <div className="text-micro font-display font-semibold uppercase tracking-[0.08em] text-text-muted">Confirms</div>
+              <div className="text-micro font-display font-semibold uppercase tracking-[0.08em] text-text-muted">Tx Hash</div>
             </div>
 
-            {/* Rows */}
+            {/* Table rows */}
             <div className="max-h-[600px] overflow-y-auto">
               {filteredTransactions.length === 0 && (
-                <div className="px-4 py-8 text-center text-sm text-text-muted">
+                <div className="px-4 py-8 text-center text-body font-display text-text-muted">
                   No transactions match the current filters
                 </div>
               )}
@@ -840,56 +849,64 @@ export default function TraceabilityPage() {
                 const isExpanded = expandedTxIds.has(tx.id);
                 const TypeIcon = typeIcons[tx.type]?.icon || ArrowDownLeft;
                 const typeColor = typeIcons[tx.type]?.color || "text-text-secondary";
-                const chainColorMap: Record<string, string> = {
-                  BSC: "text-accent",
-                  Ethereum: "text-blue",
-                  Polygon: "text-purple",
-                };
+
+                // Amount color: deposit/sweep = success (green), withdrawal = error (red), internal = muted
+                const amountColor =
+                  tx.type === "deposit" || tx.type === "sweep"
+                    ? "text-status-success"
+                    : tx.type === "withdrawal"
+                    ? "text-status-error"
+                    : "text-text-secondary";
+
+                const amountPrefix =
+                  tx.type === "deposit" || tx.type === "sweep"
+                    ? "+"
+                    : tx.type === "withdrawal"
+                    ? "-"
+                    : "";
 
                 return (
                   <div key={tx.id} className="border-b border-border-subtle last:border-b-0">
                     {/* Row */}
                     <button
                       onClick={() => toggleTxExpand(tx.id)}
-                      className="w-full grid grid-cols-[32px_160px_80px_1fr_120px_70px_80px_80px_100px] gap-2 items-center px-4 py-2.5 text-left hover:bg-bg-hover transition-colors"
+                      className="w-full grid grid-cols-[32px_160px_80px_1fr_120px_70px_80px_80px_100px] gap-2 items-center px-4 py-2.5 text-left hover:bg-surface-hover transition-colors duration-fast"
                     >
                       {/* Expand icon */}
                       <div>
-                        {isExpanded ? (
-                          <ChevronDown className="w-3.5 h-3.5 text-text-muted" />
-                        ) : (
-                          <ChevronRight className="w-3.5 h-3.5 text-text-muted" />
-                        )}
+                        <ChevronDown
+                          className={cn(
+                            "w-3.5 h-3.5 text-text-muted transition-transform duration-normal",
+                            !isExpanded && "-rotate-90"
+                          )}
+                        />
                       </div>
 
                       {/* Timestamp */}
-                      <div className="font-mono text-[11px] text-text-secondary">
+                      <div className="font-mono text-caption text-text-secondary">
                         {tx.timestamp}
                       </div>
 
                       {/* Type */}
-                      <div className={cn("flex items-center gap-1 text-[11px] font-semibold", typeColor)}>
+                      <div className={cn("flex items-center gap-1 text-caption font-display font-semibold", typeColor)}>
                         <TypeIcon className="w-3 h-3" />
                         {tx.type.charAt(0).toUpperCase() + tx.type.slice(1)}
                       </div>
 
                       {/* From -> To */}
-                      <div className="flex items-center gap-1 text-[11px] min-w-0 overflow-hidden">
+                      <div className="flex items-center gap-1 text-caption min-w-0 overflow-hidden">
                         <InlineCopy text={tx.from} />
-                        <span className="text-text-muted mx-0.5">{"\u2192"}</span>
+                        <span className="text-text-muted mx-0.5 font-display">{"\u2192"}</span>
                         <InlineCopy text={tx.to} />
                       </div>
 
                       {/* Amount */}
-                      <div className={cn(
-                        "font-mono text-[11px] font-semibold",
-                        tx.type === "deposit" ? "text-green" : tx.type === "withdrawal" ? "text-red" : tx.type === "sweep" ? "text-blue" : "text-purple"
-                      )}>
-                        {tx.type === "deposit" || tx.type === "sweep" ? "+" : tx.type === "withdrawal" ? "-" : ""}{tx.amount}
+                      <div className={cn("font-mono text-caption font-semibold", amountColor)}>
+                        {amountPrefix}{tx.amount}
                       </div>
 
                       {/* Chain */}
-                      <div className={cn("text-[10px] font-bold uppercase tracking-[0.05em]", chainColorMap[tx.chain] || "text-text-secondary")}>
+                      <div className="text-micro font-display font-bold uppercase tracking-[0.05em] text-text-secondary">
                         {tx.chain}
                       </div>
 
@@ -907,7 +924,7 @@ export default function TraceabilityPage() {
 
                       {/* Tx hash */}
                       <div
-                        className="font-mono text-[10px] text-blue cursor-pointer hover:underline truncate"
+                        className="font-mono text-[10px] text-accent-primary cursor-pointer hover:text-accent-hover truncate transition-colors duration-fast"
                         onClick={(e) => {
                           e.stopPropagation();
                           setModalTx(tx.detail);
@@ -921,11 +938,11 @@ export default function TraceabilityPage() {
                     {/* Expanded detail */}
                     {isExpanded && (
                       <div className="px-12 pb-4 animate-fade-in">
-                        <div className="text-[10px] text-text-muted uppercase tracking-[0.06em] mb-2">Full Transaction JSON</div>
+                        <div className="text-micro font-display text-text-muted uppercase tracking-[0.06em] mb-2">Full Transaction JSON</div>
                         <JsonViewer data={tx.detail} maxHeight="300px" />
                         <button
                           onClick={() => setModalTx(tx.detail)}
-                          className="mt-2 bg-accent text-black text-[11px] font-semibold px-3.5 py-1.5 rounded-[var(--radius)] hover:bg-accent-dim transition-all"
+                          className="mt-3 bg-accent-primary text-accent-text text-caption font-display font-semibold px-4 py-1.5 rounded-button hover:bg-accent-hover transition-colors duration-fast"
                         >
                           Open Full Details
                         </button>
@@ -939,7 +956,7 @@ export default function TraceabilityPage() {
         </div>
       )}
 
-      {/* Transaction Modal */}
+      {/* ─── Transaction Modal ───────────────────── */}
       <TransactionModal transaction={modalTx} onClose={() => setModalTx(null)} />
     </>
   );

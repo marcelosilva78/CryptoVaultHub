@@ -9,11 +9,11 @@ interface DataTableProps {
 
 export function DataTable({ title, actions, headers, children }: DataTableProps) {
   return (
-    <div className="bg-cvh-bg-secondary border border-cvh-border-subtle rounded-cvh-lg overflow-hidden">
+    <div className="bg-surface-card border border-border-default rounded-card overflow-hidden shadow-card">
       {(title || actions) && (
-        <div className="flex items-center justify-between px-[18px] py-[14px] border-b border-cvh-border-subtle">
+        <div className="flex items-center justify-between px-card-p py-[14px] border-b border-border-subtle">
           {title && (
-            <div className="text-[13px] font-semibold">{title}</div>
+            <div className="text-subheading font-display">{title}</div>
           )}
           {actions && (
             <div className="flex gap-1.5">{actions}</div>
@@ -22,12 +22,12 @@ export function DataTable({ title, actions, headers, children }: DataTableProps)
       )}
       <div className="overflow-x-auto">
         <table className="w-full border-collapse">
-          <thead className="bg-cvh-bg-tertiary">
+          <thead className="bg-surface-elevated">
             <tr>
               {headers.map((h) => (
                 <th
                   key={h}
-                  className="text-left px-[14px] py-2 text-[9.5px] font-bold uppercase tracking-[0.09em] text-cvh-text-muted border-b border-cvh-border-subtle"
+                  className="text-left px-[14px] py-2 text-micro uppercase tracking-[0.09em] text-text-muted border-b border-border-subtle font-display"
                 >
                   {h}
                 </th>

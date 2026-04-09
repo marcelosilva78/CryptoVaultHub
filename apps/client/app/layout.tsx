@@ -3,6 +3,7 @@ import { Sidebar } from "@/components/sidebar";
 import { Header } from "@/components/header";
 import { Providers } from "@/components/providers";
 import { ClientAuthProvider } from "@/lib/auth-context";
+import { ThemeProvider } from "@/lib/theme-context";
 import "./globals.css";
 
 export const dynamic = "force-dynamic";
@@ -19,15 +20,17 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="font-display bg-cvh-bg-primary text-cvh-text-primary min-h-screen antialiased">
+      <body className="font-display bg-surface-page text-text-primary min-h-screen antialiased">
         <Providers>
-          <ClientAuthProvider>
-            <Sidebar />
-            <Header />
-            <main className="ml-[220px] mt-[54px] p-[22px] min-h-[calc(100vh-54px)] animate-fade-up">
-              {children}
-            </main>
-          </ClientAuthProvider>
+          <ThemeProvider>
+            <ClientAuthProvider>
+              <Sidebar />
+              <Header />
+              <main className="ml-sidebar-w mt-header-h p-content-p min-h-[calc(100vh-56px)] animate-fade-in">
+                {children}
+              </main>
+            </ClientAuthProvider>
+          </ThemeProvider>
         </Providers>
       </body>
     </html>

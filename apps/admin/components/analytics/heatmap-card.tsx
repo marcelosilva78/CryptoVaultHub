@@ -10,29 +10,33 @@ interface HeatmapCardProps {
   data: { hour: number; day: number; value: number }[];
 }
 
+/**
+ * Gold-scale heatmap: from surface-elevated (no activity) to accent-primary (max activity).
+ * Uses interpolated gold tones to stay monochromatic.
+ */
 function getColor(value: number, max: number): string {
-  const ratio = value / max;
-  if (ratio < 0.2) return "var(--bg-primary)";
-  if (ratio < 0.4) return "#1e1b4b";
-  if (ratio < 0.6) return "#3730a3";
-  if (ratio < 0.8) return "#6366f1";
-  return "#8b5cf6";
+  const ratio = max > 0 ? value / max : 0;
+  if (ratio < 0.15) return "var(--surface-elevated)";
+  if (ratio < 0.35) return "rgba(226, 168, 40, 0.15)";
+  if (ratio < 0.55) return "rgba(226, 168, 40, 0.35)";
+  if (ratio < 0.75) return "rgba(226, 168, 40, 0.55)";
+  return "var(--accent-primary)";
 }
 
 export function HeatmapCard({ title, data }: HeatmapCardProps) {
   const max = Math.max(...data.map((d) => d.value));
 
   return (
-    <div className="bg-bg-secondary border border-border-subtle rounded-lg p-5">
-      <h3 className="mb-4 text-[13px] font-semibold text-text-primary">{title}</h3>
+    <div className="rounded-card border border-border-default bg-surface-card p-card-p shadow-card">
+      <h3 className="mb-4 font-display text-subheading text-text-primary">{title}</h3>
       <div className="overflow-x-auto">
         <div className="min-w-[600px]">
-          {/* Hour labels */}
+          {/* Hour labels — text-muted, 9px */}
           <div className="flex ml-10 mb-1">
             {HOURS.filter((_, i) => i % 3 === 0).map((h) => (
               <span
                 key={h}
-                className="text-[10px] text-text-muted font-mono"
+                className="font-display text-[9px] text-text-muted"
                 style={{ width: `${(3 / 24) * 100}%` }}
               >
                 {h}:00
@@ -40,13 +44,13 @@ export function HeatmapCard({ title, data }: HeatmapCardProps) {
             ))}
           </div>
 
-          {/* Grid */}
+          {/* Grid — cells: rounded-[2px], 1px gap */}
           {DAYS.map((day, dayIdx) => (
-            <div key={day} className="flex items-center gap-1 mb-0.5">
-              <span className="w-9 text-[10px] text-text-muted text-right pr-1 font-mono">
+            <div key={day} className="flex items-center gap-[1px] mb-[1px]">
+              <span className="w-9 pr-1 text-right font-display text-[9px] text-text-muted">
                 {day}
               </span>
-              <div className="flex flex-1 gap-px">
+              <div className="flex flex-1 gap-[1px]">
                 {HOURS.map((_, hourIdx) => {
                   const cell = data.find(
                     (d) => d.day === dayIdx && d.hour === hourIdx
@@ -54,12 +58,12 @@ export function HeatmapCard({ title, data }: HeatmapCardProps) {
                   return (
                     <div
                       key={hourIdx}
-                      className="flex-1 aspect-square rounded-sm"
+                      className="flex-1 aspect-square rounded-[2px]"
                       style={{
                         backgroundColor: getColor(cell?.value ?? 0, max),
                         minHeight: "16px",
                       }}
-                      title={`${day} ${HOURS[hourIdx]}:00 -- ${cell?.value ?? 0} tx`}
+                      title={`${day} ${HOURS[hourIdx]}:00 \u2014 ${cell?.value ?? 0} tx`}
                     />
                   );
                 })}
@@ -69,15 +73,15 @@ export function HeatmapCard({ title, data }: HeatmapCardProps) {
 
           {/* Legend */}
           <div className="flex items-center justify-end gap-1.5 mt-3">
-            <span className="text-[10px] text-text-muted">Less</span>
+            <span className="font-display text-[9px] text-text-muted">Less</span>
             {[0.1, 0.3, 0.5, 0.7, 0.9].map((r) => (
               <div
                 key={r}
-                className="h-3 w-3 rounded-sm"
+                className="h-3 w-3 rounded-[2px]"
                 style={{ backgroundColor: getColor(r * max, max) }}
               />
             ))}
-            <span className="text-[10px] text-text-muted">More</span>
+            <span className="font-display text-[9px] text-text-muted">More</span>
           </div>
         </div>
       </div>

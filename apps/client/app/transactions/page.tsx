@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { cn } from "@/lib/utils";
 import { Badge } from "@/components/badge";
 import { ConfirmationBar } from "@/components/confirmation-bar";
 import { TransactionModal } from "@/components/transaction-modal";
@@ -14,17 +15,17 @@ import { JsonViewer } from "@/components/json-viewer";
 import { transactions, transactionSummary } from "@/lib/mock-data";
 import type { Transaction } from "@/lib/mock-data";
 
-const statusBadge: Record<string, "green" | "orange" | "red" | "blue"> = {
-  confirmed: "green",
-  confirming: "orange",
-  pending: "blue",
-  failed: "red",
+const statusBadge: Record<string, "success" | "warning" | "error" | "accent"> = {
+  confirmed: "success",
+  confirming: "warning",
+  pending: "accent",
+  failed: "error",
 };
 
-const typeBadge: Record<string, "green" | "orange" | "teal"> = {
-  deposit: "green",
-  withdrawal: "orange",
-  sweep: "teal",
+const typeBadge: Record<string, "success" | "warning" | "accent"> = {
+  deposit: "success",
+  withdrawal: "warning",
+  sweep: "accent",
 };
 
 function shortenHash(hash: string): string {
@@ -52,7 +53,6 @@ export default function TransactionsPage() {
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [modalTx, setModalTx] = useState<Transaction | null>(null);
 
-  // Filter transactions
   const filtered = useMemo(() => {
     return transactions.filter((tx) => {
       if (filters.token !== "all" && tx.token !== filters.token) return false;
@@ -88,7 +88,6 @@ export default function TransactionsPage() {
     });
   }, [filters]);
 
-  // Summary for filtered view
   const filteredSummary = useMemo(() => {
     let volIn = 0;
     let volOut = 0;
@@ -105,32 +104,38 @@ export default function TransactionsPage() {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-[18px]">
+      {/* Page header */}
+      <div className="flex justify-between items-center mb-section-gap">
         <div>
-          <div className="text-[20px] font-bold">Transactions</div>
-          <div className="text-[11px] text-cvh-text-muted mt-0.5">
+          <h1 className="text-heading font-display">Transactions</h1>
+          <p className="text-caption text-text-muted mt-0.5 font-display">
             Full traceability across all chains and operations
-          </div>
+          </p>
         </div>
         <div className="flex gap-2">
-          <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] font-display text-[11px] font-semibold cursor-pointer transition-colors bg-transparent text-cvh-text-secondary border border-cvh-border hover:border-cvh-text-secondary hover:text-cvh-text-primary">
+          <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-button font-display text-caption font-semibold cursor-pointer transition-all duration-fast bg-transparent text-text-secondary border border-border-default hover:border-accent-primary hover:text-text-primary">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
             Export CSV
           </button>
         </div>
       </div>
 
-      {/* Summary KPIs */}
-      <div className="grid grid-cols-4 gap-3.5 mb-[18px]">
+      {/* Summary KPIs with hover accent line */}
+      <div className="grid grid-cols-4 gap-stat-grid-gap mb-section-gap">
         <StatCard
           label="Volume In"
           value={transactionSummary.totalVolumeIn}
-          valueColor="text-cvh-green"
+          valueColor="text-status-success"
           sub={`${filteredSummary.count > 0 ? `$${filteredSummary.volumeIn.toLocaleString()} filtered` : "No matches"}`}
         />
         <StatCard
           label="Volume Out"
           value={transactionSummary.totalVolumeOut}
-          valueColor="text-cvh-orange"
+          valueColor="text-status-warning"
           sub={`$${filteredSummary.volumeOut.toLocaleString()} filtered`}
         />
         <StatCard
@@ -152,11 +157,11 @@ export default function TransactionsPage() {
         onReset={() => setFilters(defaultFilters)}
       />
 
-      {/* Transactions Table */}
-      <div className="bg-cvh-bg-secondary border border-cvh-border-subtle rounded-cvh-lg overflow-hidden">
+      {/* Transactions Table -- surface-card, elevated header, mono for blockchain data */}
+      <div className="bg-surface-card border border-border-default rounded-card overflow-hidden shadow-card">
         <div className="overflow-x-auto">
           <table className="w-full border-collapse">
-            <thead className="bg-cvh-bg-tertiary">
+            <thead className="bg-surface-elevated">
               <tr>
                 {[
                   "",
@@ -172,7 +177,7 @@ export default function TransactionsPage() {
                 ].map((h) => (
                   <th
                     key={h}
-                    className="text-left px-3 py-2 text-[9.5px] font-bold uppercase tracking-[0.09em] text-cvh-text-muted border-b border-cvh-border-subtle whitespace-nowrap"
+                    className="text-left px-3 py-2.5 text-[9px] font-display font-bold uppercase tracking-[0.09em] text-text-muted border-b border-border-subtle whitespace-nowrap"
                   >
                     {h}
                   </th>
@@ -184,29 +189,34 @@ export default function TransactionsPage() {
                 <tr>
                   <td
                     colSpan={10}
-                    className="px-4 py-12 text-center text-cvh-text-muted text-[13px]"
+                    className="px-4 py-12 text-center text-text-muted text-body font-display"
                   >
                     <div className="text-[24px] mb-2 opacity-30">
-                      (empty)
+                      {/* Empty state hex icon */}
+                      <svg width="40" height="40" viewBox="0 0 40 40" className="mx-auto mb-2 text-text-muted opacity-40">
+                        <polygon points="20,2 37,11 37,29 20,38 3,29 3,11" fill="none" stroke="currentColor" strokeWidth="1.5" />
+                        <text x="20" y="24" textAnchor="middle" fontSize="12" fill="currentColor" fontFamily="Outfit">0</text>
+                      </svg>
                     </div>
                     No transactions match the current filters.
                     <br />
                     <button
                       onClick={() => setFilters(defaultFilters)}
-                      className="mt-2 text-cvh-accent text-[11px] bg-transparent border-none cursor-pointer font-display underline"
+                      className="mt-2 text-accent-primary text-caption bg-transparent border-none cursor-pointer font-display underline"
                     >
                       Clear all filters
                     </button>
                   </td>
                 </tr>
               ) : (
-                filtered.map((tx) => {
+                filtered.map((tx, idx) => {
                   const isExpanded = expandedRow === tx.id;
                   return (
                     <TransactionRow
                       key={tx.id}
                       tx={tx}
                       isExpanded={isExpanded}
+                      staggerIndex={idx}
                       onToggle={() =>
                         setExpandedRow(isExpanded ? null : tx.id)
                       }
@@ -232,81 +242,101 @@ export default function TransactionsPage() {
 function TransactionRow({
   tx,
   isExpanded,
+  staggerIndex,
   onToggle,
   onViewDetail,
 }: {
   tx: Transaction;
   isExpanded: boolean;
+  staggerIndex: number;
   onToggle: () => void;
   onViewDetail: () => void;
 }) {
   return (
     <>
-      <tr className="hover:bg-cvh-bg-hover cursor-pointer" onClick={onToggle}>
-        <td className="px-3 py-2.5 border-b border-cvh-border-subtle w-6">
+      <tr
+        className="hover:bg-surface-hover cursor-pointer transition-colors duration-fast"
+        onClick={onToggle}
+      >
+        <td className="px-3 py-2.5 border-b border-border-subtle w-6">
           <svg
             width="10"
             height="10"
             viewBox="0 0 10 10"
-            className={`text-cvh-text-muted transition-transform ${isExpanded ? "rotate-90" : ""}`}
+            className={cn(
+              "text-text-muted transition-transform duration-normal",
+              isExpanded && "rotate-90"
+            )}
           >
             <path d="M3.5 2L7 5L3.5 8" stroke="currentColor" strokeWidth="1.3" fill="none" strokeLinecap="round" />
           </svg>
         </td>
-        <td className="px-3 py-2.5 border-b border-cvh-border-subtle font-mono text-[10px] whitespace-nowrap">
+        <td className="px-3 py-2.5 border-b border-border-subtle font-mono text-[10px] text-text-secondary whitespace-nowrap">
           {formatTimestamp(tx.timestamp)}
         </td>
-        <td className="px-3 py-2.5 border-b border-cvh-border-subtle">
+        <td className="px-3 py-2.5 border-b border-border-subtle">
           <Badge variant={typeBadge[tx.type]} className="text-[9px] capitalize">
             {tx.type}
           </Badge>
         </td>
-        <td className="px-3 py-2.5 border-b border-cvh-border-subtle">
+        <td className="px-3 py-2.5 border-b border-border-subtle">
           <div className="flex items-center gap-1 text-[10px] font-mono">
-            <span className="text-cvh-text-secondary" title={tx.from}>
+            <span className="text-text-secondary" title={tx.from}>
               {shortenAddr(tx.from)}
             </span>
-            <span className="text-cvh-text-muted mx-0.5">&rarr;</span>
-            <span className="text-cvh-text-primary" title={tx.to}>
+            <svg width="10" height="8" viewBox="0 0 10 8" className="text-text-muted flex-shrink-0">
+              <path d="M1 4h7M6 1l2.5 3L6 7" stroke="currentColor" strokeWidth="1" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <span className="text-text-primary" title={tx.to}>
               {shortenAddr(tx.to)}
             </span>
           </div>
         </td>
         <td
-          className={`px-3 py-2.5 border-b border-cvh-border-subtle font-mono text-[12px] font-semibold ${
+          className={cn(
+            "px-3 py-2.5 border-b border-border-subtle font-mono text-[12px] font-semibold",
             tx.type === "withdrawal"
-              ? "text-cvh-orange"
+              ? "text-status-warning"
               : tx.type === "sweep"
-              ? "text-cvh-teal"
-              : "text-cvh-green"
-          }`}
+              ? "text-accent-primary"
+              : "text-status-success"
+          )}
         >
           {tx.amount}
         </td>
-        <td className="px-3 py-2.5 border-b border-cvh-border-subtle text-[11px] font-semibold">
+        <td className="px-3 py-2.5 border-b border-border-subtle text-caption font-display font-semibold text-text-primary">
           {tx.token}
         </td>
-        <td className="px-3 py-2.5 border-b border-cvh-border-subtle text-[11px]">
-          {tx.chain}
+        <td className="px-3 py-2.5 border-b border-border-subtle">
+          {/* Hexagonal chain chip */}
+          <span className="inline-flex items-center gap-1 text-caption font-display text-text-secondary">
+            <span
+              className="w-[14px] h-[14px] flex items-center justify-center text-[7px] font-bold text-accent-primary bg-accent-subtle"
+              style={{ clipPath: "polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)" }}
+            >
+              {tx.chain.charAt(0)}
+            </span>
+            {tx.chain}
+          </span>
         </td>
-        <td className="px-3 py-2.5 border-b border-cvh-border-subtle">
-          <Badge variant={statusBadge[tx.status]} className="text-[9px] capitalize">
+        <td className="px-3 py-2.5 border-b border-border-subtle">
+          <Badge variant={statusBadge[tx.status]} className="text-[9px] capitalize" dot>
             {tx.status}
           </Badge>
         </td>
-        <td className="px-3 py-2.5 border-b border-cvh-border-subtle">
+        <td className="px-3 py-2.5 border-b border-border-subtle">
           <ConfirmationBar
             confirmations={tx.confirmations}
             required={tx.confirmationsRequired}
           />
         </td>
-        <td className="px-3 py-2.5 border-b border-cvh-border-subtle">
+        <td className="px-3 py-2.5 border-b border-border-subtle">
           <button
             onClick={(e) => {
               e.stopPropagation();
               onViewDetail();
             }}
-            className="font-mono text-[10px] text-cvh-accent cursor-pointer hover:underline bg-transparent border-none font-display"
+            className="font-mono text-[10px] text-accent-primary cursor-pointer hover:underline bg-transparent border-none"
             title={tx.txHash}
           >
             {shortenHash(tx.txHash)}
@@ -314,31 +344,40 @@ function TransactionRow({
         </td>
       </tr>
 
-      {/* Expanded details */}
+      {/* Expanded row with stagger animation */}
       {isExpanded && (
         <tr>
-          <td colSpan={10} className="border-b border-cvh-border-subtle p-0">
-            <div className="bg-cvh-bg-tertiary px-6 py-4 animate-fade-up">
-              <div className="grid grid-cols-4 gap-4 mb-3">
+          <td colSpan={10} className="border-b border-border-subtle p-0">
+            <div className="bg-surface-elevated px-6 py-4">
+              <div
+                className="grid grid-cols-4 gap-4 mb-3"
+                style={{ animation: "stagger-in 0.3s ease-out forwards" }}
+              >
                 <ExpandedField label="Block Number" value={`#${tx.blockNumber.toLocaleString()}`} />
                 <ExpandedField label="Gas Used" value={tx.gasUsed} />
                 <ExpandedField label="Gas Price" value={tx.gasPrice} />
                 <ExpandedField label="Gas Cost" value={tx.gasCostUsd} />
               </div>
 
-              <div className="grid grid-cols-2 gap-4 mb-3">
+              <div
+                className="grid grid-cols-2 gap-4 mb-3"
+                style={{ animation: "stagger-in 0.3s ease-out 0.05s forwards", opacity: 0 }}
+              >
                 <ExpandedField label="From (Full)" value={tx.from} mono />
                 <ExpandedField label="To (Full)" value={tx.to} mono />
               </div>
 
               {tx.eventLogs.length > 0 && (
-                <div className="mb-3">
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-cvh-text-muted mb-1.5">
+                <div
+                  className="mb-3"
+                  style={{ animation: "stagger-in 0.3s ease-out 0.1s forwards", opacity: 0 }}
+                >
+                  <div className="text-micro font-display font-semibold uppercase tracking-[0.08em] text-text-muted mb-1.5">
                     Event Logs
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     {tx.eventLogs.map((log, i) => (
-                      <Badge key={i} variant="blue" className="text-[9px]">
+                      <Badge key={i} variant="accent" className="text-[9px]">
                         {log.event}({Object.keys(log.args).join(", ")})
                       </Badge>
                     ))}
@@ -346,23 +385,29 @@ function TransactionRow({
                 </div>
               )}
 
-              <div className="mb-2">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-cvh-text-muted mb-1.5">
+              <div
+                className="mb-2"
+                style={{ animation: "stagger-in 0.3s ease-out 0.15s forwards", opacity: 0 }}
+              >
+                <div className="text-micro font-display font-semibold uppercase tracking-[0.08em] text-text-muted mb-1.5">
                   Raw Transaction Data
                 </div>
                 <JsonViewer data={tx.rawJson} maxHeight="200px" />
               </div>
 
-              <div className="flex gap-2 mt-3">
+              <div
+                className="flex gap-2 mt-3"
+                style={{ animation: "stagger-in 0.3s ease-out 0.2s forwards", opacity: 0 }}
+              >
                 <button
                   onClick={onViewDetail}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] font-display text-[11px] font-semibold cursor-pointer transition-colors bg-cvh-accent text-white border-none hover:bg-cvh-accent-dim"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-button font-display text-caption font-semibold cursor-pointer transition-all duration-fast bg-accent-primary text-accent-text border-none hover:bg-accent-hover"
                 >
                   View Full Details
                 </button>
                 <button
                   onClick={() => navigator.clipboard.writeText(tx.txHash)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] font-display text-[11px] font-semibold cursor-pointer transition-colors bg-transparent text-cvh-text-secondary border border-cvh-border hover:border-cvh-text-secondary hover:text-cvh-text-primary"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-button font-display text-caption font-semibold cursor-pointer transition-all duration-fast bg-transparent text-text-secondary border border-border-default hover:border-accent-primary hover:text-text-primary"
                 >
                   Copy TX Hash
                 </button>
@@ -386,11 +431,14 @@ function ExpandedField({
 }) {
   return (
     <div>
-      <div className="text-[9px] font-semibold uppercase tracking-[0.08em] text-cvh-text-muted mb-0.5">
+      <div className="text-[9px] font-display font-semibold uppercase tracking-[0.08em] text-text-muted mb-0.5">
         {label}
       </div>
       <div
-        className={`text-[11px] ${mono ? "font-mono text-[10px] break-all" : ""}`}
+        className={cn(
+          "text-caption text-text-primary",
+          mono && "font-mono text-[10px] break-all"
+        )}
       >
         {value}
       </div>

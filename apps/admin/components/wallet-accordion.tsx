@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
-import { ChevronDown, ChevronRight, Copy, Check, Eye, EyeOff, ExternalLink } from "lucide-react";
+import { useState, useCallback } from "react";
+import { Copy, Check, Eye, EyeOff, ExternalLink, ChevronDown, Download, AlertTriangle } from "lucide-react";
 import { Badge } from "@/components/badge";
 import { JsonViewer } from "@/components/json-viewer";
 import { cn } from "@/lib/utils";
 import { shortenAddress } from "@/lib/utils";
 
+// ─── Types ─────────────────────────────────────────────────
 export interface WalletData {
   id: string;
   address: string;
@@ -35,28 +36,61 @@ interface WalletAccordionProps {
   wallets: WalletData[];
 }
 
-const statusBadge: Record<string, "green" | "orange" | "neutral"> = {
-  active: "green",
+// ─── Chain initial for hexagonal avatar ────────────────────
+const chainInitials: Record<string, string> = {
+  Ethereum: "ETH",
+  BSC: "BNB",
+  Polygon: "MATIC",
+  Arbitrum: "ARB",
+  Optimism: "OP",
+};
+
+// ─── Status LED colors (semantic tokens) ───────────────────
+const statusLedColor: Record<string, string> = {
+  active: "bg-status-success",
+  inactive: "bg-status-error",
+  deploying: "bg-status-warning",
+};
+
+const statusLedPulse: Record<string, string> = {
+  active: "animate-pulse-gold",
+  inactive: "",
+  deploying: "animate-pulse-gold",
+};
+
+// ─── Badge variants mapped to semantic status ──────────────
+const statusBadgeVariant: Record<string, "success" | "warning" | "neutral"> = {
+  active: "success",
   inactive: "neutral",
-  deploying: "orange",
+  deploying: "warning",
 };
 
-const chainColor: Record<string, string> = {
-  Ethereum: "text-blue",
-  BSC: "text-accent",
-  Polygon: "text-purple",
-  Arbitrum: "text-blue",
-  Optimism: "text-red",
-};
+// ─── Hexagonal Avatar ──────────────────────────────────────
+function HexAvatar({ chain, size = 32 }: { chain: string; size?: number }) {
+  const initial = chainInitials[chain] || chain.slice(0, 3).toUpperCase();
+  return (
+    <div
+      className="flex items-center justify-center bg-surface-elevated text-text-secondary font-display font-bold text-[9px] flex-shrink-0"
+      style={{
+        width: `${size}px`,
+        height: `${size}px`,
+        clipPath: "polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)",
+      }}
+    >
+      {initial}
+    </div>
+  );
+}
 
+// ─── Copy Button ───────────────────────────────────────────
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
 
-  const handleCopy = async () => {
+  const handleCopy = useCallback(async () => {
     await navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  };
+  }, [text]);
 
   return (
     <button
@@ -64,14 +98,15 @@ function CopyButton({ text }: { text: string }) {
         e.stopPropagation();
         handleCopy();
       }}
-      className="text-text-muted hover:text-text-primary transition-colors p-0.5"
+      className="text-text-muted hover:text-text-primary transition-colors duration-fast p-0.5"
       title="Copy"
     >
-      {copied ? <Check className="w-3 h-3 text-green" /> : <Copy className="w-3 h-3" />}
+      {copied ? <Check className="w-3 h-3 text-status-success" /> : <Copy className="w-3 h-3" />}
     </button>
   );
 }
 
+// ─── Private Key Reveal ────────────────────────────────────
 function PrivateKeyReveal({ encryptedKey }: { encryptedKey: string }) {
   const [revealed, setRevealed] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -93,15 +128,18 @@ function PrivateKeyReveal({ encryptedKey }: { encryptedKey: string }) {
   };
 
   return (
-    <div className="mt-3 p-3 bg-red-dim border border-red/20 rounded-[var(--radius)]">
+    <div className="mt-4 p-4 bg-status-error-subtle border border-status-error/20 rounded-card">
       <div className="flex items-center justify-between mb-2">
-        <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-red">
-          Private Key (Encrypted)
-        </span>
+        <div className="flex items-center gap-2">
+          <AlertTriangle className="w-3.5 h-3.5 text-status-error" />
+          <span className="text-micro font-display font-semibold uppercase tracking-[0.06em] text-status-error">
+            Private Key (Encrypted)
+          </span>
+        </div>
         {revealed ? (
           <button
             onClick={handleHide}
-            className="flex items-center gap-1 text-[10px] text-red hover:text-red/80 font-semibold transition-colors"
+            className="flex items-center gap-1 text-micro font-display text-status-error hover:text-status-error/80 font-semibold transition-colors duration-fast"
           >
             <EyeOff className="w-3 h-3" />
             Hide
@@ -110,10 +148,10 @@ function PrivateKeyReveal({ encryptedKey }: { encryptedKey: string }) {
           <button
             onClick={handleReveal}
             className={cn(
-              "flex items-center gap-1 text-[10px] font-semibold transition-colors",
+              "flex items-center gap-1 text-micro font-display font-semibold transition-colors duration-fast",
               confirming
-                ? "text-red animate-pulse"
-                : "text-text-muted hover:text-red"
+                ? "text-status-error animate-pulse"
+                : "text-text-muted hover:text-status-error"
             )}
           >
             <Eye className="w-3 h-3" />
@@ -121,136 +159,182 @@ function PrivateKeyReveal({ encryptedKey }: { encryptedKey: string }) {
           </button>
         )}
       </div>
+
+      {/* Confirmation dialog */}
+      {confirming && (
+        <div className="mb-3 p-3 bg-surface-page border border-status-error/30 rounded-input">
+          <p className="text-[11px] font-display text-status-error font-medium leading-relaxed">
+            Warning: You are about to reveal an encrypted private key. Ensure no one else can see your screen. This action is logged for security audit purposes.
+          </p>
+        </div>
+      )}
+
       {revealed ? (
         <div className="flex items-center gap-2">
-          <div className="bg-bg-primary border border-border-subtle rounded-[var(--radius)] p-2 font-mono text-[10px] text-red break-all flex-1 leading-relaxed">
+          <div className="bg-surface-page border border-border-subtle rounded-input p-2.5 font-mono text-[10px] text-status-error break-all flex-1 leading-relaxed">
             {encryptedKey}
           </div>
           <CopyButton text={encryptedKey} />
         </div>
       ) : (
-        <div className="bg-bg-primary border border-border-subtle rounded-[var(--radius)] p-2 font-mono text-[10px] text-text-muted text-center">
-          {"*".repeat(64)}
+        <div className="bg-surface-page border border-border-subtle rounded-input p-2.5 font-mono text-[10px] text-text-muted text-center select-none"
+          style={{ filter: "blur(0px)" }}
+        >
+          {"\u2022".repeat(64)}
         </div>
       )}
     </div>
   );
 }
 
-function WalletRow({ wallet }: { wallet: WalletData }) {
+// ─── Section Label ─────────────────────────────────────────
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="text-micro font-display font-semibold uppercase tracking-[0.06em] text-text-muted mb-1.5">
+      {children}
+    </div>
+  );
+}
+
+// ─── Wallet Row ────────────────────────────────────────────
+function WalletRow({ wallet, index }: { wallet: WalletData; index: number }) {
   const [expanded, setExpanded] = useState(false);
 
   return (
     <div className="border-b border-border-subtle last:border-b-0">
-      {/* Collapsed row */}
+      {/* Collapsed header */}
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-4 px-5 py-3.5 text-left hover:bg-bg-hover transition-colors"
+        className="w-full flex items-center gap-4 px-5 py-3.5 text-left hover:bg-surface-hover transition-colors duration-fast"
       >
-        {expanded ? (
-          <ChevronDown className="w-3.5 h-3.5 text-text-muted flex-shrink-0" />
-        ) : (
-          <ChevronRight className="w-3.5 h-3.5 text-text-muted flex-shrink-0" />
-        )}
+        {/* Hexagonal chain avatar */}
+        <HexAvatar chain={wallet.chain} size={32} />
 
-        {/* Address */}
+        {/* Address in mono */}
         <div className="flex items-center gap-1.5 min-w-[180px]">
-          <span className="font-mono text-[12px] text-blue">
+          <span className="font-mono text-code text-text-primary">
             {shortenAddress(wallet.address, 6)}
           </span>
           <CopyButton text={wallet.address} />
         </div>
 
+        {/* LED status indicator */}
+        <div className="flex items-center gap-1.5 min-w-[80px]">
+          <span
+            className={cn(
+              "w-2 h-2 rounded-pill flex-shrink-0",
+              statusLedColor[wallet.status],
+              statusLedPulse[wallet.status]
+            )}
+          />
+          <span className="text-caption font-display font-medium text-text-secondary">
+            {wallet.status.charAt(0).toUpperCase() + wallet.status.slice(1)}
+          </span>
+        </div>
+
         {/* Chain */}
-        <div className={cn("text-[11px] font-bold uppercase tracking-[0.05em] min-w-[70px]", chainColor[wallet.chain] || "text-text-secondary")}>
+        <div className="text-caption font-display font-bold uppercase tracking-[0.05em] text-text-secondary min-w-[70px]">
           {wallet.chain}
         </div>
 
         {/* Network */}
-        <div className="text-[11px] text-text-muted min-w-[70px]">
+        <div className="text-caption font-display text-text-muted min-w-[70px]">
           {wallet.network}
         </div>
 
         {/* Balance */}
-        <div className="font-mono text-[12px] font-semibold min-w-[120px]">
+        <div className="font-mono text-code font-semibold text-text-primary min-w-[120px]">
           {wallet.balanceUsd}
         </div>
 
-        {/* Status */}
-        <div className="min-w-[80px]">
-          <Badge variant={statusBadge[wallet.status] || "neutral"} dot>
-            {wallet.status.charAt(0).toUpperCase() + wallet.status.slice(1)}
-          </Badge>
-        </div>
-
         {/* Created */}
-        <div className="text-[11px] text-text-muted ml-auto">
+        <div className="text-caption font-display text-text-muted ml-auto">
           {wallet.createdAt}
         </div>
+
+        {/* Expand/collapse arrow with rotation */}
+        <ChevronDown
+          className={cn(
+            "w-4 h-4 text-text-muted flex-shrink-0 transition-transform duration-normal",
+            expanded && "rotate-180"
+          )}
+        />
       </button>
 
-      {/* Expanded content */}
+      {/* Expanded content with stagger animation */}
       {expanded && (
-        <div className="px-5 pb-5 pl-12 animate-fade-in">
+        <div className="px-5 pb-5 pl-[72px]">
           <div className="grid grid-cols-2 gap-6">
-            {/* Left column */}
+            {/* ─── Left column ────────────────────────── */}
             <div className="space-y-4">
               {/* Full address */}
-              <div>
-                <div className="text-[10px] text-text-muted uppercase tracking-[0.06em] mb-1">Full Wallet Address</div>
+              <div
+                className="animate-fade-in"
+                style={{ animationDelay: "0ms" }}
+              >
+                <SectionLabel>Full Wallet Address</SectionLabel>
                 <div className="flex items-center gap-1.5">
-                  <span className="font-mono text-[11px] text-blue break-all">{wallet.address}</span>
+                  <span className="font-mono text-caption text-text-primary break-all">{wallet.address}</span>
                   <CopyButton text={wallet.address} />
                 </div>
               </div>
 
               {/* Owner address */}
-              <div>
-                <div className="text-[10px] text-text-muted uppercase tracking-[0.06em] mb-1">Owner Address</div>
+              <div
+                className="animate-fade-in"
+                style={{ animationDelay: "50ms" }}
+              >
+                <SectionLabel>Owner Address</SectionLabel>
                 <div className="flex items-center gap-1.5">
-                  <span className="font-mono text-[11px] text-text-primary break-all">{wallet.ownerAddress}</span>
+                  <span className="font-mono text-caption text-text-primary break-all">{wallet.ownerAddress}</span>
                   <CopyButton text={wallet.ownerAddress} />
                 </div>
               </div>
 
               {/* Smart contract details */}
-              <div>
-                <div className="text-[10px] text-text-muted uppercase tracking-[0.06em] mb-1">Smart Contract</div>
-                <div className="bg-bg-tertiary rounded-[var(--radius)] p-3 space-y-1.5">
+              <div
+                className="animate-fade-in"
+                style={{ animationDelay: "100ms" }}
+              >
+                <SectionLabel>Smart Contract</SectionLabel>
+                <div className="bg-surface-elevated rounded-card p-3 space-y-2">
                   <div className="flex items-start justify-between">
-                    <span className="text-[10px] text-text-muted">Contract Address</span>
+                    <span className="text-micro font-display text-text-muted">Contract Address</span>
                     <div className="flex items-center gap-1">
-                      <span className="font-mono text-[10px] text-accent">{shortenAddress(wallet.contractAddress, 8)}</span>
+                      <span className="font-mono text-[10px] text-accent-primary">{shortenAddress(wallet.contractAddress, 8)}</span>
                       <CopyButton text={wallet.contractAddress} />
                     </div>
                   </div>
                   <div className="flex items-start justify-between">
-                    <span className="text-[10px] text-text-muted">Deployment Tx</span>
+                    <span className="text-micro font-display text-text-muted">Deployment Tx</span>
                     <div className="flex items-center gap-1">
-                      <span className="font-mono text-[10px] text-blue">{shortenAddress(wallet.deploymentTxHash, 8)}</span>
+                      <span className="font-mono text-[10px] text-text-secondary">{shortenAddress(wallet.deploymentTxHash, 8)}</span>
                       <CopyButton text={wallet.deploymentTxHash} />
-                      <ExternalLink className="w-3 h-3 text-text-muted" />
+                      <ExternalLink className="w-3 h-3 text-text-muted hover:text-accent-primary transition-colors duration-fast cursor-pointer" />
                     </div>
                   </div>
                 </div>
               </div>
 
               {/* Token balances */}
-              <div>
-                <div className="text-[10px] text-text-muted uppercase tracking-[0.06em] mb-1">Token Balances</div>
-                <div className="bg-bg-tertiary rounded-[var(--radius)] overflow-hidden">
+              <div
+                className="animate-fade-in"
+                style={{ animationDelay: "150ms" }}
+              >
+                <SectionLabel>Token Balances</SectionLabel>
+                <div className="bg-surface-elevated rounded-card overflow-hidden">
                   {wallet.tokenBalances.map((tb, i) => (
                     <div
                       key={tb.token}
                       className={cn(
-                        "flex items-center justify-between px-3 py-2 text-[11px]",
+                        "flex items-center justify-between px-3 py-2 text-caption font-display",
                         i < wallet.tokenBalances.length - 1 && "border-b border-border-subtle"
                       )}
                     >
-                      <span className="font-semibold">{tb.token}</span>
+                      <span className="font-semibold text-text-primary">{tb.token}</span>
                       <div className="flex items-center gap-3">
-                        <span className="font-mono">{tb.amount}</span>
-                        <span className="font-mono text-text-muted text-[10px]">{tb.usd}</span>
+                        <span className="font-mono text-code">{tb.amount}</span>
+                        <span className="font-mono text-[10px] text-text-muted">{tb.usd}</span>
                       </div>
                     </div>
                   ))}
@@ -258,47 +342,65 @@ function WalletRow({ wallet }: { wallet: WalletData }) {
               </div>
             </div>
 
-            {/* Right column */}
+            {/* ─── Right column ───────────────────────── */}
             <div className="space-y-4">
               {/* Creation JSON */}
-              <div>
-                <div className="text-[10px] text-text-muted uppercase tracking-[0.06em] mb-1">Creation Payload</div>
-                <JsonViewer data={wallet.creationJson} maxHeight="180px" />
+              <div
+                className="animate-fade-in"
+                style={{ animationDelay: "200ms" }}
+              >
+                <SectionLabel>Creation Payload</SectionLabel>
+                <JsonViewer data={wallet.creationJson} maxHeight="180px" showDownload />
               </div>
 
               {/* Callback data */}
-              <div>
-                <div className="text-[10px] text-text-muted uppercase tracking-[0.06em] mb-1">Callback Data</div>
+              <div
+                className="animate-fade-in"
+                style={{ animationDelay: "250ms" }}
+              >
+                <SectionLabel>Callback Data</SectionLabel>
                 <JsonViewer data={wallet.callbackData} maxHeight="120px" />
               </div>
 
               {/* Linked forwarders */}
-              <div>
-                <div className="text-[10px] text-text-muted uppercase tracking-[0.06em] mb-1">
-                  Linked Deposit Addresses (Forwarders)
-                  <Badge variant="neutral" className="ml-2 text-[9px]">{wallet.forwarders.length}</Badge>
+              <div
+                className="animate-fade-in"
+                style={{ animationDelay: "300ms" }}
+              >
+                <div className="flex items-center gap-2 mb-1.5">
+                  <SectionLabel>Linked Deposit Addresses (Forwarders)</SectionLabel>
+                  <Badge variant="neutral" className="text-[9px]">{wallet.forwarders.length}</Badge>
                 </div>
-                <div className="bg-bg-tertiary rounded-[var(--radius)] overflow-hidden max-h-[160px] overflow-y-auto">
+                <div className="bg-surface-elevated rounded-card overflow-hidden max-h-[160px] overflow-y-auto">
                   {wallet.forwarders.map((fw, i) => (
                     <div
                       key={fw.address}
                       className={cn(
-                        "flex items-center justify-between px-3 py-2 text-[10px]",
+                        "flex items-center justify-between px-3 py-2 text-[10px] font-display",
                         i < wallet.forwarders.length - 1 && "border-b border-border-subtle"
                       )}
                     >
                       <div className="flex items-center gap-1.5">
-                        <span className="font-mono text-blue">{shortenAddress(fw.address, 6)}</span>
+                        <HexAvatar chain={wallet.chain} size={18} />
+                        <span className="font-mono text-text-primary">{shortenAddress(fw.address, 6)}</span>
                         <CopyButton text={fw.address} />
                       </div>
                       <span className="font-mono text-text-secondary">{fw.balance}</span>
-                      <span className="text-text-muted">{fw.lastDeposit}</span>
-                      <Badge
-                        variant={fw.status === "active" ? "green" : "neutral"}
-                        className="text-[9px]"
-                      >
-                        {fw.status}
-                      </Badge>
+                      <span className="text-text-muted font-display">{fw.lastDeposit}</span>
+                      <div className="flex items-center gap-1">
+                        <span
+                          className={cn(
+                            "w-1.5 h-1.5 rounded-pill",
+                            fw.status === "active" ? "bg-status-success" : "bg-text-muted"
+                          )}
+                        />
+                        <span className={cn(
+                          "text-[9px] font-display font-medium",
+                          fw.status === "active" ? "text-status-success" : "text-text-muted"
+                        )}>
+                          {fw.status}
+                        </span>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -306,33 +408,42 @@ function WalletRow({ wallet }: { wallet: WalletData }) {
             </div>
           </div>
 
-          {/* Private Key -- full width */}
-          <PrivateKeyReveal encryptedKey={wallet.privateKeyEncrypted} />
+          {/* Private key - full width, last item */}
+          <div
+            className="animate-fade-in"
+            style={{ animationDelay: "350ms" }}
+          >
+            <PrivateKeyReveal encryptedKey={wallet.privateKeyEncrypted} />
+          </div>
         </div>
       )}
     </div>
   );
 }
 
+// ─── Main Component ────────────────────────────────────────
 export function WalletAccordion({ wallets }: WalletAccordionProps) {
   return (
-    <div className="bg-bg-secondary border border-border-subtle rounded-lg overflow-hidden">
+    <div className="bg-surface-card border border-border-default rounded-card overflow-hidden shadow-card">
+      {/* Header */}
       <div className="px-5 py-4 border-b border-border-subtle flex items-center justify-between">
-        <div className="text-sm font-semibold">
+        <div className="text-subheading font-display font-semibold text-text-primary">
           Client Wallets
           <Badge variant="neutral" className="ml-2 text-[10px]">{wallets.length}</Badge>
         </div>
-        <div className="flex gap-1 text-[10px] text-text-muted">
-          <span className="px-2 py-1 bg-bg-tertiary rounded-[var(--radius)]">Address</span>
-          <span className="px-2 py-1 bg-bg-tertiary rounded-[var(--radius)]">Chain</span>
-          <span className="px-2 py-1 bg-bg-tertiary rounded-[var(--radius)]">Network</span>
-          <span className="px-2 py-1 bg-bg-tertiary rounded-[var(--radius)]">Balance</span>
-          <span className="px-2 py-1 bg-bg-tertiary rounded-[var(--radius)]">Status</span>
-          <span className="px-2 py-1 bg-bg-tertiary rounded-[var(--radius)]">Created</span>
+        <div className="flex gap-1 text-micro font-display text-text-muted">
+          <span className="px-2 py-1 bg-surface-elevated rounded-badge">Address</span>
+          <span className="px-2 py-1 bg-surface-elevated rounded-badge">Status</span>
+          <span className="px-2 py-1 bg-surface-elevated rounded-badge">Chain</span>
+          <span className="px-2 py-1 bg-surface-elevated rounded-badge">Network</span>
+          <span className="px-2 py-1 bg-surface-elevated rounded-badge">Balance</span>
+          <span className="px-2 py-1 bg-surface-elevated rounded-badge">Created</span>
         </div>
       </div>
-      {wallets.map((wallet) => (
-        <WalletRow key={wallet.id} wallet={wallet} />
+
+      {/* Wallet rows */}
+      {wallets.map((wallet, index) => (
+        <WalletRow key={wallet.id} wallet={wallet} index={index} />
       ))}
     </div>
   );

@@ -22,10 +22,10 @@ interface TransactionFiltersBarProps {
 }
 
 const selectClass =
-  "bg-cvh-bg-tertiary border border-cvh-border rounded-[6px] px-2 py-[5px] text-[11px] text-cvh-text-primary font-display outline-none focus:border-cvh-accent cursor-pointer transition-colors";
+  "bg-surface-input border border-border-default rounded-input px-2.5 py-[6px] text-caption text-text-primary font-display outline-none focus:border-border-focus cursor-pointer transition-all duration-fast";
 
 const inputClass =
-  "bg-cvh-bg-tertiary border border-cvh-border rounded-[6px] px-2 py-[5px] text-[11px] text-cvh-text-primary font-display outline-none focus:border-cvh-accent transition-colors";
+  "bg-surface-input border border-border-default rounded-input px-2.5 py-[6px] text-caption text-text-primary font-display outline-none focus:border-border-focus transition-all duration-fast placeholder:text-text-muted";
 
 export function TransactionFiltersBar({ filters, onChange, onReset }: TransactionFiltersBarProps) {
   const [expanded, setExpanded] = useState(false);
@@ -46,7 +46,7 @@ export function TransactionFiltersBar({ filters, onChange, onReset }: Transactio
     filters.address !== "";
 
   return (
-    <div className="bg-cvh-bg-secondary border border-cvh-border-subtle rounded-cvh-lg p-3 mb-3.5">
+    <div className="bg-surface-card border border-border-default rounded-card p-3.5 mb-4">
       {/* Primary filter row */}
       <div className="flex items-center gap-2 flex-wrap">
         <select
@@ -101,15 +101,20 @@ export function TransactionFiltersBar({ filters, onChange, onReset }: Transactio
           value={filters.address}
           onChange={(e) => update({ address: e.target.value })}
           placeholder="Filter by address..."
-          className={`${inputClass} w-[180px]`}
+          className={`${inputClass} w-[180px] font-mono text-[10px]`}
         />
 
         <button
           onClick={() => setExpanded(!expanded)}
-          className="inline-flex items-center gap-1 px-2 py-[5px] rounded-[6px] font-display text-[10px] font-semibold cursor-pointer transition-colors bg-transparent text-cvh-text-secondary border border-cvh-border hover:border-cvh-text-secondary hover:text-cvh-text-primary"
+          className="inline-flex items-center gap-1.5 px-2.5 py-[6px] rounded-input font-display text-micro font-semibold cursor-pointer transition-all duration-fast bg-transparent text-text-secondary border border-border-default hover:border-accent-primary hover:text-text-primary"
         >
           {expanded ? "Less Filters" : "More Filters"}
-          <svg width="10" height="10" viewBox="0 0 10 10" className={`transition-transform ${expanded ? "rotate-180" : ""}`}>
+          <svg
+            width="10"
+            height="10"
+            viewBox="0 0 10 10"
+            className={`transition-transform duration-normal ${expanded ? "rotate-180" : ""}`}
+          >
             <path d="M2.5 3.75L5 6.25L7.5 3.75" stroke="currentColor" strokeWidth="1.2" fill="none" strokeLinecap="round" />
           </svg>
         </button>
@@ -117,7 +122,7 @@ export function TransactionFiltersBar({ filters, onChange, onReset }: Transactio
         {hasActiveFilters && (
           <button
             onClick={onReset}
-            className="inline-flex items-center gap-1 px-2 py-[5px] rounded-[6px] font-display text-[10px] font-semibold cursor-pointer transition-colors bg-[rgba(239,68,68,0.1)] text-cvh-red border border-[rgba(239,68,68,0.2)]"
+            className="inline-flex items-center gap-1.5 px-2.5 py-[6px] rounded-input font-display text-micro font-semibold cursor-pointer transition-all duration-fast bg-status-error-subtle text-status-error border border-status-error/20 hover:border-status-error/40"
           >
             Clear Filters
           </button>
@@ -126,16 +131,16 @@ export function TransactionFiltersBar({ filters, onChange, onReset }: Transactio
 
       {/* Expanded filter row */}
       {expanded && (
-        <div className="flex items-center gap-2 mt-2 flex-wrap animate-fade-up">
+        <div className="flex items-center gap-2 mt-3 flex-wrap animate-fade-in">
           <div className="flex items-center gap-1.5">
-            <span className="text-[10px] text-cvh-text-muted font-semibold">Date:</span>
+            <span className="text-micro text-text-muted font-semibold">Date:</span>
             <input
               type="date"
               value={filters.dateFrom}
               onChange={(e) => update({ dateFrom: e.target.value })}
               className={`${inputClass} w-[130px]`}
             />
-            <span className="text-[10px] text-cvh-text-muted">to</span>
+            <span className="text-micro text-text-muted">to</span>
             <input
               type="date"
               value={filters.dateTo}
@@ -145,7 +150,7 @@ export function TransactionFiltersBar({ filters, onChange, onReset }: Transactio
           </div>
 
           <div className="flex items-center gap-1.5">
-            <span className="text-[10px] text-cvh-text-muted font-semibold">Amount:</span>
+            <span className="text-micro text-text-muted font-semibold">Amount:</span>
             <input
               type="text"
               value={filters.amountMin}
@@ -153,7 +158,7 @@ export function TransactionFiltersBar({ filters, onChange, onReset }: Transactio
               placeholder="Min"
               className={`${inputClass} w-[80px] font-mono`}
             />
-            <span className="text-[10px] text-cvh-text-muted">to</span>
+            <span className="text-micro text-text-muted">to</span>
             <input
               type="text"
               value={filters.amountMax}
