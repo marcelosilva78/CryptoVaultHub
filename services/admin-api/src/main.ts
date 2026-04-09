@@ -73,6 +73,7 @@ All responses follow the standard envelope:
     .addTag('Tiers', 'Configure rate limits, resource quotas, and compliance levels')
     .addTag('Compliance', 'KYT/AML alert management and sanctions screening')
     .addTag('Monitoring', 'System health, queue status, and gas tank monitoring')
+    .addTag('RPC Management', 'Manage RPC providers, nodes, health checks, and failover configuration')
     .addServer('http://localhost:3001', 'Development')
     .addServer('https://api.cryptovaulthub.com', 'Production')
     .build();

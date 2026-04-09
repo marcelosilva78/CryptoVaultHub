@@ -10,6 +10,7 @@ import { ComplianceManagementModule } from './compliance-management/compliance-m
 import { MonitoringModule } from './monitoring/monitoring.module';
 import { ProjectManagementModule } from './project-management/project-management.module';
 import { JobManagementModule } from './job-management/job-management.module';
+import { RpcManagementModule } from './rpc-management/rpc-management.module';
 import { PostHogInterceptor } from './common/interceptors/posthog.interceptor';
 import { HealthController } from './common/health.controller';
 
@@ -28,6 +29,7 @@ import { HealthController } from './common/health.controller';
     MonitoringModule,
     ProjectManagementModule,
     JobManagementModule,
+    RpcManagementModule,
   ],
   controllers: [HealthController],
   providers: [

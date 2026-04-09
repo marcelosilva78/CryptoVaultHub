@@ -370,6 +370,35 @@ services:
       timeout: 5s
       retries: 3
 
+  rpc-gateway-service:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.nestjs
+      args:
+        SERVICE_PATH: services/rpc-gateway-service
+        PORT: 3009
+    ports:
+      - "3009:3009"
+    environment:
+      - NODE_ENV=production
+      - PORT=3009
+      - ADMIN_DATABASE_URL=mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@${MYSQL_HOST}:${MYSQL_PORT}/cvh_admin
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - INTERNAL_SERVICE_KEY=${INTERNAL_SERVICE_KEY}
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - internal-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3009/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
   # ─── Frontend Apps ────────────────────────────────────────
 
   admin:
