@@ -29,17 +29,7 @@ export class KeyGenerationService {
     clientId: number,
     requestedBy: string,
   ): Promise<DerivedKeyInfo[]> {
-    // Check if client already has keys
-    const existing = await this.prisma.derivedKey.findFirst({
-      where: { clientId: BigInt(clientId) },
-    });
-    if (existing) {
-      throw new ConflictException(
-        `Client ${clientId} already has derived keys`,
-      );
-    }
-
-    // Ensure master seed exists
+    // Ensure master seed exists (outside transaction to avoid long locks)
     const masterSeed = await this.getOrCreateMasterSeed();
 
     // Decrypt master mnemonic
@@ -59,55 +49,74 @@ export class KeyGenerationService {
       'client',
       'backup',
     ];
-    const results: DerivedKeyInfo[] = [];
 
-    for (let i = 0; i < keyTypes.length; i++) {
-      const keyType = keyTypes[i];
-      const pathIndex = clientId * 3 + i;
-      const derivationPath = `m/44'/60'/${pathIndex}'/0/0`;
+    // Wrap check + create in a Prisma transaction for atomicity
+    const results = await this.prisma.$transaction(async (tx) => {
+      // Check if client already has keys (inside transaction to prevent race)
+      const existing = await tx.derivedKey.findFirst({
+        where: { clientId: BigInt(clientId) },
+      });
+      if (existing) {
+        throw new ConflictException(
+          `Client ${clientId} already has derived keys`,
+        );
+      }
 
-      const childNode = masterNode.derivePath(derivationPath);
-      const privateKeyBuf = Buffer.from(
-        childNode.privateKey.slice(2),
-        'hex',
-      );
+      const txResults: DerivedKeyInfo[] = [];
 
-      // Envelope-encrypt the private key
-      const encrypted = this.encryption.encrypt(privateKeyBuf);
+      for (let i = 0; i < keyTypes.length; i++) {
+        const keyType = keyTypes[i];
+        const pathIndex = clientId * 3 + i;
+        const derivationPath = `m/44'/60'/${pathIndex}'/0/0`;
 
-      // Zero the private key buffer
-      privateKeyBuf.fill(0);
+        const childNode = masterNode.derivePath(derivationPath);
+        const privateKeyBuf = Buffer.from(
+          childNode.privateKey.slice(2),
+          'hex',
+        );
 
-      await this.prisma.derivedKey.create({
-        data: {
-          clientId: BigInt(clientId),
-          keyType,
-          chainScope: 'evm',
+        // Envelope-encrypt the private key
+        const encrypted = this.encryption.encrypt(privateKeyBuf);
+
+        // Zero the private key buffer
+        privateKeyBuf.fill(0);
+
+        await tx.derivedKey.create({
+          data: {
+            clientId: BigInt(clientId),
+            keyType,
+            chainScope: 'evm',
+            publicKey: childNode.publicKey,
+            address: childNode.address,
+            derivationPath,
+            encryptedKey: encrypted.ciphertext,
+            encryptedDek: encrypted.encryptedDek,
+            iv: encrypted.iv,
+            authTag: encrypted.authTag,
+            salt: encrypted.salt,
+          },
+        });
+
+        txResults.push({
           publicKey: childNode.publicKey,
           address: childNode.address,
           derivationPath,
-          encryptedKey: encrypted.ciphertext,
-          encryptedDek: encrypted.encryptedDek,
-          iv: encrypted.iv,
-          authTag: encrypted.authTag,
-          salt: encrypted.salt,
-        },
-      });
+          keyType,
+        });
+      }
 
-      results.push({
-        publicKey: childNode.publicKey,
-        address: childNode.address,
-        derivationPath,
-        keyType,
-      });
+      return txResults;
+    });
 
+    // Audit logs outside the transaction (non-critical, shouldn't block key creation)
+    for (const result of results) {
       await this.audit.log({
         operation: 'key_generated',
         clientId,
-        keyType,
-        address: childNode.address,
+        keyType: result.keyType,
+        address: result.address,
         requestedBy,
-        metadata: { derivationPath },
+        metadata: { derivationPath: result.derivationPath },
       });
     }
 
