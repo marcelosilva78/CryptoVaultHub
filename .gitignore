@@ -21,3 +21,6 @@ typechain-types
 
 # Prisma generated client
 **/src/generated/prisma-client
+
+# Superpowers brainstorm sessions
+.superpowers
