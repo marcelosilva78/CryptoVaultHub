@@ -1,0 +1,881 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CryptoVaultHub — Client Portal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root {
+  --bg-primary: #07080a;
+  --bg-secondary: #0d0f12;
+  --bg-tertiary: #141720;
+  --bg-elevated: #1a1d28;
+  --bg-hover: #1f2233;
+  --border: #252838;
+  --border-subtle: #1a1d28;
+  --text-primary: #e4e6f0;
+  --text-secondary: #7c82a0;
+  --text-muted: #4a4f6a;
+  --accent: #3b82f6;
+  --accent-dim: #2563eb;
+  --accent-glow: rgba(59,130,246,0.12);
+  --green: #22c55e;
+  --green-dim: rgba(34,197,94,0.1);
+  --red: #ef4444;
+  --red-dim: rgba(239,68,68,0.1);
+  --orange: #f59e0b;
+  --orange-dim: rgba(245,158,11,0.1);
+  --teal: #14b8a6;
+  --teal-dim: rgba(20,184,166,0.1);
+  --purple: #8b5cf6;
+  --sidebar-w: 220px;
+  --header-h: 54px;
+  --radius: 8px;
+  --radius-lg: 12px;
+  --font-display: 'Outfit', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  --transition: 160ms ease;
+}
+html { font-size: 14px; }
+body { font-family: var(--font-display); background: var(--bg-primary); color: var(--text-primary); min-height: 100vh; -webkit-font-smoothing: antialiased; }
+
+.sidebar { position: fixed; left: 0; top: 0; bottom: 0; width: var(--sidebar-w); background: var(--bg-secondary); border-right: 1px solid var(--border-subtle); display: flex; flex-direction: column; z-index: 100; }
+.sidebar-logo { height: var(--header-h); display: flex; align-items: center; gap: 10px; padding: 0 18px; border-bottom: 1px solid var(--border-subtle); }
+.sidebar-logo .icon { width: 26px; height: 26px; background: linear-gradient(135deg, var(--accent), var(--purple)); border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; color: #fff; }
+.sidebar-logo .brand { font-weight: 700; font-size: 14px; }
+.sidebar-logo .brand span { color: var(--accent); }
+
+.sidebar-client {
+  padding: 14px 18px; border-bottom: 1px solid var(--border-subtle);
+  background: var(--accent-glow);
+}
+.client-name { font-size: 13px; font-weight: 700; }
+.client-tier { font-size: 10px; color: var(--accent); font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; }
+
+.sidebar-nav { flex: 1; padding: 10px 6px; overflow-y: auto; }
+.s-section { margin-bottom: 16px; }
+.s-section-title { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; color: var(--text-muted); padding: 0 12px; margin-bottom: 4px; }
+.s-item { display: flex; align-items: center; gap: 9px; padding: 7px 12px; border-radius: 6px; cursor: pointer; transition: all var(--transition); font-size: 12.5px; font-weight: 450; color: var(--text-secondary); }
+.s-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+.s-item.active { background: var(--accent-glow); color: var(--accent); font-weight: 600; }
+.s-icon { font-size: 14px; width: 18px; text-align: center; }
+.s-badge { margin-left: auto; background: var(--accent); color: #fff; font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 8px; }
+
+.sidebar-footer { padding: 10px 14px; border-top: 1px solid var(--border-subtle); display: flex; align-items: center; gap: 8px; }
+.sf-avatar { width: 28px; height: 28px; background: linear-gradient(135deg, var(--accent), var(--teal)); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: #fff; }
+.sf-info { flex: 1; }
+.sf-name { font-size: 11px; font-weight: 600; }
+.sf-role { font-size: 9px; color: var(--text-muted); }
+
+.header { position: fixed; top: 0; left: var(--sidebar-w); right: 0; height: var(--header-h); background: rgba(7,8,10,0.88); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: space-between; padding: 0 22px; z-index: 99; }
+.h-left { display: flex; align-items: center; gap: 12px; }
+.h-title { font-size: 15px; font-weight: 600; }
+.h-crumb { font-size: 11px; color: var(--text-muted); }
+.h-right { display: flex; align-items: center; gap: 10px; }
+.h-btn { background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; color: var(--text-secondary); font-size: 11px; cursor: pointer; font-family: inherit; transition: all var(--transition); }
+.h-btn:hover { border-color: var(--accent); color: var(--text-primary); }
+
+.main { margin-left: var(--sidebar-w); margin-top: var(--header-h); padding: 22px; min-height: calc(100vh - var(--header-h)); }
+.page { display: none; animation: fadeUp 0.25s ease; }
+.page.active { display: block; }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+/* Cards */
+.sg { display: grid; gap: 14px; margin-bottom: 22px; }
+.sg-4 { grid-template-columns: repeat(4, 1fr); }
+.sg-3 { grid-template-columns: repeat(3, 1fr); }
+.sg-2 { grid-template-columns: repeat(2, 1fr); }
+.sc { background: var(--bg-secondary); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: 18px; transition: border-color var(--transition); position: relative; overflow: hidden; }
+.sc:hover { border-color: var(--border); }
+.sc-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-muted); margin-bottom: 6px; }
+.sc-value { font-size: 26px; font-weight: 700; letter-spacing: -0.03em; line-height: 1; }
+.sc-sub { font-size: 11px; color: var(--text-muted); margin-top: 6px; }
+
+/* Table */
+.tc { background: var(--bg-secondary); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); overflow: hidden; }
+.tc-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--border-subtle); }
+.tc-title { font-size: 13px; font-weight: 600; }
+.tc-actions { display: flex; gap: 6px; }
+table { width: 100%; border-collapse: collapse; }
+thead { background: var(--bg-tertiary); }
+th { text-align: left; padding: 8px 14px; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.09em; color: var(--text-muted); border-bottom: 1px solid var(--border-subtle); }
+td { padding: 10px 14px; font-size: 12.5px; border-bottom: 1px solid var(--border-subtle); }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: var(--bg-hover); }
+.addr { font-family: var(--font-mono); font-size: 11px; color: var(--accent); cursor: pointer; }
+.addr:hover { text-decoration: underline; }
+
+/* Badges */
+.badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 16px; font-size: 10px; font-weight: 600; }
+.badge.green { background: var(--green-dim); color: var(--green); }
+.badge.red { background: var(--red-dim); color: var(--red); }
+.badge.orange { background: var(--orange-dim); color: var(--orange); }
+.badge.blue { background: var(--accent-glow); color: var(--accent); }
+.badge.neutral { background: var(--bg-elevated); color: var(--text-secondary); }
+.badge.teal { background: var(--teal-dim); color: var(--teal); }
+.dot { width: 5px; height: 5px; border-radius: 50%; display: inline-block; }
+.dot.green { background: var(--green); }
+
+/* Buttons */
+.btn { display: inline-flex; align-items: center; gap: 5px; padding: 6px 12px; border-radius: 6px; font-family: inherit; font-size: 11px; font-weight: 600; cursor: pointer; transition: all var(--transition); border: none; }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent-dim); }
+.btn-ghost { background: transparent; color: var(--text-secondary); border: 1px solid var(--border); }
+.btn-ghost:hover { border-color: var(--text-secondary); color: var(--text-primary); }
+.btn-danger { background: var(--red-dim); color: var(--red); border: 1px solid rgba(239,68,68,0.2); }
+
+/* Form */
+.form-group { margin-bottom: 14px; }
+.form-label { display: block; font-size: 11px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.06em; }
+.form-input, .form-select {
+  width: 100%; background: var(--bg-tertiary); border: 1px solid var(--border);
+  border-radius: 6px; padding: 8px 12px; color: var(--text-primary);
+  font-family: inherit; font-size: 13px; outline: none; transition: border-color var(--transition);
+}
+.form-input:focus, .form-select:focus { border-color: var(--accent); }
+.form-select { cursor: pointer; }
+
+/* Confirmation bar */
+.conf-bar { display: flex; gap: 2px; margin-top: 4px; }
+.conf-block { height: 4px; flex: 1; border-radius: 2px; background: var(--bg-elevated); }
+.conf-block.filled { background: var(--green); }
+.conf-block.partial { background: var(--orange); }
+
+/* Webhook config */
+.event-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.event-check {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; color: var(--text-secondary);
+  padding: 5px 8px; border-radius: 4px;
+  background: var(--bg-tertiary); cursor: pointer;
+  transition: all var(--transition);
+}
+.event-check:hover { background: var(--bg-hover); }
+.event-check.checked { background: var(--accent-glow); color: var(--accent); }
+.event-check input[type=checkbox] { accent-color: var(--accent); }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+.live-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--green); animation: pulse 2s infinite; display: inline-block; }
+
+/* Modal */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); z-index: 200; display: flex; align-items: center; justify-content: center; }
+.modal { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 24px; width: 480px; max-height: 80vh; overflow-y: auto; animation: fadeUp 0.2s ease; }
+.modal-title { font-size: 16px; font-weight: 700; margin-bottom: 16px; }
+.modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+</style>
+</head>
+<body>
+
+<aside class="sidebar">
+  <div class="sidebar-logo">
+    <div class="icon">V</div>
+    <div class="brand">Crypto<span>Vault</span>Hub</div>
+  </div>
+  <div class="sidebar-client">
+    <div class="client-name">Corretora XYZ</div>
+    <div class="client-tier">Business Tier</div>
+  </div>
+  <nav class="sidebar-nav">
+    <div class="s-section">
+      <div class="s-section-title">Main</div>
+      <div class="s-item active" onclick="showPage('dashboard')"><span class="s-icon">◉</span> Dashboard</div>
+      <div class="s-item" onclick="showPage('wallets')"><span class="s-icon">◎</span> Wallets</div>
+    </div>
+    <div class="s-section">
+      <div class="s-section-title">Operations</div>
+      <div class="s-item" onclick="showPage('deposits')"><span class="s-icon">↓</span> Deposits <span class="s-badge">12</span></div>
+      <div class="s-item" onclick="showPage('withdrawals')"><span class="s-icon">↑</span> Withdrawals</div>
+      <div class="s-item" onclick="showPage('addresses')"><span class="s-icon">◇</span> Address Book</div>
+    </div>
+    <div class="s-section">
+      <div class="s-section-title">Integration</div>
+      <div class="s-item" onclick="showPage('webhooks')"><span class="s-icon">⚡</span> Webhooks</div>
+      <div class="s-item" onclick="showPage('apikeys')"><span class="s-icon">🔑</span> API Keys</div>
+    </div>
+    <div class="s-section">
+      <div class="s-section-title">Settings</div>
+      <div class="s-item" onclick="showPage('security')"><span class="s-icon">🛡</span> Security</div>
+      <div class="s-item"><span class="s-icon">✉</span> Notifications</div>
+    </div>
+  </nav>
+  <div class="sidebar-footer">
+    <div class="sf-avatar">OP</div>
+    <div class="sf-info">
+      <div class="sf-name">Operador Admin</div>
+      <div class="sf-role">Owner</div>
+    </div>
+  </div>
+</aside>
+
+<header class="header">
+  <div class="h-left">
+    <div class="h-title" id="pg-title">Dashboard</div>
+    <div class="h-crumb" id="pg-crumb">Portal / Overview</div>
+  </div>
+  <div class="h-right">
+    <div class="h-btn">Docs</div>
+    <div class="h-btn" style="font-family:var(--font-mono);font-size:10px">Tier: Business · 65/100 req/s</div>
+  </div>
+</header>
+
+<main class="main">
+
+  <!-- ═══ DASHBOARD ═══ -->
+  <div class="page active" id="page-dashboard">
+    <div style="margin-bottom:18px;font-size:20px;font-weight:700;letter-spacing:-0.02em">
+      Welcome back, Corretora XYZ
+    </div>
+
+    <div class="sg sg-4">
+      <div class="sc">
+        <div class="sc-label">Total Balance</div>
+        <div class="sc-value" style="color:var(--accent)">$847,200</div>
+        <div class="sc-sub">Across 3 chains</div>
+      </div>
+      <div class="sc">
+        <div class="sc-label">Deposits (24h)</div>
+        <div class="sc-value" style="color:var(--green)">$123,400</div>
+        <div class="sc-sub">247 transactions</div>
+      </div>
+      <div class="sc">
+        <div class="sc-label">Withdrawals (24h)</div>
+        <div class="sc-value" style="color:var(--orange)">$45,800</div>
+        <div class="sc-sub">18 transactions</div>
+      </div>
+      <div class="sc">
+        <div class="sc-label">Active Addresses</div>
+        <div class="sc-value">2,340</div>
+        <div class="sc-sub">of 12,430 total</div>
+      </div>
+    </div>
+
+    <div class="sg sg-2">
+      <!-- Balances by Token -->
+      <div class="sc" style="padding:0">
+        <div class="tc-header">
+          <div class="tc-title">Balance by Token</div>
+          <select class="form-select" style="width:auto;padding:4px 8px;font-size:11px">
+            <option>All Chains</option><option>BSC</option><option>ETH</option><option>Polygon</option>
+          </select>
+        </div>
+        <table>
+          <thead><tr><th>Token</th><th>Chain</th><th>Balance</th><th>USD Value</th></tr></thead>
+          <tbody>
+            <tr><td><strong>USDT</strong></td><td style="font-size:11px">BSC</td><td style="font-family:var(--font-mono)">500,000.00</td><td style="font-family:var(--font-mono);color:var(--green)">$500,000</td></tr>
+            <tr><td><strong>USDC</strong></td><td style="font-size:11px">BSC</td><td style="font-family:var(--font-mono)">340,000.00</td><td style="font-family:var(--font-mono);color:var(--green)">$340,000</td></tr>
+            <tr><td><strong>BNB</strong></td><td style="font-size:11px">BSC</td><td style="font-family:var(--font-mono)">12.50</td><td style="font-family:var(--font-mono);color:var(--green)">$3,750</td></tr>
+            <tr><td><strong>ETH</strong></td><td style="font-size:11px">Ethereum</td><td style="font-family:var(--font-mono)">1.20</td><td style="font-family:var(--font-mono);color:var(--green)">$3,600</td></tr>
+            <tr><td><strong>MATIC</strong></td><td style="font-size:11px">Polygon</td><td style="font-family:var(--font-mono)">1,250.00</td><td style="font-family:var(--font-mono);color:var(--green)">$850</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Recent Activity -->
+      <div class="sc" style="padding:0">
+        <div class="tc-header">
+          <div class="tc-title" style="display:flex;align-items:center;gap:6px"><span class="live-dot"></span> Recent Activity</div>
+        </div>
+        <div style="max-height:280px;overflow-y:auto">
+          <div style="display:flex;align-items:center;gap:10px;padding:8px 14px;border-bottom:1px solid var(--border-subtle);font-size:12px">
+            <span style="font-family:var(--font-mono);color:var(--text-muted);font-size:10px;width:55px">14:02</span>
+            <span class="badge green" style="font-size:9px;width:60px;justify-content:center">Deposit</span>
+            <span style="flex:1;color:var(--green)">+100.00 USDT</span>
+            <span style="color:var(--text-muted);font-size:11px">BSC</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;padding:8px 14px;border-bottom:1px solid var(--border-subtle);font-size:12px">
+            <span style="font-family:var(--font-mono);color:var(--text-muted);font-size:10px;width:55px">13:58</span>
+            <span class="badge teal" style="font-size:9px;width:60px;justify-content:center">Sweep</span>
+            <span style="flex:1;color:var(--teal)">100.00 USDT swept</span>
+            <span style="color:var(--text-muted);font-size:11px">BSC</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;padding:8px 14px;border-bottom:1px solid var(--border-subtle);font-size:12px">
+            <span style="font-family:var(--font-mono);color:var(--text-muted);font-size:10px;width:55px">13:45</span>
+            <span class="badge orange" style="font-size:9px;width:60px;justify-content:center">Withdraw</span>
+            <span style="flex:1;color:var(--orange)">-500.00 USDT</span>
+            <span style="color:var(--text-muted);font-size:11px">BSC</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;padding:8px 14px;border-bottom:1px solid var(--border-subtle);font-size:12px">
+            <span style="font-family:var(--font-mono);color:var(--text-muted);font-size:10px;width:55px">13:30</span>
+            <span class="badge green" style="font-size:9px;width:60px;justify-content:center">Deposit</span>
+            <span style="flex:1;color:var(--green)">+0.85 ETH</span>
+            <span style="color:var(--text-muted);font-size:11px">ETH</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;padding:8px 14px;border-bottom:1px solid var(--border-subtle);font-size:12px">
+            <span style="font-family:var(--font-mono);color:var(--text-muted);font-size:10px;width:55px">13:12</span>
+            <span class="badge green" style="font-size:9px;width:60px;justify-content:center">Deposit</span>
+            <span style="flex:1;color:var(--green)">+50.00 USDC</span>
+            <span style="color:var(--text-muted);font-size:11px">POLY</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;padding:8px 14px;font-size:12px">
+            <span style="font-family:var(--font-mono);color:var(--text-muted);font-size:10px;width:55px">12:55</span>
+            <span class="badge orange" style="font-size:9px;width:60px;justify-content:center">Withdraw</span>
+            <span style="flex:1;color:var(--orange)">-1,200.00 USDC</span>
+            <span style="color:var(--text-muted);font-size:11px">BSC</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Plan usage -->
+    <div class="sc">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <span style="font-size:13px;font-weight:600">Plan Usage</span>
+        <span class="badge blue">Business Tier</span>
+      </div>
+      <div class="sg sg-4" style="margin-bottom:0;gap:10px">
+        <div>
+          <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px"><span style="color:var(--text-muted)">API Requests/s</span><span style="font-family:var(--font-mono)">65 / 100</span></div>
+          <div style="height:5px;background:var(--bg-elevated);border-radius:3px;overflow:hidden"><div style="width:65%;height:100%;background:var(--accent);border-radius:3px"></div></div>
+        </div>
+        <div>
+          <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px"><span style="color:var(--text-muted)">Forwarders</span><span style="font-family:var(--font-mono)">12,430 / 50,000</span></div>
+          <div style="height:5px;background:var(--bg-elevated);border-radius:3px;overflow:hidden"><div style="width:25%;height:100%;background:var(--green);border-radius:3px"></div></div>
+        </div>
+        <div>
+          <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px"><span style="color:var(--text-muted)">Daily Withdrawal</span><span style="font-family:var(--font-mono)">$45.8K / $500K</span></div>
+          <div style="height:5px;background:var(--bg-elevated);border-radius:3px;overflow:hidden"><div style="width:9%;height:100%;background:var(--green);border-radius:3px"></div></div>
+        </div>
+        <div>
+          <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px"><span style="color:var(--text-muted)">Webhooks</span><span style="font-family:var(--font-mono)">2 / 10</span></div>
+          <div style="height:5px;background:var(--bg-elevated);border-radius:3px;overflow:hidden"><div style="width:20%;height:100%;background:var(--green);border-radius:3px"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ DEPOSITS ═══ -->
+  <div class="page" id="page-deposits">
+    <div class="sg sg-3">
+      <div class="sc"><div class="sc-label">Deposits (24h)</div><div class="sc-value" style="color:var(--green)">247</div></div>
+      <div class="sc"><div class="sc-label">Volume (24h)</div><div class="sc-value" style="color:var(--green)">$123,400</div></div>
+      <div class="sc"><div class="sc-label">Confirming Now</div><div class="sc-value" style="color:var(--orange)">12</div></div>
+    </div>
+
+    <div class="tc">
+      <div class="tc-header">
+        <div class="tc-title">Deposit History</div>
+        <div class="tc-actions">
+          <select class="form-select" style="width:auto;padding:4px 8px;font-size:11px"><option>All Chains</option><option>BSC</option><option>ETH</option></select>
+          <select class="form-select" style="width:auto;padding:4px 8px;font-size:11px"><option>All Status</option><option>Pending</option><option>Confirming</option><option>Confirmed</option></select>
+          <button class="btn btn-ghost">Export CSV</button>
+        </div>
+      </div>
+      <table>
+        <thead><tr><th>Date</th><th>Address</th><th>External ID</th><th>Token</th><th>Amount</th><th>Confirmations</th><th>Status</th><th>TX</th></tr></thead>
+        <tbody>
+          <tr>
+            <td style="font-family:var(--font-mono);font-size:11px">Apr 8, 14:02</td>
+            <td class="addr">0x742d...4f2a</td>
+            <td style="font-size:11px">user-joao-123</td>
+            <td><strong>USDT</strong></td>
+            <td style="font-family:var(--font-mono);color:var(--green)">+100.00</td>
+            <td>
+              <div style="display:flex;align-items:center;gap:6px">
+                <div class="conf-bar" style="width:80px"><div class="conf-block filled"></div><div class="conf-block filled"></div><div class="conf-block filled"></div><div class="conf-block filled"></div><div class="conf-block filled"></div><div class="conf-block filled"></div><div class="conf-block filled"></div><div class="conf-block filled"></div><div class="conf-block partial"></div><div class="conf-block"></div><div class="conf-block"></div><div class="conf-block"></div></div>
+                <span style="font-family:var(--font-mono);font-size:10px;color:var(--orange)">8/12</span>
+              </div>
+            </td>
+            <td><span class="badge orange">Confirming</span></td>
+            <td><a class="addr" style="font-size:10px">0xabc...def</a></td>
+          </tr>
+          <tr>
+            <td style="font-family:var(--font-mono);font-size:11px">Apr 8, 13:30</td>
+            <td class="addr">0x8f3a...9e1c</td>
+            <td style="font-size:11px">user-maria-456</td>
+            <td><strong>ETH</strong></td>
+            <td style="font-family:var(--font-mono);color:var(--green)">+0.85</td>
+            <td>
+              <div style="display:flex;align-items:center;gap:6px">
+                <div class="conf-bar" style="width:80px"><div class="conf-block filled"></div><div class="conf-block filled"></div><div class="conf-block filled"></div><div class="conf-block filled"></div><div class="conf-block filled"></div><div class="conf-block filled"></div><div class="conf-block filled"></div><div class="conf-block filled"></div><div class="conf-block filled"></div><div class="conf-block filled"></div><div class="conf-block filled"></div><div class="conf-block filled"></div></div>
+                <span style="font-family:var(--font-mono);font-size:10px;color:var(--green)">12/12</span>
+              </div>
+            </td>
+            <td><span class="badge green">Confirmed</span></td>
+            <td><a class="addr" style="font-size:10px">0x123...456</a></td>
+          </tr>
+          <tr>
+            <td style="font-family:var(--font-mono);font-size:11px">Apr 8, 13:12</td>
+            <td class="addr">0xa1c9...7b3f</td>
+            <td style="font-size:11px">user-pedro-789</td>
+            <td><strong>USDC</strong></td>
+            <td style="font-family:var(--font-mono);color:var(--green)">+50.00</td>
+            <td>
+              <div style="display:flex;align-items:center;gap:6px">
+                <div class="conf-bar" style="width:80px"><div class="conf-block filled"></div><div class="conf-block filled"></div><div class="conf-block filled"></div><div class="conf-block filled"></div><div class="conf-block filled"></div><div class="conf-block filled"></div><div class="conf-block filled"></div><div class="conf-block filled"></div><div class="conf-block filled"></div><div class="conf-block filled"></div><div class="conf-block filled"></div><div class="conf-block filled"></div></div>
+                <span style="font-family:var(--font-mono);font-size:10px;color:var(--green)">128/128</span>
+              </div>
+            </td>
+            <td><span class="badge green">Confirmed</span></td>
+            <td><a class="addr" style="font-size:10px">0x789...abc</a></td>
+          </tr>
+          <tr>
+            <td style="font-family:var(--font-mono);font-size:11px">Apr 8, 12:45</td>
+            <td class="addr">0xb4e7...3d5e</td>
+            <td style="font-size:11px">user-ana-012</td>
+            <td><strong>USDT</strong></td>
+            <td style="font-family:var(--font-mono);color:var(--green)">+2,500.00</td>
+            <td>
+              <div style="display:flex;align-items:center;gap:6px">
+                <div class="conf-bar" style="width:80px"><div class="conf-block filled"></div><div class="conf-block filled"></div><div class="conf-block filled"></div><div class="conf-block filled"></div><div class="conf-block filled"></div><div class="conf-block filled"></div><div class="conf-block filled"></div><div class="conf-block filled"></div><div class="conf-block filled"></div><div class="conf-block filled"></div><div class="conf-block filled"></div><div class="conf-block filled"></div><div class="conf-block filled"></div><div class="conf-block filled"></div><div class="conf-block filled"></div></div>
+                <span style="font-family:var(--font-mono);font-size:10px;color:var(--green)">15/15</span>
+              </div>
+            </td>
+            <td><span class="badge green">Confirmed</span></td>
+            <td><a class="addr" style="font-size:10px">0xdef...012</a></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ═══ WITHDRAWALS ═══ -->
+  <div class="page" id="page-withdrawals">
+    <div class="sg sg-2">
+      <!-- New Withdrawal Form -->
+      <div class="sc">
+        <div style="font-size:15px;font-weight:700;margin-bottom:16px">New Withdrawal</div>
+        <div class="form-group">
+          <label class="form-label">Chain</label>
+          <select class="form-select"><option>BSC (BNB Smart Chain)</option><option>Ethereum</option><option>Polygon</option></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Token</label>
+          <select class="form-select"><option>USDT — Balance: 500,000.00</option><option>USDC — Balance: 340,000.00</option><option>BNB — Balance: 12.50</option></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Destination (whitelisted)</label>
+          <select class="form-select"><option>Binance Hot — 0xDEF1...2345</option><option>Carteira Fria — 0xABC9...8765</option><option>Fornecedor X — 0x1234...5678</option></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Amount</label>
+          <input class="form-input" type="text" placeholder="0.00" value="500.00" style="font-family:var(--font-mono)">
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-bottom:14px;padding:8px 12px;background:var(--bg-tertiary);border-radius:6px">
+          <span>Estimated gas fee</span>
+          <span style="font-family:var(--font-mono)">~$0.35</span>
+        </div>
+        <button class="btn btn-primary" style="width:100%;justify-content:center;padding:10px">Confirm Withdrawal →</button>
+        <div style="text-align:center;font-size:10px;color:var(--text-muted);margin-top:6px">Requires 2FA for amounts above $5,000</div>
+      </div>
+
+      <!-- Recent Withdrawals -->
+      <div class="sc" style="padding:0">
+        <div class="tc-header">
+          <div class="tc-title">Withdrawal History</div>
+        </div>
+        <table>
+          <thead><tr><th>Date</th><th>Destination</th><th>Token</th><th>Amount</th><th>Status</th></tr></thead>
+          <tbody>
+            <tr>
+              <td style="font-family:var(--font-mono);font-size:11px">Apr 8, 13:45</td>
+              <td><span style="font-size:11px;font-weight:600">Binance Hot</span><br><span class="addr" style="font-size:10px">0xDEF1...2345</span></td>
+              <td>USDT</td>
+              <td style="font-family:var(--font-mono);color:var(--orange)">-500.00</td>
+              <td><span class="badge green">Confirmed</span></td>
+            </tr>
+            <tr>
+              <td style="font-family:var(--font-mono);font-size:11px">Apr 8, 12:30</td>
+              <td><span style="font-size:11px;font-weight:600">Carteira Fria</span><br><span class="addr" style="font-size:10px">0xABC9...8765</span></td>
+              <td>ETH</td>
+              <td style="font-family:var(--font-mono);color:var(--orange)">-10.00</td>
+              <td><span class="badge orange">Confirming</span></td>
+            </tr>
+            <tr>
+              <td style="font-family:var(--font-mono);font-size:11px">Apr 7, 18:00</td>
+              <td><span style="font-size:11px;font-weight:600">Fornecedor X</span><br><span class="addr" style="font-size:10px">0x1234...5678</span></td>
+              <td>USDC</td>
+              <td style="font-family:var(--font-mono);color:var(--orange)">-1,200.00</td>
+              <td><span class="badge green">Confirmed</span></td>
+            </tr>
+            <tr>
+              <td style="font-family:var(--font-mono);font-size:11px">Apr 7, 14:20</td>
+              <td><span style="font-size:11px;font-weight:600">Binance Hot</span><br><span class="addr" style="font-size:10px">0xDEF1...2345</span></td>
+              <td>USDT</td>
+              <td style="font-family:var(--font-mono);color:var(--orange)">-25,000.00</td>
+              <td><span class="badge green">Confirmed</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ WALLETS ═══ -->
+  <div class="page" id="page-wallets">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+      <div style="font-size:18px;font-weight:700">Deposit Addresses</div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-ghost">Import CSV</button>
+        <button class="btn btn-primary" onclick="document.getElementById('modal-gen').style.display='flex'">+ Generate Address</button>
+      </div>
+    </div>
+
+    <div class="sg sg-3">
+      <div class="sc"><div class="sc-label">Total Addresses</div><div class="sc-value">12,430</div></div>
+      <div class="sc"><div class="sc-label">With Balance</div><div class="sc-value" style="color:var(--green)">3,201</div></div>
+      <div class="sc"><div class="sc-label">Pending Sweep</div><div class="sc-value" style="color:var(--orange)">89</div></div>
+    </div>
+
+    <div class="tc">
+      <div class="tc-header">
+        <div class="tc-title">Address List</div>
+        <div class="tc-actions">
+          <input class="form-input" style="width:180px;padding:5px 10px;font-size:11px" placeholder="Search by label or ID...">
+          <select class="form-select" style="width:auto;padding:4px 8px;font-size:11px"><option>All Chains</option><option>BSC</option><option>ETH</option><option>Polygon</option></select>
+          <select class="form-select" style="width:auto;padding:4px 8px;font-size:11px"><option>All</option><option>With Balance</option><option>Deployed</option><option>Not Deployed</option></select>
+        </div>
+      </div>
+      <table>
+        <thead><tr><th>Address</th><th>Label</th><th>External ID</th><th>Chain</th><th>Balance</th><th>Deployed</th><th>Last Deposit</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="addr">0x742d35Cc...4f2a</td>
+            <td>Joao Silva</td>
+            <td style="font-family:var(--font-mono);font-size:11px">user-joao-123</td>
+            <td>BSC</td>
+            <td style="font-family:var(--font-mono)">100 USDT</td>
+            <td><span class="badge green">Yes</span></td>
+            <td style="font-family:var(--font-mono);font-size:11px">Apr 8, 14:02</td>
+          </tr>
+          <tr>
+            <td class="addr">0x8f3a21Bb...9e1c</td>
+            <td>Maria Santos</td>
+            <td style="font-family:var(--font-mono);font-size:11px">user-maria-456</td>
+            <td>ETH</td>
+            <td style="font-family:var(--font-mono)">0.85 ETH</td>
+            <td><span class="badge green">Yes</span></td>
+            <td style="font-family:var(--font-mono);font-size:11px">Apr 8, 13:30</td>
+          </tr>
+          <tr>
+            <td class="addr">0xa1c9e0Dd...7b3f</td>
+            <td>Pedro Lima</td>
+            <td style="font-family:var(--font-mono);font-size:11px">user-pedro-789</td>
+            <td>Polygon</td>
+            <td style="font-family:var(--font-mono);color:var(--text-muted)">0</td>
+            <td><span class="badge neutral">No</span></td>
+            <td style="font-family:var(--font-mono);font-size:11px">Apr 8, 13:12</td>
+          </tr>
+          <tr>
+            <td class="addr">0xb4e7f2Aa...3d5e</td>
+            <td>Ana Costa</td>
+            <td style="font-family:var(--font-mono);font-size:11px">user-ana-012</td>
+            <td>BSC</td>
+            <td style="font-family:var(--font-mono);color:var(--text-muted)">0</td>
+            <td><span class="badge neutral">No</span></td>
+            <td style="font-family:var(--font-mono);font-size:11px;color:var(--text-muted)">Never</td>
+          </tr>
+          <tr>
+            <td class="addr">0xc3f8d1Ee...9a0b</td>
+            <td>Carlos Oliveira</td>
+            <td style="font-family:var(--font-mono);font-size:11px">user-carlos-345</td>
+            <td>BSC</td>
+            <td style="font-family:var(--font-mono)">2,500 USDT</td>
+            <td><span class="badge green">Yes</span></td>
+            <td style="font-family:var(--font-mono);font-size:11px">Apr 8, 12:45</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ═══ ADDRESSES (Whitelist) ═══ -->
+  <div class="page" id="page-addresses">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+      <div style="font-size:18px;font-weight:700">Address Book</div>
+      <button class="btn btn-primary">+ Add Address</button>
+    </div>
+    <div class="tc">
+      <table>
+        <thead><tr><th>Label</th><th>Address</th><th>Chain</th><th>Added</th><th>Status</th><th>Withdrawals</th><th>Actions</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><strong>Binance Hot</strong></td>
+            <td class="addr">0xDEF1...2345</td>
+            <td>BSC</td>
+            <td style="font-family:var(--font-mono);font-size:11px">Jan 15, 2026</td>
+            <td><span class="badge green"><span class="dot green"></span> Active</span></td>
+            <td style="font-family:var(--font-mono)">142</td>
+            <td><button class="btn btn-ghost" style="font-size:10px">Edit</button> <button class="btn btn-danger" style="font-size:10px">Remove</button></td>
+          </tr>
+          <tr>
+            <td><strong>Carteira Fria</strong></td>
+            <td class="addr">0xABC9...8765</td>
+            <td>All EVM</td>
+            <td style="font-family:var(--font-mono);font-size:11px">Jan 15, 2026</td>
+            <td><span class="badge green"><span class="dot green"></span> Active</span></td>
+            <td style="font-family:var(--font-mono)">28</td>
+            <td><button class="btn btn-ghost" style="font-size:10px">Edit</button> <button class="btn btn-danger" style="font-size:10px">Remove</button></td>
+          </tr>
+          <tr>
+            <td><strong>Fornecedor X</strong></td>
+            <td class="addr">0x1234...5678</td>
+            <td>BSC</td>
+            <td style="font-family:var(--font-mono);font-size:11px">Mar 20, 2026</td>
+            <td><span class="badge green"><span class="dot green"></span> Active</span></td>
+            <td style="font-family:var(--font-mono)">5</td>
+            <td><button class="btn btn-ghost" style="font-size:10px">Edit</button> <button class="btn btn-danger" style="font-size:10px">Remove</button></td>
+          </tr>
+          <tr>
+            <td><strong>Nova Parceria</strong></td>
+            <td class="addr">0x9876...abcd</td>
+            <td>ETH</td>
+            <td style="font-family:var(--font-mono);font-size:11px">Apr 8, 2026</td>
+            <td><span class="badge orange">Cooldown 22h14m</span></td>
+            <td style="font-family:var(--font-mono);color:var(--text-muted)">0</td>
+            <td><button class="btn btn-ghost" style="font-size:10px">Edit</button> <button class="btn btn-danger" style="font-size:10px">Remove</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ═══ WEBHOOKS ═══ -->
+  <div class="page" id="page-webhooks">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+      <div style="font-size:18px;font-weight:700">Webhooks</div>
+      <button class="btn btn-primary">+ New Webhook</button>
+    </div>
+
+    <!-- Webhook 1 -->
+    <div class="sc" style="margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div>
+          <div style="font-size:13px;font-weight:700">Production Endpoint</div>
+          <div style="font-family:var(--font-mono);font-size:11px;color:var(--accent);margin-top:2px">https://api.corretora.xyz/callbacks/crypto</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="badge green"><span class="dot green"></span> Active · 99.2% success</span>
+          <button class="btn btn-ghost" style="font-size:10px">Test</button>
+          <button class="btn btn-ghost" style="font-size:10px">Edit</button>
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">
+        Secret: <span style="font-family:var(--font-mono)">cvh_whsec_●●●●●●●●●●●●</span>
+        <button style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:10px;font-family:inherit;margin-left:6px">Regenerate</button>
+      </div>
+      <div style="font-size:10px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px">Enabled Events</div>
+      <div class="event-grid">
+        <div class="event-check checked"><input type="checkbox" checked> deposit.pending</div>
+        <div class="event-check checked"><input type="checkbox" checked> deposit.confirmation</div>
+        <div class="event-check checked"><input type="checkbox" checked> deposit.confirmed</div>
+        <div class="event-check"><input type="checkbox"> deposit.swept</div>
+        <div class="event-check checked"><input type="checkbox" checked> deposit.reverted</div>
+        <div class="event-check checked"><input type="checkbox" checked> withdrawal.submitted</div>
+        <div class="event-check checked"><input type="checkbox" checked> withdrawal.confirmed</div>
+        <div class="event-check checked"><input type="checkbox" checked> withdrawal.failed</div>
+        <div class="event-check"><input type="checkbox"> gas_tank.low</div>
+      </div>
+    </div>
+
+    <!-- Deliveries -->
+    <div class="tc">
+      <div class="tc-header">
+        <div class="tc-title">Recent Deliveries</div>
+        <div class="tc-actions">
+          <select class="form-select" style="width:auto;padding:4px 8px;font-size:11px"><option>All Status</option><option>Sent</option><option>Failed</option></select>
+        </div>
+      </div>
+      <table>
+        <thead><tr><th>Delivery ID</th><th>Event</th><th>HTTP</th><th>Latency</th><th>Attempts</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody>
+          <tr>
+            <td style="font-family:var(--font-mono);font-size:10px">DLV-20260408-140215-X7K</td>
+            <td><span class="badge green" style="font-size:9px">deposit.confirmed</span></td>
+            <td style="font-family:var(--font-mono);color:var(--green)">200</td>
+            <td style="font-family:var(--font-mono)">156ms</td>
+            <td style="font-family:var(--font-mono)">1/1</td>
+            <td><span class="badge green">Sent</span></td>
+            <td><button class="btn btn-ghost" style="font-size:10px;padding:3px 8px">Payload</button></td>
+          </tr>
+          <tr>
+            <td style="font-family:var(--font-mono);font-size:10px">DLV-20260408-134500-M2P</td>
+            <td><span class="badge orange" style="font-size:9px">withdrawal.confirmed</span></td>
+            <td style="font-family:var(--font-mono);color:var(--green)">200</td>
+            <td style="font-family:var(--font-mono)">203ms</td>
+            <td style="font-family:var(--font-mono)">1/1</td>
+            <td><span class="badge green">Sent</span></td>
+            <td><button class="btn btn-ghost" style="font-size:10px;padding:3px 8px">Payload</button></td>
+          </tr>
+          <tr style="background:var(--red-dim)">
+            <td style="font-family:var(--font-mono);font-size:10px">DLV-20260407-180000-R9Q</td>
+            <td><span class="badge green" style="font-size:9px">deposit.confirmed</span></td>
+            <td style="font-family:var(--font-mono);color:var(--red)">502</td>
+            <td style="font-family:var(--font-mono)">10,000ms</td>
+            <td style="font-family:var(--font-mono);color:var(--red)">5/5</td>
+            <td><span class="badge red">Failed</span></td>
+            <td><button class="btn btn-primary" style="font-size:10px;padding:3px 8px">Retry</button> <button class="btn btn-ghost" style="font-size:10px;padding:3px 8px">Payload</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ═══ API KEYS ═══ -->
+  <div class="page" id="page-apikeys">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+      <div style="font-size:18px;font-weight:700">API Keys</div>
+      <button class="btn btn-primary">+ Create Key</button>
+    </div>
+    <div class="tc">
+      <table>
+        <thead><tr><th>Key</th><th>Label</th><th>Scopes</th><th>IP Allowlist</th><th>Last Used</th><th>Requests (24h)</th><th>Actions</th></tr></thead>
+        <tbody>
+          <tr>
+            <td style="font-family:var(--font-mono);font-size:11px">cvh_live_a1b2●●●●●●●●</td>
+            <td><strong>Production</strong></td>
+            <td><span class="badge blue" style="font-size:9px">read</span> <span class="badge green" style="font-size:9px">write</span> <span class="badge orange" style="font-size:9px">withdraw</span></td>
+            <td style="font-family:var(--font-mono);font-size:10px">203.0.113.0/24</td>
+            <td style="font-family:var(--font-mono);font-size:11px">2 min ago</td>
+            <td style="font-family:var(--font-mono)">48,291</td>
+            <td><button class="btn btn-danger" style="font-size:10px">Revoke</button></td>
+          </tr>
+          <tr>
+            <td style="font-family:var(--font-mono);font-size:11px">cvh_live_c3d4●●●●●●●●</td>
+            <td><strong>Staging</strong></td>
+            <td><span class="badge blue" style="font-size:9px">read</span> <span class="badge green" style="font-size:9px">write</span></td>
+            <td style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted)">Any</td>
+            <td style="font-family:var(--font-mono);font-size:11px">3h ago</td>
+            <td style="font-family:var(--font-mono)">1,247</td>
+            <td><button class="btn btn-danger" style="font-size:10px">Revoke</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ═══ SECURITY ═══ -->
+  <div class="page" id="page-security">
+    <div style="font-size:18px;font-weight:700;margin-bottom:18px">Security Settings</div>
+    <div class="sg sg-2">
+      <div class="sc">
+        <div style="font-size:13px;font-weight:700;margin-bottom:14px">Custody Mode</div>
+        <div style="display:flex;gap:8px;margin-bottom:14px">
+          <div style="flex:1;padding:12px;border-radius:8px;background:var(--accent-glow);border:1px solid var(--accent);cursor:pointer;text-align:center">
+            <div style="font-size:12px;font-weight:700;color:var(--accent)">Full Custody</div>
+            <div style="font-size:10px;color:var(--text-muted);margin-top:2px">CVH manages both keys</div>
+          </div>
+          <div style="flex:1;padding:12px;border-radius:8px;background:var(--bg-tertiary);border:1px solid var(--border);cursor:pointer;text-align:center">
+            <div style="font-size:12px;font-weight:600;color:var(--text-secondary)">Co-Sign</div>
+            <div style="font-size:10px;color:var(--text-muted);margin-top:2px">Both parties sign</div>
+          </div>
+          <div style="flex:1;padding:12px;border-radius:8px;background:var(--bg-tertiary);border:1px solid var(--border);cursor:pointer;text-align:center">
+            <div style="font-size:12px;font-weight:600;color:var(--text-secondary)">Client-Init</div>
+            <div style="font-size:10px;color:var(--text-muted);margin-top:2px">You initiate, CVH approves</div>
+          </div>
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);padding:10px;background:var(--bg-tertiary);border-radius:6px">
+          In Full Custody mode, CryptoVaultHub manages both Platform Key and Client Key. All operations are automatic. Backup Key is split via Shamir (3-of-5) for emergency recovery.
+        </div>
+      </div>
+
+      <div class="sc">
+        <div style="font-size:13px;font-weight:700;margin-bottom:14px">Backup Key (Shamir Shares)</div>
+        <div style="margin-bottom:8px">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border-subtle);font-size:12px">
+            <span>Share 1 — Client Primary</span>
+            <span class="badge green">Downloaded</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border-subtle);font-size:12px">
+            <span>Share 2 — CVH Admin</span>
+            <span class="badge green">Stored</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border-subtle);font-size:12px">
+            <span>Share 3 — Cold Storage</span>
+            <span class="badge green">Exported</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border-subtle);font-size:12px">
+            <span>Share 4 — Client Secondary</span>
+            <span class="badge orange">Pending Download</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;font-size:12px">
+            <span>Share 5 — Physical Vault</span>
+            <span class="badge green">Stored</span>
+          </div>
+        </div>
+        <div style="font-size:10px;color:var(--text-muted)">3 of 5 shares needed for recovery. 4/5 distributed.</div>
+      </div>
+    </div>
+
+    <div class="sg sg-2" style="margin-top:14px">
+      <div class="sc">
+        <div style="font-size:13px;font-weight:700;margin-bottom:14px">Two-Factor Authentication</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;font-size:12px">
+          <span>Status</span>
+          <span class="badge green">Enabled for all members</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;font-size:12px">
+          <span>Required for withdrawals above</span>
+          <span style="font-family:var(--font-mono)">$5,000</span>
+        </div>
+      </div>
+      <div class="sc">
+        <div style="font-size:13px;font-weight:700;margin-bottom:14px;color:var(--red)">Emergency: Safe Mode</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:12px">
+          Activating Safe Mode will restrict ALL withdrawals to signer addresses only. This is IRREVOCABLE.
+        </div>
+        <button class="btn btn-danger" style="width:100%;justify-content:center">Activate Safe Mode (requires 2FA)</button>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<!-- Modal: Generate Address -->
+<div class="modal-overlay" id="modal-gen" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+  <div class="modal">
+    <div class="modal-title">Generate Deposit Address</div>
+    <div class="form-group">
+      <label class="form-label">Chain</label>
+      <select class="form-select"><option>BSC (BNB Smart Chain)</option><option>Ethereum</option><option>Polygon</option></select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">External ID (your user identifier)</label>
+      <input class="form-input" type="text" placeholder="e.g. user-joao-123" style="font-family:var(--font-mono)">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Label</label>
+      <input class="form-input" type="text" placeholder="e.g. Joao Silva - Deposit">
+    </div>
+    <div style="padding:10px;background:var(--bg-tertiary);border-radius:6px;font-size:11px;color:var(--text-muted)">
+      The address is computed via CREATE2 and will be deployed automatically when the first deposit arrives.
+      Supports all enabled tokens for this chain.
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="document.getElementById('modal-gen').style.display='none'">Cancel</button>
+      <button class="btn btn-primary" onclick="document.getElementById('modal-gen').style.display='none'">Generate Address</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function showPage(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.s-item').forEach(n => n.classList.remove('active'));
+  const pg = document.getElementById('page-' + id);
+  if (pg) pg.classList.add('active');
+  if (event && event.currentTarget) event.currentTarget.classList.add('active');
+  const titles = {
+    'dashboard': ['Dashboard', 'Portal / Overview'],
+    'wallets': ['Deposit Addresses', 'Portal / Wallets / Addresses'],
+    'deposits': ['Deposits', 'Portal / Deposits'],
+    'withdrawals': ['Withdrawals', 'Portal / Withdrawals'],
+    'addresses': ['Address Book', 'Portal / Address Book'],
+    'webhooks': ['Webhooks', 'Portal / Integration / Webhooks'],
+    'apikeys': ['API Keys', 'Portal / Integration / API Keys'],
+    'security': ['Security', 'Portal / Settings / Security'],
+  };
+  const t = titles[id] || ['',''];
+  document.getElementById('pg-title').textContent = t[0];
+  document.getElementById('pg-crumb').textContent = t[1];
+}
+</script>
+</body>
+</html>
