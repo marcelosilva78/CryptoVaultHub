@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1440">
+<title>Admin Dashboard - Light</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{width:1440px;height:900px;overflow:hidden;font-family:'Outfit',sans-serif;background:#F4F5F7;color:#111318;-webkit-font-smoothing:antialiased;}
+.sidebar{position:fixed;left:0;top:0;bottom:0;width:240px;background:#FFFFFF;border-right:1px solid #E2E4E8;display:flex;flex-direction:column;z-index:100;}
+.sidebar-logo{height:56px;display:flex;align-items:center;gap:10px;padding:0 20px;}
+.sidebar-logo span{font-size:15px;letter-spacing:-0.02em;color:#111318;}
+.sidebar-logo b{font-weight:700;}
+.nav-section{padding:0 12px;margin-top:16px;}
+.nav-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:#9CA0AE;padding:0 12px;margin-bottom:6px;}
+.nav-item{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:6px;font-size:13px;font-weight:500;color:#5C6070;text-decoration:none;position:relative;margin-bottom:2px;}
+.nav-item:hover{background:#F0F1F3;color:#111318;}
+.nav-item.active{background:rgba(226,168,40,0.08);color:#E2A828;font-weight:600;}
+.nav-item.active::before{content:'';position:absolute;left:0;top:50%;transform:translateY(-50%);width:3px;height:18px;background:#E2A828;border-radius:0 3px 3px 0;}
+.nav-icon{width:16px;height:16px;opacity:0.4;}
+.nav-item.active .nav-icon{opacity:1;}
+.nav-badge{margin-left:auto;background:#F6465D;color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;min-width:18px;text-align:center;}
+.sidebar-footer{padding:12px 16px;border-top:1px solid #ECEDF0;display:flex;align-items:center;gap:10px;}
+.avatar-hex{width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#FFFFFF;background:linear-gradient(135deg,#E2A828,#C9941F);clip-path:polygon(50% 0%,93% 25%,93% 75%,50% 100%,7% 75%,7% 25%);}
+.user-info{flex:1;min-width:0;}
+.user-name{font-size:13px;font-weight:500;color:#111318;}
+.user-role{font-size:11px;color:#9CA0AE;}
+.header{position:fixed;top:0;left:240px;right:0;height:56px;z-index:99;display:flex;align-items:center;justify-content:space-between;padding:0 24px;border-bottom:1px solid #ECEDF0;background:rgba(244,245,247,0.85);backdrop-filter:blur(12px);}
+.breadcrumb{display:flex;align-items:center;gap:6px;font-size:13px;}
+.breadcrumb .sep{color:#9CA0AE;font-size:10px;}
+.breadcrumb .crumb{color:#9CA0AE;}
+.breadcrumb .crumb.active{color:#111318;font-weight:600;}
+.header-actions{display:flex;align-items:center;gap:8px;}
+.header-btn{padding:8px;border-radius:6px;color:#9CA0AE;background:none;border:none;cursor:pointer;display:flex;align-items:center;}
+.header-sep{width:1px;height:20px;background:#ECEDF0;margin:0 4px;}
+.mini-avatar{width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#FFFFFF;background:linear-gradient(135deg,#E2A828,#C9941F);clip-path:polygon(50% 0%,93% 25%,93% 75%,50% 100%,7% 75%,7% 25%);}
+.notif-dot{position:absolute;top:6px;right:6px;width:8px;height:8px;background:#F6465D;border-radius:50%;}
+.main{margin-left:240px;margin-top:56px;padding:24px;min-height:calc(100vh - 56px);}
+.live{display:flex;align-items:center;gap:8px;margin-bottom:20px;}
+.live-dot{width:8px;height:8px;border-radius:50%;background:#E2A828;box-shadow:0 0 6px rgba(226,168,40,0.5);}
+.live span{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:#5C6070;}
+.vault-card{background:#FFFFFF;border:1px solid #E2E4E8;border-radius:10px;padding:20px 20px 24px;margin-bottom:20px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,0.04);}
+.vault-value{font-size:28px;font-weight:800;color:#111318;margin-top:8px;}
+.vault-value .dec{opacity:0.5;font-weight:400;}
+.vault-label{font-size:9px;font-weight:400;text-transform:uppercase;letter-spacing:0.12em;color:#9CA0AE;margin-top:4px;}
+.comp-bar{display:flex;height:6px;border-radius:10px;overflow:hidden;margin:12px auto 0;max-width:360px;}
+.comp-bar div{height:100%;}
+.comp-legend{display:flex;justify-content:center;gap:16px;margin-top:10px;}
+.comp-legend span{display:flex;align-items:center;gap:6px;font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:#9CA0AE;}
+.comp-legend .dot{width:8px;height:8px;border-radius:50%;}
+.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;}
+.stat-card{background:#FFFFFF;border:1px solid #E2E4E8;border-radius:10px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.04);}
+.stat-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#9CA0AE;margin-bottom:10px;}
+.stat-value{font-size:22px;font-weight:700;color:#111318;line-height:1;margin-bottom:8px;}
+.stat-change{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:2px 6px;border-radius:10px;}
+.stat-change.up{color:#2EBD85;background:rgba(46,189,133,0.1);}
+.stat-change.down{color:#F6465D;background:rgba(246,70,93,0.1);}
+.stat-sub{font-size:11px;color:#9CA0AE;margin-left:8px;}
+.table-card{background:#FFFFFF;border:1px solid #E2E4E8;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.04);}
+.table-header{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;border-bottom:1px solid #ECEDF0;}
+.table-header h2{font-size:16px;font-weight:600;color:#111318;}
+.table-header a{font-size:12px;font-weight:600;color:#E2A828;text-decoration:none;}
+table{width:100%;border-collapse:collapse;}
+thead tr{background:#FFFFFF;}
+th{text-align:left;padding:10px 16px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#9CA0AE;}
+th.right{text-align:right;}th.center{text-align:center;}
+td{padding:10px 16px;border-bottom:1px solid #ECEDF0;font-size:12px;}
+tr:hover{background:#F0F1F3;}
+.type-badge{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;}
+.type-badge.deposit{color:#2EBD85;}.type-badge.withdrawal{color:#F6465D;}
+.type-arrow{font-size:10px;}
+.chain-chip{display:flex;align-items:center;gap:6px;}
+.chain-hex{width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;color:#E2A828;background:rgba(226,168,40,0.08);clip-path:polygon(50% 0%,93% 25%,93% 75%,50% 100%,7% 75%,7% 25%);}
+.chain-name{font-size:12px;color:#5C6070;}
+.tx-hash{font-family:'JetBrains Mono',monospace;font-size:11px;color:#5C6070;}
+.client-name{font-size:12px;color:#111318;}
+.token-name{font-family:'JetBrains Mono',monospace;font-size:11px;color:#5C6070;font-weight:500;}
+.amount-cell{text-align:right;font-family:'JetBrains Mono',monospace;font-size:11px;}
+.amount-cell .sign{font-weight:600;}.amount-cell .int{color:#111318;font-weight:600;}
+.amount-cell .frac{color:#111318;opacity:0.5;}.amount-cell .unit{color:#9CA0AE;font-size:10px;margin-left:4px;}
+.status-badge{display:inline-flex;align-items:center;gap:6px;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;}
+.status-badge .dot{width:6px;height:6px;border-radius:50%;}
+.status-badge.confirmed{background:rgba(46,189,133,0.1);color:#2EBD85;}.status-badge.confirmed .dot{background:#2EBD85;}
+.status-badge.pending{background:rgba(245,166,35,0.1);color:#F5A623;}.status-badge.pending .dot{background:#F5A623;}
+.status-badge.failed{background:rgba(246,70,93,0.1);color:#F6465D;}.status-badge.failed .dot{background:#F6465D;}
+.time-cell{text-align:right;font-size:11px;color:#9CA0AE;}
+</style>
+</head>
+<body>
+<aside class="sidebar">
+  <div class="sidebar-logo">
+    <svg width="28" height="28" viewBox="0 0 100 100" fill="none"><path d="M50 4L91 27L91 73L50 96L9 73L9 27Z" fill="#E2A828"/><circle cx="50" cy="40" r="12" fill="#FFFFFF"/><rect x="45" y="48" width="10" height="24" rx="2" fill="#FFFFFF"/><rect x="55" y="58" width="6" height="4" rx="1" fill="#FFFFFF"/><rect x="55" y="65" width="4" height="3" rx="1" fill="#FFFFFF"/></svg>
+    <span>Crypto<b>Vault</b>Hub</span>
+  </div>
+  <nav style="flex:1;overflow-y:auto;">
+    <div class="nav-section"><div class="nav-label">Principal</div>
+      <a class="nav-item active" href="#">Dashboard</a><a class="nav-item" href="#">Clients</a><a class="nav-item" href="#">Traceability</a>
+    </div>
+    <div class="nav-section"><div class="nav-label">Analytics</div>
+      <a class="nav-item" href="#">Overview</a><a class="nav-item" href="#">Operations</a><a class="nav-item" href="#">Compliance</a>
+    </div>
+    <div class="nav-section"><div class="nav-label">Blockchain</div>
+      <a class="nav-item" href="#">Chains</a><a class="nav-item" href="#">Tokens</a><a class="nav-item" href="#">Gas Tanks</a>
+    </div>
+    <div class="nav-section"><div class="nav-label">Config</div>
+      <a class="nav-item" href="#">Tiers & Limits</a><a class="nav-item" href="#">Compliance <span class="nav-badge">3</span></a><a class="nav-item" href="#">Monitoring</a>
+    </div>
+  </nav>
+  <div class="sidebar-footer"><div class="avatar-hex">MS</div><div class="user-info"><div class="user-name">Marcelo Silva</div><div class="user-role">Admin</div></div></div>
+</aside>
+<header class="header">
+  <div class="breadcrumb"><span class="crumb">Admin</span><span class="sep">&#8250;</span><span class="crumb active">Overview</span></div>
+  <div class="header-actions">
+    <button class="header-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9CA0AE" stroke-width="2"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg></button>
+    <button class="header-btn" style="position:relative;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9CA0AE" stroke-width="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg><span class="notif-dot"></span></button>
+    <div class="header-sep"></div><div class="mini-avatar">MS</div>
+  </div>
+</header>
+<div class="main">
+  <div class="live"><div class="live-dot"></div><span>Live</span></div>
+  <div class="vault-card">
+    <svg viewBox="0 0 320 140" style="width:100%;max-width:400px;margin:0 auto;display:block;">
+      <defs><linearGradient id="vg" x1="0%" y1="50%" x2="100%" y2="50%"><stop offset="0%" stop-color="#E2A828"/><stop offset="100%" stop-color="#C9941F"/></linearGradient></defs>
+      <path d="M 50 120 A 110 110 0 0 1 270 120" fill="none" stroke="#ECEDF0" stroke-width="6" stroke-linecap="round" opacity="0.5"/>
+      <path d="M 50 120 A 110 110 0 0 1 251 55" fill="none" stroke="url(#vg)" stroke-width="6" stroke-linecap="round"/>
+    </svg>
+    <div class="vault-value">$12,847,293<span class="dec">.48</span></div>
+    <div class="vault-label">Total Custody Balance</div>
+    <div class="comp-bar">
+      <div style="width:45%;background:#F5D577;"></div><div style="width:28%;background:#E2A828;"></div><div style="width:15%;background:#C9941F;"></div><div style="width:8%;background:#B8892A;"></div><div style="width:4%;background:#8A6820;"></div>
+    </div>
+    <div class="comp-legend">
+      <span><span class="dot" style="background:#F5D577;"></span>Ethereum</span><span><span class="dot" style="background:#E2A828;"></span>BSC</span><span><span class="dot" style="background:#C9941F;"></span>Polygon</span><span><span class="dot" style="background:#B8892A;"></span>Arbitrum</span><span><span class="dot" style="background:#8A6820;"></span>Other</span>
+    </div>
+  </div>
+  <div class="stats-grid">
+    <div class="stat-card"><div class="stat-label">Active Wallets</div><div class="stat-value">1,247</div><span class="stat-change up">&#9650; +12%</span><span class="stat-sub">from last month</span></div>
+    <div class="stat-card"><div class="stat-label">Total Deposits (24h)</div><div class="stat-value">$847,293</div><span class="stat-change up">&#9650; +8.2%</span><span class="stat-sub">vs yesterday</span></div>
+    <div class="stat-card"><div class="stat-label">Total Withdrawals (24h)</div><div class="stat-value">$523,100</div><span class="stat-change down">&#9660; -3.1%</span><span class="stat-sub">vs yesterday</span></div>
+    <div class="stat-card"><div class="stat-label">Active Clients</div><div class="stat-value">38</div><span class="stat-change up">&#9650; +2</span><span class="stat-sub">from last month</span></div>
+  </div>
+  <div class="table-card">
+    <div class="table-header"><h2>Recent Transactions</h2><a href="#">View All</a></div>
+    <table><thead><tr><th>Type</th><th>Chain</th><th>Hash</th><th>Client</th><th>Token</th><th class="right">Amount</th><th class="center">Status</th><th class="right">Time</th></tr></thead>
+    <tbody>
+      <tr><td><span class="type-badge deposit">&#8595; Deposit</span></td><td><div class="chain-chip"><div class="chain-hex">ETH</div><span class="chain-name">Ethereum</span></div></td><td><span class="tx-hash">0x8f3a21...9e1c</span></td><td><span class="client-name">Corretora XYZ</span></td><td><span class="token-name">USDT</span></td><td class="amount-cell"><span class="sign" style="color:#2EBD85;">+</span><span class="int">125,000</span><span class="frac">.00</span><span class="unit">USDT</span></td><td style="text-align:center;"><span class="status-badge confirmed"><span class="dot"></span>Confirmed</span></td><td class="time-cell">2 min ago</td></tr>
+      <tr><td><span class="type-badge withdrawal">&#8593; Withdrawal</span></td><td><div class="chain-chip"><div class="chain-hex">BNB</div><span class="chain-name">BSC</span></div></td><td><span class="tx-hash">0xa1c9e0...7b3f</span></td><td><span class="client-name">PayGateway Intl</span></td><td><span class="token-name">USDC</span></td><td class="amount-cell"><span class="sign" style="color:#F6465D;">-</span><span class="int">47,500</span><span class="frac">.00</span><span class="unit">USDC</span></td><td style="text-align:center;"><span class="status-badge confirmed"><span class="dot"></span>Confirmed</span></td><td class="time-cell">5 min ago</td></tr>
+      <tr><td><span class="type-badge deposit">&#8595; Deposit</span></td><td><div class="chain-chip"><div class="chain-hex">MAT</div><span class="chain-name">Polygon</span></div></td><td><span class="tx-hash">0xb4e7f2...3d5e</span></td><td><span class="client-name">CryptoPay Solutions</span></td><td><span class="token-name">USDT</span></td><td class="amount-cell"><span class="sign" style="color:#2EBD85;">+</span><span class="int">8,200</span><span class="frac">.00</span><span class="unit">USDT</span></td><td style="text-align:center;"><span class="status-badge pending"><span class="dot"></span>Pending</span></td><td class="time-cell">8 min ago</td></tr>
+      <tr><td><span class="type-badge withdrawal">&#8593; Withdrawal</span></td><td><div class="chain-chip"><div class="chain-hex">ETH</div><span class="chain-name">Ethereum</span></div></td><td><span class="tx-hash">0x2d9f3c...6e7d</span></td><td><span class="client-name">Exchange ABC</span></td><td><span class="token-name">ETH</span></td><td class="amount-cell"><span class="sign" style="color:#F6465D;">-</span><span class="int">15</span><span class="frac">.75</span><span class="unit">ETH</span></td><td style="text-align:center;"><span class="status-badge confirmed"><span class="dot"></span>Confirmed</span></td><td class="time-cell">12 min ago</td></tr>
+      <tr><td><span class="type-badge deposit">&#8595; Deposit</span></td><td><div class="chain-chip"><div class="chain-hex">ARB</div><span class="chain-name">Arbitrum</span></div></td><td><span class="tx-hash">0x7e4a2f...8b1a</span></td><td><span class="client-name">MerchantPro</span></td><td><span class="token-name">USDC</span></td><td class="amount-cell"><span class="sign" style="color:#2EBD85;">+</span><span class="int">320,000</span><span class="frac">.00</span><span class="unit">USDC</span></td><td style="text-align:center;"><span class="status-badge confirmed"><span class="dot"></span>Confirmed</span></td><td class="time-cell">15 min ago</td></tr>
+      <tr><td><span class="type-badge withdrawal">&#8593; Withdrawal</span></td><td><div class="chain-chip"><div class="chain-hex">BNB</div><span class="chain-name">BSC</span></div></td><td><span class="tx-hash">0x3c8b1a...4f2a</span></td><td><span class="client-name">PayGateway Intl</span></td><td><span class="token-name">BUSD</span></td><td class="amount-cell"><span class="sign" style="color:#F6465D;">-</span><span class="int">15,000</span><span class="frac">.00</span><span class="unit">BUSD</span></td><td style="text-align:center;"><span class="status-badge failed"><span class="dot"></span>Failed</span></td><td class="time-cell">18 min ago</td></tr>
+    </tbody></table>
+  </div>
+</div>
+</body>
+</html>

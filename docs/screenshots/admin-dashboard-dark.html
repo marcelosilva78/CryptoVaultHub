@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1440">
+<title>Admin Dashboard - Dark</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{width:1440px;height:900px;overflow:hidden;font-family:'Outfit',sans-serif;background:#08090B;color:#E8E9ED;-webkit-font-smoothing:antialiased;}
+/* Sidebar */
+.sidebar{position:fixed;left:0;top:0;bottom:0;width:240px;background:#0D0F14;border-right:1px solid #1E2028;display:flex;flex-direction:column;z-index:100;}
+.sidebar-logo{height:56px;display:flex;align-items:center;gap:10px;padding:0 20px;}
+.sidebar-logo span{font-size:15px;letter-spacing:-0.02em;color:#E8E9ED;}
+.sidebar-logo b{font-weight:700;}
+.nav-section{padding:0 12px;margin-top:16px;}
+.nav-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:#4E5364;padding:0 12px;margin-bottom:6px;}
+.nav-item{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:6px;font-size:13px;font-weight:500;color:#858A9B;text-decoration:none;position:relative;margin-bottom:2px;}
+.nav-item:hover{background:#22252F;color:#E8E9ED;}
+.nav-item.active{background:rgba(226,168,40,0.10);color:#E2A828;font-weight:600;}
+.nav-item.active::before{content:'';position:absolute;left:0;top:50%;transform:translateY(-50%);width:3px;height:18px;background:#E2A828;border-radius:0 3px 3px 0;}
+.nav-icon{width:16px;height:16px;opacity:0.5;}
+.nav-item.active .nav-icon{opacity:1;}
+.nav-badge{margin-left:auto;background:#F6465D;color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;min-width:18px;text-align:center;}
+.sidebar-footer{padding:12px 16px;border-top:1px solid #151820;display:flex;align-items:center;gap:10px;}
+.avatar-hex{width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#0D0F14;background:linear-gradient(135deg,#E2A828,#C9941F);clip-path:polygon(50% 0%,93% 25%,93% 75%,50% 100%,7% 75%,7% 25%);}
+.user-info{flex:1;min-width:0;}
+.user-name{font-size:13px;font-weight:500;color:#E8E9ED;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.user-role{font-size:11px;color:#4E5364;}
+/* Header */
+.header{position:fixed;top:0;left:240px;right:0;height:56px;z-index:99;display:flex;align-items:center;justify-content:space-between;padding:0 24px;border-bottom:1px solid #151820;background:rgba(8,9,11,0.85);backdrop-filter:blur(12px);}
+.breadcrumb{display:flex;align-items:center;gap:6px;font-size:13px;}
+.breadcrumb .sep{color:#4E5364;font-size:10px;}
+.breadcrumb .crumb{color:#4E5364;}
+.breadcrumb .crumb.active{color:#E8E9ED;font-weight:600;}
+.header-actions{display:flex;align-items:center;gap:8px;}
+.header-btn{padding:8px;border-radius:6px;color:#4E5364;background:none;border:none;cursor:pointer;display:flex;align-items:center;}
+.header-sep{width:1px;height:20px;background:#151820;margin:0 4px;}
+.mini-avatar{width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#0D0F14;background:linear-gradient(135deg,#E2A828,#C9941F);clip-path:polygon(50% 0%,93% 25%,93% 75%,50% 100%,7% 75%,7% 25%);}
+.notif-dot{position:absolute;top:6px;right:6px;width:8px;height:8px;background:#F6465D;border-radius:50%;}
+/* Main content */
+.main{margin-left:240px;margin-top:56px;padding:24px;min-height:calc(100vh - 56px);}
+/* Live dot */
+.live{display:flex;align-items:center;gap:8px;margin-bottom:20px;}
+.live-dot{width:8px;height:8px;border-radius:50%;background:#E2A828;box-shadow:0 0 6px rgba(226,168,40,0.5);}
+.live span{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:#858A9B;}
+/* Vault Meter Card */
+.vault-card{background:#111318;border:1px solid #1E2028;border-radius:10px;padding:20px 20px 24px;margin-bottom:20px;text-align:center;}
+.vault-value{font-size:28px;font-weight:800;color:#E8E9ED;margin-top:8px;}
+.vault-value .dec{opacity:0.5;font-weight:400;}
+.vault-label{font-size:9px;font-weight:400;text-transform:uppercase;letter-spacing:0.12em;color:#4E5364;margin-top:4px;}
+.comp-bar{display:flex;height:6px;border-radius:10px;overflow:hidden;margin:12px auto 0;max-width:360px;}
+.comp-bar div{height:100%;}
+.comp-legend{display:flex;justify-content:center;gap:16px;margin-top:10px;}
+.comp-legend span{display:flex;align-items:center;gap:6px;font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:#4E5364;}
+.comp-legend .dot{width:8px;height:8px;border-radius:50%;}
+/* Stat cards */
+.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;}
+.stat-card{background:#111318;border:1px solid #1E2028;border-radius:10px;padding:16px;position:relative;overflow:hidden;}
+.stat-card:hover .stat-accent{opacity:1;}
+.stat-accent{position:absolute;top:0;left:0;right:0;height:2px;background:#E2A828;opacity:0;}
+.stat-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#4E5364;margin-bottom:10px;}
+.stat-value{font-size:22px;font-weight:700;color:#E8E9ED;line-height:1;margin-bottom:8px;}
+.stat-change{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:2px 6px;border-radius:10px;}
+.stat-change.up{color:#2EBD85;background:rgba(46,189,133,0.1);}
+.stat-change.down{color:#F6465D;background:rgba(246,70,93,0.1);}
+.stat-sub{font-size:11px;color:#4E5364;margin-left:8px;}
+/* Transactions table */
+.table-card{background:#111318;border:1px solid #1E2028;border-radius:10px;overflow:hidden;}
+.table-header{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;border-bottom:1px solid #151820;}
+.table-header h2{font-size:16px;font-weight:600;color:#E8E9ED;}
+.table-header a{font-size:12px;font-weight:600;color:#E2A828;text-decoration:none;}
+table{width:100%;border-collapse:collapse;}
+thead tr{background:#1A1D25;}
+th{text-align:left;padding:10px 16px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#4E5364;}
+th.right{text-align:right;}
+th.center{text-align:center;}
+td{padding:10px 16px;border-bottom:1px solid #151820;font-size:12px;}
+tr:hover{background:#22252F;}
+.type-badge{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;}
+.type-badge.deposit{color:#2EBD85;}
+.type-badge.withdrawal{color:#F6465D;}
+.type-arrow{font-size:10px;}
+.chain-chip{display:flex;align-items:center;gap:6px;}
+.chain-hex{width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;color:#E2A828;background:rgba(226,168,40,0.1);clip-path:polygon(50% 0%,93% 25%,93% 75%,50% 100%,7% 75%,7% 25%);}
+.chain-name{font-size:12px;color:#858A9B;}
+.tx-hash{font-family:'JetBrains Mono',monospace;font-size:11px;color:#858A9B;}
+.client-name{font-size:12px;color:#E8E9ED;}
+.token-name{font-family:'JetBrains Mono',monospace;font-size:11px;color:#858A9B;font-weight:500;}
+.amount-cell{text-align:right;font-family:'JetBrains Mono',monospace;font-size:11px;}
+.amount-cell .sign{font-weight:600;}
+.amount-cell .int{color:#E8E9ED;font-weight:600;}
+.amount-cell .frac{color:#E8E9ED;opacity:0.5;}
+.amount-cell .unit{color:#4E5364;font-size:10px;margin-left:4px;}
+.status-badge{display:inline-flex;align-items:center;gap:6px;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;}
+.status-badge .dot{width:6px;height:6px;border-radius:50%;}
+.status-badge.confirmed{background:rgba(46,189,133,0.1);color:#2EBD85;}
+.status-badge.confirmed .dot{background:#2EBD85;}
+.status-badge.pending{background:rgba(245,166,35,0.1);color:#F5A623;}
+.status-badge.pending .dot{background:#F5A623;}
+.status-badge.failed{background:rgba(246,70,93,0.1);color:#F6465D;}
+.status-badge.failed .dot{background:#F6465D;}
+.time-cell{text-align:right;font-size:11px;color:#4E5364;}
+</style>
+</head>
+<body>
+<!-- Sidebar -->
+<aside class="sidebar">
+  <div class="sidebar-logo">
+    <svg width="28" height="28" viewBox="0 0 100 100" fill="none"><path d="M50 4L91 27L91 73L50 96L9 73L9 27Z" fill="#E2A828"/><circle cx="50" cy="40" r="12" fill="#0D0F14"/><rect x="45" y="48" width="10" height="24" rx="2" fill="#0D0F14"/><rect x="55" y="58" width="6" height="4" rx="1" fill="#0D0F14"/><rect x="55" y="65" width="4" height="3" rx="1" fill="#0D0F14"/></svg>
+    <span>Crypto<b>Vault</b>Hub</span>
+  </div>
+  <nav style="flex:1;overflow-y:auto;">
+    <div class="nav-section">
+      <div class="nav-label">Principal</div>
+      <a class="nav-item active" href="#"><span class="nav-icon">&#9632;</span> Dashboard</a>
+      <a class="nav-item" href="#"><span class="nav-icon">&#9632;</span> Clients</a>
+      <a class="nav-item" href="#"><span class="nav-icon">&#9632;</span> Traceability</a>
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">Analytics</div>
+      <a class="nav-item" href="#"><span class="nav-icon">&#9632;</span> Overview</a>
+      <a class="nav-item" href="#"><span class="nav-icon">&#9632;</span> Operations</a>
+      <a class="nav-item" href="#"><span class="nav-icon">&#9632;</span> Compliance</a>
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">Blockchain</div>
+      <a class="nav-item" href="#"><span class="nav-icon">&#9632;</span> Chains</a>
+      <a class="nav-item" href="#"><span class="nav-icon">&#9632;</span> Tokens</a>
+      <a class="nav-item" href="#"><span class="nav-icon">&#9632;</span> Gas Tanks</a>
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">Config</div>
+      <a class="nav-item" href="#"><span class="nav-icon">&#9632;</span> Tiers & Limits</a>
+      <a class="nav-item" href="#"><span class="nav-icon">&#9632;</span> Compliance <span class="nav-badge">3</span></a>
+      <a class="nav-item" href="#"><span class="nav-icon">&#9632;</span> Monitoring</a>
+    </div>
+  </nav>
+  <div class="sidebar-footer">
+    <div class="avatar-hex">MS</div>
+    <div class="user-info"><div class="user-name">Marcelo Silva</div><div class="user-role">Admin</div></div>
+  </div>
+</aside>
+
+<!-- Header -->
+<header class="header">
+  <div class="breadcrumb">
+    <span class="crumb">Admin</span><span class="sep">&#8250;</span><span class="crumb active">Overview</span>
+  </div>
+  <div class="header-actions">
+    <button class="header-btn" title="Toggle theme"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4E5364" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg></button>
+    <button class="header-btn" title="Notifications" style="position:relative;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4E5364" stroke-width="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg><span class="notif-dot"></span></button>
+    <div class="header-sep"></div>
+    <div class="mini-avatar">MS</div>
+  </div>
+</header>
+
+<!-- Main -->
+<div class="main">
+  <div class="live"><div class="live-dot"></div><span>Live</span></div>
+
+  <!-- Vault Meter -->
+  <div class="vault-card">
+    <svg viewBox="0 0 320 140" style="width:100%;max-width:400px;margin:0 auto;display:block;">
+      <defs><linearGradient id="vg" x1="0%" y1="50%" x2="100%" y2="50%"><stop offset="0%" stop-color="#E2A828"/><stop offset="100%" stop-color="#C9941F"/></linearGradient></defs>
+      <path d="M 50 120 A 110 110 0 0 1 270 120" fill="none" stroke="#1A1D25" stroke-width="6" stroke-linecap="round" opacity="0.3"/>
+      <path d="M 50 120 A 110 110 0 0 1 251 55" fill="none" stroke="url(#vg)" stroke-width="6" stroke-linecap="round" style="filter:drop-shadow(0 0 6px rgba(226,168,40,0.3));"/>
+    </svg>
+    <div class="vault-value">$12,847,293<span class="dec">.48</span></div>
+    <div class="vault-label">Total Custody Balance</div>
+    <div class="comp-bar">
+      <div style="width:45%;background:#F5D577;"></div>
+      <div style="width:28%;background:#E2A828;"></div>
+      <div style="width:15%;background:#C9941F;"></div>
+      <div style="width:8%;background:#B8892A;"></div>
+      <div style="width:4%;background:#8A6820;"></div>
+    </div>
+    <div class="comp-legend">
+      <span><span class="dot" style="background:#F5D577;"></span>Ethereum</span>
+      <span><span class="dot" style="background:#E2A828;"></span>BSC</span>
+      <span><span class="dot" style="background:#C9941F;"></span>Polygon</span>
+      <span><span class="dot" style="background:#B8892A;"></span>Arbitrum</span>
+      <span><span class="dot" style="background:#8A6820;"></span>Other</span>
+    </div>
+  </div>
+
+  <!-- Stat Cards -->
+  <div class="stats-grid">
+    <div class="stat-card"><div class="stat-accent"></div><div class="stat-label">Active Wallets</div><div class="stat-value">1,247</div><span class="stat-change up">&#9650; +12%</span><span class="stat-sub">from last month</span></div>
+    <div class="stat-card"><div class="stat-accent"></div><div class="stat-label">Total Deposits (24h)</div><div class="stat-value">$847,293</div><span class="stat-change up">&#9650; +8.2%</span><span class="stat-sub">vs yesterday</span></div>
+    <div class="stat-card"><div class="stat-accent"></div><div class="stat-label">Total Withdrawals (24h)</div><div class="stat-value">$523,100</div><span class="stat-change down">&#9660; -3.1%</span><span class="stat-sub">vs yesterday</span></div>
+    <div class="stat-card"><div class="stat-accent"></div><div class="stat-label">Active Clients</div><div class="stat-value">38</div><span class="stat-change up">&#9650; +2</span><span class="stat-sub">from last month</span></div>
+  </div>
+
+  <!-- Transactions Table -->
+  <div class="table-card">
+    <div class="table-header"><h2>Recent Transactions</h2><a href="#">View All</a></div>
+    <table>
+      <thead><tr>
+        <th>Type</th><th>Chain</th><th>Hash</th><th>Client</th><th>Token</th><th class="right">Amount</th><th class="center">Status</th><th class="right">Time</th>
+      </tr></thead>
+      <tbody>
+        <tr><td><span class="type-badge deposit"><span class="type-arrow">&#8595;</span> Deposit</span></td><td><div class="chain-chip"><div class="chain-hex">ETH</div><span class="chain-name">Ethereum</span></div></td><td><span class="tx-hash">0x8f3a21...9e1c</span></td><td><span class="client-name">Corretora XYZ</span></td><td><span class="token-name">USDT</span></td><td class="amount-cell"><span class="sign" style="color:#2EBD85;">+</span><span class="int">125,000</span><span class="frac">.00</span><span class="unit">USDT</span></td><td style="text-align:center;"><span class="status-badge confirmed"><span class="dot"></span>Confirmed</span></td><td class="time-cell">2 min ago</td></tr>
+        <tr><td><span class="type-badge withdrawal"><span class="type-arrow">&#8593;</span> Withdrawal</span></td><td><div class="chain-chip"><div class="chain-hex">BNB</div><span class="chain-name">BSC</span></div></td><td><span class="tx-hash">0xa1c9e0...7b3f</span></td><td><span class="client-name">PayGateway Intl</span></td><td><span class="token-name">USDC</span></td><td class="amount-cell"><span class="sign" style="color:#F6465D;">-</span><span class="int">47,500</span><span class="frac">.00</span><span class="unit">USDC</span></td><td style="text-align:center;"><span class="status-badge confirmed"><span class="dot"></span>Confirmed</span></td><td class="time-cell">5 min ago</td></tr>
+        <tr><td><span class="type-badge deposit"><span class="type-arrow">&#8595;</span> Deposit</span></td><td><div class="chain-chip"><div class="chain-hex">MAT</div><span class="chain-name">Polygon</span></div></td><td><span class="tx-hash">0xb4e7f2...3d5e</span></td><td><span class="client-name">CryptoPay Solutions</span></td><td><span class="token-name">USDT</span></td><td class="amount-cell"><span class="sign" style="color:#2EBD85;">+</span><span class="int">8,200</span><span class="frac">.00</span><span class="unit">USDT</span></td><td style="text-align:center;"><span class="status-badge pending"><span class="dot"></span>Pending</span></td><td class="time-cell">8 min ago</td></tr>
+        <tr><td><span class="type-badge withdrawal"><span class="type-arrow">&#8593;</span> Withdrawal</span></td><td><div class="chain-chip"><div class="chain-hex">ETH</div><span class="chain-name">Ethereum</span></div></td><td><span class="tx-hash">0x2d9f3c...6e7d</span></td><td><span class="client-name">Exchange ABC</span></td><td><span class="token-name">ETH</span></td><td class="amount-cell"><span class="sign" style="color:#F6465D;">-</span><span class="int">15</span><span class="frac">.75</span><span class="unit">ETH</span></td><td style="text-align:center;"><span class="status-badge confirmed"><span class="dot"></span>Confirmed</span></td><td class="time-cell">12 min ago</td></tr>
+        <tr><td><span class="type-badge deposit"><span class="type-arrow">&#8595;</span> Deposit</span></td><td><div class="chain-chip"><div class="chain-hex">ARB</div><span class="chain-name">Arbitrum</span></div></td><td><span class="tx-hash">0x7e4a2f...8b1a</span></td><td><span class="client-name">MerchantPro</span></td><td><span class="token-name">USDC</span></td><td class="amount-cell"><span class="sign" style="color:#2EBD85;">+</span><span class="int">320,000</span><span class="frac">.00</span><span class="unit">USDC</span></td><td style="text-align:center;"><span class="status-badge confirmed"><span class="dot"></span>Confirmed</span></td><td class="time-cell">15 min ago</td></tr>
+        <tr><td><span class="type-badge withdrawal"><span class="type-arrow">&#8593;</span> Withdrawal</span></td><td><div class="chain-chip"><div class="chain-hex">BNB</div><span class="chain-name">BSC</span></div></td><td><span class="tx-hash">0x3c8b1a...4f2a</span></td><td><span class="client-name">PayGateway Intl</span></td><td><span class="token-name">BUSD</span></td><td class="amount-cell"><span class="sign" style="color:#F6465D;">-</span><span class="int">15,000</span><span class="frac">.00</span><span class="unit">BUSD</span></td><td style="text-align:center;"><span class="status-badge failed"><span class="dot"></span>Failed</span></td><td class="time-cell">18 min ago</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+</body>
+</html>

@@ -21,8 +21,6 @@ const CHAINS = [
     name: "Ethereum",
     symbol: "ETH",
     icon: "\u039E",
-    color: "from-blue-500 to-indigo-600",
-    borderColor: "border-blue-500/30",
     gasEstimate: "~0.05 ETH ($162)",
     explorerBase: "https://etherscan.io",
   },
@@ -31,8 +29,6 @@ const CHAINS = [
     name: "BNB Smart Chain",
     symbol: "BNB",
     icon: "\u25C6",
-    color: "from-yellow-500 to-amber-600",
-    borderColor: "border-yellow-500/30",
     gasEstimate: "~0.02 BNB ($12)",
     explorerBase: "https://bscscan.com",
   },
@@ -41,8 +37,6 @@ const CHAINS = [
     name: "Polygon",
     symbol: "MATIC",
     icon: "\u2B21",
-    color: "from-purple-500 to-violet-600",
-    borderColor: "border-purple-500/30",
     gasEstimate: "~5.0 MATIC ($4.50)",
     explorerBase: "https://polygonscan.com",
   },
@@ -51,8 +45,6 @@ const CHAINS = [
     name: "Arbitrum",
     symbol: "ETH",
     icon: "\u25B2",
-    color: "from-blue-400 to-cyan-500",
-    borderColor: "border-cyan-500/30",
     gasEstimate: "~0.001 ETH ($3.24)",
     explorerBase: "https://arbiscan.io",
   },
@@ -61,8 +53,6 @@ const CHAINS = [
     name: "Optimism",
     symbol: "ETH",
     icon: "\u2B24",
-    color: "from-red-500 to-rose-600",
-    borderColor: "border-red-500/30",
     gasEstimate: "~0.001 ETH ($3.24)",
     explorerBase: "https://optimistic.etherscan.io",
   },
@@ -71,8 +61,6 @@ const CHAINS = [
     name: "Avalanche",
     symbol: "AVAX",
     icon: "\u25B3",
-    color: "from-red-600 to-orange-500",
-    borderColor: "border-red-600/30",
     gasEstimate: "~0.1 AVAX ($3.50)",
     explorerBase: "https://snowtrace.io",
   },
@@ -81,8 +69,6 @@ const CHAINS = [
     name: "Base",
     symbol: "ETH",
     icon: "\u0042",
-    color: "from-blue-600 to-blue-400",
-    borderColor: "border-blue-600/30",
     gasEstimate: "~0.0005 ETH ($1.62)",
     explorerBase: "https://basescan.org",
   },
@@ -339,9 +325,6 @@ export default function SetupWizardPage() {
   ]);
   const [isDeploying, setIsDeploying] = useState(false);
   const [forwarderGenerated, setForwarderGenerated] = useState(false);
-  const [slideDirection, setSlideDirection] = useState<"left" | "right">(
-    "left"
-  );
 
   const selectedChainObj = CHAINS.find((c) => c.id === primaryChain);
 
@@ -350,7 +333,6 @@ export default function SetupWizardPage() {
     setTimeout(() => {
       setDepositDetected(true);
       setBalance(0.05);
-      // Simulate confirmations counting up
       let count = 0;
       const confInterval = setInterval(() => {
         count++;
@@ -364,7 +346,6 @@ export default function SetupWizardPage() {
   const simulateDeployment = useCallback(() => {
     setIsDeploying(true);
 
-    // Deploy factory
     setDeploymentSteps((prev) =>
       prev.map((s, i) => (i === 0 ? { ...s, status: "deploying" as const } : s))
     );
@@ -386,7 +367,6 @@ export default function SetupWizardPage() {
         )
       );
 
-      // Deploy implementation
       setTimeout(() => {
         setDeploymentSteps((prev) =>
           prev.map((s, i) =>
@@ -407,7 +387,6 @@ export default function SetupWizardPage() {
   }, [selectedChainObj]);
 
   const goToStep = (step: number) => {
-    setSlideDirection(step > currentStep ? "left" : "right");
     setCurrentStep(step);
   };
 
@@ -419,7 +398,6 @@ export default function SetupWizardPage() {
       const next = prev.includes(chainId)
         ? prev.filter((c) => c !== chainId)
         : [...prev, chainId];
-      // Auto-set primary to first selected
       if (next.length > 0 && !next.includes(primaryChain)) {
         setPrimaryChain(next[0]);
       }
@@ -449,15 +427,27 @@ export default function SetupWizardPage() {
       case 1:
         return (
           <div className="space-y-6">
-            {/* Welcome */}
+            {/* Welcome with hexagonal logo mark */}
             <div className="text-center mb-8">
-              <div className="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-cvh-accent to-cvh-purple rounded-2xl flex items-center justify-center text-2xl font-extrabold text-white shadow-lg shadow-cvh-accent/20">
-                V
+              <div className="w-16 h-16 mx-auto mb-4 flex items-center justify-center">
+                <svg width="64" height="64" viewBox="0 0 64 64">
+                  <polygon
+                    points="32,4 58,18 58,46 32,60 6,46 6,18"
+                    fill="var(--accent-subtle)"
+                    stroke="var(--accent-primary)"
+                    strokeWidth="2"
+                  />
+                  {/* Key icon inside hex */}
+                  <circle cx="32" cy="26" r="5" fill="none" stroke="var(--accent-primary)" strokeWidth="2" />
+                  <line x1="32" y1="31" x2="32" y2="44" stroke="var(--accent-primary)" strokeWidth="2" />
+                  <line x1="32" y1="38" x2="36" y2="36" stroke="var(--accent-primary)" strokeWidth="2" />
+                  <line x1="32" y1="42" x2="36" y2="40" stroke="var(--accent-primary)" strokeWidth="2" />
+                </svg>
               </div>
-              <h1 className="text-[24px] font-bold tracking-[-0.02em] mb-2">
+              <h1 className="text-display font-display tracking-[-0.02em] mb-2">
                 Welcome to CryptoVaultHub
               </h1>
-              <p className="text-[13px] text-cvh-text-secondary max-w-[520px] mx-auto leading-relaxed">
+              <p className="text-body text-text-secondary max-w-[520px] mx-auto leading-relaxed font-display">
                 Let&apos;s set up your self-hosted wallet infrastructure. You&apos;ll get
                 a hot wallet, deploy smart contracts for automated deposit
                 sweeping, and generate your first customer deposit address.
@@ -466,12 +456,11 @@ export default function SetupWizardPage() {
 
             {/* Chain Selection */}
             <div>
-              <h2 className="text-[14px] font-semibold mb-1">
+              <h2 className="text-subheading font-display mb-1">
                 Select Blockchain Networks
               </h2>
-              <p className="text-[11px] text-cvh-text-muted mb-4">
-                Choose the networks you want to operate on. You can add more
-                later.
+              <p className="text-caption text-text-muted mb-4 font-display">
+                Choose the networks you want to operate on. You can add more later.
               </p>
 
               <div className="grid grid-cols-2 gap-3">
@@ -484,31 +473,30 @@ export default function SetupWizardPage() {
                       key={chain.id}
                       onClick={() => toggleChain(chain.id)}
                       className={cn(
-                        "relative p-4 rounded-cvh-lg border-2 text-left transition-all duration-200 cursor-pointer group",
+                        "relative p-4 rounded-card border-2 text-left transition-all duration-fast cursor-pointer group",
                         isSelected
-                          ? cn("bg-cvh-bg-elevated", chain.borderColor)
-                          : "bg-cvh-bg-tertiary border-cvh-border-subtle hover:border-cvh-border hover:bg-cvh-bg-hover"
+                          ? "bg-accent-subtle border-accent-primary/30"
+                          : "bg-surface-elevated border-border-default hover:border-border-focus hover:bg-surface-hover"
                       )}
                     >
                       <div className="flex items-center gap-3">
+                        {/* Hexagonal chain icon */}
                         <div
-                          className={cn(
-                            "w-10 h-10 rounded-cvh flex items-center justify-center text-[18px] font-bold text-white bg-gradient-to-br",
-                            chain.color
-                          )}
+                          className="w-10 h-10 flex items-center justify-center text-[18px] font-bold text-accent-primary bg-accent-subtle"
+                          style={{ clipPath: "polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)" }}
                         >
                           {chain.icon}
                         </div>
                         <div className="flex-1">
-                          <div className="text-[13px] font-semibold flex items-center gap-2">
+                          <div className="text-body font-display font-semibold flex items-center gap-2">
                             {chain.name}
                             {isPrimary && (
-                              <span className="text-[8px] bg-cvh-accent/20 text-cvh-accent px-1.5 py-0.5 rounded-full font-bold uppercase">
+                              <span className="text-[8px] bg-accent-subtle text-accent-primary px-1.5 py-0.5 rounded-pill font-display font-bold uppercase">
                                 Primary
                               </span>
                             )}
                           </div>
-                          <div className="text-[10px] text-cvh-text-muted">
+                          <div className="text-micro text-text-muted font-display">
                             {chain.symbol} &middot; {chain.gasEstimate}
                           </div>
                         </div>
@@ -516,35 +504,27 @@ export default function SetupWizardPage() {
                         {/* Checkbox */}
                         <div
                           className={cn(
-                            "w-5 h-5 rounded border-2 flex items-center justify-center transition-all",
+                            "w-5 h-5 rounded-input border-2 flex items-center justify-center transition-all duration-fast",
                             isSelected
-                              ? "bg-cvh-accent border-cvh-accent"
-                              : "border-cvh-border group-hover:border-cvh-text-muted"
+                              ? "bg-accent-primary border-accent-primary"
+                              : "border-border-default group-hover:border-text-muted"
                           )}
                         >
                           {isSelected && (
-                            <svg
-                              width="12"
-                              height="12"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="white"
-                              strokeWidth="3"
-                            >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3">
                               <polyline points="20 6 9 17 4 12" />
                             </svg>
                           )}
                         </div>
                       </div>
 
-                      {/* Set as primary */}
                       {isSelected && !isPrimary && (
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             setPrimaryChain(chain.id);
                           }}
-                          className="mt-2 text-[9px] text-cvh-text-muted hover:text-cvh-accent transition-colors cursor-pointer"
+                          className="mt-2 text-[9px] text-text-muted hover:text-accent-primary transition-colors duration-fast cursor-pointer font-display"
                         >
                           Set as primary
                         </button>
@@ -557,28 +537,9 @@ export default function SetupWizardPage() {
 
             {/* Continue */}
             <div className="flex justify-end pt-2">
-              <button
-                onClick={nextStep}
-                disabled={selectedChains.length === 0}
-                className={cn(
-                  "inline-flex items-center gap-2 px-5 py-2.5 rounded-cvh text-[12px] font-semibold transition-all cursor-pointer",
-                  selectedChains.length > 0
-                    ? "bg-cvh-accent text-white hover:bg-cvh-accent-dim shadow-lg shadow-cvh-accent/20"
-                    : "bg-cvh-bg-elevated text-cvh-text-muted cursor-not-allowed"
-                )}
-              >
+              <NavButton onClick={nextStep} disabled={selectedChains.length === 0} direction="next">
                 Continue
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
-                  <polyline points="9 18 15 12 9 6" />
-                </svg>
-              </button>
+              </NavButton>
             </div>
           </div>
         );
@@ -587,15 +548,10 @@ export default function SetupWizardPage() {
       case 2:
         return (
           <div className="space-y-6">
-            <div className="text-center">
-              <h2 className="text-[18px] font-bold mb-1">
-                Your Operations Wallet
-              </h2>
-              <p className="text-[12px] text-cvh-text-secondary">
-                This hot wallet manages your smart contract ecosystem. Fund it
-                to enable contract deployments.
-              </p>
-            </div>
+            <StepHeader
+              title="Your Operations Wallet"
+              subtitle="This hot wallet manages your smart contract ecosystem. Fund it to enable contract deployments."
+            />
 
             <div className="grid grid-cols-2 gap-6">
               {/* Left: QR + Address */}
@@ -603,44 +559,39 @@ export default function SetupWizardPage() {
                 <QRCodeDisplay
                   address={MOCK_OPERATIONS_WALLET.address}
                   network={selectedChainObj?.name || "Ethereum"}
-                  networkColor="text-cvh-accent"
                   size="lg"
                 />
               </div>
 
               {/* Right: Wallet Details */}
               <div className="space-y-4">
-                {/* Details card */}
-                <div className="bg-cvh-bg-tertiary border border-cvh-border-subtle rounded-cvh-lg p-4 space-y-3">
-                  <div className="text-[11px] font-bold uppercase tracking-wider text-cvh-text-muted mb-2">
+                <div className="bg-surface-elevated border border-border-default rounded-card p-4 space-y-3">
+                  <div className="text-caption font-display font-bold uppercase tracking-wider text-text-muted mb-2">
                     Wallet Details
                   </div>
 
                   <div className="space-y-2.5">
                     <div>
-                      <div className="text-[9px] text-cvh-text-muted uppercase tracking-wider mb-0.5">
+                      <div className="text-[9px] text-text-muted uppercase tracking-wider mb-0.5 font-display">
                         Address
                       </div>
-                      <CopyableText
-                        text={MOCK_OPERATIONS_WALLET.address}
-                        mono
-                      />
+                      <CopyableText text={MOCK_OPERATIONS_WALLET.address} mono />
                     </div>
                     <div className="flex gap-4">
                       <div>
-                        <div className="text-[9px] text-cvh-text-muted uppercase tracking-wider mb-0.5">
+                        <div className="text-[9px] text-text-muted uppercase tracking-wider mb-0.5 font-display">
                           Chain
                         </div>
-                        <div className="text-[12px] font-semibold">
+                        <div className="text-[12px] font-display font-semibold text-text-primary">
                           {selectedChainObj?.name || "Ethereum"}
                         </div>
                       </div>
                       <div>
-                        <div className="text-[9px] text-cvh-text-muted uppercase tracking-wider mb-0.5">
+                        <div className="text-[9px] text-text-muted uppercase tracking-wider mb-0.5 font-display">
                           Status
                         </div>
-                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-400">
-                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                        <span className="inline-flex items-center gap-1 text-caption font-display font-semibold text-status-warning">
+                          <span className="w-1.5 h-1.5 rounded-pill bg-status-warning animate-pulse-gold" />
                           Awaiting Deposit
                         </span>
                       </div>
@@ -655,45 +606,39 @@ export default function SetupWizardPage() {
                 </div>
 
                 {/* Instructions */}
-                <div className="bg-cvh-accent/5 border border-cvh-accent/15 rounded-cvh-lg p-4">
-                  <div className="text-[11px] font-bold text-cvh-accent mb-2">
+                <div className="bg-accent-subtle border border-accent-primary/15 rounded-card p-4">
+                  <div className="text-caption font-display font-bold text-accent-primary mb-2">
                     Fund Your Wallet
                   </div>
-                  <ul className="space-y-1.5 text-[11px] text-cvh-text-secondary">
+                  <ul className="space-y-1.5 text-caption text-text-secondary font-display">
                     <li className="flex items-start gap-2">
-                      <span className="text-cvh-accent mt-0.5">1.</span>
+                      <span className="text-accent-primary mt-0.5 font-semibold">1.</span>
                       Send at least{" "}
-                      <strong className="text-cvh-text-primary">
+                      <strong className="text-text-primary">
                         {selectedChainObj?.gasEstimate?.split(" ")[0] || "0.05"}{" "}
                         {selectedChainObj?.symbol || "ETH"}
                       </strong>{" "}
                       to this address
                     </li>
                     <li className="flex items-start gap-2">
-                      <span className="text-cvh-accent mt-0.5">2.</span>
+                      <span className="text-accent-primary mt-0.5 font-semibold">2.</span>
                       This funds smart contract deployment gas costs
                     </li>
                     <li className="flex items-start gap-2">
-                      <span className="text-cvh-accent mt-0.5">3.</span>
-                      Estimated cost breakdown:
-                      <ul className="ml-4 text-[10px] text-cvh-text-muted">
-                        <li>Factory deploy: ~0.025 {selectedChainObj?.symbol || "ETH"}</li>
-                        <li>Implementation: ~0.015 {selectedChainObj?.symbol || "ETH"}</li>
-                        <li>First forwarder: ~0.005 {selectedChainObj?.symbol || "ETH"}</li>
-                      </ul>
+                      <span className="text-accent-primary mt-0.5 font-semibold">3.</span>
+                      <span>
+                        Estimated cost breakdown:
+                        <ul className="ml-4 text-[10px] text-text-muted mt-1 space-y-0.5">
+                          <li>Factory deploy: ~0.025 {selectedChainObj?.symbol || "ETH"}</li>
+                          <li>Implementation: ~0.015 {selectedChainObj?.symbol || "ETH"}</li>
+                          <li>First forwarder: ~0.005 {selectedChainObj?.symbol || "ETH"}</li>
+                        </ul>
+                      </span>
                     </li>
                   </ul>
 
-                  <div className="mt-3 p-2 bg-amber-500/5 border border-amber-500/15 rounded-cvh text-[10px] text-amber-300/80 flex items-center gap-2">
-                    <svg
-                      width="12"
-                      height="12"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      className="flex-shrink-0"
-                    >
+                  <div className="mt-3 p-2 bg-status-warning-subtle border border-status-warning/15 rounded-input text-[10px] text-status-warning/80 font-display flex items-center gap-2">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="flex-shrink-0">
                       <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
                       <line x1="12" y1="9" x2="12" y2="13" />
                       <line x1="12" y1="17" x2="12.01" y2="17" />
@@ -707,7 +652,7 @@ export default function SetupWizardPage() {
 
             {/* Private Key Section */}
             <div>
-              <div className="text-[11px] font-bold uppercase tracking-wider text-cvh-text-muted mb-2">
+              <div className="text-caption font-display font-bold uppercase tracking-wider text-text-muted mb-2">
                 Private Key &amp; Recovery
               </div>
               <PrivateKeyReveal
@@ -720,79 +665,21 @@ export default function SetupWizardPage() {
             <JsonArtifact
               title="Wallet Creation Payload"
               data={MOCK_OPERATIONS_WALLET.creationJson}
-              icon={
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                  <polyline points="14 2 14 8 20 8" />
-                </svg>
-              }
               filename="operations-wallet-creation.json"
             />
 
-            {/* Creation Callback JSON */}
             <JsonArtifact
               title="Creation Callback"
               data={MOCK_OPERATIONS_WALLET.callbackJson}
-              icon={
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
-                  <polyline points="22 12 16 12 14 15 10 9 8 12 2 12" />
-                </svg>
-              }
               filename="operations-wallet-callback.json"
             />
 
             {/* Navigation */}
-            <div className="flex justify-between pt-2">
-              <button
-                onClick={prevStep}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-cvh text-[12px] font-semibold text-cvh-text-secondary border border-cvh-border hover:border-cvh-text-secondary hover:text-cvh-text-primary transition-colors cursor-pointer"
-              >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
-                  <polyline points="15 18 9 12 15 6" />
-                </svg>
-                Back
-              </button>
-              <button
-                onClick={() => {
-                  simulateDeposit();
-                  nextStep();
-                }}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-cvh text-[12px] font-semibold bg-cvh-accent text-white hover:bg-cvh-accent-dim shadow-lg shadow-cvh-accent/20 transition-all cursor-pointer"
-              >
+            <StepNav onPrev={prevStep}>
+              <NavButton onClick={() => { simulateDeposit(); nextStep(); }} direction="next">
                 I&apos;ve Sent the Deposit
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
-                  <polyline points="9 18 15 12 9 6" />
-                </svg>
-              </button>
-            </div>
+              </NavButton>
+            </StepNav>
           </div>
         );
 
@@ -800,68 +687,75 @@ export default function SetupWizardPage() {
       case 3:
         return (
           <div className="space-y-6">
-            <div className="text-center">
-              <h2 className="text-[18px] font-bold mb-1">
-                {depositDetected
-                  ? "Deposit Detected!"
-                  : "Scanning for Your Deposit"}
-              </h2>
-              <p className="text-[12px] text-cvh-text-secondary">
-                {depositDetected
-                  ? "Your deposit has been received and is being confirmed."
-                  : "Monitoring the blockchain for your incoming transaction..."}
-              </p>
-            </div>
+            <StepHeader
+              title={depositDetected ? "Deposit Detected!" : "Scanning for Your Deposit"}
+              subtitle={depositDetected
+                ? "Your deposit has been received and is being confirmed."
+                : "Monitoring the blockchain for your incoming transaction..."}
+            />
 
             {!depositDetected ? (
               <div className="flex flex-col items-center gap-6 py-8">
-                {/* Scanning animation */}
+                {/* Hexagonal scanning animation */}
                 <div className="relative w-24 h-24">
-                  <div className="absolute inset-0 rounded-full border-2 border-cvh-accent/20" />
-                  <div className="absolute inset-0 rounded-full border-2 border-cvh-accent/40 animate-ping" />
-                  <div className="absolute inset-2 rounded-full border-2 border-cvh-accent/30 animate-pulse" />
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <svg
-                      width="28"
-                      height="28"
-                      viewBox="0 0 24 24"
+                  <svg width="96" height="96" viewBox="0 0 96 96" className="absolute inset-0">
+                    <polygon
+                      points="48,4 88,24 88,72 48,92 8,72 8,24"
                       fill="none"
-                      stroke="currentColor"
+                      stroke="var(--accent-primary)"
+                      strokeWidth="1.5"
+                      opacity="0.2"
+                    />
+                    <polygon
+                      points="48,4 88,24 88,72 48,92 8,72 8,24"
+                      fill="none"
+                      stroke="var(--accent-primary)"
                       strokeWidth="2"
-                      className="text-cvh-accent animate-pulse"
-                    >
+                      strokeDasharray="30 15"
+                      className="animate-hex-spin"
+                      style={{ transformOrigin: "center" }}
+                    />
+                    <polygon
+                      points="48,16 76,30 76,66 48,80 20,66 20,30"
+                      fill="none"
+                      stroke="var(--accent-primary)"
+                      strokeWidth="1"
+                      opacity="0.3"
+                      className="animate-pulse-gold"
+                    />
+                  </svg>
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-accent-primary">
                       <circle cx="11" cy="11" r="8" />
                       <line x1="21" y1="21" x2="16.65" y2="16.65" />
                     </svg>
                   </div>
                 </div>
 
-                <div className="text-[13px] text-cvh-accent font-semibold animate-pulse">
+                <div className="text-body text-accent-primary font-display font-semibold animate-pulse-gold">
                   Scanning blockchain for your deposit...
                 </div>
 
-                {/* Progress bar */}
-                <div className="w-64 h-1 bg-cvh-bg-elevated rounded-full overflow-hidden">
-                  <div className="h-full bg-cvh-accent rounded-full animate-scan-progress" />
+                <div className="w-64 h-[2px] bg-surface-elevated rounded-pill overflow-hidden">
+                  <div className="h-full bg-accent-primary rounded-pill animate-scan-progress" />
                 </div>
 
-                <div className="text-[11px] text-cvh-text-muted">
-                  Checking every 5 seconds &middot; Listening for pending
-                  transactions
+                <div className="text-caption text-text-muted font-display">
+                  Checking every 5 seconds &middot; Listening for pending transactions
                 </div>
 
-                {/* Manual entry option */}
-                <div className="mt-4 p-4 bg-cvh-bg-tertiary border border-cvh-border-subtle rounded-cvh-lg w-full max-w-md">
-                  <div className="text-[11px] text-cvh-text-muted mb-2">
+                {/* Manual entry */}
+                <div className="mt-4 p-4 bg-surface-elevated border border-border-default rounded-card w-full max-w-md">
+                  <div className="text-caption text-text-muted font-display mb-2">
                     Already sent? Enter your transaction hash:
                   </div>
                   <div className="flex gap-2">
                     <input
                       type="text"
                       placeholder="0x..."
-                      className="flex-1 bg-cvh-bg-secondary border border-cvh-border rounded-[6px] px-3 py-2 font-mono text-[11px] text-cvh-text-primary outline-none focus:border-cvh-accent transition-colors"
+                      className="flex-1 bg-surface-input border border-border-default rounded-input px-3 py-2 font-mono text-caption text-text-primary outline-none focus:border-border-focus transition-colors duration-fast"
                     />
-                    <button className="px-3 py-2 rounded-[6px] text-[11px] font-semibold bg-cvh-bg-elevated text-cvh-text-secondary border border-cvh-border hover:text-cvh-text-primary transition-colors cursor-pointer">
+                    <button className="px-3 py-2 rounded-input text-caption font-display font-semibold bg-surface-card text-text-secondary border border-border-default hover:text-text-primary transition-colors duration-fast cursor-pointer">
                       Check
                     </button>
                   </div>
@@ -869,160 +763,93 @@ export default function SetupWizardPage() {
               </div>
             ) : (
               <div className="space-y-5">
-                {/* Success animation */}
+                {/* Success -- hexagonal checkmark */}
                 <div className="flex flex-col items-center gap-4 py-4">
-                  <div className="w-16 h-16 rounded-full bg-cvh-green flex items-center justify-center animate-fade-up shadow-lg shadow-cvh-green/20">
-                    <svg
-                      width="32"
-                      height="32"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="white"
-                      strokeWidth="3"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <polyline points="20 6 9 17 4 12" />
+                  <div className="w-16 h-16 flex items-center justify-center animate-fade-up">
+                    <svg width="64" height="64" viewBox="0 0 64 64">
+                      <polygon
+                        points="32,4 58,18 58,46 32,60 6,46 6,18"
+                        fill="var(--status-success)"
+                      />
+                      <polyline
+                        points="22,32 28,38 42,24"
+                        fill="none"
+                        stroke="white"
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
                     </svg>
                   </div>
-                  <div className="text-cvh-green text-[14px] font-bold">
+                  <div className="text-status-success text-subheading font-display font-bold">
                     Deposit Received!
                   </div>
                 </div>
 
                 {/* Deposit details */}
-                <div className="bg-cvh-bg-tertiary border border-cvh-green/20 rounded-cvh-lg p-5 space-y-3">
+                <div className="bg-surface-elevated border border-status-success/20 rounded-card p-5 space-y-3">
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <div className="text-[9px] text-cvh-text-muted uppercase tracking-wider mb-0.5">
-                        Amount
-                      </div>
-                      <div className="text-[18px] font-bold text-cvh-green font-mono">
-                        {MOCK_DEPOSIT_TX.valueEth}{" "}
-                        {selectedChainObj?.symbol || "ETH"}
+                      <div className="text-[9px] text-text-muted uppercase tracking-wider mb-0.5 font-display">Amount</div>
+                      <div className="text-[18px] font-display font-bold text-status-success">
+                        {MOCK_DEPOSIT_TX.valueEth} {selectedChainObj?.symbol || "ETH"}
                       </div>
                     </div>
                     <div>
-                      <div className="text-[9px] text-cvh-text-muted uppercase tracking-wider mb-0.5">
-                        Confirmations
-                      </div>
+                      <div className="text-[9px] text-text-muted uppercase tracking-wider mb-0.5 font-display">Confirmations</div>
                       <div className="flex items-center gap-2">
-                        <span className="text-[18px] font-bold text-cvh-text-primary font-mono">
+                        <span className="text-[18px] font-display font-bold text-text-primary">
                           {depositConfirmations}
                         </span>
-                        <span className="text-[11px] text-cvh-text-muted">
-                          / 12
-                        </span>
+                        <span className="text-caption text-text-muted font-display">/ 12</span>
                         {depositConfirmations < 12 && (
-                          <span className="live-dot" />
+                          <span className="w-[5px] h-[5px] rounded-pill bg-accent-primary animate-pulse-gold" />
                         )}
                         {depositConfirmations >= 12 && (
-                          <span className="text-[10px] text-cvh-green font-semibold">
-                            Finalized
-                          </span>
+                          <span className="text-micro text-status-success font-display font-semibold">Finalized</span>
                         )}
                       </div>
-                      {/* Confirmations bar */}
-                      <div className="w-full h-1.5 bg-cvh-bg-elevated rounded-full mt-1.5 overflow-hidden">
+                      <div className="w-full h-[2px] bg-surface-hover rounded-pill mt-1.5 overflow-hidden">
                         <div
-                          className="h-full bg-cvh-green rounded-full transition-all duration-500"
-                          style={{
-                            width: `${Math.min(
-                              (depositConfirmations / 12) * 100,
-                              100
-                            )}%`,
-                          }}
+                          className="h-full bg-status-success rounded-pill transition-all duration-slow"
+                          style={{ width: `${Math.min((depositConfirmations / 12) * 100, 100)}%` }}
                         />
                       </div>
                     </div>
                   </div>
 
-                  <div className="pt-3 border-t border-cvh-border-subtle space-y-2">
+                  <div className="pt-3 border-t border-border-subtle space-y-2">
                     <div>
-                      <div className="text-[9px] text-cvh-text-muted uppercase tracking-wider mb-0.5">
-                        Transaction Hash
-                      </div>
-                      <CopyableText
-                        text={MOCK_DEPOSIT_TX.transactionHash}
-                        mono
-                      />
+                      <div className="text-[9px] text-text-muted uppercase tracking-wider mb-0.5 font-display">Transaction Hash</div>
+                      <CopyableText text={MOCK_DEPOSIT_TX.transactionHash} mono />
                     </div>
                     <div className="flex gap-6">
                       <div>
-                        <div className="text-[9px] text-cvh-text-muted uppercase tracking-wider mb-0.5">
-                          Block
-                        </div>
-                        <div className="text-[12px] font-mono text-cvh-text-primary">
-                          {MOCK_DEPOSIT_TX.blockNumber.toLocaleString()}
-                        </div>
+                        <div className="text-[9px] text-text-muted uppercase tracking-wider mb-0.5 font-display">Block</div>
+                        <div className="text-[12px] font-mono text-text-primary">{MOCK_DEPOSIT_TX.blockNumber.toLocaleString()}</div>
                       </div>
                       <div>
-                        <div className="text-[9px] text-cvh-text-muted uppercase tracking-wider mb-0.5">
-                          From
-                        </div>
-                        <code className="text-[11px] font-mono text-cvh-text-secondary">
-                          {MOCK_DEPOSIT_TX.from.slice(0, 10)}...
-                          {MOCK_DEPOSIT_TX.from.slice(-6)}
+                        <div className="text-[9px] text-text-muted uppercase tracking-wider mb-0.5 font-display">From</div>
+                        <code className="text-caption font-mono text-text-secondary">
+                          {MOCK_DEPOSIT_TX.from.slice(0, 10)}...{MOCK_DEPOSIT_TX.from.slice(-6)}
                         </code>
                       </div>
                       <div>
-                        <div className="text-[9px] text-cvh-text-muted uppercase tracking-wider mb-0.5">
-                          Gas Used
-                        </div>
-                        <div className="text-[12px] font-mono text-cvh-text-primary">
-                          {Number(MOCK_DEPOSIT_TX.gasUsed).toLocaleString()}
-                        </div>
+                        <div className="text-[9px] text-text-muted uppercase tracking-wider mb-0.5 font-display">Gas Used</div>
+                        <div className="text-[12px] font-mono text-text-primary">{Number(MOCK_DEPOSIT_TX.gasUsed).toLocaleString()}</div>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Updated balance */}
-                <div className="bg-cvh-bg-tertiary border border-cvh-border-subtle rounded-cvh-lg p-4">
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-cvh-text-muted mb-2">
-                    Updated Balance
-                  </div>
-                  <LiveBalance
-                    balance={balance}
-                    symbol={selectedChainObj?.symbol || "ETH"}
-                  />
+                <div className="bg-surface-elevated border border-border-default rounded-card p-4">
+                  <div className="text-micro font-display font-bold uppercase tracking-wider text-text-muted mb-2">Updated Balance</div>
+                  <LiveBalance balance={balance} symbol={selectedChainObj?.symbol || "ETH"} />
                 </div>
 
-                {/* Navigation */}
-                <div className="flex justify-between pt-2">
-                  <button
-                    onClick={prevStep}
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded-cvh text-[12px] font-semibold text-cvh-text-secondary border border-cvh-border hover:border-cvh-text-secondary hover:text-cvh-text-primary transition-colors cursor-pointer"
-                  >
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                    >
-                      <polyline points="15 18 9 12 15 6" />
-                    </svg>
-                    Back
-                  </button>
-                  <button
-                    onClick={nextStep}
-                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-cvh text-[12px] font-semibold bg-cvh-accent text-white hover:bg-cvh-accent-dim shadow-lg shadow-cvh-accent/20 transition-all cursor-pointer"
-                  >
-                    Continue to Withdrawal Setup
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                    >
-                      <polyline points="9 18 15 12 9 6" />
-                    </svg>
-                  </button>
-                </div>
+                <StepNav onPrev={prevStep}>
+                  <NavButton onClick={nextStep} direction="next">Continue to Withdrawal Setup</NavButton>
+                </StepNav>
               </div>
             )}
           </div>
@@ -1032,132 +859,60 @@ export default function SetupWizardPage() {
       case 4:
         return (
           <div className="space-y-6">
-            <div className="text-center">
-              <h2 className="text-[18px] font-bold mb-1">
-                Withdrawal Address
-              </h2>
-              <p className="text-[12px] text-cvh-text-secondary max-w-[480px] mx-auto">
-                This is the destination address where swept funds from your
-                forwarder contracts will be sent.
-              </p>
-            </div>
+            <StepHeader
+              title="Withdrawal Address"
+              subtitle="This is the destination address where swept funds from your forwarder contracts will be sent."
+            />
 
             {/* Mode selection */}
             <div className="grid grid-cols-2 gap-3">
-              <button
+              <ModeCard
+                selected={withdrawalMode === "generate"}
                 onClick={() => setWithdrawalMode("generate")}
-                className={cn(
-                  "p-4 rounded-cvh-lg border-2 text-left transition-all cursor-pointer",
-                  withdrawalMode === "generate"
-                    ? "border-cvh-accent bg-cvh-accent/5"
-                    : "border-cvh-border-subtle bg-cvh-bg-tertiary hover:border-cvh-border"
-                )}
-              >
-                <div className="flex items-center gap-3 mb-2">
-                  <div
-                    className={cn(
-                      "w-8 h-8 rounded-full flex items-center justify-center border-2",
-                      withdrawalMode === "generate"
-                        ? "border-cvh-accent bg-cvh-accent text-white"
-                        : "border-cvh-border text-cvh-text-muted"
-                    )}
-                  >
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                    >
-                      <line x1="12" y1="5" x2="12" y2="19" />
-                      <line x1="5" y1="12" x2="19" y2="12" />
-                    </svg>
-                  </div>
-                  <div>
-                    <div className="text-[12px] font-semibold">
-                      Generate New Address
-                    </div>
-                    <div className="text-[10px] text-cvh-text-muted">
-                      System creates a fresh wallet
-                    </div>
-                  </div>
-                </div>
-              </button>
-
-              <button
+                icon={
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                }
+                title="Generate New Address"
+                subtitle="System creates a fresh wallet"
+              />
+              <ModeCard
+                selected={withdrawalMode === "existing"}
                 onClick={() => setWithdrawalMode("existing")}
-                className={cn(
-                  "p-4 rounded-cvh-lg border-2 text-left transition-all cursor-pointer",
-                  withdrawalMode === "existing"
-                    ? "border-cvh-accent bg-cvh-accent/5"
-                    : "border-cvh-border-subtle bg-cvh-bg-tertiary hover:border-cvh-border"
-                )}
-              >
-                <div className="flex items-center gap-3 mb-2">
-                  <div
-                    className={cn(
-                      "w-8 h-8 rounded-full flex items-center justify-center border-2",
-                      withdrawalMode === "existing"
-                        ? "border-cvh-accent bg-cvh-accent text-white"
-                        : "border-cvh-border text-cvh-text-muted"
-                    )}
-                  >
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                    >
-                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <div className="text-[12px] font-semibold">
-                      Use Existing Address
-                    </div>
-                    <div className="text-[10px] text-cvh-text-muted">
-                      Enter your own wallet address
-                    </div>
-                  </div>
-                </div>
-              </button>
+                icon={
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                  </svg>
+                }
+                title="Use Existing Address"
+                subtitle="Enter your own wallet address"
+              />
             </div>
 
             {/* Generated wallet details */}
             {withdrawalMode === "generate" && (
-              <div className="space-y-5 animate-fade-up">
+              <div className="space-y-5 animate-fade-in">
                 <div className="grid grid-cols-2 gap-6">
                   <QRCodeDisplay
                     address={MOCK_WITHDRAWAL_WALLET.address}
                     network={selectedChainObj?.name || "Ethereum"}
-                    networkColor="text-cvh-teal"
                     size="md"
                   />
                   <div className="space-y-3">
-                    <div className="bg-cvh-bg-tertiary border border-cvh-border-subtle rounded-cvh-lg p-4 space-y-2.5">
-                      <div className="text-[11px] font-bold uppercase tracking-wider text-cvh-text-muted">
+                    <div className="bg-surface-elevated border border-border-default rounded-card p-4 space-y-2.5">
+                      <div className="text-caption font-display font-bold uppercase tracking-wider text-text-muted">
                         Withdrawal Wallet
                       </div>
                       <div>
-                        <div className="text-[9px] text-cvh-text-muted uppercase tracking-wider mb-0.5">
-                          Address
-                        </div>
-                        <CopyableText
-                          text={MOCK_WITHDRAWAL_WALLET.address}
-                          mono
-                        />
+                        <div className="text-[9px] text-text-muted uppercase tracking-wider mb-0.5 font-display">Address</div>
+                        <CopyableText text={MOCK_WITHDRAWAL_WALLET.address} mono />
                       </div>
                       <div>
-                        <div className="text-[9px] text-cvh-text-muted uppercase tracking-wider mb-0.5">
-                          Type
-                        </div>
-                        <div className="text-[12px] font-semibold text-cvh-teal">
-                          Sweep Destination
-                        </div>
+                        <div className="text-[9px] text-text-muted uppercase tracking-wider mb-0.5 font-display">Type</div>
+                        <div className="text-[12px] font-display font-semibold text-accent-primary">Sweep Destination</div>
                       </div>
                     </div>
                   </div>
@@ -1178,7 +933,7 @@ export default function SetupWizardPage() {
 
             {/* Existing address input */}
             {withdrawalMode === "existing" && (
-              <div className="space-y-4 animate-fade-up">
+              <div className="space-y-4 animate-fade-in">
                 <AddressInput
                   value={existingAddress}
                   onChange={setExistingAddress}
@@ -1189,109 +944,71 @@ export default function SetupWizardPage() {
             )}
 
             {/* Whitelist Management */}
-            <div className="border border-cvh-border-subtle rounded-cvh-lg overflow-hidden">
-              <div className="px-4 py-3 bg-cvh-bg-tertiary border-b border-cvh-border-subtle">
-                <div className="text-[12px] font-semibold">
-                  Withdrawal Whitelist
-                </div>
-                <div className="text-[10px] text-cvh-text-muted mt-0.5">
-                  Addresses added here must pass a 24-hour cooldown before
-                  becoming active.
+            <div className="border border-border-default rounded-card overflow-hidden">
+              <div className="px-4 py-3 bg-surface-elevated border-b border-border-subtle">
+                <div className="text-[12px] font-display font-semibold text-text-primary">Withdrawal Whitelist</div>
+                <div className="text-micro text-text-muted mt-0.5 font-display">
+                  Addresses added here must pass a 24-hour cooldown before becoming active.
                 </div>
               </div>
 
               <div className="p-4 space-y-3">
-                {/* Add address form */}
                 <div className="grid grid-cols-[1fr_2fr_auto_auto] gap-2 items-end">
                   <div>
-                    <label className="block text-[9px] font-semibold text-cvh-text-muted uppercase tracking-wider mb-1">
-                      Label
-                    </label>
+                    <label className="block text-[9px] font-display font-semibold text-text-muted uppercase tracking-wider mb-1">Label</label>
                     <input
                       type="text"
                       value={wlLabel}
                       onChange={(e) => setWlLabel(e.target.value)}
                       placeholder="Main treasury"
-                      className="w-full bg-cvh-bg-tertiary border border-cvh-border rounded-[6px] px-2.5 py-1.5 text-[11px] text-cvh-text-primary font-display outline-none focus:border-cvh-accent transition-colors"
+                      className="w-full bg-surface-input border border-border-default rounded-input px-2.5 py-1.5 text-caption text-text-primary font-display outline-none focus:border-border-focus transition-colors duration-fast"
                     />
                   </div>
                   <div>
-                    <label className="block text-[9px] font-semibold text-cvh-text-muted uppercase tracking-wider mb-1">
-                      Address
-                    </label>
+                    <label className="block text-[9px] font-display font-semibold text-text-muted uppercase tracking-wider mb-1">Address</label>
                     <input
                       type="text"
                       value={wlAddress}
                       onChange={(e) => setWlAddress(e.target.value)}
                       placeholder="0x..."
-                      className="w-full bg-cvh-bg-tertiary border border-cvh-border rounded-[6px] px-2.5 py-1.5 text-[11px] text-cvh-text-primary font-mono outline-none focus:border-cvh-accent transition-colors"
+                      className="w-full bg-surface-input border border-border-default rounded-input px-2.5 py-1.5 text-caption text-text-primary font-mono outline-none focus:border-border-focus transition-colors duration-fast"
                     />
                   </div>
                   <div>
-                    <label className="block text-[9px] font-semibold text-cvh-text-muted uppercase tracking-wider mb-1">
-                      Chain
-                    </label>
+                    <label className="block text-[9px] font-display font-semibold text-text-muted uppercase tracking-wider mb-1">Chain</label>
                     <select
                       value={wlChain}
                       onChange={(e) => setWlChain(e.target.value)}
-                      className="bg-cvh-bg-tertiary border border-cvh-border rounded-[6px] px-2 py-1.5 text-[11px] text-cvh-text-primary font-display outline-none focus:border-cvh-accent cursor-pointer"
+                      className="bg-surface-input border border-border-default rounded-input px-2 py-1.5 text-caption text-text-primary font-display outline-none focus:border-border-focus cursor-pointer"
                     >
                       {selectedChains.map((cid) => {
                         const c = CHAINS.find((ch) => ch.id === cid);
-                        return (
-                          <option key={cid} value={cid}>
-                            {c?.name}
-                          </option>
-                        );
+                        return <option key={cid} value={cid}>{c?.name}</option>;
                       })}
                     </select>
                   </div>
                   <button
                     onClick={handleAddWhitelist}
-                    className="px-3 py-1.5 rounded-[6px] text-[11px] font-semibold bg-cvh-accent text-white hover:bg-cvh-accent-dim transition-colors cursor-pointer"
+                    className="px-3 py-1.5 rounded-button text-caption font-display font-semibold bg-accent-primary text-accent-text hover:bg-accent-hover transition-colors duration-fast cursor-pointer"
                   >
                     Add
                   </button>
                 </div>
 
-                {/* Listed addresses */}
                 {whitelistAddresses.length > 0 && (
                   <div className="space-y-1.5 mt-3">
                     {whitelistAddresses.map((addr, i) => (
-                      <div
-                        key={i}
-                        className="flex items-center gap-3 px-3 py-2 bg-cvh-bg-tertiary rounded-cvh text-[11px]"
-                      >
-                        <span className="font-semibold text-cvh-text-primary min-w-[100px]">
-                          {addr.label}
-                        </span>
-                        <code className="font-mono text-cvh-text-secondary flex-1 truncate">
-                          {addr.address}
-                        </code>
-                        <span className="text-[9px] text-cvh-text-muted uppercase">
-                          {addr.chain}
-                        </span>
-                        <span className="text-[9px] text-amber-400 font-semibold">
-                          24h cooldown
-                        </span>
+                      <div key={i} className="flex items-center gap-3 px-3 py-2 bg-surface-elevated rounded-input text-caption font-display">
+                        <span className="font-semibold text-text-primary min-w-[100px]">{addr.label}</span>
+                        <code className="font-mono text-text-secondary flex-1 truncate">{addr.address}</code>
+                        <span className="text-[9px] text-text-muted uppercase font-display">{addr.chain}</span>
+                        <span className="text-[9px] text-status-warning font-display font-semibold">24h cooldown</span>
                         <button
-                          onClick={() =>
-                            setWhitelistAddresses((prev) =>
-                              prev.filter((_, idx) => idx !== i)
-                            )
-                          }
-                          className="text-cvh-text-muted hover:text-red-400 transition-colors cursor-pointer"
+                          onClick={() => setWhitelistAddresses((prev) => prev.filter((_, idx) => idx !== i))}
+                          className="text-text-muted hover:text-status-error transition-colors duration-fast cursor-pointer"
                         >
-                          <svg
-                            width="12"
-                            height="12"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                          >
-                            <line x1="18" y1="6" x2="6" y2="18" />
-                            <line x1="6" y1="6" x2="18" y2="18" />
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
                           </svg>
                         </button>
                       </div>
@@ -1300,59 +1017,22 @@ export default function SetupWizardPage() {
                 )}
 
                 {whitelistAddresses.length === 0 && (
-                  <div className="text-[10px] text-cvh-text-muted text-center py-3">
-                    No addresses in whitelist yet. You can add them later from
-                    the dashboard.
+                  <div className="text-micro text-text-muted text-center py-3 font-display">
+                    No addresses in whitelist yet. You can add them later from the dashboard.
                   </div>
                 )}
               </div>
             </div>
 
-            {/* Navigation */}
-            <div className="flex justify-between pt-2">
-              <button
-                onClick={prevStep}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-cvh text-[12px] font-semibold text-cvh-text-secondary border border-cvh-border hover:border-cvh-text-secondary hover:text-cvh-text-primary transition-colors cursor-pointer"
-              >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
-                  <polyline points="15 18 9 12 15 6" />
-                </svg>
-                Back
-              </button>
-              <button
+            <StepNav onPrev={prevStep}>
+              <NavButton
                 onClick={nextStep}
-                disabled={
-                  withdrawalMode === "existing" &&
-                  existingAddress.length !== 42
-                }
-                className={cn(
-                  "inline-flex items-center gap-2 px-5 py-2.5 rounded-cvh text-[12px] font-semibold transition-all cursor-pointer",
-                  withdrawalMode === "generate" ||
-                    existingAddress.length === 42
-                    ? "bg-cvh-accent text-white hover:bg-cvh-accent-dim shadow-lg shadow-cvh-accent/20"
-                    : "bg-cvh-bg-elevated text-cvh-text-muted cursor-not-allowed"
-                )}
+                disabled={withdrawalMode === "existing" && existingAddress.length !== 42}
+                direction="next"
               >
                 Continue to Deployment
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
-                  <polyline points="9 18 15 12 9 6" />
-                </svg>
-              </button>
-            </div>
+              </NavButton>
+            </StepNav>
           </div>
         );
 
@@ -1360,196 +1040,103 @@ export default function SetupWizardPage() {
       case 5:
         return (
           <div className="space-y-6">
-            <div className="text-center">
-              <h2 className="text-[18px] font-bold mb-1">
-                Smart Contract Deployment
-              </h2>
-              <p className="text-[12px] text-cvh-text-secondary max-w-[480px] mx-auto">
-                Deploy the wallet infrastructure that enables automated deposit
-                sweeping.
-              </p>
-            </div>
+            <StepHeader
+              title="Smart Contract Deployment"
+              subtitle="Deploy the wallet infrastructure that enables automated deposit sweeping."
+            />
 
-            {/* Deployment overview */}
+            {/* Deployment overview cards */}
             <div className="grid grid-cols-2 gap-3">
-              <div className="bg-cvh-bg-tertiary border border-cvh-border-subtle rounded-cvh-lg p-4">
+              <div className="bg-surface-elevated border border-border-default rounded-card p-4">
                 <div className="flex items-center gap-2 mb-2">
-                  <div className="w-8 h-8 rounded-cvh bg-cvh-accent/10 flex items-center justify-center">
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      className="text-cvh-accent"
-                    >
+                  <div
+                    className="w-8 h-8 flex items-center justify-center bg-accent-subtle"
+                    style={{ clipPath: "polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)" }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-accent-primary">
                       <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
                       <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
                     </svg>
                   </div>
                   <div>
-                    <div className="text-[12px] font-semibold">
-                      Wallet Factory
-                    </div>
-                    <div className="text-[10px] text-cvh-text-muted">
-                      CvhWalletFactory.sol
-                    </div>
+                    <div className="text-[12px] font-display font-semibold text-text-primary">Wallet Factory</div>
+                    <div className="text-micro text-text-muted font-mono">CvhWalletFactory.sol</div>
                   </div>
                 </div>
-                <p className="text-[10px] text-cvh-text-secondary leading-relaxed">
-                  Creates and manages forwarder deposit addresses via CREATE2.
-                  Deterministic address computation before deployment.
+                <p className="text-micro text-text-secondary font-display leading-relaxed">
+                  Creates and manages forwarder deposit addresses via CREATE2. Deterministic address computation before deployment.
                 </p>
               </div>
 
-              <div className="bg-cvh-bg-tertiary border border-cvh-border-subtle rounded-cvh-lg p-4">
+              <div className="bg-surface-elevated border border-border-default rounded-card p-4">
                 <div className="flex items-center gap-2 mb-2">
-                  <div className="w-8 h-8 rounded-cvh bg-cvh-purple/10 flex items-center justify-center">
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      className="text-cvh-purple"
-                    >
+                  <div
+                    className="w-8 h-8 flex items-center justify-center bg-accent-subtle"
+                    style={{ clipPath: "polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)" }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-accent-primary">
                       <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
                       <polyline points="22,6 12,13 2,6" />
                     </svg>
                   </div>
                   <div>
-                    <div className="text-[12px] font-semibold">
-                      Forwarder Implementation
-                    </div>
-                    <div className="text-[10px] text-cvh-text-muted">
-                      CvhForwarder.sol
-                    </div>
+                    <div className="text-[12px] font-display font-semibold text-text-primary">Forwarder Implementation</div>
+                    <div className="text-micro text-text-muted font-mono">CvhForwarder.sol</div>
                   </div>
                 </div>
-                <p className="text-[10px] text-cvh-text-secondary leading-relaxed">
-                  Minimal proxy template for deposit addresses. Automatically
-                  sweeps received funds to your withdrawal address.
+                <p className="text-micro text-text-secondary font-display leading-relaxed">
+                  Minimal proxy template for deposit addresses. Automatically sweeps received funds to your withdrawal address.
                 </p>
               </div>
             </div>
 
             {/* Gas estimate */}
-            <div className="bg-cvh-bg-tertiary border border-cvh-border-subtle rounded-cvh-lg p-4">
+            <div className="bg-surface-elevated border border-border-default rounded-card p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-[11px] font-bold text-cvh-text-muted uppercase tracking-wider">
-                    Estimated Gas Cost
-                  </div>
-                  <div className="text-[16px] font-bold font-mono mt-1">
-                    ~0.04 {selectedChainObj?.symbol || "ETH"}
-                  </div>
+                  <div className="text-caption font-display font-bold text-text-muted uppercase tracking-wider">Estimated Gas Cost</div>
+                  <div className="text-[16px] font-display font-bold font-mono mt-1 text-text-primary">~0.04 {selectedChainObj?.symbol || "ETH"}</div>
                 </div>
                 <div className="text-right">
-                  <div className="text-[10px] text-cvh-text-muted">
-                    Current balance
-                  </div>
-                  <div className="text-[14px] font-bold text-cvh-green font-mono">
-                    {balance.toFixed(4)} {selectedChainObj?.symbol || "ETH"}
-                  </div>
+                  <div className="text-micro text-text-muted font-display">Current balance</div>
+                  <div className="text-subheading font-display font-bold text-status-success font-mono">{balance.toFixed(4)} {selectedChainObj?.symbol || "ETH"}</div>
                 </div>
               </div>
             </div>
 
             {/* Deploy button */}
-            {!isDeploying &&
-              deploymentSteps.every((s) => s.status === "pending") && (
-                <div className="flex justify-center">
-                  <button
-                    onClick={simulateDeployment}
-                    className="inline-flex items-center gap-2 px-8 py-3 rounded-cvh-lg text-[13px] font-bold bg-gradient-to-r from-cvh-accent to-cvh-purple text-white shadow-lg shadow-cvh-accent/30 hover:shadow-cvh-accent/50 transition-all cursor-pointer"
-                  >
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                    >
-                      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-                    </svg>
-                    Deploy Contracts
-                  </button>
-                </div>
-              )}
+            {!isDeploying && deploymentSteps.every((s) => s.status === "pending") && (
+              <div className="flex justify-center">
+                <button
+                  onClick={simulateDeployment}
+                  className="inline-flex items-center gap-2 px-8 py-3 rounded-card text-body font-display font-bold bg-accent-primary text-accent-text hover:bg-accent-hover shadow-glow transition-all duration-fast cursor-pointer"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+                  </svg>
+                  Deploy Contracts
+                </button>
+              </div>
+            )}
 
-            {/* Deployment status */}
+            {/* Deployment status -- Forge Pipeline */}
             <ContractDeploymentStatus steps={deploymentSteps} />
 
             {/* Post-deployment artifacts */}
             {allDeployed && (
-              <div className="space-y-3 animate-fade-up">
-                <JsonArtifact
-                  title="Wallet Factory Deployment"
-                  data={MOCK_FACTORY_DEPLOYMENT.deploymentJson}
-                  defaultExpanded
-                  filename="wallet-factory-deployment.json"
-                />
-
-                <JsonArtifact
-                  title="Factory ABI"
-                  data={MOCK_FACTORY_DEPLOYMENT.abi}
-                  filename="wallet-factory-abi.json"
-                />
-
-                <JsonArtifact
-                  title="Constructor Arguments"
-                  data={MOCK_FACTORY_DEPLOYMENT.constructorArgs}
-                  filename="factory-constructor-args.json"
-                />
-
-                <JsonArtifact
-                  title="Forwarder Implementation Deployment"
-                  data={MOCK_IMPL_DEPLOYMENT.deploymentJson}
-                  filename="forwarder-implementation-deployment.json"
-                />
+              <div className="space-y-3 animate-fade-in">
+                <JsonArtifact title="Wallet Factory Deployment" data={MOCK_FACTORY_DEPLOYMENT.deploymentJson} defaultExpanded filename="wallet-factory-deployment.json" />
+                <JsonArtifact title="Factory ABI" data={MOCK_FACTORY_DEPLOYMENT.abi} filename="wallet-factory-abi.json" />
+                <JsonArtifact title="Constructor Arguments" data={MOCK_FACTORY_DEPLOYMENT.constructorArgs} filename="factory-constructor-args.json" />
+                <JsonArtifact title="Forwarder Implementation Deployment" data={MOCK_IMPL_DEPLOYMENT.deploymentJson} filename="forwarder-implementation-deployment.json" />
               </div>
             )}
 
-            {/* Navigation */}
-            <div className="flex justify-between pt-2">
-              <button
-                onClick={prevStep}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-cvh text-[12px] font-semibold text-cvh-text-secondary border border-cvh-border hover:border-cvh-text-secondary hover:text-cvh-text-primary transition-colors cursor-pointer"
-              >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
-                  <polyline points="15 18 9 12 15 6" />
-                </svg>
-                Back
-              </button>
+            <StepNav onPrev={prevStep}>
               {allDeployed && (
-                <button
-                  onClick={nextStep}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-cvh text-[12px] font-semibold bg-cvh-accent text-white hover:bg-cvh-accent-dim shadow-lg shadow-cvh-accent/20 transition-all cursor-pointer"
-                >
-                  Generate First Deposit Address
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                  >
-                    <polyline points="9 18 15 12 9 6" />
-                  </svg>
-                </button>
+                <NavButton onClick={nextStep} direction="next">Generate First Deposit Address</NavButton>
               )}
-            </div>
+            </StepNav>
           </div>
         );
 
@@ -1557,166 +1144,91 @@ export default function SetupWizardPage() {
       case 6:
         return (
           <div className="space-y-6">
-            <div className="text-center">
-              <h2 className="text-[18px] font-bold mb-1">
-                Your First Deposit Address
-              </h2>
-              <p className="text-[12px] text-cvh-text-secondary max-w-[480px] mx-auto">
-                Generate a forwarder address that your customers will use to
-                make deposits. Funds are automatically swept to your
-                operations wallet.
-              </p>
-            </div>
+            <StepHeader
+              title="Your First Deposit Address"
+              subtitle="Generate a forwarder address that your customers will use to make deposits. Funds are automatically swept to your operations wallet."
+            />
 
             {!forwarderGenerated ? (
               <div className="flex flex-col items-center gap-6 py-8">
-                <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-cvh-accent to-cvh-teal flex items-center justify-center shadow-lg shadow-cvh-accent/20">
-                  <svg
-                    width="36"
-                    height="36"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="white"
-                    strokeWidth="2"
-                  >
-                    <line x1="12" y1="5" x2="12" y2="19" />
-                    <line x1="5" y1="12" x2="19" y2="12" />
+                {/* Hex icon */}
+                <div className="w-20 h-20 flex items-center justify-center">
+                  <svg width="80" height="80" viewBox="0 0 80 80">
+                    <polygon points="40,4 74,22 74,58 40,76 6,58 6,22" fill="var(--accent-subtle)" stroke="var(--accent-primary)" strokeWidth="2" />
+                    <line x1="40" y1="28" x2="40" y2="52" stroke="var(--accent-primary)" strokeWidth="2.5" strokeLinecap="round" />
+                    <line x1="28" y1="40" x2="52" y2="40" stroke="var(--accent-primary)" strokeWidth="2.5" strokeLinecap="round" />
                   </svg>
                 </div>
                 <button
                   onClick={() => setForwarderGenerated(true)}
-                  className="inline-flex items-center gap-2 px-8 py-3 rounded-cvh-lg text-[13px] font-bold bg-gradient-to-r from-cvh-accent to-cvh-teal text-white shadow-lg shadow-cvh-accent/30 hover:shadow-cvh-accent/50 transition-all cursor-pointer"
+                  className="inline-flex items-center gap-2 px-8 py-3 rounded-card text-body font-display font-bold bg-accent-primary text-accent-text hover:bg-accent-hover shadow-glow transition-all duration-fast cursor-pointer"
                 >
                   Generate Deposit Address
                 </button>
               </div>
             ) : (
-              <div className="space-y-5 animate-fade-up">
+              <div className="space-y-5 animate-fade-in">
                 <div className="grid grid-cols-2 gap-6">
                   <QRCodeDisplay
                     address={MOCK_FORWARDER.address}
                     network={selectedChainObj?.name || "Ethereum"}
-                    networkColor="text-cvh-teal"
                     size="lg"
                   />
 
                   <div className="space-y-4">
-                    <div className="bg-cvh-bg-tertiary border border-cvh-border-subtle rounded-cvh-lg p-4 space-y-3">
-                      <div className="text-[11px] font-bold uppercase tracking-wider text-cvh-text-muted">
+                    <div className="bg-surface-elevated border border-border-default rounded-card p-4 space-y-3">
+                      <div className="text-caption font-display font-bold uppercase tracking-wider text-text-muted">
                         Forwarder Details
                       </div>
                       <div>
-                        <div className="text-[9px] text-cvh-text-muted uppercase tracking-wider mb-0.5">
-                          Address
-                        </div>
+                        <div className="text-[9px] text-text-muted uppercase tracking-wider mb-0.5 font-display">Address</div>
                         <CopyableText text={MOCK_FORWARDER.address} mono />
                       </div>
                       <div>
-                        <div className="text-[9px] text-cvh-text-muted uppercase tracking-wider mb-0.5">
-                          Sweep Destination
-                        </div>
-                        <code className="text-[11px] font-mono text-cvh-teal">
+                        <div className="text-[9px] text-text-muted uppercase tracking-wider mb-0.5 font-display">Sweep Destination</div>
+                        <code className="text-caption font-mono text-accent-primary">
                           {withdrawalMode === "generate"
                             ? MOCK_WITHDRAWAL_WALLET.address
                             : existingAddress || MOCK_WITHDRAWAL_WALLET.address}
                         </code>
                       </div>
                       <div>
-                        <div className="text-[9px] text-cvh-text-muted uppercase tracking-wider mb-0.5">
-                          Deployment Mode
-                        </div>
-                        <span className="text-[11px] font-semibold text-cvh-accent">
+                        <div className="text-[9px] text-text-muted uppercase tracking-wider mb-0.5 font-display">Deployment Mode</div>
+                        <span className="text-caption font-display font-semibold text-accent-primary">
                           CREATE2 (deploy on first deposit)
                         </span>
                       </div>
                     </div>
 
-                    <div className="bg-cvh-teal/5 border border-cvh-teal/15 rounded-cvh-lg p-3">
-                      <div className="text-[11px] text-cvh-teal font-semibold mb-1">
-                        How it works
-                      </div>
-                      <ul className="space-y-1 text-[10px] text-cvh-text-secondary">
-                        <li>
-                          1. Share this address with your customer
-                        </li>
-                        <li>
-                          2. Customer sends{" "}
-                          {selectedChainObj?.symbol || "ETH"} or tokens to
-                          this address
-                        </li>
-                        <li>
-                          3. Forwarder contract deploys automatically
-                        </li>
-                        <li>
-                          4. Funds are swept to your withdrawal address
-                        </li>
+                    <div className="bg-accent-subtle border border-accent-primary/15 rounded-card p-3">
+                      <div className="text-caption text-accent-primary font-display font-semibold mb-1">How it works</div>
+                      <ul className="space-y-1 text-micro text-text-secondary font-display">
+                        <li>1. Share this address with your customer</li>
+                        <li>2. Customer sends {selectedChainObj?.symbol || "ETH"} or tokens to this address</li>
+                        <li>3. Forwarder contract deploys automatically</li>
+                        <li>4. Funds are swept to your withdrawal address</li>
                       </ul>
                     </div>
 
-                    {/* Test deposit */}
-                    <div className="bg-cvh-bg-tertiary border border-dashed border-cvh-border rounded-cvh-lg p-3 text-center">
-                      <div className="text-[10px] text-cvh-text-muted mb-1.5">
-                        Test with a small deposit
-                      </div>
-                      <button className="text-[10px] text-cvh-accent font-semibold hover:text-cvh-accent-dim transition-colors cursor-pointer">
-                        Send 0.001 {selectedChainObj?.symbol || "ETH"} test
-                        deposit
+                    <div className="bg-surface-elevated border border-dashed border-border-default rounded-card p-3 text-center">
+                      <div className="text-micro text-text-muted font-display mb-1.5">Test with a small deposit</div>
+                      <button className="text-micro text-accent-primary font-display font-semibold hover:text-accent-hover transition-colors duration-fast cursor-pointer">
+                        Send 0.001 {selectedChainObj?.symbol || "ETH"} test deposit
                       </button>
                     </div>
                   </div>
                 </div>
 
-                <JsonArtifact
-                  title="Forwarder Creation Payload"
-                  data={MOCK_FORWARDER.creationJson}
-                  filename="forwarder-creation.json"
-                />
-
-                <JsonArtifact
-                  title="Forwarder Callback"
-                  data={MOCK_FORWARDER.callbackJson}
-                  filename="forwarder-callback.json"
-                />
+                <JsonArtifact title="Forwarder Creation Payload" data={MOCK_FORWARDER.creationJson} filename="forwarder-creation.json" />
+                <JsonArtifact title="Forwarder Callback" data={MOCK_FORWARDER.callbackJson} filename="forwarder-callback.json" />
               </div>
             )}
 
-            {/* Navigation */}
-            <div className="flex justify-between pt-2">
-              <button
-                onClick={prevStep}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-cvh text-[12px] font-semibold text-cvh-text-secondary border border-cvh-border hover:border-cvh-text-secondary hover:text-cvh-text-primary transition-colors cursor-pointer"
-              >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
-                  <polyline points="15 18 9 12 15 6" />
-                </svg>
-                Back
-              </button>
+            <StepNav onPrev={prevStep}>
               {forwarderGenerated && (
-                <button
-                  onClick={nextStep}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-cvh text-[12px] font-semibold bg-cvh-green text-white hover:bg-cvh-green/90 shadow-lg shadow-cvh-green/20 transition-all cursor-pointer"
-                >
-                  Complete Setup
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                  >
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
-                </button>
+                <NavButton onClick={nextStep} variant="success">Complete Setup</NavButton>
               )}
-            </div>
+            </StepNav>
           </div>
         );
 
@@ -1724,151 +1236,39 @@ export default function SetupWizardPage() {
       case 7:
         return (
           <div className="space-y-6">
-            {/* Success header */}
+            {/* Success header with hex checkmark */}
             <div className="text-center py-4">
-              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-cvh-green flex items-center justify-center shadow-lg shadow-cvh-green/20">
-                <svg
-                  width="32"
-                  height="32"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="white"
-                  strokeWidth="3"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <polyline points="20 6 9 17 4 12" />
+              <div className="w-16 h-16 mx-auto mb-4 animate-fade-up">
+                <svg width="64" height="64" viewBox="0 0 64 64">
+                  <polygon points="32,4 58,18 58,46 32,60 6,46 6,18" fill="var(--status-success)" />
+                  <polyline points="22,32 28,38 42,24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </div>
-              <h2 className="text-[22px] font-bold mb-1">Setup Complete!</h2>
-              <p className="text-[12px] text-cvh-text-secondary">
-                Your wallet infrastructure is ready. Here&apos;s a summary of
-                everything that was configured.
+              <h2 className="text-display font-display mb-1">Setup Complete!</h2>
+              <p className="text-body text-text-secondary font-display">
+                Your wallet infrastructure is ready. Here&apos;s a summary of everything that was configured.
               </p>
             </div>
 
-            {/* Summary cards */}
+            {/* Summary cards with hex icons */}
             <div className="grid grid-cols-2 gap-3">
-              {/* Operations Wallet */}
-              <div className="bg-cvh-bg-tertiary border border-cvh-border-subtle rounded-cvh-lg p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="w-8 h-8 rounded-cvh bg-cvh-accent/10 flex items-center justify-center">
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      className="text-cvh-accent"
-                    >
-                      <rect
-                        x="2"
-                        y="7"
-                        width="20"
-                        height="14"
-                        rx="2"
-                        ry="2"
-                      />
-                      <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
-                    </svg>
-                  </div>
-                  <div className="text-[12px] font-semibold">
-                    Operations Wallet
-                  </div>
-                </div>
-                <CopyableText text={MOCK_OPERATIONS_WALLET.address} mono />
-                <div className="mt-2 text-[12px] font-mono text-cvh-green font-semibold">
+              <SummaryCard icon="wallet" label="Operations Wallet" address={MOCK_OPERATIONS_WALLET.address}>
+                <div className="mt-2 text-[12px] font-mono text-status-success font-semibold">
                   {balance.toFixed(4)} {selectedChainObj?.symbol || "ETH"}
                 </div>
-              </div>
-
-              {/* Withdrawal Address */}
-              <div className="bg-cvh-bg-tertiary border border-cvh-border-subtle rounded-cvh-lg p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="w-8 h-8 rounded-cvh bg-cvh-teal/10 flex items-center justify-center">
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      className="text-cvh-teal"
-                    >
-                      <polyline points="22 12 16 12 14 15 10 9 8 12 2 12" />
-                    </svg>
-                  </div>
-                  <div className="text-[12px] font-semibold">
-                    Withdrawal Address
-                  </div>
-                </div>
-                <CopyableText
-                  text={
-                    withdrawalMode === "generate"
-                      ? MOCK_WITHDRAWAL_WALLET.address
-                      : existingAddress || MOCK_WITHDRAWAL_WALLET.address
-                  }
-                  mono
-                />
-              </div>
-
-              {/* Factory Contract */}
-              <div className="bg-cvh-bg-tertiary border border-cvh-border-subtle rounded-cvh-lg p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="w-8 h-8 rounded-cvh bg-cvh-purple/10 flex items-center justify-center">
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      className="text-cvh-purple"
-                    >
-                      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-                    </svg>
-                  </div>
-                  <div className="text-[12px] font-semibold">
-                    Wallet Factory
-                  </div>
-                </div>
-                <CopyableText
-                  text={MOCK_FACTORY_DEPLOYMENT.contractAddress}
-                  mono
-                />
-              </div>
-
-              {/* First Forwarder */}
-              <div className="bg-cvh-bg-tertiary border border-cvh-border-subtle rounded-cvh-lg p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="w-8 h-8 rounded-cvh bg-cvh-green/10 flex items-center justify-center">
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      className="text-cvh-green"
-                    >
-                      <line x1="12" y1="5" x2="12" y2="19" />
-                      <line x1="5" y1="12" x2="19" y2="12" />
-                    </svg>
-                  </div>
-                  <div className="text-[12px] font-semibold">
-                    First Deposit Address
-                  </div>
-                </div>
-                <CopyableText text={MOCK_FORWARDER.address} mono />
-              </div>
+              </SummaryCard>
+              <SummaryCard icon="sweep" label="Withdrawal Address" address={
+                withdrawalMode === "generate"
+                  ? MOCK_WITHDRAWAL_WALLET.address
+                  : existingAddress || MOCK_WITHDRAWAL_WALLET.address
+              } />
+              <SummaryCard icon="factory" label="Wallet Factory" address={MOCK_FACTORY_DEPLOYMENT.contractAddress} />
+              <SummaryCard icon="forwarder" label="First Deposit Address" address={MOCK_FORWARDER.address} />
             </div>
 
             {/* Selected chains */}
-            <div className="bg-cvh-bg-tertiary border border-cvh-border-subtle rounded-cvh-lg p-4">
-              <div className="text-[11px] font-bold uppercase tracking-wider text-cvh-text-muted mb-3">
-                Active Networks
-              </div>
+            <div className="bg-surface-elevated border border-border-default rounded-card p-4">
+              <div className="text-caption font-display font-bold uppercase tracking-wider text-text-muted mb-3">Active Networks</div>
               <div className="flex gap-2 flex-wrap">
                 {selectedChains.map((cid) => {
                   const chain = CHAINS.find((c) => c.id === cid);
@@ -1877,25 +1277,21 @@ export default function SetupWizardPage() {
                     <span
                       key={cid}
                       className={cn(
-                        "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold border",
+                        "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-pill text-caption font-display font-semibold border",
                         cid === primaryChain
-                          ? "bg-cvh-accent/10 border-cvh-accent/30 text-cvh-accent"
-                          : "bg-cvh-bg-elevated border-cvh-border-subtle text-cvh-text-secondary"
+                          ? "bg-accent-subtle border-accent-primary/30 text-accent-primary"
+                          : "bg-surface-card border-border-default text-text-secondary"
                       )}
                     >
                       <span
-                        className={cn(
-                          "w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white bg-gradient-to-br",
-                          chain.color
-                        )}
+                        className="w-5 h-5 flex items-center justify-center text-[10px] font-bold text-accent-primary bg-accent-subtle"
+                        style={{ clipPath: "polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)" }}
                       >
                         {chain.icon}
                       </span>
                       {chain.name}
                       {cid === primaryChain && (
-                        <span className="text-[8px] uppercase opacity-60">
-                          primary
-                        </span>
+                        <span className="text-[8px] uppercase opacity-60">primary</span>
                       )}
                     </span>
                   );
@@ -1904,17 +1300,13 @@ export default function SetupWizardPage() {
             </div>
 
             {/* Download all artifacts */}
-            <div className="bg-cvh-bg-tertiary border border-cvh-border-subtle rounded-cvh-lg p-5 text-center">
-              <div className="text-[13px] font-semibold mb-1">
-                Download All Artifacts
-              </div>
-              <p className="text-[10px] text-cvh-text-muted mb-3">
-                Save all wallet creation payloads, deployment data, ABIs, and
-                callback JSONs as a ZIP bundle.
+            <div className="bg-surface-elevated border border-border-default rounded-card p-5 text-center">
+              <div className="text-body font-display font-semibold mb-1 text-text-primary">Download All Artifacts</div>
+              <p className="text-micro text-text-muted font-display mb-3">
+                Save all wallet creation payloads, deployment data, ABIs, and callback JSONs as a JSON bundle.
               </p>
               <button
                 onClick={() => {
-                  // Create a JSON bundle of all artifacts
                   const bundle = {
                     exportedAt: new Date().toISOString(),
                     operationsWallet: MOCK_OPERATIONS_WALLET.creationJson,
@@ -1922,17 +1314,12 @@ export default function SetupWizardPage() {
                     withdrawalWallet: MOCK_WITHDRAWAL_WALLET.creationJson,
                     factoryDeployment: MOCK_FACTORY_DEPLOYMENT.deploymentJson,
                     factoryAbi: MOCK_FACTORY_DEPLOYMENT.abi,
-                    factoryConstructorArgs:
-                      MOCK_FACTORY_DEPLOYMENT.constructorArgs,
-                    implementationDeployment:
-                      MOCK_IMPL_DEPLOYMENT.deploymentJson,
+                    factoryConstructorArgs: MOCK_FACTORY_DEPLOYMENT.constructorArgs,
+                    implementationDeployment: MOCK_IMPL_DEPLOYMENT.deploymentJson,
                     firstForwarder: MOCK_FORWARDER.creationJson,
                     forwarderCallback: MOCK_FORWARDER.callbackJson,
                   };
-                  const blob = new Blob(
-                    [JSON.stringify(bundle, null, 2)],
-                    { type: "application/json" }
-                  );
+                  const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" });
                   const url = URL.createObjectURL(blob);
                   const a = document.createElement("a");
                   a.href = url;
@@ -1942,16 +1329,9 @@ export default function SetupWizardPage() {
                   document.body.removeChild(a);
                   URL.revokeObjectURL(url);
                 }}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-cvh text-[12px] font-semibold bg-cvh-bg-elevated text-cvh-text-primary border border-cvh-border hover:border-cvh-accent transition-all cursor-pointer"
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-button text-caption font-display font-semibold bg-surface-card text-text-primary border border-border-default hover:border-accent-primary transition-all duration-fast cursor-pointer"
               >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                   <polyline points="7 10 12 15 17 10" />
                   <line x1="12" y1="15" x2="12" y2="3" />
@@ -1964,37 +1344,20 @@ export default function SetupWizardPage() {
             <div className="flex justify-center gap-3 pt-2">
               <a
                 href="/"
-                className="inline-flex items-center gap-2 px-6 py-2.5 rounded-cvh text-[12px] font-semibold bg-cvh-accent text-white hover:bg-cvh-accent-dim shadow-lg shadow-cvh-accent/20 transition-all no-underline"
+                className="inline-flex items-center gap-2 px-6 py-2.5 rounded-button text-caption font-display font-semibold bg-accent-primary text-accent-text hover:bg-accent-hover shadow-glow transition-all duration-fast no-underline"
               >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
-                  <rect x="3" y="3" width="7" height="7" />
-                  <rect x="14" y="3" width="7" height="7" />
-                  <rect x="14" y="14" width="7" height="7" />
-                  <rect x="3" y="14" width="7" height="7" />
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" />
+                  <rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" />
                 </svg>
                 Go to Dashboard
               </a>
               <a
                 href="/addresses"
-                className="inline-flex items-center gap-2 px-6 py-2.5 rounded-cvh text-[12px] font-semibold text-cvh-text-secondary border border-cvh-border hover:border-cvh-accent hover:text-cvh-text-primary transition-all no-underline"
+                className="inline-flex items-center gap-2 px-6 py-2.5 rounded-button text-caption font-display font-semibold text-text-secondary border border-border-default hover:border-accent-primary hover:text-text-primary transition-all duration-fast no-underline"
               >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
-                  <line x1="12" y1="5" x2="12" y2="19" />
-                  <line x1="5" y1="12" x2="19" y2="12" />
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
                 </svg>
                 Generate More Deposit Addresses
               </a>
@@ -2009,24 +1372,14 @@ export default function SetupWizardPage() {
 
   return (
     <div className="max-w-[820px] mx-auto">
-      {/* Step indicator */}
+      {/* Step indicator -- blockchain steps */}
       <div className="mb-8">
-        <StepIndicator
-          steps={STEP_LABELS}
-          currentStep={currentStep}
-        />
+        <StepIndicator steps={STEP_LABELS} currentStep={currentStep} />
       </div>
 
-      {/* Step content with slide animation */}
-      <div className="bg-cvh-bg-secondary border border-cvh-border-subtle rounded-cvh-lg p-6 overflow-hidden">
-        <div
-          key={currentStep}
-          className={cn(
-            "animate-fade-up",
-            slideDirection === "left" && "motion-safe:animate-slide-in-left",
-            slideDirection === "right" && "motion-safe:animate-slide-in-right"
-          )}
-        >
+      {/* Step content */}
+      <div className="bg-surface-card border border-border-default rounded-card p-6 shadow-card overflow-hidden">
+        <div key={currentStep} className="animate-fade-in">
           {renderStep()}
         </div>
       </div>
@@ -2036,21 +1389,15 @@ export default function SetupWizardPage() {
 
 // ─── Utility Components ───────────────────────────────────────
 
-function CopyableText({
-  text,
-  mono = false,
-}: {
-  text: string;
-  mono?: boolean;
-}) {
+function CopyableText({ text, mono = false }: { text: string; mono?: boolean }) {
   const [copied, setCopied] = useState(false);
 
   return (
     <div className="flex items-center gap-1.5 group">
       <code
         className={cn(
-          "text-[11px] break-all leading-relaxed select-all",
-          mono ? "font-mono text-cvh-text-primary" : "text-cvh-text-secondary"
+          "text-caption break-all leading-relaxed select-all",
+          mono ? "font-mono text-text-primary" : "text-text-secondary font-display"
         )}
       >
         {text}
@@ -2062,36 +1409,161 @@ function CopyableText({
           setTimeout(() => setCopied(false), 1500);
         }}
         className={cn(
-          "flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer p-0.5",
-          copied ? "text-cvh-green" : "text-cvh-text-muted hover:text-cvh-accent"
+          "flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-fast cursor-pointer p-0.5",
+          copied ? "text-status-success" : "text-text-muted hover:text-accent-primary"
         )}
         title={copied ? "Copied!" : "Copy"}
       >
         {copied ? (
-          <svg
-            width="12"
-            height="12"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="3"
-          >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
             <polyline points="20 6 9 17 4 12" />
           </svg>
         ) : (
-          <svg
-            width="12"
-            height="12"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-          >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <rect x="9" y="9" width="13" height="13" rx="2" />
             <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
           </svg>
         )}
       </button>
+    </div>
+  );
+}
+
+function StepHeader({ title, subtitle }: { title: string; subtitle: string }) {
+  return (
+    <div className="text-center">
+      <h2 className="text-[18px] font-display font-bold mb-1 text-text-primary">{title}</h2>
+      <p className="text-body text-text-secondary font-display max-w-[480px] mx-auto">{subtitle}</p>
+    </div>
+  );
+}
+
+function StepNav({ onPrev, children }: { onPrev: () => void; children?: React.ReactNode }) {
+  return (
+    <div className="flex justify-between pt-2">
+      <button
+        onClick={onPrev}
+        className="inline-flex items-center gap-2 px-4 py-2 rounded-button text-caption font-display font-semibold text-text-secondary border border-border-default hover:border-accent-primary hover:text-text-primary transition-all duration-fast cursor-pointer"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <polyline points="15 18 9 12 15 6" />
+        </svg>
+        Back
+      </button>
+      {children}
+    </div>
+  );
+}
+
+function NavButton({
+  onClick,
+  disabled = false,
+  direction = "next",
+  variant = "primary",
+  children,
+}: {
+  onClick: () => void;
+  disabled?: boolean;
+  direction?: "next" | "none";
+  variant?: "primary" | "success";
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={cn(
+        "inline-flex items-center gap-2 px-5 py-2.5 rounded-button text-caption font-display font-semibold transition-all duration-fast cursor-pointer",
+        disabled && "!bg-surface-hover !text-text-muted !cursor-not-allowed !shadow-none",
+        !disabled && variant === "primary" && "bg-accent-primary text-accent-text hover:bg-accent-hover shadow-glow",
+        !disabled && variant === "success" && "bg-status-success text-white hover:bg-status-success/90 shadow-glow"
+      )}
+    >
+      {children}
+      {direction === "next" && (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <polyline points="9 18 15 12 9 6" />
+        </svg>
+      )}
+    </button>
+  );
+}
+
+function ModeCard({
+  selected,
+  onClick,
+  icon,
+  title,
+  subtitle,
+}: {
+  selected: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  title: string;
+  subtitle: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "p-4 rounded-card border-2 text-left transition-all duration-fast cursor-pointer",
+        selected
+          ? "border-accent-primary bg-accent-subtle"
+          : "border-border-default bg-surface-elevated hover:border-border-focus"
+      )}
+    >
+      <div className="flex items-center gap-3 mb-2">
+        <div
+          className={cn(
+            "w-8 h-8 flex items-center justify-center border-2 transition-all duration-fast",
+            selected ? "border-accent-primary bg-accent-primary text-white" : "border-border-default text-text-muted"
+          )}
+          style={{ clipPath: "polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)" }}
+        >
+          {icon}
+        </div>
+        <div>
+          <div className="text-body font-display font-semibold text-text-primary">{title}</div>
+          <div className="text-micro text-text-muted font-display">{subtitle}</div>
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function SummaryCard({
+  icon,
+  label,
+  address,
+  children,
+}: {
+  icon: "wallet" | "sweep" | "factory" | "forwarder";
+  label: string;
+  address: string;
+  children?: React.ReactNode;
+}) {
+  const iconSvg = {
+    wallet: <><rect x="2" y="7" width="20" height="14" rx="2" ry="2" /><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" /></>,
+    sweep: <><polyline points="22 12 16 12 14 15 10 9 8 12 2 12" /></>,
+    factory: <><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" /></>,
+    forwarder: <><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></>,
+  };
+
+  return (
+    <div className="bg-surface-elevated border border-border-default rounded-card p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <div
+          className="w-8 h-8 flex items-center justify-center bg-accent-subtle"
+          style={{ clipPath: "polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)" }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-accent-primary">
+            {iconSvg[icon]}
+          </svg>
+        </div>
+        <div className="text-body font-display font-semibold text-text-primary">{label}</div>
+      </div>
+      <CopyableText text={address} mono />
+      {children}
     </div>
   );
 }
