@@ -1,0 +1,242 @@
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  ConflictException,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import axios from 'axios';
+import { PrismaService } from '../prisma/prisma.service';
+import { AuditLogService } from '../common/audit-log.service';
+
+@Injectable()
+export class ClientManagementService {
+  private readonly logger = new Logger(ClientManagementService.name);
+  private readonly keyVaultUrl: string;
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditLog: AuditLogService,
+    private readonly configService: ConfigService,
+  ) {
+    this.keyVaultUrl = this.configService.get<string>(
+      'KEY_VAULT_SERVICE_URL',
+      'http://localhost:3005',
+    );
+  }
+
+  async createClient(
+    data: {
+      name: string;
+      slug: string;
+      tierId?: number;
+      custodyMode?: string;
+      kytEnabled?: boolean;
+      kytLevel?: string;
+    },
+    adminUserId: string,
+    ipAddress?: string,
+  ) {
+    // Check slug uniqueness
+    const existing = await this.prisma.client.findUnique({
+      where: { slug: data.slug },
+    });
+    if (existing) {
+      throw new ConflictException(`Client with slug "${data.slug}" already exists`);
+    }
+
+    const client = await this.prisma.client.create({
+      data: {
+        name: data.name,
+        slug: data.slug,
+        tierId: data.tierId ? BigInt(data.tierId) : null,
+        custodyMode: (data.custodyMode as any) ?? 'full_custody',
+        kytEnabled: data.kytEnabled ?? false,
+        kytLevel: (data.kytLevel as any) ?? 'basic',
+      },
+      include: { tier: true },
+    });
+
+    await this.auditLog.log({
+      adminUserId,
+      action: 'client.create',
+      entityType: 'client',
+      entityId: client.id.toString(),
+      details: { name: data.name, slug: data.slug },
+      ipAddress,
+    });
+
+    this.logger.log(`Client created: ${data.slug} (ID: ${client.id})`);
+
+    return this.serializeClient(client);
+  }
+
+  async listClients(params: {
+    page: number;
+    limit: number;
+    status?: string;
+    search?: string;
+  }) {
+    const skip = (params.page - 1) * params.limit;
+    const where: any = {};
+
+    if (params.status) {
+      where.status = params.status;
+    }
+    if (params.search) {
+      where.OR = [
+        { name: { contains: params.search } },
+        { slug: { contains: params.search } },
+      ];
+    }
+
+    const [items, total] = await Promise.all([
+      this.prisma.client.findMany({
+        where,
+        skip,
+        take: params.limit,
+        include: { tier: true },
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.client.count({ where }),
+    ]);
+
+    return {
+      items: items.map((c) => this.serializeClient(c)),
+      total,
+      page: params.page,
+      limit: params.limit,
+    };
+  }
+
+  async getClient(id: number) {
+    const client = await this.prisma.client.findUnique({
+      where: { id: BigInt(id) },
+      include: { tier: true, overrides: true },
+    });
+    if (!client) {
+      throw new NotFoundException(`Client ${id} not found`);
+    }
+    return this.serializeClient(client);
+  }
+
+  async updateClient(
+    id: number,
+    data: {
+      name?: string;
+      status?: string;
+      tierId?: number;
+      custodyMode?: string;
+      kytEnabled?: boolean;
+      kytLevel?: string;
+    },
+    adminUserId: string,
+    ipAddress?: string,
+  ) {
+    const existing = await this.prisma.client.findUnique({
+      where: { id: BigInt(id) },
+    });
+    if (!existing) {
+      throw new NotFoundException(`Client ${id} not found`);
+    }
+
+    const updateData: any = {};
+    if (data.name !== undefined) updateData.name = data.name;
+    if (data.status !== undefined) updateData.status = data.status;
+    if (data.tierId !== undefined) updateData.tierId = BigInt(data.tierId);
+    if (data.custodyMode !== undefined) updateData.custodyMode = data.custodyMode;
+    if (data.kytEnabled !== undefined) updateData.kytEnabled = data.kytEnabled;
+    if (data.kytLevel !== undefined) updateData.kytLevel = data.kytLevel;
+
+    const client = await this.prisma.client.update({
+      where: { id: BigInt(id) },
+      data: updateData,
+      include: { tier: true },
+    });
+
+    await this.auditLog.log({
+      adminUserId,
+      action: 'client.update',
+      entityType: 'client',
+      entityId: id.toString(),
+      details: data,
+      ipAddress,
+    });
+
+    return this.serializeClient(client);
+  }
+
+  async generateKeys(
+    id: number,
+    adminUserId: string,
+    ipAddress?: string,
+  ) {
+    const client = await this.prisma.client.findUnique({
+      where: { id: BigInt(id) },
+    });
+    if (!client) {
+      throw new NotFoundException(`Client ${id} not found`);
+    }
+
+    try {
+      const response = await axios.post(
+        `${this.keyVaultUrl}/keys/generate`,
+        { clientId: id },
+        { timeout: 30000 },
+      );
+
+      await this.auditLog.log({
+        adminUserId,
+        action: 'client.generate_keys',
+        entityType: 'client',
+        entityId: id.toString(),
+        details: { status: 'success' },
+        ipAddress,
+      });
+
+      return response.data;
+    } catch (err) {
+      this.logger.error(
+        `Key generation failed for client ${id}: ${(err as Error).message}`,
+      );
+
+      await this.auditLog.log({
+        adminUserId,
+        action: 'client.generate_keys',
+        entityType: 'client',
+        entityId: id.toString(),
+        details: { status: 'failed', error: (err as Error).message },
+        ipAddress,
+      });
+
+      throw err;
+    }
+  }
+
+  private serializeClient(client: any) {
+    return {
+      id: client.id.toString(),
+      name: client.name,
+      slug: client.slug,
+      status: client.status,
+      tierId: client.tierId?.toString() ?? null,
+      custodyMode: client.custodyMode,
+      kytEnabled: client.kytEnabled,
+      kytLevel: client.kytLevel,
+      createdAt: client.createdAt,
+      updatedAt: client.updatedAt,
+      tier: client.tier
+        ? {
+            id: client.tier.id.toString(),
+            name: client.tier.name,
+          }
+        : null,
+      overrides: client.overrides?.map((o: any) => ({
+        id: o.id.toString(),
+        overrideKey: o.overrideKey,
+        overrideValue: o.overrideValue,
+        overrideType: o.overrideType,
+      })),
+    };
+  }
+}

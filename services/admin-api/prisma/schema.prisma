@@ -1,0 +1,106 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma-client"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("ADMIN_DATABASE_URL")
+}
+
+model Client {
+  id          BigInt        @id @default(autoincrement())
+  name        String        @db.VarChar(200)
+  slug        String        @unique @db.VarChar(100)
+  status      ClientStatus  @default(active)
+  tierId      BigInt?       @map("tier_id")
+  custodyMode CustodyMode   @default(full_custody) @map("custody_mode")
+  kytEnabled  Boolean       @default(false) @map("kyt_enabled")
+  kytLevel    KytLevel      @default(basic) @map("kyt_level")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  tier      Tier?               @relation(fields: [tierId], references: [id])
+  overrides ClientTierOverride[]
+
+  @@index([tierId], name: "idx_tier")
+  @@index([slug], name: "idx_slug")
+  @@map("clients")
+}
+
+model Tier {
+  id                    BigInt   @id @default(autoincrement())
+  name                  String   @db.VarChar(100)
+  baseTierId            BigInt?  @map("base_tier_id")
+  isPreset              Boolean  @default(true) @map("is_preset")
+  isCustom              Boolean  @default(false) @map("is_custom")
+  globalRateLimit       Int      @default(100) @map("global_rate_limit")
+  endpointRateLimits    Json?    @map("endpoint_rate_limits")
+  maxForwardersPerChain Int      @default(100) @map("max_forwarders_per_chain")
+  maxChains             Int      @default(5) @map("max_chains")
+  maxWebhooks           Int      @default(10) @map("max_webhooks")
+  dailyWithdrawalLimitUsd Float  @default(10000) @map("daily_withdrawal_limit_usd")
+  monitoringMode        String   @default("basic") @map("monitoring_mode") @db.VarChar(50)
+  kytLevel              KytLevel @default(basic) @map("kyt_level")
+  createdAt             DateTime @default(now()) @map("created_at")
+
+  baseTier Tier?    @relation("TierHierarchy", fields: [baseTierId], references: [id])
+  children Tier[]   @relation("TierHierarchy")
+  clients  Client[]
+
+  @@index([baseTierId], name: "idx_base_tier")
+  @@map("tiers")
+}
+
+model ClientTierOverride {
+  id            BigInt       @id @default(autoincrement())
+  clientId      BigInt       @map("client_id")
+  overrideKey   String       @map("override_key") @db.VarChar(100)
+  overrideValue String       @map("override_value") @db.VarChar(500)
+  overrideType  OverrideType @default(string) @map("override_type")
+
+  client Client @relation(fields: [clientId], references: [id])
+
+  @@index([clientId], name: "idx_client")
+  @@map("client_tier_overrides")
+}
+
+model AuditLog {
+  id          BigInt   @id @default(autoincrement())
+  adminUserId String   @map("admin_user_id") @db.VarChar(64)
+  action      String   @db.VarChar(100)
+  entityType  String   @map("entity_type") @db.VarChar(50)
+  entityId    String   @map("entity_id") @db.VarChar(64)
+  details     Json?
+  ipAddress   String?  @map("ip_address") @db.VarChar(45)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([adminUserId], name: "idx_admin_user")
+  @@index([entityType, entityId], name: "idx_entity")
+  @@index([createdAt], name: "idx_created")
+  @@map("audit_logs")
+}
+
+enum ClientStatus {
+  active
+  suspended
+  onboarding
+}
+
+enum CustodyMode {
+  full_custody
+  co_sign
+}
+
+enum KytLevel {
+  basic
+  enhanced
+  full
+}
+
+enum OverrideType {
+  string
+  number
+  boolean
+  json
+}
