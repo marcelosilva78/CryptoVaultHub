@@ -94,19 +94,22 @@ model Wallet {
 }
 
 model DepositAddress {
-  id         BigInt   @id @default(autoincrement())
-  clientId   BigInt   @map("client_id")
-  chainId    Int      @map("chain_id")
-  walletId   BigInt   @map("wallet_id")
-  address    String   @db.VarChar(42)
-  externalId String   @db.VarChar(200) @map("external_id")
-  label      String?  @db.VarChar(200)
-  salt       String   @db.VarChar(66)
-  isDeployed Boolean  @default(false) @map("is_deployed")
-  createdAt  DateTime @default(now()) @map("created_at")
+  id              BigInt   @id @default(autoincrement())
+  clientId        BigInt   @map("client_id")
+  chainId         Int      @map("chain_id")
+  walletId        BigInt   @map("wallet_id")
+  address         String   @db.VarChar(42)
+  externalId      String   @db.VarChar(200) @map("external_id")
+  label           String?  @db.VarChar(200)
+  salt            String   @db.VarChar(66)
+  isDeployed      Boolean  @default(false) @map("is_deployed")
+  addressGroupId  BigInt?  @map("address_group_id")
+  deployTraceId   BigInt?  @map("deploy_trace_id")
+  createdAt       DateTime @default(now()) @map("created_at")
 
   @@unique([clientId, chainId, externalId], name: "uq_client_chain_external")
   @@index([address])
+  @@index([addressGroupId], map: "idx_address_group")
   @@map("deposit_addresses")
 }
 
@@ -176,6 +179,131 @@ model Withdrawal {
 
   @@index([clientId, status])
   @@map("withdrawals")
+}
+
+// ---------------------------------------------------------------------------
+// Flush Operations (cvh_transactions)
+// ---------------------------------------------------------------------------
+
+model FlushOperation {
+  id              BigInt    @id @default(autoincrement())
+  operationUid    String    @unique @db.VarChar(255) @map("operation_uid")
+  clientId        BigInt    @map("client_id")
+  projectId       BigInt    @map("project_id")
+  chainId         Int       @map("chain_id")
+  operationType   String    @db.VarChar(20) @map("operation_type")
+  mode            String    @default("manual") @db.VarChar(20)
+  triggerType     String    @db.VarChar(20) @map("trigger_type")
+  triggeredBy     BigInt?   @map("triggered_by")
+  isDryRun        Boolean   @default(false) @map("is_dry_run")
+  status          String    @default("pending") @db.VarChar(30)
+  tokenId         BigInt?   @map("token_id")
+  walletId        BigInt    @map("wallet_id")
+  totalAddresses  Int       @default(0) @map("total_addresses")
+  succeededCount  Int       @default(0) @map("succeeded_count")
+  failedCount     Int       @default(0) @map("failed_count")
+  totalAmount     Decimal   @default(0) @db.Decimal(78, 0) @map("total_amount")
+  succeededAmount Decimal   @default(0) @db.Decimal(78, 0) @map("succeeded_amount")
+  gasCostTotal    Decimal   @default(0) @db.Decimal(78, 0) @map("gas_cost_total")
+  txHash          String?   @db.VarChar(66) @map("tx_hash")
+  batchTxHashes   Json?     @map("batch_tx_hashes")
+  errorMessage    String?   @db.Text @map("error_message")
+  dryRunResult    Json?     @map("dry_run_result")
+  filtersApplied  Json?     @map("filters_applied")
+  startedAt       DateTime? @map("started_at")
+  completedAt     DateTime? @map("completed_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  items           FlushItem[]
+
+  @@index([clientId, projectId, status, createdAt], map: "idx_client_project")
+  @@index([chainId, operationType, status], map: "idx_chain_type")
+  @@map("flush_operations")
+}
+
+model FlushItem {
+  id               BigInt    @id @default(autoincrement())
+  operationId      BigInt    @map("operation_id")
+  depositAddressId BigInt    @map("deposit_address_id")
+  address          String    @db.VarChar(42)
+  status           String    @default("pending") @db.VarChar(20)
+  tokenId          BigInt?   @map("token_id")
+  amountBefore     Decimal?  @db.Decimal(78, 0) @map("amount_before")
+  amountFlushed    Decimal?  @db.Decimal(78, 0) @map("amount_flushed")
+  txHash           String?   @db.VarChar(66) @map("tx_hash")
+  gasCost          Decimal?  @db.Decimal(78, 0) @map("gas_cost")
+  errorMessage     String?   @db.Text @map("error_message")
+  processedAt      DateTime? @map("processed_at")
+
+  operation        FlushOperation @relation(fields: [operationId], references: [id], onDelete: Cascade)
+
+  @@index([operationId, status], map: "idx_operation")
+  @@index([depositAddressId], map: "idx_address")
+  @@map("flush_items")
+}
+
+// ---------------------------------------------------------------------------
+// Deploy Traces (cvh_transactions)
+// ---------------------------------------------------------------------------
+
+model DeployTrace {
+  id              BigInt   @id @default(autoincrement())
+  clientId        BigInt   @map("client_id")
+  projectId       BigInt   @map("project_id")
+  chainId         Int      @map("chain_id")
+  resourceType    String   @db.VarChar(30) @map("resource_type")
+  resourceId      BigInt   @map("resource_id")
+  address         String   @db.VarChar(42)
+  txHash          String   @db.VarChar(66) @map("tx_hash")
+  blockNumber     BigInt   @map("block_number")
+  blockHash       String?  @db.VarChar(66) @map("block_hash")
+  blockTimestamp  BigInt?  @map("block_timestamp")
+  deployerAddress String?  @db.VarChar(42) @map("deployer_address")
+  factoryAddress  String?  @db.VarChar(42) @map("factory_address")
+  salt            String?  @db.VarChar(66)
+  initCodeHash    String?  @db.VarChar(66) @map("init_code_hash")
+  gasUsed         BigInt?  @map("gas_used")
+  gasPrice        BigInt?  @map("gas_price")
+  gasCostWei      Decimal? @db.Decimal(78, 0) @map("gas_cost_wei")
+  rpcProviderId   BigInt?  @map("rpc_provider_id")
+  rpcNodeId       BigInt?  @map("rpc_node_id")
+  explorerUrl     String   @db.VarChar(512) @map("explorer_url")
+  correlationId   String?  @db.VarChar(255) @map("correlation_id")
+  triggeredBy     BigInt?  @map("triggered_by")
+  triggerType     String   @default("system") @db.VarChar(20) @map("trigger_type")
+  eventLogs       Json?    @map("event_logs")
+  metadata        Json?
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([clientId, projectId, resourceType], map: "idx_client_project_resource")
+  @@index([chainId, txHash], map: "idx_chain_tx")
+  @@index([address], map: "idx_deploy_address")
+  @@index([correlationId], map: "idx_correlation")
+  @@map("deploy_traces")
+}
+
+// ---------------------------------------------------------------------------
+// Address Groups (cvh_wallets)
+// ---------------------------------------------------------------------------
+
+model AddressGroup {
+  id              BigInt   @id @default(autoincrement())
+  groupUid        String   @unique @db.VarChar(255) @map("group_uid")
+  clientId        BigInt   @map("client_id")
+  projectId       BigInt   @map("project_id")
+  externalId      String?  @db.VarChar(255) @map("external_id")
+  label           String?  @db.VarChar(255)
+  derivationSalt  String   @db.VarChar(66) @map("derivation_salt")
+  computedAddress String   @db.VarChar(42) @map("computed_address")
+  status          String   @default("active") @db.VarChar(20)
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@unique([clientId, derivationSalt], name: "uq_client_salt")
+  @@index([clientId, projectId], map: "idx_group_client_project")
+  @@index([computedAddress], map: "idx_group_address")
+  @@map("address_groups")
 }
 
 // ---------------------------------------------------------------------------

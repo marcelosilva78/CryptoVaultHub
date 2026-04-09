@@ -8,6 +8,7 @@ import { SweepModule } from './sweep/sweep.module';
 import { ForwarderDeployModule } from './forwarder-deploy/forwarder-deploy.module';
 import { GasTankModule } from './gas-tank/gas-tank.module';
 import { SanctionsListSyncModule } from './sanctions-list-sync/sanctions-list-sync.module';
+import { ExportModule } from './export/export.module';
 import { HealthController } from './common/health.controller';
 
 @Module({
@@ -33,6 +34,7 @@ import { HealthController } from './common/health.controller';
     ForwarderDeployModule,
     GasTankModule,
     SanctionsListSyncModule,
+    ExportModule,
   ],
   controllers: [HealthController],
 })

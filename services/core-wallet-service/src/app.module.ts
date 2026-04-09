@@ -11,6 +11,9 @@ import { DepositAddressModule } from './deposit-address/deposit-address.module';
 import { WithdrawalModule } from './withdrawal/withdrawal.module';
 import { BalanceModule } from './balance/balance.module';
 import { ComplianceModule } from './compliance/compliance.module';
+import { FlushModule } from './flush/flush.module';
+import { DeployTraceModule } from './deploy-trace/deploy-trace.module';
+import { AddressGroupModule } from './address-group/address-group.module';
 import { InternalServiceGuard } from './common/guards/internal-service.guard';
 import { HealthController } from './common/health.controller';
 
@@ -30,6 +33,9 @@ import { HealthController } from './common/health.controller';
     WithdrawalModule,
     BalanceModule,
     ComplianceModule,
+    FlushModule,
+    DeployTraceModule,
+    AddressGroupModule,
   ],
   controllers: [HealthController],
   providers: [

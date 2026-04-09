@@ -13,6 +13,8 @@ import {
   ShieldCheck,
   Wand2,
   LogOut,
+  Zap,
+  Link2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useClientAuth } from "@/lib/auth-context";
@@ -43,6 +45,8 @@ const navSections: NavSection[] = [
     items: [
       { label: "Deposits", href: "/deposits", icon: ArrowDownToLine, badge: 12 },
       { label: "Withdrawals", href: "/withdrawals", icon: ArrowUpFromLine },
+      { label: "Flush", href: "/flush", icon: Zap },
+      { label: "Address Groups", href: "/address-groups", icon: Link2 },
     ],
   },
   {

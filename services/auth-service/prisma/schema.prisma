@@ -78,3 +78,53 @@ enum ClientRole {
   admin
   viewer
 }
+
+// ---------------------------------------------------------------------------
+// Impersonation
+// ---------------------------------------------------------------------------
+
+model ImpersonationSession {
+  id              BigInt    @id @default(autoincrement())
+  adminUserId     BigInt    @map("admin_user_id")
+  targetClientId  BigInt    @map("target_client_id")
+  targetProjectId BigInt?   @map("target_project_id")
+  mode            ImpersonationMode @default(read_only)
+  startedAt       DateTime  @default(now()) @map("started_at")
+  endedAt         DateTime? @map("ended_at")
+  ipAddress       String?   @db.VarChar(45) @map("ip_address")
+  userAgent       String?   @db.VarChar(500) @map("user_agent")
+
+  auditEntries ImpersonationAudit[]
+
+  @@index([adminUserId, startedAt(sort: Desc)], name: "idx_admin")
+  @@index([targetClientId, targetProjectId], name: "idx_target")
+  @@map("impersonation_sessions")
+}
+
+model ImpersonationAudit {
+  id              BigInt    @id @default(autoincrement())
+  sessionId       BigInt    @map("session_id")
+  adminUserId     BigInt    @map("admin_user_id")
+  targetClientId  BigInt    @map("target_client_id")
+  targetProjectId BigInt?   @map("target_project_id")
+  action          String    @db.VarChar(200)
+  resourceType    String?   @db.VarChar(100) @map("resource_type")
+  resourceId      String?   @db.VarChar(100) @map("resource_id")
+  requestMethod   String    @db.VarChar(10) @map("request_method")
+  requestPath     String    @db.VarChar(500) @map("request_path")
+  requestBodyHash String?   @db.VarChar(64) @map("request_body_hash")
+  ipAddress       String?   @db.VarChar(45) @map("ip_address")
+  timestamp       DateTime  @default(now())
+
+  session ImpersonationSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId], name: "idx_session")
+  @@index([adminUserId, timestamp(sort: Desc)], name: "idx_admin_time")
+  @@map("impersonation_audit")
+}
+
+enum ImpersonationMode {
+  read_only
+  support
+  full_operational
+}
