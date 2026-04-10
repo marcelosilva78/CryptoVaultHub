@@ -11,7 +11,7 @@ import {
 } from "@/components/transaction-filters";
 import type { TransactionFilters } from "@/components/transaction-filters";
 import { StatCard } from "@/components/stat-card";
-import { JsonViewer } from "@/components/json-viewer";
+import { JsonViewerV2 } from "@/components/json-viewer-v2";
 import { transactions, transactionSummary } from "@/lib/mock-data";
 import type { Transaction } from "@/lib/mock-data";
 
@@ -392,7 +392,7 @@ function TransactionRow({
                 <div className="text-micro font-display font-semibold uppercase tracking-[0.08em] text-text-muted mb-1.5">
                   Raw Transaction Data
                 </div>
-                <JsonViewer data={tx.rawJson} maxHeight="200px" />
+                <JsonViewerV2 data={tx.rawJson} maxHeight="200px" />
               </div>
 
               <div

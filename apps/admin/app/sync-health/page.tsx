@@ -7,11 +7,9 @@ import {
   ChevronRight,
   RotateCcw,
   AlertTriangle,
-  CheckCircle,
-  XCircle,
-  Clock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { StatusBadge } from "@/components/status-badge";
 
 /* ── Types ── */
 interface ChainHealth {
@@ -142,38 +140,6 @@ const mockGaps: SyncGap[] = [
     resolvedAt: null,
   },
 ];
-
-/* ── Status Badge ── */
-function StatusBadge({ status }: { status: string }) {
-  const config: Record<string, { bg: string; text: string; icon: React.ElementType }> = {
-    healthy: { bg: "bg-status-success/10", text: "text-status-success", icon: CheckCircle },
-    degraded: { bg: "bg-status-warning/10", text: "text-status-warning", icon: AlertTriangle },
-    critical: { bg: "bg-status-error/10", text: "text-status-error", icon: XCircle },
-    error: { bg: "bg-status-error/10", text: "text-status-error", icon: XCircle },
-    synced: { bg: "bg-status-success/10", text: "text-status-success", icon: CheckCircle },
-    syncing: { bg: "bg-accent-primary/10", text: "text-accent-primary", icon: Clock },
-    detected: { bg: "bg-status-warning/10", text: "text-status-warning", icon: AlertTriangle },
-    backfilling: { bg: "bg-accent-primary/10", text: "text-accent-primary", icon: RefreshCw },
-    resolved: { bg: "bg-status-success/10", text: "text-status-success", icon: CheckCircle },
-    failed: { bg: "bg-status-error/10", text: "text-status-error", icon: XCircle },
-  };
-
-  const cfg = config[status] ?? config.error;
-  const Icon = cfg.icon;
-
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1 px-2 py-0.5 rounded-badge text-[11px] font-semibold font-display uppercase tracking-wider",
-        cfg.bg,
-        cfg.text
-      )}
-    >
-      <Icon className="w-3 h-3" />
-      {status}
-    </span>
-  );
-}
 
 /* ── Gap Row ── */
 function GapRow({

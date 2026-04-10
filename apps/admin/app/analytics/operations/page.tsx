@@ -4,6 +4,7 @@ import { KpiCard } from "@/components/analytics/kpi-card";
 import { AreaChartCard } from "@/components/analytics/area-chart-card";
 import { AnalyticsDataTable } from "@/components/analytics/analytics-data-table";
 import { AnalyticsFilterBar } from "@/components/analytics/filter-bar";
+import { StatusBadge } from "@/components/status-badge";
 import {
   analyticsSweepPerformance,
   analyticsWebhookDelivery,
@@ -13,27 +14,6 @@ import {
   analyticsQueueDepths,
   analyticsRpcHealth,
 } from "@/lib/mock-data";
-
-function StatusBadge({ status }: { status: "healthy" | "degraded" | "down" }) {
-  const styles = {
-    healthy: "bg-status-success-subtle text-status-success",
-    degraded: "bg-status-warning-subtle text-status-warning",
-    down: "bg-status-error-subtle text-status-error",
-  };
-  const dotStyles = {
-    healthy: "bg-status-success",
-    degraded: "bg-status-warning",
-    down: "bg-status-error",
-  };
-  return (
-    <span
-      className={`inline-flex items-center gap-1 rounded-badge px-2 py-0.5 font-display text-micro font-semibold ${styles[status]}`}
-    >
-      <span className={`h-1.5 w-1.5 rounded-pill ${dotStyles[status]}`} />
-      {status}
-    </span>
-  );
-}
 
 function MiniSparkline({ data, color }: { data: number[]; color: string }) {
   const max = Math.max(...data);
@@ -155,7 +135,7 @@ export default function OperationsAnalyticsPage() {
               <span className="w-24 font-display text-body font-medium text-text-primary">
                 {rpc.chain}
               </span>
-              <StatusBadge status={rpc.status} />
+              <StatusBadge status={rpc.status === "down" ? "error" : rpc.status} label={rpc.status} />
               <MiniSparkline
                 data={rpc.latency}
                 color={

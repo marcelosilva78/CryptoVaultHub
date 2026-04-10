@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/badge";
-import { JsonViewer } from "@/components/json-viewer";
+import { JsonViewerV2 } from "@/components/json-viewer-v2";
 import { ConfirmationBar } from "@/components/confirmation-bar";
 import type { Transaction } from "@/lib/mock-data";
 
@@ -230,7 +230,7 @@ export function TransactionModal({ transaction, onClose }: TransactionModalProps
 
           {/* Section: Raw JSON */}
           <CollapsibleSection title="Full Transaction JSON" open={sections.json} onToggle={() => toggleSection("json")}>
-            <JsonViewer data={fullTxData} maxHeight="300px" />
+            <JsonViewerV2 data={fullTxData} maxHeight="300px" />
           </CollapsibleSection>
         </div>
 

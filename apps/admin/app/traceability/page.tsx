@@ -10,7 +10,7 @@ import { TransactionFilters, defaultFilters } from "@/components/transaction-fil
 import type { TransactionFilterState } from "@/components/transaction-filters";
 import { TransactionModal } from "@/components/transaction-modal";
 import type { TransactionDetail } from "@/components/transaction-modal";
-import { JsonViewer } from "@/components/json-viewer";
+import { JsonViewerV2 } from "@/components/json-viewer-v2";
 import { cn } from "@/lib/utils";
 import { shortenAddress } from "@/lib/utils";
 
@@ -939,7 +939,7 @@ export default function TraceabilityPage() {
                     {isExpanded && (
                       <div className="px-12 pb-4 animate-fade-in">
                         <div className="text-micro font-display text-text-muted uppercase tracking-[0.06em] mb-2">Full Transaction JSON</div>
-                        <JsonViewer data={tx.detail} maxHeight="300px" />
+                        <JsonViewerV2 data={tx.detail} maxHeight="300px" />
                         <button
                           onClick={() => setModalTx(tx.detail)}
                           className="mt-3 bg-accent-primary text-accent-text text-caption font-display font-semibold px-4 py-1.5 rounded-button hover:bg-accent-hover transition-colors duration-fast"

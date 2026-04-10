@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { StatusBadge } from "@/components/status-badge";
+import { CopyButton } from "@/components/copy-button";
 
 // ─── Mock Data ──────────────────────────────────────────────────────────────────
 
@@ -494,94 +496,14 @@ function ChainHexAvatar({ abbr }: { abbr: string }) {
   );
 }
 
-// ─── Status Badge ───────────────────────────────────────────────────────────────
+// ─── Status mapping for dashboard transactions ─────────────────────────────────
 
-function StatusBadge({ status }: { status: "success" | "pending" | "failed" }) {
-  const styles = {
-    success:
-      "bg-status-success-subtle text-status-success",
-    pending:
-      "bg-status-warning-subtle text-status-warning",
-    failed:
-      "bg-status-error-subtle text-status-error",
-  };
+const dashboardStatusMap: Record<string, string> = {
+  success: "confirmed",
+  pending: "pending",
+  failed: "failed",
+};
 
-  const labels = {
-    success: "Confirmed",
-    pending: "Pending",
-    failed: "Failed",
-  };
-
-  return (
-    <span
-      className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-badge font-display text-[10px] font-semibold ${styles[status]}`}
-    >
-      <span
-        className={`w-1.5 h-1.5 rounded-full ${
-          status === "success"
-            ? "bg-status-success"
-            : status === "pending"
-            ? "bg-status-warning animate-pulse-gold"
-            : "bg-status-error"
-        }`}
-      />
-      {labels[status]}
-    </span>
-  );
-}
-
-// ─── Copy Button ────────────────────────────────────────────────────────────────
-
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Fallback silently
-    }
-  };
-
-  return (
-    <button
-      onClick={handleCopy}
-      className="ml-1 text-text-muted hover:text-accent-primary transition-colors duration-fast"
-      title="Copy"
-    >
-      {copied ? (
-        <svg
-          width="12"
-          height="12"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <polyline points="20 6 9 17 4 12" />
-        </svg>
-      ) : (
-        <svg
-          width="12"
-          height="12"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-          <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
-        </svg>
-      )}
-    </button>
-  );
-}
 
 // ─── Dashboard Page ─────────────────────────────────────────────────────────────
 
@@ -720,7 +642,7 @@ export default function DashboardPage() {
                       <span className="font-mono text-code text-text-secondary">
                         {truncateAddress(tx.hash)}
                       </span>
-                      <CopyButton text={tx.hash} />
+                      <CopyButton value={tx.hash} size="xs" />
                     </span>
                   </td>
 
@@ -766,7 +688,7 @@ export default function DashboardPage() {
 
                   {/* Status */}
                   <td className="px-4 py-3 text-center">
-                    <StatusBadge status={tx.status} />
+                    <StatusBadge status={dashboardStatusMap[tx.status] || tx.status} />
                   </td>
 
                   {/* Time */}

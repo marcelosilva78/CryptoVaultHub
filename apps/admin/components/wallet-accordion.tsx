@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { Copy, Check, Eye, EyeOff, ExternalLink, ChevronDown, Download, AlertTriangle } from "lucide-react";
+import { useState } from "react";
+import { Eye, EyeOff, ExternalLink, ChevronDown, AlertTriangle } from "lucide-react";
 import { Badge } from "@/components/badge";
-import { JsonViewer } from "@/components/json-viewer";
+import { JsonViewerV2 } from "@/components/json-viewer-v2";
+import { CopyButton } from "@/components/copy-button";
 import { cn, shortenAddress } from "@/lib/utils";
 
 // ─── Types ─────────────────────────────────────────────────
@@ -81,29 +82,6 @@ function HexAvatar({ chain, size = 32 }: { chain: string; size?: number }) {
   );
 }
 
-// ─── Copy Button ───────────────────────────────────────────
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = useCallback(async () => {
-    await navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }, [text]);
-
-  return (
-    <button
-      onClick={(e) => {
-        e.stopPropagation();
-        handleCopy();
-      }}
-      className="text-text-muted hover:text-text-primary transition-colors duration-fast p-0.5"
-      title="Copy"
-    >
-      {copied ? <Check className="w-3 h-3 text-status-success" /> : <Copy className="w-3 h-3" />}
-    </button>
-  );
-}
 
 // ─── Private Key Reveal ────────────────────────────────────
 function PrivateKeyReveal({ encryptedKey }: { encryptedKey: string }) {
@@ -173,7 +151,7 @@ function PrivateKeyReveal({ encryptedKey }: { encryptedKey: string }) {
           <div className="bg-surface-page border border-border-subtle rounded-input p-2.5 font-mono text-[10px] text-status-error break-all flex-1 leading-relaxed">
             {encryptedKey}
           </div>
-          <CopyButton text={encryptedKey} />
+          <CopyButton value={encryptedKey} />
         </div>
       ) : (
         <div className="bg-surface-page border border-border-subtle rounded-input p-2.5 font-mono text-[10px] text-text-muted text-center select-none"
@@ -214,7 +192,7 @@ function WalletRow({ wallet, index }: { wallet: WalletData; index: number }) {
           <span className="font-mono text-code text-text-primary">
             {shortenAddress(wallet.address, 6)}
           </span>
-          <CopyButton text={wallet.address} />
+          <CopyButton value={wallet.address} />
         </div>
 
         {/* LED status indicator */}
@@ -274,7 +252,7 @@ function WalletRow({ wallet, index }: { wallet: WalletData; index: number }) {
                 <SectionLabel>Full Wallet Address</SectionLabel>
                 <div className="flex items-center gap-1.5">
                   <span className="font-mono text-caption text-text-primary break-all">{wallet.address}</span>
-                  <CopyButton text={wallet.address} />
+                  <CopyButton value={wallet.address} />
                 </div>
               </div>
 
@@ -286,7 +264,7 @@ function WalletRow({ wallet, index }: { wallet: WalletData; index: number }) {
                 <SectionLabel>Owner Address</SectionLabel>
                 <div className="flex items-center gap-1.5">
                   <span className="font-mono text-caption text-text-primary break-all">{wallet.ownerAddress}</span>
-                  <CopyButton text={wallet.ownerAddress} />
+                  <CopyButton value={wallet.ownerAddress} />
                 </div>
               </div>
 
@@ -301,14 +279,14 @@ function WalletRow({ wallet, index }: { wallet: WalletData; index: number }) {
                     <span className="text-micro font-display text-text-muted">Contract Address</span>
                     <div className="flex items-center gap-1">
                       <span className="font-mono text-[10px] text-accent-primary">{shortenAddress(wallet.contractAddress, 8)}</span>
-                      <CopyButton text={wallet.contractAddress} />
+                      <CopyButton value={wallet.contractAddress} />
                     </div>
                   </div>
                   <div className="flex items-start justify-between">
                     <span className="text-micro font-display text-text-muted">Deployment Tx</span>
                     <div className="flex items-center gap-1">
                       <span className="font-mono text-[10px] text-text-secondary">{shortenAddress(wallet.deploymentTxHash, 8)}</span>
-                      <CopyButton text={wallet.deploymentTxHash} />
+                      <CopyButton value={wallet.deploymentTxHash} />
                       <ExternalLink className="w-3 h-3 text-text-muted hover:text-accent-primary transition-colors duration-fast cursor-pointer" />
                     </div>
                   </div>
@@ -349,7 +327,7 @@ function WalletRow({ wallet, index }: { wallet: WalletData; index: number }) {
                 style={{ animationDelay: "200ms" }}
               >
                 <SectionLabel>Creation Payload</SectionLabel>
-                <JsonViewer data={wallet.creationJson} maxHeight="180px" showDownload />
+                <JsonViewerV2 data={wallet.creationJson} maxHeight="180px" showDownload />
               </div>
 
               {/* Callback data */}
@@ -358,7 +336,7 @@ function WalletRow({ wallet, index }: { wallet: WalletData; index: number }) {
                 style={{ animationDelay: "250ms" }}
               >
                 <SectionLabel>Callback Data</SectionLabel>
-                <JsonViewer data={wallet.callbackData} maxHeight="120px" />
+                <JsonViewerV2 data={wallet.callbackData} maxHeight="120px" />
               </div>
 
               {/* Linked forwarders */}
@@ -382,7 +360,7 @@ function WalletRow({ wallet, index }: { wallet: WalletData; index: number }) {
                       <div className="flex items-center gap-1.5">
                         <HexAvatar chain={wallet.chain} size={18} />
                         <span className="font-mono text-text-primary">{shortenAddress(fw.address, 6)}</span>
-                        <CopyButton text={fw.address} />
+                        <CopyButton value={fw.address} />
                       </div>
                       <span className="font-mono text-text-secondary">{fw.balance}</span>
                       <span className="text-text-muted font-display">{fw.lastDeposit}</span>

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { DataTable } from "@/components/data-table";
 import { Badge } from "@/components/badge";
-import { JsonViewer } from "@/components/json-viewer";
+import { JsonViewerV2 } from "@/components/json-viewer-v2";
 import { useWebhooks } from "@cvh/api-client/hooks";
 import {
   webhookConfig,
@@ -131,7 +131,7 @@ export default function WebhooksPage() {
             Copy
           </button>
         </div>
-        <JsonViewer data={samplePayload} maxHeight="200px" />
+        <JsonViewerV2 data={samplePayload} maxHeight="200px" />
       </div>
 
       {/* Delivery Log */}
@@ -224,7 +224,7 @@ export default function WebhooksPage() {
       {/* Payload viewer */}
       {showPayload && (
         <div className="mt-2 animate-fade-in">
-          <JsonViewer data={samplePayload} maxHeight="250px" />
+          <JsonViewerV2 data={samplePayload} maxHeight="250px" />
         </div>
       )}
     </div>

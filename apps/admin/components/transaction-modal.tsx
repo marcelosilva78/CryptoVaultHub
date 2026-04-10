@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { X, ChevronDown, Copy, Check } from "lucide-react";
-import { JsonViewer } from "@/components/json-viewer";
+import { JsonViewerV2 } from "@/components/json-viewer-v2";
 import { Badge } from "@/components/badge";
 import { cn, shortenAddress } from "@/lib/utils";
 
@@ -304,7 +304,7 @@ export function TransactionModal({ transaction, onClose }: TransactionModalProps
                 {tx.decodedInput && (
                   <div>
                     <div className="text-micro font-display text-text-muted uppercase tracking-[0.06em] mb-1.5">Decoded</div>
-                    <JsonViewer data={tx.decodedInput} maxHeight="200px" />
+                    <JsonViewerV2 data={tx.decodedInput} maxHeight="200px" />
                   </div>
                 )}
               </div>
@@ -336,7 +336,7 @@ export function TransactionModal({ transaction, onClose }: TransactionModalProps
                       {log.decoded && (
                         <div className="mt-2">
                           <div className="text-text-muted font-display uppercase tracking-[0.06em] mb-1">Decoded Args</div>
-                          <JsonViewer data={log.decoded.args} maxHeight="120px" showLineNumbers={false} />
+                          <JsonViewerV2 data={log.decoded.args} maxHeight="120px" />
                         </div>
                       )}
                     </div>
@@ -372,7 +372,7 @@ export function TransactionModal({ transaction, onClose }: TransactionModalProps
 
           {/* Full Transaction JSON */}
           <CollapsibleSection title="Full Transaction JSON">
-            <JsonViewer data={tx.rawTransaction} maxHeight="500px" showDownload />
+            <JsonViewerV2 data={tx.rawTransaction} maxHeight="500px" showDownload />
           </CollapsibleSection>
         </div>
       </div>

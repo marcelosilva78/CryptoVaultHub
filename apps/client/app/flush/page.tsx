@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { StatCard } from "@/components/stat-card";
-import { Badge } from "@/components/badge";
+import { StatusBadge } from "@/components/status-badge";
 import { DataTable } from "@/components/data-table";
 import { FlushModal } from "@/components/flush-modal";
 import { useFlushOperations } from "@cvh/api-client/hooks";
@@ -107,33 +107,6 @@ const mockOperations = [
   },
 ];
 
-function getStatusBadge(status: string) {
-  switch (status) {
-    case "pending":
-    case "queued":
-      return <Badge variant="warning">{status}</Badge>;
-    case "processing":
-      return (
-        <Badge variant="warning" dot>
-          processing
-        </Badge>
-      );
-    case "succeeded":
-      return (
-        <Badge variant="success" dot>
-          succeeded
-        </Badge>
-      );
-    case "failed":
-      return <Badge variant="error">{status}</Badge>;
-    case "partially_succeeded":
-      return <Badge variant="warning">partial</Badge>;
-    case "canceled":
-      return <Badge variant="neutral">{status}</Badge>;
-    default:
-      return <Badge variant="neutral">{status}</Badge>;
-  }
-}
 
 export default function FlushPage() {
   const [showModal, setShowModal] = useState(false);
@@ -254,7 +227,7 @@ export default function FlushPage() {
               {op.gasCostTotal}
             </td>
             <td className="px-[14px] py-2.5 border-b border-border-subtle">
-              {getStatusBadge(op.status)}
+              <StatusBadge status={op.status} />
             </td>
           </tr>
         ))}
