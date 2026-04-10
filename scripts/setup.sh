@@ -76,6 +76,52 @@ ok "Docker Compose installed: $(docker compose version | head -1)"
 command -v mysql >/dev/null 2>&1 || warn "mysql client not found — migrations will need to be run manually"
 MYSQL_CLIENT_AVAILABLE=$(command -v mysql >/dev/null 2>&1 && echo true || echo false)
 
+# ─── Configure Docker Data Root on /docker ──────────────────────────────────
+header "Docker Storage Configuration (/docker)"
+
+if [ -d "/docker" ]; then
+  ok "/docker mount point exists"
+else
+  warn "/docker does not exist — will use default Docker storage"
+  warn "For production, mount an LVM volume at /docker"
+fi
+
+if [ -d "/docker" ]; then
+  # Create directory structure on the LVM volume
+  log "Creating directory structure on /docker..."
+  sudo mkdir -p /docker/lib                    # Docker daemon data-root (images, containers, overlays)
+  sudo mkdir -p /docker/data/redis             # Redis AOF persistence
+  sudo mkdir -p /docker/data/prometheus        # Prometheus TSDB
+  sudo mkdir -p /docker/data/grafana           # Grafana dashboards + plugins
+  sudo mkdir -p /docker/data/traefik/letsencrypt # SSL certificates
+  sudo mkdir -p /docker/data/exports           # Export file storage
+  sudo mkdir -p /docker/data/posthog-postgres  # PostHog PostgreSQL
+  sudo mkdir -p /docker/data/clickhouse        # ClickHouse analytics
+  sudo chown -R 472:472 /docker/data/grafana   # Grafana runs as UID 472
+  sudo chown -R 65534:65534 /docker/data/prometheus  # Prometheus runs as nobody
+  ok "Directory structure created on /docker"
+
+  # Configure Docker daemon to use /docker/lib as data-root
+  DAEMON_JSON="/etc/docker/daemon.json"
+  if [ -f "$DAEMON_JSON" ]; then
+    if grep -q "/docker/lib" "$DAEMON_JSON" 2>/dev/null; then
+      ok "Docker data-root already set to /docker/lib"
+    else
+      warn "Existing $DAEMON_JSON found — backing up and updating"
+      sudo cp "$DAEMON_JSON" "${DAEMON_JSON}.backup.$(date +%Y%m%d%H%M%S)"
+      sudo cp infra/docker/daemon.json "$DAEMON_JSON"
+      log "Restarting Docker daemon to apply new data-root..."
+      sudo systemctl restart docker
+      ok "Docker data-root set to /docker/lib"
+    fi
+  else
+    sudo cp infra/docker/daemon.json "$DAEMON_JSON"
+    log "Restarting Docker daemon to apply new data-root..."
+    sudo systemctl restart docker
+    ok "Docker daemon configured with data-root=/docker/lib"
+  fi
+fi
+
 # ─── Secret Generation Helpers ───────────────────────────────────────────────
 generate_secret()  { openssl rand -base64 "$1" 2>/dev/null | tr -d '/+=' | head -c "$1"; }
 generate_hex()     { openssl rand -hex "$1" 2>/dev/null; }

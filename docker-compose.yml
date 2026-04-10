@@ -46,7 +46,7 @@ services:
       - "443:443"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - traefik-letsencrypt:/letsencrypt
+      - /docker/data/traefik/letsencrypt:/letsencrypt
     networks:
       - public-net
       - monitoring-net
@@ -65,7 +65,7 @@ services:
     image: redis:7-alpine
     command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru --requirepass ${REDIS_PASSWORD}
     volumes:
-      - redis-data:/data
+      - /docker/data/redis:/data
     networks:
       - internal-net
     restart: unless-stopped
@@ -111,7 +111,7 @@ services:
     image: prom/prometheus:v2.50.0
     volumes:
       - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
-      - prometheus-data:/prometheus
+      - /docker/data/prometheus:/prometheus
     networks:
       - monitoring-net
       - internal-net
@@ -125,7 +125,7 @@ services:
   grafana:
     image: grafana/grafana:10.3.0
     volumes:
-      - grafana-data:/var/lib/grafana
+      - /docker/data/grafana:/var/lib/grafana
       - ./infra/grafana/provisioning:/etc/grafana/provisioning
     environment:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-changeme}
@@ -415,7 +415,7 @@ services:
       - INTERNAL_SERVICE_KEY=${INTERNAL_SERVICE_KEY}
       - EXPORT_STORAGE_PATH=${EXPORT_STORAGE_PATH:-/data/exports}
     volumes:
-      - export-data:${EXPORT_STORAGE_PATH:-/data/exports}
+      - /docker/data/exports:${EXPORT_STORAGE_PATH:-/data/exports}
     depends_on:
       redis:
         condition: service_healthy
@@ -519,7 +519,7 @@ services:
       POSTGRES_USER: posthog
       POSTGRES_PASSWORD: posthog
     volumes:
-      - posthog-pg-data:/var/lib/postgresql/data
+      - /docker/data/posthog-postgres:/var/lib/postgresql/data
     networks:
       - monitoring-net
     restart: unless-stopped
@@ -533,7 +533,7 @@ services:
   clickhouse:
     image: clickhouse/clickhouse-server:23.12
     volumes:
-      - clickhouse-data:/var/lib/clickhouse
+      - /docker/data/clickhouse:/var/lib/clickhouse
     networks:
       - monitoring-net
     restart: unless-stopped
@@ -591,11 +591,5 @@ services:
       - monitoring-net
     restart: unless-stopped
 
-volumes:
-  traefik-letsencrypt:
-  redis-data:
-  prometheus-data:
-  grafana-data:
-  export-data:
-  posthog-pg-data:
-  clickhouse-data:
+# All persistent data stored on /docker/data/ (LVM volume)
+# Docker daemon data-root also at /docker/lib (see infra/docker/daemon.json)
