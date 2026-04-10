@@ -1,5 +1,11 @@
 version: '3.9'
 
+# =============================================================================
+# CryptoVaultHub v2 — Docker Compose
+# All services run in Docker. MySQL is external (cluster).
+# Traefik handles SSL (Let's Encrypt) + reverse proxy for all subdomains.
+# =============================================================================
+
 networks:
   public-net:
     driver: bridge
@@ -12,37 +18,48 @@ networks:
     driver: bridge
 
 services:
-  nginx:
-    image: nginx:1.25-alpine
+
+  # ─── Traefik Reverse Proxy + SSL ─────────────────────────────
+
+  traefik:
+    image: traefik:v3.0
+    command:
+      - "--api.dashboard=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=public-net"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.letsencrypt.acme.email=admin@${BASE_DOMAIN:-vaulthub.live}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+      - "--log.level=INFO"
+      - "--accesslog=true"
+      - "--metrics.prometheus=true"
+      - "--metrics.prometheus.entryPoint=metrics"
+      - "--entrypoints.metrics.address=:8082"
     ports:
       - "80:80"
       - "443:443"
     volumes:
-      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - certbot-data:/var/www/certbot:ro
-      - letsencrypt-data:/etc/letsencrypt:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik-letsencrypt:/letsencrypt
     networks:
       - public-net
       - monitoring-net
-    depends_on:
-      - api-gateway
-      - admin
-      - client
+    labels:
+      # Traefik dashboard at traefik.vaulthub.live (protected by basic auth)
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefik-dashboard.rule=Host(`traefik.${BASE_DOMAIN:-vaulthub.live}`)"
+      - "traefik.http.routers.traefik-dashboard.entrypoints=websecure"
+      - "traefik.http.routers.traefik-dashboard.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.traefik-dashboard.service=api@internal"
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "nginx", "-t"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
 
-  certbot:
-    image: certbot/certbot:latest
-    volumes:
-      - certbot-data:/var/www/certbot
-      - letsencrypt-data:/etc/letsencrypt
-    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done'"
-    networks:
-      - public-net
+  # ─── Redis ───────────────────────────────────────────────────
 
   redis:
     image: redis:7-alpine
@@ -51,11 +68,14 @@ services:
       - redis-data:/data
     networks:
       - internal-net
+    restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 10s
       timeout: 3s
       retries: 3
+
+  # ─── Kong API Gateway ────────────────────────────────────────
 
   api-gateway:
     image: kong:3.6
@@ -69,27 +89,33 @@ services:
       KONG_ADMIN_LISTEN: "127.0.0.1:8001"
     volumes:
       - ./infra/kong/kong.yml:/etc/kong/kong.yml
-    expose:
-      - "8000"
     networks:
       - public-net
       - internal-net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.api.rule=Host(`api.${BASE_DOMAIN:-vaulthub.live}`)"
+      - "traefik.http.routers.api.entrypoints=websecure"
+      - "traefik.http.routers.api.tls.certresolver=letsencrypt"
+      - "traefik.http.services.api.loadbalancer.server.port=8000"
+    restart: unless-stopped
     healthcheck:
       test: ["CMD", "kong", "health"]
       interval: 10s
       timeout: 3s
       retries: 3
 
+  # ─── Observability ───────────────────────────────────────────
+
   prometheus:
     image: prom/prometheus:v2.50.0
     volumes:
       - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus-data:/prometheus
-    expose:
-      - "9090"
     networks:
       - monitoring-net
       - internal-net
+    restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
       interval: 30s
@@ -100,12 +126,20 @@ services:
     image: grafana/grafana:10.3.0
     volumes:
       - grafana-data:/var/lib/grafana
-    expose:
-      - "3000"
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning
     environment:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-changeme}
+      GF_SERVER_ROOT_URL: "https://grafana.${BASE_DOMAIN:-vaulthub.live}"
     networks:
+      - public-net
       - monitoring-net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.grafana.rule=Host(`grafana.${BASE_DOMAIN:-vaulthub.live}`)"
+      - "traefik.http.routers.grafana.entrypoints=websecure"
+      - "traefik.http.routers.grafana.tls.certresolver=letsencrypt"
+      - "traefik.http.services.grafana.loadbalancer.server.port=3000"
+    restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
       interval: 30s
@@ -114,11 +148,10 @@ services:
 
   loki:
     image: grafana/loki:2.9.0
-    expose:
-      - "3100"
     networks:
       - monitoring-net
       - internal-net
+    restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:3100/ready"]
       interval: 30s
@@ -127,12 +160,17 @@ services:
 
   jaeger:
     image: jaegertracing/all-in-one:1.54
-    expose:
-      - "16686"
-      - "4318"
     networks:
+      - public-net
       - monitoring-net
       - internal-net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.jaeger.rule=Host(`jaeger.${BASE_DOMAIN:-vaulthub.live}`)"
+      - "traefik.http.routers.jaeger.entrypoints=websecure"
+      - "traefik.http.routers.jaeger.tls.certresolver=letsencrypt"
+      - "traefik.http.services.jaeger.loadbalancer.server.port=16686"
+    restart: unless-stopped
 
   # ─── Application Services ──────────────────────────────────
 
@@ -143,8 +181,6 @@ services:
       args:
         SERVICE_PATH: services/admin-api
         PORT: 3001
-    ports:
-      - "3001:3001"
     environment:
       - NODE_ENV=production
       - PORT=3001
@@ -163,7 +199,6 @@ services:
         condition: service_healthy
     networks:
       - internal-net
-      - public-net
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:3001/health"]
@@ -178,8 +213,6 @@ services:
       args:
         SERVICE_PATH: services/client-api
         PORT: 3002
-    ports:
-      - "3002:3002"
     environment:
       - NODE_ENV=production
       - PORT=3002
@@ -198,7 +231,6 @@ services:
         condition: service_healthy
     networks:
       - internal-net
-      - public-net
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:3002/health"]
@@ -213,8 +245,6 @@ services:
       args:
         SERVICE_PATH: services/auth-service
         PORT: 3003
-    ports:
-      - "3003:3003"
     environment:
       - NODE_ENV=production
       - PORT=3003
@@ -249,8 +279,6 @@ services:
       args:
         SERVICE_PATH: services/core-wallet-service
         PORT: 3004
-    ports:
-      - "3004:3004"
     environment:
       - NODE_ENV=production
       - PORT=3004
@@ -282,8 +310,6 @@ services:
       args:
         SERVICE_PATH: services/key-vault-service
         PORT: 3005
-    ports:
-      - "3005:3005"
     environment:
       - NODE_ENV=production
       - PORT=3005
@@ -310,8 +336,6 @@ services:
       args:
         SERVICE_PATH: services/chain-indexer-service
         PORT: 3006
-    ports:
-      - "3006:3006"
     environment:
       - NODE_ENV=production
       - PORT=3006
@@ -348,8 +372,6 @@ services:
       args:
         SERVICE_PATH: services/notification-service
         PORT: 3007
-    ports:
-      - "3007:3007"
     environment:
       - NODE_ENV=production
       - PORT=3007
@@ -380,11 +402,42 @@ services:
       args:
         SERVICE_PATH: services/cron-worker-service
         PORT: 3008
-    ports:
-      - "3008:3008"
     environment:
       - NODE_ENV=production
       - PORT=3008
+      - MYSQL_HOST=${MYSQL_HOST}
+      - MYSQL_PORT=${MYSQL_PORT}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - INTERNAL_SERVICE_KEY=${INTERNAL_SERVICE_KEY}
+      - EXPORT_STORAGE_PATH=${EXPORT_STORAGE_PATH:-/data/exports}
+    volumes:
+      - export-data:${EXPORT_STORAGE_PATH:-/data/exports}
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - internal-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3008/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  rpc-gateway-service:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.nestjs
+      args:
+        SERVICE_PATH: services/rpc-gateway-service
+        PORT: 3009
+    environment:
+      - NODE_ENV=production
+      - PORT=3009
       - MYSQL_HOST=${MYSQL_HOST}
       - MYSQL_PORT=${MYSQL_PORT}
       - MYSQL_USER=${MYSQL_USER}
@@ -400,7 +453,7 @@ services:
       - internal-net
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3008/health"]
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3009/health"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -413,14 +466,18 @@ services:
       dockerfile: infra/docker/Dockerfile.nextjs
       args:
         APP_PATH: apps/admin
-    expose:
-      - "3000"
     environment:
       - NODE_ENV=production
       - NEXT_PUBLIC_AUTH_API_URL=https://api.${BASE_DOMAIN:-vaulthub.live}/auth
       - NEXT_PUBLIC_ADMIN_API_URL=https://api.${BASE_DOMAIN:-vaulthub.live}/admin
     networks:
       - public-net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.admin.rule=Host(`admin.${BASE_DOMAIN:-vaulthub.live}`)"
+      - "traefik.http.routers.admin.entrypoints=websecure"
+      - "traefik.http.routers.admin.tls.certresolver=letsencrypt"
+      - "traefik.http.services.admin.loadbalancer.server.port=3000"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/"]
@@ -434,14 +491,18 @@ services:
       dockerfile: infra/docker/Dockerfile.nextjs
       args:
         APP_PATH: apps/client
-    expose:
-      - "3000"
     environment:
       - NODE_ENV=production
       - NEXT_PUBLIC_AUTH_API_URL=https://api.${BASE_DOMAIN:-vaulthub.live}/auth
       - NEXT_PUBLIC_CLIENT_API_URL=https://api.${BASE_DOMAIN:-vaulthub.live}/client
     networks:
       - public-net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.portal.rule=Host(`portal.${BASE_DOMAIN:-vaulthub.live}`)"
+      - "traefik.http.routers.portal.entrypoints=websecure"
+      - "traefik.http.routers.portal.tls.certresolver=letsencrypt"
+      - "traefik.http.services.portal.loadbalancer.server.port=3000"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/"]
@@ -449,7 +510,7 @@ services:
       timeout: 5s
       retries: 3
 
-  # ─── PostHog Stack ─────────────────────────────────────────
+  # ─── PostHog Analytics ─────────────────────────────────────
 
   posthog-postgres:
     image: postgres:16-alpine
@@ -461,11 +522,13 @@ services:
       - posthog-pg-data:/var/lib/postgresql/data
     networks:
       - monitoring-net
+    restart: unless-stopped
 
   posthog-redis:
     image: redis:7-alpine
     networks:
       - monitoring-net
+    restart: unless-stopped
 
   clickhouse:
     image: clickhouse/clickhouse-server:23.12
@@ -473,6 +536,7 @@ services:
       - clickhouse-data:/var/lib/clickhouse
     networks:
       - monitoring-net
+    restart: unless-stopped
 
   zookeeper:
     image: bitnami/zookeeper:3.9
@@ -480,6 +544,7 @@ services:
       ALLOW_ANONYMOUS_LOGIN: "yes"
     networks:
       - monitoring-net
+    restart: unless-stopped
 
   kafka:
     image: bitnami/kafka:3.6
@@ -490,6 +555,7 @@ services:
       - zookeeper
     networks:
       - monitoring-net
+    restart: unless-stopped
 
   posthog-web:
     image: posthog/posthog:latest
@@ -498,8 +564,6 @@ services:
       REDIS_URL: redis://posthog-redis:6379
       CLICKHOUSE_HOST: clickhouse
       KAFKA_HOSTS: kafka:9092
-    ports:
-      - "8010:8000"
     depends_on:
       - posthog-postgres
       - posthog-redis
@@ -508,6 +572,7 @@ services:
     networks:
       - monitoring-net
       - internal-net
+    restart: unless-stopped
 
   posthog-worker:
     image: posthog/posthog:latest
@@ -524,12 +589,13 @@ services:
       - kafka
     networks:
       - monitoring-net
+    restart: unless-stopped
 
 volumes:
+  traefik-letsencrypt:
   redis-data:
   prometheus-data:
   grafana-data:
+  export-data:
   posthog-pg-data:
   clickhouse-data:
-  certbot-data:
-  letsencrypt-data:
