@@ -15,10 +15,10 @@ import {
   ApiOperation,
   ApiResponse,
   ApiParam,
-  ApiQuery,
 } from '@nestjs/swagger';
 import { AdminAuth } from '../common/decorators';
 import { ExportManagementService } from './export-management.service';
+import { CreateAdminExportDto, ListExportsQueryDto } from '../common/dto/export.dto';
 
 @ApiTags('Export Management')
 @ApiBearerAuth('JWT')
@@ -51,15 +51,15 @@ export class ExportManagementController {
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
-  async createExport(@Body() body: any, @Req() req: Request) {
+  async createExport(@Body() dto: CreateAdminExportDto, @Req() req: Request) {
     const user = (req as any).user;
     const result = await this.exportService.createExportRequest(
       Number(user.userId),
       {
-        exportType: body.exportType,
-        format: body.format,
-        filters: body.filters,
-        clientId: body.clientId,
+        exportType: dto.exportType,
+        format: dto.format,
+        filters: dto.filters,
+        clientId: dto.clientId,
       },
     );
     return { success: true, ...result };
@@ -73,18 +73,15 @@ export class ExportManagementController {
 
 **Required role:** Any admin role`,
   })
-  @ApiQuery({ name: 'page', required: false, type: Number })
-  @ApiQuery({ name: 'limit', required: false, type: Number })
-  @ApiQuery({ name: 'clientId', required: false, type: Number })
   @ApiResponse({
     status: 200,
     description: 'Export requests retrieved.',
   })
-  async listExports(@Query() query: any) {
+  async listExports(@Query() query: ListExportsQueryDto) {
     const result = await this.exportService.listExportRequests({
-      page: parseInt(query.page as string) || 1,
-      limit: parseInt(query.limit as string) || 20,
-      clientId: query.clientId ? parseInt(query.clientId as string) : undefined,
+      page: query.page ?? 1,
+      limit: query.limit ?? 20,
+      clientId: query.clientId,
     });
     return { success: true, ...result };
   }

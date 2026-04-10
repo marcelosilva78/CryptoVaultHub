@@ -12,6 +12,7 @@ import {
 import { Request } from 'express';
 import { AdminAuth } from '../common/decorators';
 import { RpcManagementService } from './rpc-management.service';
+import { CreateRpcProviderDto, UpdateRpcProviderDto } from '../common/dto/rpc.dto';
 
 @Controller('admin/rpc-providers')
 export class RpcManagementController {
@@ -20,16 +21,7 @@ export class RpcManagementController {
   @Post()
   @AdminAuth('super_admin', 'admin')
   async createRpcProvider(
-    @Body()
-    dto: {
-      name: string;
-      chainId: number;
-      rpcHttpUrl: string;
-      rpcWsUrl?: string;
-      apiKeyEncrypted?: string;
-      priority?: number;
-      isActive?: boolean;
-    },
+    @Body() dto: CreateRpcProviderDto,
     @Req() req: Request,
   ) {
     const adminUserId = (req as any).user.userId;
@@ -45,15 +37,7 @@ export class RpcManagementController {
   @AdminAuth('super_admin', 'admin')
   async updateRpcProvider(
     @Param('id', ParseIntPipe) id: number,
-    @Body()
-    dto: {
-      name?: string;
-      rpcHttpUrl?: string;
-      rpcWsUrl?: string;
-      apiKeyEncrypted?: string;
-      priority?: number;
-      isActive?: boolean;
-    },
+    @Body() dto: UpdateRpcProviderDto,
     @Req() req: Request,
   ) {
     const adminUserId = (req as any).user.userId;

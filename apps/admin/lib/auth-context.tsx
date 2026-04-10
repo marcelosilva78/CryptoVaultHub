@@ -1,5 +1,7 @@
 'use client';
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+
+const AUTH_API_URL = process.env.NEXT_PUBLIC_AUTH_API_URL || 'http://localhost:8000/auth';
 
 interface User {
   id: number;
@@ -15,6 +17,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<{ requires2FA?: boolean }>;
   verify2FA: (code: string) => Promise<void>;
   logout: () => void;
+  refreshToken: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -24,36 +27,101 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Check for existing session
     const token = localStorage.getItem('cvh_admin_token');
-    if (token) {
-      // Mock user for now
-      setUser({ id: 1, email: 'admin@cryptovaulthub.com', name: 'Admin', role: 'super_admin' });
+    if (!token) {
+      setIsLoading(false);
+      return;
     }
-    setIsLoading(false);
+
+    fetch(`${AUTH_API_URL}/validate`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((res) => (res.ok ? res.json() : Promise.reject()))
+      .then((data) => setUser(data.user))
+      .catch(() => {
+        localStorage.removeItem('cvh_admin_token');
+        localStorage.removeItem('cvh_admin_refresh');
+        document.cookie = 'cvh_admin_token=; path=/; max-age=0';
+      })
+      .finally(() => setIsLoading(false));
   }, []);
 
   const login = async (email: string, password: string) => {
-    // Will connect to auth-service API
-    setUser({ id: 1, email, name: 'Admin', role: 'super_admin' });
-    localStorage.setItem('cvh_admin_token', 'mock-jwt-token');
-    document.cookie = 'cvh_admin_token=mock-jwt-token; path=/; max-age=86400';
+    const res = await fetch(`${AUTH_API_URL}/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ message: 'Login failed' }));
+      throw new Error(err.message || 'Login failed');
+    }
+    const data = await res.json();
+
+    if (data.requires2FA) {
+      return { requires2FA: true };
+    }
+
+    const { accessToken, refreshToken: refresh, user: userData } = data;
+    localStorage.setItem('cvh_admin_token', accessToken);
+    localStorage.setItem('cvh_admin_refresh', refresh);
+    document.cookie = `cvh_admin_token=${accessToken}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
+    setUser(userData);
     return {};
   };
 
   const verify2FA = async (code: string) => {
-    // Will connect to auth-service 2FA endpoint
+    const res = await fetch(`${AUTH_API_URL}/2fa/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ message: '2FA verification failed' }));
+      throw new Error(err.message || '2FA verification failed');
+    }
+    const data = await res.json();
+    const { accessToken, refreshToken: refresh, user: userData } = data;
+    localStorage.setItem('cvh_admin_token', accessToken);
+    localStorage.setItem('cvh_admin_refresh', refresh);
+    document.cookie = `cvh_admin_token=${accessToken}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
+    setUser(userData);
   };
+
+  const refreshToken = useCallback(async () => {
+    const refresh = localStorage.getItem('cvh_admin_refresh');
+    if (!refresh) throw new Error('No refresh token');
+
+    const res = await fetch(`${AUTH_API_URL}/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken: refresh }),
+    });
+    if (!res.ok) {
+      localStorage.removeItem('cvh_admin_token');
+      localStorage.removeItem('cvh_admin_refresh');
+      document.cookie = 'cvh_admin_token=; path=/; max-age=0';
+      setUser(null);
+      throw new Error('Token refresh failed');
+    }
+    const data = await res.json();
+    localStorage.setItem('cvh_admin_token', data.accessToken);
+    if (data.refreshToken) {
+      localStorage.setItem('cvh_admin_refresh', data.refreshToken);
+    }
+    document.cookie = `cvh_admin_token=${data.accessToken}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
+  }, []);
 
   const logout = () => {
     setUser(null);
     localStorage.removeItem('cvh_admin_token');
+    localStorage.removeItem('cvh_admin_refresh');
     document.cookie = 'cvh_admin_token=; path=/; max-age=0';
     window.location.href = '/login';
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, isAuthenticated: !!user, login, verify2FA, logout }}>
+    <AuthContext.Provider value={{ user, isLoading, isAuthenticated: !!user, login, verify2FA, logout, refreshToken }}>
       {children}
     </AuthContext.Provider>
   );
