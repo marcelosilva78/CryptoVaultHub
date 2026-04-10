@@ -48,7 +48,7 @@ services:
 plugins:
   - name: cors
     config:
-      origins: ["http://localhost:3010", "http://localhost:3011", "https://admin.cryptovaulthub.com", "https://portal.cryptovaulthub.com"]
+      origins: ["https://admin.vaulthub.live", "https://portal.vaulthub.live", "http://localhost:3010", "http://localhost:3011"]
       methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"]
       headers: ["Content-Type", "Authorization", "X-API-Key"]
   - name: request-size-limiting

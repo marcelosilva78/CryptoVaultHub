@@ -5,7 +5,6 @@ networks:
     driver: bridge
   internal-net:
     driver: bridge
-    internal: true
   vault-net:
     driver: bridge
     internal: true
@@ -13,6 +12,38 @@ networks:
     driver: bridge
 
 services:
+  nginx:
+    image: nginx:1.25-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - certbot-data:/var/www/certbot:ro
+      - letsencrypt-data:/etc/letsencrypt:ro
+    networks:
+      - public-net
+      - monitoring-net
+    depends_on:
+      - api-gateway
+      - admin
+      - client
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  certbot:
+    image: certbot/certbot:latest
+    volumes:
+      - certbot-data:/var/www/certbot
+      - letsencrypt-data:/etc/letsencrypt
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done'"
+    networks:
+      - public-net
+
   redis:
     image: redis:7-alpine
     command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru --requirepass ${REDIS_PASSWORD}
@@ -38,9 +69,8 @@ services:
       KONG_ADMIN_LISTEN: "127.0.0.1:8001"
     volumes:
       - ./infra/kong/kong.yml:/etc/kong/kong.yml
-    ports:
-      - "8000:8000"
-      - "8443:8443"
+    expose:
+      - "8000"
     networks:
       - public-net
       - internal-net
@@ -55,8 +85,8 @@ services:
     volumes:
       - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus-data:/prometheus
-    ports:
-      - "9090:9090"
+    expose:
+      - "9090"
     networks:
       - monitoring-net
       - internal-net
@@ -70,8 +100,8 @@ services:
     image: grafana/grafana:10.3.0
     volumes:
       - grafana-data:/var/lib/grafana
-    ports:
-      - "3000:3000"
+    expose:
+      - "3000"
     environment:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-changeme}
     networks:
@@ -84,8 +114,8 @@ services:
 
   loki:
     image: grafana/loki:2.9.0
-    ports:
-      - "3100:3100"
+    expose:
+      - "3100"
     networks:
       - monitoring-net
       - internal-net
@@ -97,9 +127,9 @@ services:
 
   jaeger:
     image: jaegertracing/all-in-one:1.54
-    ports:
-      - "16686:16686"
-      - "4318:4318"
+    expose:
+      - "16686"
+      - "4318"
     networks:
       - monitoring-net
       - internal-net
@@ -265,6 +295,7 @@ services:
       - VAULT_MASTER_PASSWORD=${VAULT_MASTER_PASSWORD}
     networks:
       - vault-net
+      - internal-net
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:3005/health"]
@@ -382,10 +413,12 @@ services:
       dockerfile: infra/docker/Dockerfile.nextjs
       args:
         APP_PATH: apps/admin
-    ports:
-      - "3010:3000"
+    expose:
+      - "3000"
     environment:
       - NODE_ENV=production
+      - NEXT_PUBLIC_AUTH_API_URL=https://api.${BASE_DOMAIN:-vaulthub.live}/auth
+      - NEXT_PUBLIC_ADMIN_API_URL=https://api.${BASE_DOMAIN:-vaulthub.live}/admin
     networks:
       - public-net
     restart: unless-stopped
@@ -401,10 +434,12 @@ services:
       dockerfile: infra/docker/Dockerfile.nextjs
       args:
         APP_PATH: apps/client
-    ports:
-      - "3011:3000"
+    expose:
+      - "3000"
     environment:
       - NODE_ENV=production
+      - NEXT_PUBLIC_AUTH_API_URL=https://api.${BASE_DOMAIN:-vaulthub.live}/auth
+      - NEXT_PUBLIC_CLIENT_API_URL=https://api.${BASE_DOMAIN:-vaulthub.live}/client
     networks:
       - public-net
     restart: unless-stopped
@@ -496,3 +531,5 @@ volumes:
   grafana-data:
   posthog-pg-data:
   clickhouse-data:
+  certbot-data:
+  letsencrypt-data:
