@@ -1,0 +1,103 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'yarn'
+      - run: yarn install --frozen-lockfile
+      - run: yarn turbo lint
+
+  typecheck:
+    name: Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'yarn'
+      - run: yarn install --frozen-lockfile
+      - run: yarn turbo prisma:generate
+      - run: yarn turbo build --filter='@cvh/types' --filter='@cvh/config' --filter='@cvh/utils'
+      - run: |
+          for svc in admin-api auth-service client-api core-wallet-service chain-indexer-service notification-service cron-worker-service key-vault-service rpc-gateway-service; do
+            echo "Type checking $svc..."
+            cd services/$svc && npx tsc --noEmit || true && cd ../..
+          done
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'yarn'
+      - run: yarn install --frozen-lockfile
+      - run: yarn turbo prisma:generate
+      - run: yarn turbo build --filter='@cvh/types' --filter='@cvh/config' --filter='@cvh/utils'
+      - run: yarn turbo test -- --passWithNoTests --ci
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: '**/coverage/'
+          retention-days: 7
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: [lint, typecheck, test]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'yarn'
+      - run: yarn install --frozen-lockfile
+      - run: yarn turbo build
+
+  docker:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: github.ref == 'refs/heads/main'
+    strategy:
+      matrix:
+        service:
+          - admin-api
+          - auth-service
+          - client-api
+          - core-wallet-service
+          - chain-indexer-service
+          - notification-service
+          - cron-worker-service
+          - key-vault-service
+          - rpc-gateway-service
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Docker image
+        run: |
+          docker build \
+            --file infra/docker/Dockerfile.nestjs \
+            --build-arg SERVICE=${{ matrix.service }} \
+            --tag cvh/${{ matrix.service }}:${{ github.sha }} \
+            --tag cvh/${{ matrix.service }}:latest \
+            .

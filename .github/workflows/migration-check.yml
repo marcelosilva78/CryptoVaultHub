@@ -1,0 +1,28 @@
+name: Migration Check
+
+on:
+  pull_request:
+    paths:
+      - 'database/*.sql'
+
+jobs:
+  validate:
+    name: Validate SQL Migrations
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: testroot
+        ports:
+          - 3306:3306
+        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run migrations
+        run: |
+          for f in database/0*.sql; do
+            echo "Running $f..."
+            mysql -h 127.0.0.1 -u root -ptestroot < "$f"
+            echo "OK: $f"
+          done

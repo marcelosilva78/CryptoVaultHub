@@ -1,0 +1,29 @@
+name: Generate Screenshots
+
+on:
+  workflow_dispatch:
+
+jobs:
+  screenshots:
+    name: Generate Screenshots
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npx playwright install chromium
+      - name: Generate PNGs
+        run: |
+          for html in docs/screenshots/*.html; do
+            png="${html%.html}.png"
+            echo "Generating $png..."
+            npx playwright screenshot --viewport-size="1440,900" "$html" "$png"
+          done
+      - name: Commit updated screenshots
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/screenshots/*.png
+          git diff --cached --quiet || git commit -m "chore: regenerate screenshots"
+          git push

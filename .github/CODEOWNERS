@@ -1,0 +1,14 @@
+# Default owners
+* @marcelosilva78
+
+# Backend services
+/services/ @marcelosilva78
+/packages/ @marcelosilva78
+
+# Frontend
+/apps/ @marcelosilva78
+
+# Infrastructure
+/infra/ @marcelosilva78
+/docker-compose.yml @marcelosilva78
+/database/ @marcelosilva78
