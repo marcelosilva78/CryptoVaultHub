@@ -15,7 +15,17 @@ import type {
   AddAddressDto,
   CreateWebhookDto,
   UpdateWebhookDto,
-  Project,
+} from '../types';
+
+// v2 types used by hooks
+import type {
+  FlushOperation,
+  FlushItem,
+  AddressGroup,
+  DeployTrace,
+  ExportRequest,
+  WebhookDeliveryAttempt,
+  WebhookDeadLetter,
 } from '../types';
 
 // ── Singleton / context helper ───────────────────────────
@@ -33,8 +43,6 @@ function api(): ClientApiClient {
 // ── Query keys ───────────────────────────────────────────
 export const clientKeys = {
   all: ['client'] as const,
-  projects: () => [...clientKeys.all, 'projects'] as const,
-  project: (id: string) => [...clientKeys.all, 'project', id] as const,
   wallets: () => [...clientKeys.all, 'wallets'] as const,
   balances: (chainId: number) => [...clientKeys.all, 'balances', chainId] as const,
   depositAddresses: (params?: PaginationParams) => [...clientKeys.all, 'depositAddresses', params] as const,
@@ -46,25 +54,17 @@ export const clientKeys = {
   deliveries: (webhookId: number) => [...clientKeys.all, 'deliveries', webhookId] as const,
   tokens: (chainId?: number) => [...clientKeys.all, 'tokens', chainId] as const,
   health: () => [...clientKeys.all, 'health'] as const,
+  flushOperations: (params?: PaginationParams) => [...clientKeys.all, 'flushOperations', params] as const,
+  flushOperation: (id: string) => [...clientKeys.all, 'flushOperation', id] as const,
+  addressGroups: (params?: PaginationParams) => [...clientKeys.all, 'addressGroups', params] as const,
+  addressGroup: (id: string) => [...clientKeys.all, 'addressGroup', id] as const,
+  deployTraces: (params?: PaginationParams) => [...clientKeys.all, 'deployTraces', params] as const,
+  deployTrace: (id: string) => [...clientKeys.all, 'deployTrace', id] as const,
+  exports: (params?: PaginationParams) => [...clientKeys.all, 'exports', params] as const,
+  export_: (id: string) => [...clientKeys.all, 'export', id] as const,
+  webhookDeliveryDetail: (deliveryId: string) => [...clientKeys.all, 'webhookDeliveryDetail', deliveryId] as const,
+  webhookDeadLetters: (params?: PaginationParams) => [...clientKeys.all, 'webhookDeadLetters', params] as const,
 };
-
-// ── Projects ────────────────────────────────────────────
-
-export function useProjects() {
-  return useQuery({
-    queryKey: clientKeys.projects(),
-    queryFn: () => api().getProjects(),
-    enabled: !!_clientApi,
-  });
-}
-
-export function useProject(id: string) {
-  return useQuery({
-    queryKey: clientKeys.project(id),
-    queryFn: () => api().getProject(id),
-    enabled: !!_clientApi && !!id,
-  });
-}
 
 // ── Wallets ──────────────────────────────────────────────
 
@@ -275,5 +275,184 @@ export function useClientHealth() {
     queryFn: () => api().getHealth(),
     enabled: !!_clientApi,
     refetchInterval: 30_000,
+  });
+}
+
+// ── Flush Operations ────────────────────────────────────
+
+export function useFlushOperations(params?: PaginationParams) {
+  return useQuery({
+    queryKey: clientKeys.flushOperations(params),
+    queryFn: () => api().getFlushOperations(params),
+    enabled: !!_clientApi,
+  });
+}
+
+export function useFlushOperation(id: string) {
+  return useQuery({
+    queryKey: clientKeys.flushOperation(id),
+    queryFn: () => api().getFlushOperation(id),
+    enabled: !!_clientApi && !!id,
+  });
+}
+
+export function useFlushTokens() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { chainId: number; addresses: string[]; tokenId: string; walletId: string }) =>
+      api().flushTokens(data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [...clientKeys.all, 'flushOperations'] });
+    },
+  });
+}
+
+export function useSweepNative() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { chainId: number; addresses: string[]; walletId: string }) =>
+      api().sweepNative(data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [...clientKeys.all, 'flushOperations'] });
+    },
+  });
+}
+
+export function useFlushDryRun() {
+  return useMutation({
+    mutationFn: (data: { chainId: number; addresses: string[]; tokenId?: string; walletId: string; operationType: string }) =>
+      api().flushDryRun(data),
+  });
+}
+
+export function useCancelFlushOperation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api().cancelFlushOperation(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [...clientKeys.all, 'flushOperations'] });
+    },
+  });
+}
+
+// ── Address Groups ──────────────────────────────────────
+
+export function useAddressGroups(params?: PaginationParams) {
+  return useQuery({
+    queryKey: clientKeys.addressGroups(params),
+    queryFn: () => api().getAddressGroups(params),
+    enabled: !!_clientApi,
+  });
+}
+
+export function useAddressGroup(id: string) {
+  return useQuery({
+    queryKey: clientKeys.addressGroup(id),
+    queryFn: () => api().getAddressGroup(id),
+    enabled: !!_clientApi && !!id,
+  });
+}
+
+export function useCreateAddressGroup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { externalId?: string; label?: string }) =>
+      api().createAddressGroup(data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [...clientKeys.all, 'addressGroups'] });
+    },
+  });
+}
+
+export function useProvisionAddressGroup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: { chainIds: number[] } }) =>
+      api().provisionAddressGroup(id, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [...clientKeys.all, 'addressGroups'] });
+    },
+  });
+}
+
+// ── Deploy Traces ───────────────────────────────────────
+
+export function useDeployTraces(params?: PaginationParams) {
+  return useQuery({
+    queryKey: clientKeys.deployTraces(params),
+    queryFn: () => api().getDeployTraces(params),
+    enabled: !!_clientApi,
+  });
+}
+
+export function useDeployTrace(id: string) {
+  return useQuery({
+    queryKey: clientKeys.deployTrace(id),
+    queryFn: () => api().getDeployTrace(id),
+    enabled: !!_clientApi && !!id,
+  });
+}
+
+// ── Exports ─────────────────────────────────────────────
+
+export function useExports(params?: PaginationParams) {
+  return useQuery({
+    queryKey: clientKeys.exports(params),
+    queryFn: () => api().getExports(params),
+    enabled: !!_clientApi,
+  });
+}
+
+export function useExport(id: string) {
+  return useQuery({
+    queryKey: clientKeys.export_(id),
+    queryFn: () => api().getExport(id),
+    enabled: !!_clientApi && !!id,
+  });
+}
+
+export function useCreateExport() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { exportType: string; format: string; filters: Record<string, unknown> }) =>
+      api().createExport(data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [...clientKeys.all, 'exports'] });
+    },
+  });
+}
+
+export function useDownloadExport() {
+  return useMutation({
+    mutationFn: (id: string) => api().downloadExport(id),
+  });
+}
+
+// ── Webhook v2 ──────────────────────────────────────────
+
+export function useWebhookDeliveryDetail(deliveryId: string) {
+  return useQuery({
+    queryKey: clientKeys.webhookDeliveryDetail(deliveryId),
+    queryFn: () => api().getWebhookDeliveryDetail(deliveryId),
+    enabled: !!_clientApi && !!deliveryId,
+  });
+}
+
+export function useResendWebhookDelivery() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (deliveryId: string) => api().resendWebhookDelivery(deliveryId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [...clientKeys.all, 'deliveries'] });
+      qc.invalidateQueries({ queryKey: [...clientKeys.all, 'webhookDeadLetters'] });
+    },
+  });
+}
+
+export function useWebhookDeadLetters(params?: PaginationParams) {
+  return useQuery({
+    queryKey: clientKeys.webhookDeadLetters(params),
+    queryFn: () => api().getWebhookDeadLetters(params),
+    enabled: !!_clientApi,
   });
 }

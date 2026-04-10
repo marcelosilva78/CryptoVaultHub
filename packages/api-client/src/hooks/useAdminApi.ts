@@ -16,6 +16,18 @@ import type {
   UpdateAlertDto,
 } from '../types';
 
+// v2 types used by hooks
+import type {
+  RpcProvider,
+  RpcNode,
+  SyncHealth,
+  SyncGap,
+  JobSummary,
+  QueueStats,
+  ExportRequest,
+  ImpersonationSession,
+} from '../types';
+
 // ── Singleton / context helper ───────────────────────────
 // In real apps this would come from React context. For now
 // we expose a setter that apps call once at bootstrap.
@@ -42,6 +54,19 @@ export const adminKeys = {
   health: () => [...adminKeys.all, 'health'] as const,
   queues: () => [...adminKeys.all, 'queues'] as const,
   gasTanks: () => [...adminKeys.all, 'gasTanks'] as const,
+  rpcProviders: () => [...adminKeys.all, 'rpcProviders'] as const,
+  rpcNodes: (providerId: string) => [...adminKeys.all, 'rpcNodes', providerId] as const,
+  rpcHealth: () => [...adminKeys.all, 'rpcHealth'] as const,
+  syncHealth: () => [...adminKeys.all, 'syncHealth'] as const,
+  syncGaps: () => [...adminKeys.all, 'syncGaps'] as const,
+  reorgs: () => [...adminKeys.all, 'reorgs'] as const,
+  jobs: (params?: any) => [...adminKeys.all, 'jobs', params] as const,
+  job: (id: string) => [...adminKeys.all, 'job', id] as const,
+  jobStats: () => [...adminKeys.all, 'jobStats'] as const,
+  deadLetterJobs: () => [...adminKeys.all, 'deadLetterJobs'] as const,
+  adminExports: (params?: any) => [...adminKeys.all, 'adminExports', params] as const,
+  adminExport: (id: string) => [...adminKeys.all, 'adminExport', id] as const,
+  impersonation: () => [...adminKeys.all, 'impersonation'] as const,
 };
 
 // ── Clients ──────────────────────────────────────────────
@@ -176,5 +201,254 @@ export function useGasTanks() {
     queryKey: adminKeys.gasTanks(),
     queryFn: () => api().getGasTanks(),
     enabled: !!_adminApi,
+  });
+}
+
+// ── RPC Management ──────────────────────────────────────
+
+export function useRpcProviders() {
+  return useQuery({
+    queryKey: adminKeys.rpcProviders(),
+    queryFn: () => api().getRpcProviders(),
+    enabled: !!_adminApi,
+  });
+}
+
+export function useCreateRpcProvider() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: any) => api().createRpcProvider(data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminKeys.rpcProviders() });
+    },
+  });
+}
+
+export function useUpdateRpcProvider() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: any }) => api().updateRpcProvider(id, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminKeys.rpcProviders() });
+    },
+  });
+}
+
+export function useRpcNodes(providerId: string) {
+  return useQuery({
+    queryKey: adminKeys.rpcNodes(providerId),
+    queryFn: () => api().getRpcNodes(providerId),
+    enabled: !!_adminApi && !!providerId,
+  });
+}
+
+export function useCreateRpcNode() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ providerId, data }: { providerId: string; data: any }) =>
+      api().createRpcNode(providerId, data),
+    onSuccess: (_result, variables) => {
+      qc.invalidateQueries({ queryKey: adminKeys.rpcNodes(variables.providerId) });
+      qc.invalidateQueries({ queryKey: adminKeys.rpcProviders() });
+    },
+  });
+}
+
+export function useUpdateRpcNode() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ nodeId, data }: { nodeId: string; data: any }) =>
+      api().updateRpcNode(nodeId, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [...adminKeys.all, 'rpcNodes'] });
+      qc.invalidateQueries({ queryKey: adminKeys.rpcProviders() });
+    },
+  });
+}
+
+export function useUpdateRpcNodeStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ nodeId, status }: { nodeId: string; status: string }) =>
+      api().updateRpcNodeStatus(nodeId, status),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [...adminKeys.all, 'rpcNodes'] });
+      qc.invalidateQueries({ queryKey: adminKeys.rpcHealth() });
+    },
+  });
+}
+
+export function useRpcHealth() {
+  return useQuery({
+    queryKey: adminKeys.rpcHealth(),
+    queryFn: () => api().getRpcHealth(),
+    enabled: !!_adminApi,
+    refetchInterval: 30_000,
+  });
+}
+
+// ── Sync Management ─────────────────────────────────────
+
+export function useSyncHealth() {
+  return useQuery({
+    queryKey: adminKeys.syncHealth(),
+    queryFn: () => api().getSyncHealth(),
+    enabled: !!_adminApi,
+    refetchInterval: 15_000,
+  });
+}
+
+export function useSyncGaps() {
+  return useQuery({
+    queryKey: adminKeys.syncGaps(),
+    queryFn: () => api().getSyncGaps(),
+    enabled: !!_adminApi,
+  });
+}
+
+export function useRetrySyncGap() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (gapId: string) => api().retrySyncGap(gapId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminKeys.syncGaps() });
+      qc.invalidateQueries({ queryKey: adminKeys.syncHealth() });
+    },
+  });
+}
+
+export function useReorgs() {
+  return useQuery({
+    queryKey: adminKeys.reorgs(),
+    queryFn: () => api().getReorgs(),
+    enabled: !!_adminApi,
+  });
+}
+
+// ── Job Management ──────────────────────────────────────
+
+export function useJobs(params?: any) {
+  return useQuery({
+    queryKey: adminKeys.jobs(params),
+    queryFn: () => api().getJobs(params),
+    enabled: !!_adminApi,
+  });
+}
+
+export function useJob(id: string) {
+  return useQuery({
+    queryKey: adminKeys.job(id),
+    queryFn: () => api().getJob(id),
+    enabled: !!_adminApi && !!id,
+  });
+}
+
+export function useRetryJob() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api().retryJob(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [...adminKeys.all, 'jobs'] });
+      qc.invalidateQueries({ queryKey: adminKeys.jobStats() });
+    },
+  });
+}
+
+export function useCancelJob() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api().cancelJob(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [...adminKeys.all, 'jobs'] });
+      qc.invalidateQueries({ queryKey: adminKeys.jobStats() });
+    },
+  });
+}
+
+export function useJobStats() {
+  return useQuery({
+    queryKey: adminKeys.jobStats(),
+    queryFn: () => api().getJobStats(),
+    enabled: !!_adminApi,
+    refetchInterval: 15_000,
+  });
+}
+
+export function useDeadLetterJobs() {
+  return useQuery({
+    queryKey: adminKeys.deadLetterJobs(),
+    queryFn: () => api().getDeadLetterJobs(),
+    enabled: !!_adminApi,
+  });
+}
+
+export function useReprocessDeadLetterJob() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api().reprocessDeadLetterJob(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminKeys.deadLetterJobs() });
+      qc.invalidateQueries({ queryKey: adminKeys.jobStats() });
+    },
+  });
+}
+
+export function useDiscardDeadLetterJob() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api().discardDeadLetterJob(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminKeys.deadLetterJobs() });
+      qc.invalidateQueries({ queryKey: adminKeys.jobStats() });
+    },
+  });
+}
+
+// ── Export Management ───────────────────────────────────
+
+export function useAdminExports(params?: any) {
+  return useQuery({
+    queryKey: adminKeys.adminExports(params),
+    queryFn: () => api().getAdminExports(params),
+    enabled: !!_adminApi,
+  });
+}
+
+export function useAdminExport(id: string) {
+  return useQuery({
+    queryKey: adminKeys.adminExport(id),
+    queryFn: () => api().getAdminExport(id),
+    enabled: !!_adminApi && !!id,
+  });
+}
+
+export function useCreateAdminExport() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: any) => api().createAdminExport(data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [...adminKeys.all, 'adminExports'] });
+    },
+  });
+}
+
+export function useDownloadAdminExport() {
+  return useMutation({
+    mutationFn: (id: string) => api().downloadAdminExport(id),
+  });
+}
+
+// ── Impersonation ───────────────────────────────────────
+
+export function useStartImpersonation() {
+  return useMutation({
+    mutationFn: (data: { targetClientId: string; targetProjectId?: string; mode: string }) =>
+      api().startImpersonation(data),
+  });
+}
+
+export function useEndImpersonation() {
+  return useMutation({
+    mutationFn: () => api().endImpersonation(),
   });
 }

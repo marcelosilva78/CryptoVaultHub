@@ -15,6 +15,37 @@ export {
   useHealth,
   useQueueStatus,
   useGasTanks,
+  // v2: RPC Management
+  useRpcProviders,
+  useCreateRpcProvider,
+  useUpdateRpcProvider,
+  useRpcNodes,
+  useCreateRpcNode,
+  useUpdateRpcNode,
+  useUpdateRpcNodeStatus,
+  useRpcHealth,
+  // v2: Sync Management
+  useSyncHealth,
+  useSyncGaps,
+  useRetrySyncGap,
+  useReorgs,
+  // v2: Job Management
+  useJobs,
+  useJob,
+  useRetryJob,
+  useCancelJob,
+  useJobStats,
+  useDeadLetterJobs,
+  useReprocessDeadLetterJob,
+  useDiscardDeadLetterJob,
+  // v2: Export Management
+  useAdminExports,
+  useAdminExport,
+  useCreateAdminExport,
+  useDownloadAdminExport,
+  // v2: Impersonation
+  useStartImpersonation,
+  useEndImpersonation,
 } from './useAdminApi';
 
 export {
@@ -42,4 +73,28 @@ export {
   useRetryDelivery,
   useClientTokens,
   useClientHealth,
+  // v2: Flush Operations
+  useFlushOperations,
+  useFlushOperation,
+  useFlushTokens,
+  useSweepNative,
+  useFlushDryRun,
+  useCancelFlushOperation,
+  // v2: Address Groups
+  useAddressGroups,
+  useAddressGroup,
+  useCreateAddressGroup,
+  useProvisionAddressGroup,
+  // v2: Deploy Traces
+  useDeployTraces,
+  useDeployTrace,
+  // v2: Exports
+  useExports,
+  useExport,
+  useCreateExport,
+  useDownloadExport,
+  // v2: Webhook v2
+  useWebhookDeliveryDetail,
+  useResendWebhookDelivery,
+  useWebhookDeadLetters,
 } from './useClientApi';

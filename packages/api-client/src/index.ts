@@ -30,7 +30,21 @@ export type {
   WebhookInfo,
   WebhookDeliveryInfo,
   BalanceInfo,
-  Project,
+  // v2 types
+  FlushOperation,
+  FlushItem,
+  AddressGroup,
+  DeployTrace,
+  ExportRequest,
+  RpcProvider,
+  RpcNode,
+  SyncHealth,
+  SyncGap,
+  JobSummary,
+  QueueStats,
+  ImpersonationSession,
+  WebhookDeliveryAttempt,
+  WebhookDeadLetter,
 } from './types';
 
 // Auth types

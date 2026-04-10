@@ -25,6 +25,14 @@ import type {
   HealthStatus,
   QueueStatus,
   GasTankInfo,
+  RpcProvider,
+  RpcNode,
+  SyncHealth,
+  SyncGap,
+  JobSummary,
+  QueueStats,
+  ExportRequest,
+  ImpersonationSession,
 } from './types';
 
 export class AdminApiClient {
@@ -124,5 +132,140 @@ export class AdminApiClient {
 
   async getGasTanks(): Promise<GasTankInfo[]> {
     return this.request('GET', '/admin/gas-tanks');
+  }
+
+  // ── RPC Management ──────────────────────────────────────
+
+  async getRpcProviders(): Promise<RpcProvider[]> {
+    return this.request('GET', '/admin/rpc/providers');
+  }
+
+  async createRpcProvider(data: any): Promise<RpcProvider> {
+    return this.request('POST', '/admin/rpc/providers', data);
+  }
+
+  async updateRpcProvider(id: string, data: any): Promise<RpcProvider> {
+    return this.request('PATCH', `/admin/rpc/providers/${id}`, data);
+  }
+
+  async getRpcNodes(providerId: string): Promise<RpcNode[]> {
+    return this.request('GET', `/admin/rpc/providers/${providerId}/nodes`);
+  }
+
+  async createRpcNode(providerId: string, data: any): Promise<RpcNode> {
+    return this.request('POST', `/admin/rpc/providers/${providerId}/nodes`, data);
+  }
+
+  async updateRpcNode(nodeId: string, data: any): Promise<RpcNode> {
+    return this.request('PATCH', `/admin/rpc/nodes/${nodeId}`, data);
+  }
+
+  async updateRpcNodeStatus(nodeId: string, status: string): Promise<RpcNode> {
+    return this.request('PATCH', `/admin/rpc/nodes/${nodeId}/status`, { status });
+  }
+
+  async getRpcHealth(): Promise<any> {
+    return this.request('GET', '/admin/rpc/health');
+  }
+
+  // ── Sync Management ─────────────────────────────────────
+
+  async getSyncHealth(): Promise<SyncHealth[]> {
+    return this.request('GET', '/admin/sync/health');
+  }
+
+  async getSyncGaps(): Promise<SyncGap[]> {
+    return this.request('GET', '/admin/sync/gaps');
+  }
+
+  async retrySyncGap(gapId: string): Promise<void> {
+    return this.request('POST', `/admin/sync/gaps/${gapId}/retry`);
+  }
+
+  async getReorgs(): Promise<any[]> {
+    return this.request('GET', '/admin/sync/reorgs');
+  }
+
+  // ── Job Management ──────────────────────────────────────
+
+  async getJobs(params?: any): Promise<{ data: JobSummary[]; total: number }> {
+    const qs = new URLSearchParams();
+    if (params?.page) qs.set('page', String(params.page));
+    if (params?.limit) qs.set('limit', String(params.limit));
+    if (params?.queueName) qs.set('queueName', params.queueName);
+    if (params?.status) qs.set('status', params.status);
+    if (params?.priority) qs.set('priority', params.priority);
+    const query = qs.toString();
+    return this.request('GET', `/admin/jobs${query ? `?${query}` : ''}`);
+  }
+
+  async getJob(id: string): Promise<any> {
+    return this.request('GET', `/admin/jobs/${id}`);
+  }
+
+  async retryJob(id: string): Promise<void> {
+    return this.request('POST', `/admin/jobs/${id}/retry`);
+  }
+
+  async cancelJob(id: string): Promise<void> {
+    return this.request('POST', `/admin/jobs/${id}/cancel`);
+  }
+
+  async getJobStats(): Promise<QueueStats> {
+    return this.request('GET', '/admin/jobs/stats');
+  }
+
+  async getDeadLetterJobs(): Promise<any[]> {
+    return this.request('GET', '/admin/jobs/dead-letter');
+  }
+
+  async reprocessDeadLetterJob(id: string): Promise<void> {
+    return this.request('POST', `/admin/jobs/dead-letter/${id}/reprocess`);
+  }
+
+  async discardDeadLetterJob(id: string): Promise<void> {
+    return this.request('DELETE', `/admin/jobs/dead-letter/${id}`);
+  }
+
+  // ── Export Management ───────────────────────────────────
+
+  async createAdminExport(data: any): Promise<ExportRequest> {
+    return this.request('POST', '/admin/exports', data);
+  }
+
+  async getAdminExports(params?: any): Promise<{ data: ExportRequest[]; total: number }> {
+    const qs = new URLSearchParams();
+    if (params?.page) qs.set('page', String(params.page));
+    if (params?.limit) qs.set('limit', String(params.limit));
+    const query = qs.toString();
+    return this.request('GET', `/admin/exports${query ? `?${query}` : ''}`);
+  }
+
+  async getAdminExport(id: string): Promise<ExportRequest> {
+    return this.request('GET', `/admin/exports/${id}`);
+  }
+
+  async downloadAdminExport(id: string): Promise<Blob> {
+    const res = await fetch(`${this.baseUrl}/admin/exports/${id}/download`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+      },
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`Admin API error ${res.status}: ${text || res.statusText}`);
+    }
+    return res.blob();
+  }
+
+  // ── Impersonation ───────────────────────────────────────
+
+  async startImpersonation(data: { targetClientId: string; targetProjectId?: string; mode: string }): Promise<ImpersonationSession> {
+    return this.request('POST', '/admin/impersonation/start', data);
+  }
+
+  async endImpersonation(): Promise<void> {
+    return this.request('POST', '/admin/impersonation/end');
   }
 }

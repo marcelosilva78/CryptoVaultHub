@@ -29,36 +29,28 @@ import type {
   WebhookDeliveryInfo,
   BalanceInfo,
   HealthStatus,
-  Project,
+  FlushOperation,
+  FlushItem,
+  AddressGroup,
+  DeployTrace,
+  ExportRequest,
+  WebhookDeliveryAttempt,
+  WebhookDeadLetter,
 } from './types';
 
 export class ClientApiClient {
-  private projectId: string | null = null;
-
   constructor(
     private baseUrl: string,
     private apiKey: string,
   ) {}
 
-  setProjectId(id: string | null) {
-    this.projectId = id;
-  }
-
-  getProjectId(): string | null {
-    return this.projectId;
-  }
-
   private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      'X-API-Key': this.apiKey,
-    };
-    if (this.projectId) {
-      headers['X-Project-Id'] = this.projectId;
-    }
     const res = await fetch(`${this.baseUrl}${path}`, {
       method,
-      headers,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-Key': this.apiKey,
+      },
       body: body ? JSON.stringify(body) : undefined,
     });
     if (!res.ok) {
@@ -186,16 +178,6 @@ export class ClientApiClient {
     return this.request('POST', `/client/v1/webhook-deliveries/${deliveryId}/retry`);
   }
 
-  // ── Projects ─────────────────────────────────────────────
-
-  async getProjects(): Promise<Project[]> {
-    return this.request('GET', '/client/v1/projects');
-  }
-
-  async getProject(id: string): Promise<Project> {
-    return this.request('GET', `/client/v1/projects/${id}`);
-  }
-
   // ── Tokens & Health ──────────────────────────────────────
 
   async getTokens(chainId?: number): Promise<Token[]> {
@@ -205,5 +187,121 @@ export class ClientApiClient {
 
   async getHealth(): Promise<HealthStatus> {
     return this.request('GET', '/client/v1/health');
+  }
+
+  // ── Flush Operations ────────────────────────────────────
+
+  async flushTokens(data: { chainId: number; addresses: string[]; tokenId: string; walletId: string }): Promise<FlushOperation> {
+    return this.request('POST', '/client/v2/flush/tokens', data);
+  }
+
+  async sweepNative(data: { chainId: number; addresses: string[]; walletId: string }): Promise<FlushOperation> {
+    return this.request('POST', '/client/v2/flush/sweep-native', data);
+  }
+
+  async flushDryRun(data: { chainId: number; addresses: string[]; tokenId?: string; walletId: string; operationType: string }): Promise<FlushOperation> {
+    return this.request('POST', '/client/v2/flush/dry-run', data);
+  }
+
+  async getFlushOperations(params?: { page?: number; limit?: number }): Promise<{ data: FlushOperation[]; total: number }> {
+    const qs = new URLSearchParams();
+    if (params?.page) qs.set('page', String(params.page));
+    if (params?.limit) qs.set('limit', String(params.limit));
+    const query = qs.toString();
+    return this.request('GET', `/client/v2/flush${query ? `?${query}` : ''}`);
+  }
+
+  async getFlushOperation(id: string): Promise<FlushOperation & { items: FlushItem[] }> {
+    return this.request('GET', `/client/v2/flush/${id}`);
+  }
+
+  async cancelFlushOperation(id: string): Promise<void> {
+    return this.request('POST', `/client/v2/flush/${id}/cancel`);
+  }
+
+  // ── Address Groups ──────────────────────────────────────
+
+  async createAddressGroup(data: { externalId?: string; label?: string }): Promise<AddressGroup> {
+    return this.request('POST', '/client/v2/address-groups', data);
+  }
+
+  async provisionAddressGroup(id: string, data: { chainIds: number[] }): Promise<AddressGroup> {
+    return this.request('POST', `/client/v2/address-groups/${id}/provision`, data);
+  }
+
+  async getAddressGroups(params?: { page?: number; limit?: number }): Promise<{ data: AddressGroup[]; total: number }> {
+    const qs = new URLSearchParams();
+    if (params?.page) qs.set('page', String(params.page));
+    if (params?.limit) qs.set('limit', String(params.limit));
+    const query = qs.toString();
+    return this.request('GET', `/client/v2/address-groups${query ? `?${query}` : ''}`);
+  }
+
+  async getAddressGroup(id: string): Promise<AddressGroup> {
+    return this.request('GET', `/client/v2/address-groups/${id}`);
+  }
+
+  // ── Deploy Traces ───────────────────────────────────────
+
+  async getDeployTraces(params?: { page?: number; limit?: number }): Promise<{ data: DeployTrace[]; total: number }> {
+    const qs = new URLSearchParams();
+    if (params?.page) qs.set('page', String(params.page));
+    if (params?.limit) qs.set('limit', String(params.limit));
+    const query = qs.toString();
+    return this.request('GET', `/client/v2/deploy-traces${query ? `?${query}` : ''}`);
+  }
+
+  async getDeployTrace(id: string): Promise<DeployTrace> {
+    return this.request('GET', `/client/v2/deploy-traces/${id}`);
+  }
+
+  // ── Exports ─────────────────────────────────────────────
+
+  async createExport(data: { exportType: string; format: string; filters: Record<string, unknown> }): Promise<ExportRequest> {
+    return this.request('POST', '/client/v2/exports', data);
+  }
+
+  async getExports(params?: { page?: number; limit?: number }): Promise<{ data: ExportRequest[]; total: number }> {
+    const qs = new URLSearchParams();
+    if (params?.page) qs.set('page', String(params.page));
+    if (params?.limit) qs.set('limit', String(params.limit));
+    const query = qs.toString();
+    return this.request('GET', `/client/v2/exports${query ? `?${query}` : ''}`);
+  }
+
+  async getExport(id: string): Promise<ExportRequest> {
+    return this.request('GET', `/client/v2/exports/${id}`);
+  }
+
+  async downloadExport(id: string): Promise<Blob> {
+    const res = await fetch(`${this.baseUrl}/client/v2/exports/${id}/download`, {
+      method: 'GET',
+      headers: {
+        'X-API-Key': this.apiKey,
+      },
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`Client API error ${res.status}: ${text || res.statusText}`);
+    }
+    return res.blob();
+  }
+
+  // ── Webhook v2 ──────────────────────────────────────────
+
+  async getWebhookDeliveryDetail(deliveryId: string): Promise<{ delivery: any; attempts: WebhookDeliveryAttempt[] }> {
+    return this.request('GET', `/client/v2/webhook-deliveries/${deliveryId}`);
+  }
+
+  async resendWebhookDelivery(deliveryId: string): Promise<void> {
+    return this.request('POST', `/client/v2/webhook-deliveries/${deliveryId}/resend`);
+  }
+
+  async getWebhookDeadLetters(params?: { page?: number; limit?: number }): Promise<{ data: WebhookDeadLetter[]; total: number }> {
+    const qs = new URLSearchParams();
+    if (params?.page) qs.set('page', String(params.page));
+    if (params?.limit) qs.set('limit', String(params.limit));
+    const query = qs.toString();
+    return this.request('GET', `/client/v2/webhook-dead-letters${query ? `?${query}` : ''}`);
   }
 }
