@@ -5,9 +5,26 @@ import {
   IsUrl,
   IsBoolean,
   IsInt,
+  IsIn,
   MaxLength,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+
+/**
+ * HIGH-4: Allowlist of valid webhook event types. Only these events
+ * can be subscribed to. Prevents injection of arbitrary event names.
+ */
+export const VALID_WEBHOOK_EVENTS = [
+  'deposit.detected',
+  'deposit.confirmed',
+  'deposit.swept',
+  'withdrawal.submitted',
+  'withdrawal.confirmed',
+  'withdrawal.failed',
+  'forwarder.deployed',
+] as const;
+
+export type WebhookEventType = (typeof VALID_WEBHOOK_EVENTS)[number];
 
 export class CreateWebhookDto {
   @ApiProperty({
@@ -48,6 +65,7 @@ If your endpoint returns a non-2xx status code or times out, the delivery is ret
   })
   @IsArray()
   @IsString({ each: true })
+  @IsIn(VALID_WEBHOOK_EVENTS as unknown as string[], { each: true })
   events!: string[];
 
   @ApiPropertyOptional({
@@ -91,6 +109,7 @@ export class UpdateWebhookDto {
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
+  @IsIn(VALID_WEBHOOK_EVENTS as unknown as string[], { each: true })
   events?: string[];
 
   @ApiPropertyOptional({

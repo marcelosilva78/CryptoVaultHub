@@ -3,132 +3,53 @@ import {
   Post,
   Get,
   Body,
+  Param,
   Req,
+  UseGuards,
   HttpCode,
   HttpStatus,
-  Query,
 } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
 import { Request } from 'express';
-import { ImpersonationService, ImpersonationMode } from './impersonation.service';
-import { AdminAuth } from '../rbac/admin-auth.decorator';
+import { ImpersonationService } from './impersonation.service';
+import { InternalServiceGuard } from '../common/guards/internal-service.guard';
 
-@Controller('auth')
+@Controller('auth/impersonate')
 export class ImpersonationController {
-  constructor(
-    private readonly impersonationService: ImpersonationService,
-  ) {}
+  constructor(private readonly impersonationService: ImpersonationService) {}
 
-  /**
-   * Start an impersonation session.
-   * Only super_admin and admin roles can impersonate.
-   */
-  @Post('impersonate')
-  @AdminAuth('super_admin', 'admin')
-  @HttpCode(HttpStatus.OK)
-  async startImpersonation(
-    @Body()
-    body: {
-      targetClientId: number;
-      targetProjectId?: number;
-      mode: ImpersonationMode;
-    },
-    @Req() req: Request,
-  ) {
-    const user = (req as any).user;
-    const session = await this.impersonationService.startSession({
-      adminUserId: Number(user.userId),
-      targetClientId: body.targetClientId,
-      targetProjectId: body.targetProjectId,
-      mode: body.mode,
+  @Post('start')
+  @UseGuards(AuthGuard('jwt'))
+  async startSession(@Body() dto: { targetClientId: number; reason: string }, @Req() req: Request) {
+    const adminUserId = (req as any).user.userId;
+    const result = await this.impersonationService.startSession({
+      adminUserId,
+      targetClientId: dto.targetClientId,
+      reason: dto.reason,
       ipAddress: req.ip,
-      userAgent: req.headers['user-agent'],
-    });
-
-    return {
-      success: true,
-      session: {
-        id: session.id,
-        targetClientId: session.targetClientId,
-        targetProjectId: session.targetProjectId,
-        mode: session.mode,
-        startedAt: session.startedAt,
-      },
-    };
-  }
-
-  /**
-   * End the active impersonation session.
-   */
-  @Post('impersonate/end')
-  @AdminAuth('super_admin', 'admin')
-  @HttpCode(HttpStatus.OK)
-  async endImpersonation(@Req() req: Request) {
-    const user = (req as any).user;
-    await this.impersonationService.endSession(Number(user.userId));
-    return { success: true, message: 'Impersonation session ended' };
-  }
-
-  /**
-   * Get the active impersonation session for the current admin.
-   */
-  @Get('impersonate/active')
-  @AdminAuth('super_admin', 'admin')
-  async getActiveSession(@Req() req: Request) {
-    const user = (req as any).user;
-    const session = await this.impersonationService.getActiveSession(
-      Number(user.userId),
-    );
-    return {
-      success: true,
-      session: session
-        ? {
-            id: session.id,
-            targetClientId: session.targetClientId,
-            targetProjectId: session.targetProjectId,
-            mode: session.mode,
-            startedAt: session.startedAt,
-          }
-        : null,
-    };
-  }
-
-  /**
-   * List impersonation sessions (for audit).
-   */
-  @Get('impersonation-sessions')
-  @AdminAuth('super_admin')
-  async listSessions(@Query() query: any) {
-    const result = await this.impersonationService.listSessions({
-      page: parseInt(query.page as string) || 1,
-      limit: parseInt(query.limit as string) || 20,
-      adminUserId: query.adminUserId
-        ? parseInt(query.adminUserId as string)
-        : undefined,
     });
     return { success: true, ...result };
   }
 
   /**
-   * Internal endpoint: validate an impersonation session by ID.
-   * Called by the admin-api impersonation guard.
+   * CRIT-1: This endpoint MUST be protected by InternalServiceGuard.
+   * It is called by other internal services to validate impersonation
+   * sessions and must not be publicly accessible.
    */
-  @Post('impersonate/validate')
+  @Get('validate/:sessionId')
+  @UseGuards(InternalServiceGuard)
   @HttpCode(HttpStatus.OK)
-  async validateSession(@Body() body: { sessionId: number }) {
-    const session = await this.impersonationService.validateSession(
-      body.sessionId,
-    );
-    return {
-      valid: !!session,
-      session: session
-        ? {
-            id: session.id,
-            adminUserId: session.adminUserId,
-            targetClientId: session.targetClientId,
-            targetProjectId: session.targetProjectId,
-            mode: session.mode,
-          }
-        : null,
-    };
+  async validateSession(@Param('sessionId') sessionId: string) {
+    const result = await this.impersonationService.validateSession(sessionId);
+    return result;
+  }
+
+  @Post('end/:sessionId')
+  @UseGuards(AuthGuard('jwt'))
+  @HttpCode(HttpStatus.OK)
+  async endSession(@Param('sessionId') sessionId: string, @Req() req: Request) {
+    const adminUserId = (req as any).user.userId;
+    const result = await this.impersonationService.endSession(sessionId, adminUserId);
+    return result;
   }
 }

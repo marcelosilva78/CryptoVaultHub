@@ -23,57 +23,46 @@ export class AddressGroupService {
     return { 'X-Internal-Service-Key': process.env.INTERNAL_SERVICE_KEY || '' };
   }
 
-  async createGroup(
+  /**
+   * CRIT-3: projectId is passed from the controller (sourced from req.projectId
+   * set by ProjectScopeGuard). Never use a hardcoded projectId.
+   */
+  async createAddressGroup(
     clientId: number,
-    data: { externalId?: string; label?: string },
-  ) {
-    try {
-      const { data: result } = await axios.post(
-        `${this.coreWalletUrl}/address-groups/create`,
-        { clientId, projectId: 1, ...data },
-        { headers: this.headers, timeout: 30000 },
-      );
-      return result;
-    } catch (error) {
-      if (error.response) {
-        throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
-      }
-      throw new InternalServerErrorException('Downstream service unavailable');
-    }
-  }
-
-  async provisionGroup(
-    clientId: number,
-    groupId: number,
-    chainIds: number[],
-  ) {
-    try {
-      const { data: result } = await axios.post(
-        `${this.coreWalletUrl}/address-groups/${groupId}/provision`,
-        { clientId, chainIds },
-        { headers: this.headers, timeout: 30000 },
-      );
-      return result;
-    } catch (error) {
-      if (error.response) {
-        throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
-      }
-      throw new InternalServerErrorException('Downstream service unavailable');
-    }
-  }
-
-  async listGroups(
-    clientId: number,
-    params: {
-      page?: number;
-      limit?: number;
-      status?: string;
+    projectId: number,
+    data: {
+      label: string;
+      chainIds: number[];
     },
   ) {
     try {
+      const { data: result } = await axios.post(
+        `${this.coreWalletUrl}/address-groups`,
+        { clientId, projectId, ...data },
+        { headers: this.headers, timeout: 10000 },
+      );
+      return result;
+    } catch (error) {
+      if (error.response) {
+        throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
+      }
+      throw new InternalServerErrorException('Downstream service unavailable');
+    }
+  }
+
+  async listAddressGroups(
+    clientId: number,
+    projectId: number,
+    params: { page?: number; limit?: number },
+  ) {
+    try {
       const { data } = await axios.get(
-        `${this.coreWalletUrl}/address-groups/${clientId}`,
-        { headers: this.headers, params, timeout: 10000 },
+        `${this.coreWalletUrl}/address-groups`,
+        {
+          headers: this.headers,
+          params: { clientId, projectId, ...params },
+          timeout: 10000,
+        },
       );
       return data;
     } catch (error) {
@@ -84,11 +73,15 @@ export class AddressGroupService {
     }
   }
 
-  async getGroup(clientId: number, groupId: number) {
+  async getAddressGroup(clientId: number, projectId: number, groupId: string) {
     try {
       const { data } = await axios.get(
-        `${this.coreWalletUrl}/address-groups/${clientId}/${groupId}`,
-        { headers: this.headers, timeout: 10000 },
+        `${this.coreWalletUrl}/address-groups/${groupId}`,
+        {
+          headers: this.headers,
+          params: { clientId, projectId },
+          timeout: 10000,
+        },
       );
       return data;
     } catch (error) {

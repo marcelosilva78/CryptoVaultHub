@@ -23,28 +23,23 @@ export class FlushService {
     return { 'X-Internal-Service-Key': process.env.INTERNAL_SERVICE_KEY || '' };
   }
 
-  async createFlushTokens(
+  /**
+   * CRIT-3: projectId is passed from the controller (sourced from req.projectId
+   * set by ProjectScopeGuard). Never use a hardcoded projectId.
+   */
+  async createFlush(
     clientId: number,
+    projectId: number,
     data: {
       chainId: number;
-      addresses: number[];
-      walletId: number;
-      tokenId?: number;
+      tokenAddress?: string;
+      destinationAddress: string;
     },
   ) {
     try {
       const { data: result } = await axios.post(
-        `${this.coreWalletUrl}/flush/create`,
-        {
-          clientId,
-          projectId: 1, // Default project
-          chainId: data.chainId,
-          operationType: 'flush_tokens',
-          walletId: data.walletId,
-          addresses: data.addresses,
-          tokenId: data.tokenId,
-          triggerType: 'user',
-        },
+        `${this.coreWalletUrl}/flush`,
+        { clientId, projectId, ...data },
         { headers: this.headers, timeout: 30000 },
       );
       return result;
@@ -56,76 +51,17 @@ export class FlushService {
     }
   }
 
-  async createNativeSweep(
-    clientId: number,
-    data: {
-      chainId: number;
-      addresses: number[];
-      walletId: number;
-    },
-  ) {
-    try {
-      const { data: result } = await axios.post(
-        `${this.coreWalletUrl}/flush/create`,
-        {
-          clientId,
-          projectId: 1,
-          chainId: data.chainId,
-          operationType: 'sweep_native',
-          walletId: data.walletId,
-          addresses: data.addresses,
-          triggerType: 'user',
-        },
-        { headers: this.headers, timeout: 30000 },
-      );
-      return result;
-    } catch (error) {
-      if (error.response) {
-        throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
-      }
-      throw new InternalServerErrorException('Downstream service unavailable');
-    }
-  }
-
-  async dryRun(
-    clientId: number,
-    data: {
-      chainId: number;
-      operationType: 'flush_tokens' | 'sweep_native';
-      addressIds: number[];
-      tokenId?: number;
-    },
-  ) {
-    try {
-      const { data: result } = await axios.post(
-        `${this.coreWalletUrl}/flush/dry-run`,
-        { clientId, ...data },
-        { headers: this.headers, timeout: 30000 },
-      );
-      return result;
-    } catch (error) {
-      if (error.response) {
-        throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
-      }
-      throw new InternalServerErrorException('Downstream service unavailable');
-    }
-  }
-
-  async listOperations(
-    clientId: number,
-    params: {
-      page?: number;
-      limit?: number;
-      status?: string;
-      chainId?: string;
-    },
-  ) {
+  /**
+   * CRIT-3: projectId is passed from the controller (sourced from req.projectId
+   * set by ProjectScopeGuard). Never use a hardcoded projectId.
+   */
+  async getFlushStatus(clientId: number, projectId: number, flushId: string) {
     try {
       const { data } = await axios.get(
-        `${this.coreWalletUrl}/flush/operations/${clientId}`,
+        `${this.coreWalletUrl}/flush/${flushId}`,
         {
           headers: this.headers,
-          params,
+          params: { clientId, projectId },
           timeout: 10000,
         },
       );
@@ -138,27 +74,19 @@ export class FlushService {
     }
   }
 
-  async getOperation(clientId: number, operationId: number) {
+  async listFlushes(
+    clientId: number,
+    projectId: number,
+    params: { page?: number; limit?: number; status?: string },
+  ) {
     try {
       const { data } = await axios.get(
-        `${this.coreWalletUrl}/flush/operations/${clientId}/${operationId}`,
-        { headers: this.headers, timeout: 10000 },
-      );
-      return data;
-    } catch (error) {
-      if (error.response) {
-        throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
-      }
-      throw new InternalServerErrorException('Downstream service unavailable');
-    }
-  }
-
-  async cancelOperation(clientId: number, operationId: number) {
-    try {
-      const { data } = await axios.post(
-        `${this.coreWalletUrl}/flush/operations/${clientId}/${operationId}/cancel`,
-        {},
-        { headers: this.headers, timeout: 10000 },
+        `${this.coreWalletUrl}/flush`,
+        {
+          headers: this.headers,
+          params: { clientId, projectId, ...params },
+          timeout: 10000,
+        },
       );
       return data;
     } catch (error) {
