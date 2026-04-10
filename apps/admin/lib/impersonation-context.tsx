@@ -5,112 +5,50 @@ import {
   useContext,
   useState,
   useCallback,
-  ReactNode,
+  type ReactNode,
 } from "react";
 
-export type ImpersonationMode = "read_only" | "support" | "full_operational";
-
-interface ImpersonationSession {
-  id: number;
-  targetClientId: number;
-  targetClientName: string;
-  targetProjectId: number | null;
-  mode: ImpersonationMode;
-  startedAt: string;
+interface ImpersonationTarget {
+  clientUid: string;
+  clientName: string;
 }
 
-interface ImpersonationContextType {
-  session: ImpersonationSession | null;
+interface ImpersonationContextValue {
+  /** Currently impersonated client, or null if not impersonating */
+  target: ImpersonationTarget | null;
+  /** Whether an impersonation session is active */
   isImpersonating: boolean;
-  startImpersonation: (params: {
-    targetClientId: number;
-    targetClientName: string;
-    targetProjectId?: number;
-    mode: ImpersonationMode;
-  }) => Promise<void>;
-  endImpersonation: () => Promise<void>;
+  /** Start impersonating a specific client */
+  startImpersonation: (client: ImpersonationTarget) => void;
+  /** Stop impersonation and return to admin view */
+  stopImpersonation: () => void;
 }
 
-const ImpersonationContext = createContext<ImpersonationContextType | null>(null);
+const ImpersonationContext = createContext<ImpersonationContextValue>({
+  target: null,
+  isImpersonating: false,
+  startImpersonation: () => {},
+  stopImpersonation: () => {},
+});
 
 export function ImpersonationProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<ImpersonationSession | null>(null);
+  const [target, setTarget] = useState<ImpersonationTarget | null>(null);
 
-  const startImpersonation = useCallback(
-    async (params: {
-      targetClientId: number;
-      targetClientName: string;
-      targetProjectId?: number;
-      mode: ImpersonationMode;
-    }) => {
-      try {
-        const token = localStorage.getItem("cvh_admin_token");
-        const response = await fetch(
-          `${process.env.NEXT_PUBLIC_AUTH_API_URL || "http://localhost:3003"}/auth/impersonate`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({
-              targetClientId: params.targetClientId,
-              targetProjectId: params.targetProjectId,
-              mode: params.mode,
-            }),
-          },
-        );
+  const startImpersonation = useCallback((client: ImpersonationTarget) => {
+    setTarget(client);
+  }, []);
 
-        if (!response.ok) {
-          const err = await response.json();
-          throw new Error(err.message || "Failed to start impersonation");
-        }
-
-        const data = await response.json();
-        setSession({
-          id: data.session.id,
-          targetClientId: params.targetClientId,
-          targetClientName: params.targetClientName,
-          targetProjectId: params.targetProjectId ?? null,
-          mode: params.mode,
-          startedAt: data.session.startedAt,
-        });
-      } catch (error) {
-        console.error("Impersonation start failed:", error);
-        throw error;
-      }
-    },
-    [],
-  );
-
-  const endImpersonation = useCallback(async () => {
-    try {
-      const token = localStorage.getItem("cvh_admin_token");
-      await fetch(
-        `${process.env.NEXT_PUBLIC_AUTH_API_URL || "http://localhost:3003"}/auth/impersonate/end`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-        },
-      );
-      setSession(null);
-    } catch (error) {
-      console.error("Impersonation end failed:", error);
-      // Clear session locally even if the API call fails
-      setSession(null);
-    }
+  const stopImpersonation = useCallback(() => {
+    setTarget(null);
   }, []);
 
   return (
     <ImpersonationContext.Provider
       value={{
-        session,
-        isImpersonating: !!session,
+        target,
+        isImpersonating: target !== null,
         startImpersonation,
-        endImpersonation,
+        stopImpersonation,
       }}
     >
       {children}
@@ -118,10 +56,6 @@ export function ImpersonationProvider({ children }: { children: ReactNode }) {
   );
 }
 
-export const useImpersonation = () => {
-  const ctx = useContext(ImpersonationContext);
-  if (!ctx) {
-    throw new Error("useImpersonation must be used within ImpersonationProvider");
-  }
-  return ctx;
-};
+export function useImpersonation() {
+  return useContext(ImpersonationContext);
+}

@@ -5,6 +5,7 @@ import { Sun, Moon, Bell, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
 import { useTheme } from "@/lib/theme-context";
+import { ImpersonationDropdown } from "./impersonation-dropdown";
 
 /* ── Page metadata for breadcrumb ── */
 const pageMeta: Record<string, { title: string; crumbs: string[] }> = {
@@ -28,6 +29,18 @@ const pageMeta: Record<string, { title: string; crumbs: string[] }> = {
   "/traceability": {
     title: "Traceability",
     crumbs: ["Admin", "Transaction Traceability"],
+  },
+  "/rpc-providers": {
+    title: "RPC Providers",
+    crumbs: ["Admin", "Blockchain", "RPC Providers"],
+  },
+  "/sync-health": {
+    title: "Sync Health",
+    crumbs: ["Admin", "Blockchain", "Sync Health"],
+  },
+  "/exports": {
+    title: "Exports",
+    crumbs: ["Admin", "Data", "Exports"],
   },
 };
 
@@ -95,6 +108,9 @@ export function Header() {
 
       {/* ── Right: Actions ── */}
       <div className="flex items-center gap-2">
+        {/* Impersonation dropdown */}
+        <ImpersonationDropdown />
+
         {/* Theme toggle */}
         <button
           onClick={toggleTheme}

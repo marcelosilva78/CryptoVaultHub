@@ -3,6 +3,8 @@
 import { usePathname } from "next/navigation";
 import { Sidebar } from "@/components/sidebar";
 import { Header } from "@/components/header";
+import { ImpersonationBanner } from "@/components/impersonation-banner";
+import { ImpersonationProvider } from "@/lib/impersonation-context";
 
 export function LayoutShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -13,12 +15,15 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <>
+    <ImpersonationProvider>
       <Sidebar />
       <Header />
-      <main className="ml-sidebar-w mt-header-h p-content-p min-h-[calc(100vh-56px)] bg-surface-page">
-        <div className="animate-fade-in">{children}</div>
-      </main>
-    </>
+      <div className="ml-sidebar-w mt-header-h">
+        <ImpersonationBanner />
+        <main className="p-content-p min-h-[calc(100vh-56px)] bg-surface-page">
+          <div className="animate-fade-in">{children}</div>
+        </main>
+      </div>
+    </ImpersonationProvider>
   );
 }

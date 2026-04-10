@@ -126,16 +126,8 @@ services:
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD}
       - INTERNAL_SERVICE_KEY=${INTERNAL_SERVICE_KEY}
-      - CVH_EXPORTS_MYSQL_HOST=${CVH_EXPORTS_MYSQL_HOST:-mysql}
-      - CVH_EXPORTS_MYSQL_PORT=${CVH_EXPORTS_MYSQL_PORT:-3306}
-      - CVH_EXPORTS_MYSQL_USER=${CVH_EXPORTS_MYSQL_USER:-cvh_exports}
-      - CVH_EXPORTS_MYSQL_PASSWORD=${CVH_EXPORTS_MYSQL_PASSWORD:-changeme}
-      - CVH_EXPORTS_MYSQL_DATABASE=${CVH_EXPORTS_MYSQL_DATABASE:-cvh_exports}
-      - EXPORT_STORAGE_PATH=${EXPORT_STORAGE_PATH:-/data/exports}
-      - EXPORT_MAX_ROWS_SYNC=${EXPORT_MAX_ROWS_SYNC:-1000}
-      - EXPORT_FILE_EXPIRY_HOURS=${EXPORT_FILE_EXPIRY_HOURS:-24}
-    volumes:
-      - export-data:${EXPORT_STORAGE_PATH:-/data/exports}
+      - CHAIN_INDEXER_URL=http://chain-indexer-service:3006
+      - CRON_WORKER_SERVICE_URL=http://cron-worker-service:3008
     depends_on:
       redis:
         condition: service_healthy
@@ -169,6 +161,8 @@ services:
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD}
       - INTERNAL_SERVICE_KEY=${INTERNAL_SERVICE_KEY}
+      - CORE_WALLET_SERVICE_URL=http://core-wallet-service:3004
+      - CRON_WORKER_SERVICE_URL=http://cron-worker-service:3008
     depends_on:
       redis:
         condition: service_healthy
@@ -368,11 +362,6 @@ services:
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD}
       - INTERNAL_SERVICE_KEY=${INTERNAL_SERVICE_KEY}
-      - CVH_JOBS_MYSQL_HOST=${CVH_JOBS_MYSQL_HOST:-mysql}
-      - CVH_JOBS_MYSQL_PORT=${CVH_JOBS_MYSQL_PORT:-3306}
-      - CVH_JOBS_MYSQL_USER=${CVH_JOBS_MYSQL_USER:-cvh_jobs}
-      - CVH_JOBS_MYSQL_PASSWORD=${CVH_JOBS_MYSQL_PASSWORD:-changeme}
-      - CVH_JOBS_MYSQL_DATABASE=${CVH_JOBS_MYSQL_DATABASE:-cvh_jobs}
     depends_on:
       redis:
         condition: service_healthy
@@ -381,49 +370,6 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:3008/health"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-
-  rpc-gateway-service:
-    build:
-      context: .
-      dockerfile: infra/docker/Dockerfile.nestjs
-      args:
-        SERVICE_PATH: services/rpc-gateway-service
-        PORT: 3009
-    ports:
-      - "3009:3009"
-    environment:
-      - NODE_ENV=production
-      - PORT=3009
-      - MYSQL_HOST=${MYSQL_HOST}
-      - MYSQL_PORT=${MYSQL_PORT}
-      - MYSQL_USER=${MYSQL_USER}
-      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
-      - INTERNAL_SERVICE_KEY=${INTERNAL_SERVICE_KEY}
-      - CVH_JOBS_MYSQL_HOST=${CVH_JOBS_MYSQL_HOST:-mysql}
-      - CVH_JOBS_MYSQL_PORT=${CVH_JOBS_MYSQL_PORT:-3306}
-      - CVH_JOBS_MYSQL_USER=${CVH_JOBS_MYSQL_USER:-cvh_jobs}
-      - CVH_JOBS_MYSQL_PASSWORD=${CVH_JOBS_MYSQL_PASSWORD:-changeme}
-      - CVH_JOBS_MYSQL_DATABASE=${CVH_JOBS_MYSQL_DATABASE:-cvh_jobs}
-      - RPC_ETH_HTTP=${RPC_ETH_HTTP}
-      - RPC_ETH_WS=${RPC_ETH_WS}
-      - RPC_BSC_HTTP=${RPC_BSC_HTTP}
-      - RPC_BSC_WS=${RPC_BSC_WS}
-      - RPC_POLYGON_HTTP=${RPC_POLYGON_HTTP}
-      - TATUM_API_KEY=${TATUM_API_KEY}
-    depends_on:
-      redis:
-        condition: service_healthy
-    networks:
-      - internal-net
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3009/health"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -550,4 +496,3 @@ volumes:
   grafana-data:
   posthog-pg-data:
   clickhouse-data:
-  export-data:

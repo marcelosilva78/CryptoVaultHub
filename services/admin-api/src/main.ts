@@ -73,7 +73,9 @@ All responses follow the standard envelope:
     .addTag('Tiers', 'Configure rate limits, resource quotas, and compliance levels')
     .addTag('Compliance', 'KYT/AML alert management and sanctions screening')
     .addTag('Monitoring', 'System health, queue status, and gas tank monitoring')
-    .addTag('RPC Management', 'Manage RPC providers, nodes, health checks, and failover configuration')
+    .addTag('Sync Health', 'Monitor chain indexer sync status, gaps, and reorg history')
+    .addTag('Export Management', 'Admin-level cross-client data export requests')
+    .addTag('Job Management', 'Inspect and manage background job queue entries')
     .addServer('http://localhost:3001', 'Development')
     .addServer('https://api.cryptovaulthub.com', 'Production')
     .build();

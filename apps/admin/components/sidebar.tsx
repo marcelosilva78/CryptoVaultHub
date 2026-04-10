@@ -16,6 +16,8 @@ import {
   ShieldCheck,
   LogOut,
   FileSearch,
+  Radio,
+  Download,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { navSections } from "@/lib/mock-data";
@@ -34,6 +36,8 @@ const iconMap: Record<string, React.ElementType> = {
   Cog,
   ShieldCheck,
   FileSearch,
+  Radio,
+  Download,
 };
 
 /* ── Inline SVG: Hexagon with keyhole cutout ── */

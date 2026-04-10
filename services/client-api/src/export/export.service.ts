@@ -1,22 +1,34 @@
-import {
-  Injectable,
-  Logger,
-  HttpException,
-  InternalServerErrorException,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 
+export interface ExportRequest {
+  exportType: string;
+  format: 'CSV' | 'XLSX' | 'JSON';
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+export interface ExportResult {
+  requestUid: string;
+  status: 'queued' | 'processing' | 'completed' | 'failed';
+  exportType: string;
+  format: string;
+  totalRows?: number;
+  fileSize?: string;
+  downloadUrl?: string;
+  createdAt: string;
+}
+
 @Injectable()
-export class ExportApiService {
-  private readonly logger = new Logger(ExportApiService.name);
+export class ExportService {
+  private readonly logger = new Logger(ExportService.name);
   private readonly cronWorkerUrl: string;
 
   constructor(private readonly configService: ConfigService) {
     this.cronWorkerUrl = this.configService.get<string>(
       'CRON_WORKER_SERVICE_URL',
-      'http://localhost:3006',
+      'http://localhost:3008',
     );
   }
 
@@ -24,112 +36,71 @@ export class ExportApiService {
     return { 'X-Internal-Service-Key': process.env.INTERNAL_SERVICE_KEY || '' };
   }
 
-  async createExportRequest(
-    clientId: number,
-    data: {
-      exportType: string;
-      format: string;
-      filters?: Record<string, unknown>;
-    },
-  ) {
+  async requestExport(
+    clientUid: string,
+    request: ExportRequest,
+  ): Promise<ExportResult> {
     try {
-      const { data: result } = await axios.post(
+      const response = await axios.post(
         `${this.cronWorkerUrl}/exports`,
-        {
-          clientId,
-          requestedBy: clientId,
-          isAdminExport: false,
-          exportType: data.exportType,
-          format: data.format,
-          filters: data.filters || {},
-        },
-        { headers: this.headers, timeout: 30000 },
+        { clientUid, ...request },
+        { headers: this.headers, timeout: 10000 },
       );
-      return result;
-    } catch (error: any) {
-      if (error.response) {
-        throw new HttpException(
-          error.response.data?.message || 'Service error',
-          error.response.status,
-        );
-      }
-      throw new InternalServerErrorException('Export service unavailable');
+      return response.data;
+    } catch (err) {
+      this.logger.error(
+        `Failed to request export: ${(err as Error).message}`,
+      );
+      throw err;
     }
   }
 
-  async listExportRequests(
-    clientId: number,
-    params: { page?: number; limit?: number },
-  ) {
+  async listExports(clientUid: string): Promise<ExportResult[]> {
     try {
-      const { data } = await axios.get(
+      const response = await axios.get(
         `${this.cronWorkerUrl}/exports`,
         {
           headers: this.headers,
-          params: { clientId, ...params },
+          params: { clientUid },
           timeout: 10000,
         },
       );
-      return data;
-    } catch (error: any) {
-      if (error.response) {
-        throw new HttpException(
-          error.response.data?.message || 'Service error',
-          error.response.status,
-        );
-      }
-      throw new InternalServerErrorException('Export service unavailable');
+      return response.data;
+    } catch (err) {
+      this.logger.error(
+        `Failed to list exports: ${(err as Error).message}`,
+      );
+      throw err;
     }
   }
 
-  async getExportRequest(clientId: number, requestUid: string) {
+  async getExportStatus(requestUid: string): Promise<ExportResult> {
     try {
-      const { data } = await axios.get(
+      const response = await axios.get(
         `${this.cronWorkerUrl}/exports/${requestUid}`,
-        {
-          headers: this.headers,
-          params: { clientId },
-          timeout: 10000,
-        },
+        { headers: this.headers, timeout: 5000 },
       );
-      return data;
-    } catch (error: any) {
-      if (error.response) {
-        if (error.response.status === 404) {
-          throw new NotFoundException('Export request not found');
-        }
-        throw new HttpException(
-          error.response.data?.message || 'Service error',
-          error.response.status,
-        );
-      }
-      throw new InternalServerErrorException('Export service unavailable');
+      return response.data;
+    } catch (err) {
+      this.logger.error(
+        `Failed to get export status: ${(err as Error).message}`,
+      );
+      throw err;
     }
   }
 
-  async downloadExport(clientId: number, requestUid: string) {
+  async getDownloadUrl(requestUid: string): Promise<{ url: string }> {
     try {
-      const { data } = await axios.get(
+      const response = await axios.get(
         `${this.cronWorkerUrl}/exports/${requestUid}/download`,
-        {
-          headers: this.headers,
-          params: { clientId },
-          timeout: 60000,
-          responseType: 'stream',
-        },
+        { headers: this.headers, timeout: 5000 },
       );
-      return data;
-    } catch (error: any) {
-      if (error.response) {
-        if (error.response.status === 404) {
-          throw new NotFoundException('Export file not found or expired');
-        }
-        throw new HttpException(
-          error.response.data?.message || 'Service error',
-          error.response.status,
-        );
-      }
-      throw new InternalServerErrorException('Export service unavailable');
+      return response.data;
+    } catch (err) {
+      this.logger.error(
+        `Failed to get download URL: ${(err as Error).message}`,
+      );
+      throw err;
     }
   }
 }

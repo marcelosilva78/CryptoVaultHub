@@ -4,7 +4,6 @@ import { usePathname } from "next/navigation";
 import { Sun, Moon } from "lucide-react";
 import { useTheme } from "@/lib/theme-context";
 import { useClientAuth } from "@/lib/auth-context";
-import { ProjectSelector } from "@/components/project-selector";
 
 const pageMeta: Record<string, { title: string; breadcrumb: string }> = {
   "/": { title: "Dashboard", breadcrumb: "Portal / Overview" },
@@ -32,6 +31,7 @@ const pageMeta: Record<string, { title: string; breadcrumb: string }> = {
     breadcrumb: "Portal / Settings / Security",
   },
   "/setup": { title: "Setup Wizard", breadcrumb: "Portal / Setup" },
+  "/exports": { title: "Exports", breadcrumb: "Portal / Operations / Exports" },
 };
 
 export function Header() {
@@ -63,14 +63,8 @@ export function Header() {
         </span>
       </div>
 
-      {/* Right: project selector, theme toggle, client name, hexagonal avatar */}
+      {/* Right: theme toggle, client name, hexagonal avatar */}
       <div className="flex items-center gap-3">
-        {/* Project selector */}
-        <ProjectSelector />
-
-        {/* Separator */}
-        <div className="w-px h-5 bg-border-subtle" />
-
         {/* Theme toggle */}
         <button
           onClick={toggleTheme}

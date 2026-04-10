@@ -1,12 +1,26 @@
-import {
-  Injectable,
-  Logger,
-  HttpException,
-  InternalServerErrorException,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
+
+export interface AdminExportRequest {
+  exportType: string;
+  format: 'CSV' | 'XLSX' | 'JSON';
+  clientUid?: string;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+export interface AdminExportResult {
+  requestUid: string;
+  status: 'queued' | 'processing' | 'completed' | 'failed';
+  exportType: string;
+  format: string;
+  clientUid?: string;
+  totalRows?: number;
+  fileSize?: string;
+  downloadUrl?: string;
+  createdAt: string;
+}
 
 @Injectable()
 export class ExportManagementService {
@@ -16,7 +30,7 @@ export class ExportManagementService {
   constructor(private readonly configService: ConfigService) {
     this.cronWorkerUrl = this.configService.get<string>(
       'CRON_WORKER_SERVICE_URL',
-      'http://localhost:3006',
+      'http://localhost:3008',
     );
   }
 
@@ -24,126 +38,70 @@ export class ExportManagementService {
     return { 'X-Internal-Service-Key': process.env.INTERNAL_SERVICE_KEY || '' };
   }
 
-  /**
-   * Create an admin-level export request (cross-client access).
-   */
-  async createExportRequest(
-    adminUserId: number,
-    data: {
-      exportType: string;
-      format: string;
-      filters?: Record<string, unknown>;
-      clientId?: number;
-    },
-  ) {
+  async requestExport(request: AdminExportRequest): Promise<AdminExportResult> {
     try {
-      const { data: result } = await axios.post(
-        `${this.cronWorkerUrl}/exports`,
-        {
-          clientId: data.clientId ?? null,
-          requestedBy: adminUserId,
-          isAdminExport: true,
-          exportType: data.exportType,
-          format: data.format,
-          filters: data.filters || {},
-        },
-        { headers: this.headers, timeout: 30000 },
+      const response = await axios.post(
+        `${this.cronWorkerUrl}/admin/exports`,
+        request,
+        { headers: this.headers, timeout: 10000 },
       );
-      return result;
-    } catch (error: any) {
-      if (error.response) {
-        throw new HttpException(
-          error.response.data?.message || 'Service error',
-          error.response.status,
-        );
-      }
-      throw new InternalServerErrorException('Export service unavailable');
+      return response.data;
+    } catch (err) {
+      this.logger.error(
+        `Failed to request admin export: ${(err as Error).message}`,
+      );
+      throw err;
     }
   }
 
-  /**
-   * List all export requests (admin view -- cross-client).
-   */
-  async listExportRequests(params: {
-    page?: number;
-    limit?: number;
-    clientId?: number;
-  }) {
+  async listExports(filters?: {
+    clientUid?: string;
+    status?: string;
+  }): Promise<AdminExportResult[]> {
     try {
-      const { data } = await axios.get(
-        `${this.cronWorkerUrl}/exports`,
+      const response = await axios.get(
+        `${this.cronWorkerUrl}/admin/exports`,
         {
           headers: this.headers,
-          params: { ...params, isAdmin: true },
+          params: filters,
           timeout: 10000,
         },
       );
-      return data;
-    } catch (error: any) {
-      if (error.response) {
-        throw new HttpException(
-          error.response.data?.message || 'Service error',
-          error.response.status,
-        );
-      }
-      throw new InternalServerErrorException('Export service unavailable');
+      return response.data;
+    } catch (err) {
+      this.logger.error(
+        `Failed to list admin exports: ${(err as Error).message}`,
+      );
+      throw err;
     }
   }
 
-  /**
-   * Get a specific export request by UID (admin -- no client filter).
-   */
-  async getExportRequest(requestUid: string) {
+  async getExportStatus(requestUid: string): Promise<AdminExportResult> {
     try {
-      const { data } = await axios.get(
-        `${this.cronWorkerUrl}/exports/${requestUid}`,
-        {
-          headers: this.headers,
-          params: { isAdmin: true },
-          timeout: 10000,
-        },
+      const response = await axios.get(
+        `${this.cronWorkerUrl}/admin/exports/${requestUid}`,
+        { headers: this.headers, timeout: 5000 },
       );
-      return data;
-    } catch (error: any) {
-      if (error.response) {
-        if (error.response.status === 404) {
-          throw new NotFoundException('Export request not found');
-        }
-        throw new HttpException(
-          error.response.data?.message || 'Service error',
-          error.response.status,
-        );
-      }
-      throw new InternalServerErrorException('Export service unavailable');
+      return response.data;
+    } catch (err) {
+      this.logger.error(
+        `Failed to get export status: ${(err as Error).message}`,
+      );
+      throw err;
     }
   }
 
-  /**
-   * Download an export file (admin -- no client filter).
-   */
-  async downloadExport(requestUid: string) {
+  async cancelExport(requestUid: string): Promise<void> {
     try {
-      const { data } = await axios.get(
-        `${this.cronWorkerUrl}/exports/${requestUid}/download`,
-        {
-          headers: this.headers,
-          params: { isAdmin: true },
-          timeout: 60000,
-          responseType: 'stream',
-        },
+      await axios.delete(
+        `${this.cronWorkerUrl}/admin/exports/${requestUid}`,
+        { headers: this.headers, timeout: 5000 },
       );
-      return data;
-    } catch (error: any) {
-      if (error.response) {
-        if (error.response.status === 404) {
-          throw new NotFoundException('Export file not found or expired');
-        }
-        throw new HttpException(
-          error.response.data?.message || 'Service error',
-          error.response.status,
-        );
-      }
-      throw new InternalServerErrorException('Export service unavailable');
+    } catch (err) {
+      this.logger.error(
+        `Failed to cancel export: ${(err as Error).message}`,
+      );
+      throw err;
     }
   }
 }

@@ -986,12 +986,8 @@ export const navSections = [
       { label: "Chains", href: "/chains", icon: "Link" },
       { label: "Tokens", href: "/tokens", icon: "Coins" },
       { label: "Gas Tanks", href: "/gas-tanks", icon: "Fuel" },
-    ],
-  },
-  {
-    title: "Infrastructure",
-    items: [
-      { label: "Jobs", href: "/jobs", icon: "Cog" },
+      { label: "RPC Providers", href: "/rpc-providers", icon: "Radio" },
+      { label: "Sync Health", href: "/sync-health", icon: "Activity" },
     ],
   },
   {
@@ -1000,6 +996,7 @@ export const navSections = [
       { label: "Tiers & Limits", href: "/tiers", icon: "Layers" },
       { label: "Compliance", href: "/compliance", icon: "ShieldAlert", badge: 3 },
       { label: "Monitoring", href: "/monitoring", icon: "Activity" },
+      { label: "Exports", href: "/exports", icon: "Download" },
     ],
   },
 ];
