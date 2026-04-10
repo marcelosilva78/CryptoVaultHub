@@ -10,8 +10,8 @@ describe('FlushGuardService', () => {
   beforeEach(async () => {
     redisClient = {
       set: jest.fn(),
-      del: jest.fn(),
       get: jest.fn(),
+      eval: jest.fn(),
     };
 
     redisService = {
@@ -36,15 +36,15 @@ describe('FlushGuardService', () => {
   });
 
   describe('acquireLock', () => {
-    it('should acquire lock for an address', async () => {
+    it('should acquire lock for an address with operationUid', async () => {
       redisClient.set.mockResolvedValue('OK');
 
-      const acquired = await service.acquireLock('0xABC123');
+      const acquired = await service.acquireLock('0xABC123', 'op-001');
 
       expect(acquired).toBe(true);
       expect(redisClient.set).toHaveBeenCalledWith(
         'flush:lock:0xabc123',
-        expect.any(String),
+        'op-001',
         'EX',
         300,
         'NX',
@@ -54,56 +54,69 @@ describe('FlushGuardService', () => {
     it('should prevent concurrent lock on same address', async () => {
       // First call succeeds
       redisClient.set.mockResolvedValueOnce('OK');
-      const first = await service.acquireLock('0xABC123');
+      const first = await service.acquireLock('0xABC123', 'op-001');
       expect(first).toBe(true);
 
       // Second call fails (lock already held)
       redisClient.set.mockResolvedValueOnce(null);
-      const second = await service.acquireLock('0xABC123');
+      const second = await service.acquireLock('0xABC123', 'op-002');
       expect(second).toBe(false);
     });
 
-    it('should use custom TTL', async () => {
-      redisClient.set.mockResolvedValue('OK');
+    it('should return false when SET NX returns null', async () => {
+      redisClient.set.mockResolvedValue(null);
 
-      await service.acquireLock('0xABC123', 60);
+      const acquired = await service.acquireLock('0xABC123', 'op-003');
 
-      expect(redisClient.set).toHaveBeenCalledWith(
-        'flush:lock:0xabc123',
-        expect.any(String),
-        'EX',
-        60,
-        'NX',
-      );
+      expect(acquired).toBe(false);
     });
   });
 
   describe('releaseLock', () => {
-    it('should release an existing lock', async () => {
-      redisClient.del.mockResolvedValue(1);
+    it('should release lock using Lua script with correct operationUid', async () => {
+      redisClient.eval.mockResolvedValue(1);
 
-      const released = await service.releaseLock('0xABC123');
+      await service.releaseLock('0xABC123', 'op-001');
 
-      expect(released).toBe(true);
-      expect(redisClient.del).toHaveBeenCalledWith('flush:lock:0xabc123');
+      expect(redisClient.eval).toHaveBeenCalledWith(
+        expect.stringContaining('redis.call("get", KEYS[1]) == ARGV[1]'),
+        1,
+        'flush:lock:0xabc123',
+        'op-001',
+      );
     });
 
-    it('should return false when lock does not exist', async () => {
-      redisClient.del.mockResolvedValue(0);
+    it('should not throw when lock does not exist (Lua returns 0)', async () => {
+      redisClient.eval.mockResolvedValue(0);
 
-      const released = await service.releaseLock('0xNONEXISTENT');
+      // releaseLock returns void, should not throw
+      await expect(
+        service.releaseLock('0xNONEXISTENT', 'op-999'),
+      ).resolves.toBeUndefined();
+    });
 
-      expect(released).toBe(false);
+    it('should only delete lock if operationUid matches (via Lua)', async () => {
+      redisClient.eval.mockResolvedValue(0); // Lua returns 0 = no match
+
+      await service.releaseLock('0xABC123', 'wrong-uid');
+
+      expect(redisClient.eval).toHaveBeenCalledWith(
+        expect.stringContaining('redis.call("del", KEYS[1])'),
+        1,
+        'flush:lock:0xabc123',
+        'wrong-uid',
+      );
     });
   });
 
   describe('isLocked', () => {
     it('should return true when lock exists', async () => {
-      redisClient.get.mockResolvedValue('1712649600000');
+      redisClient.get.mockResolvedValue('op-001');
 
       const locked = await service.isLocked('0xABC123');
 
       expect(locked).toBe(true);
+      expect(redisClient.get).toHaveBeenCalledWith('flush:lock:0xabc123');
     });
 
     it('should return false when lock does not exist (expired TTL)', async () => {
@@ -118,11 +131,25 @@ describe('FlushGuardService', () => {
   it('should normalize address to lowercase for lock key', async () => {
     redisClient.set.mockResolvedValue('OK');
 
-    await service.acquireLock('0xABCDEF');
+    await service.acquireLock('0xABCDEF', 'op-norm');
 
     expect(redisClient.set).toHaveBeenCalledWith(
       'flush:lock:0xabcdef',
-      expect.any(String),
+      'op-norm',
+      'EX',
+      300,
+      'NX',
+    );
+  });
+
+  it('should use fixed TTL of 300 seconds', async () => {
+    redisClient.set.mockResolvedValue('OK');
+
+    await service.acquireLock('0x123', 'op-ttl');
+
+    expect(redisClient.set).toHaveBeenCalledWith(
+      'flush:lock:0x123',
+      'op-ttl',
       'EX',
       300,
       'NX',

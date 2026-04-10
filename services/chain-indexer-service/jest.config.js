@@ -5,14 +5,12 @@ module.exports = {
   transform: {
     '^.+\\.(t|j)s$': ['ts-jest', { diagnostics: false }],
   },
-  collectCoverageFrom: ['**/*.(t|j)s', '!**/generated/**'],
+  transformIgnorePatterns: ['generated/prisma-client'],
+  collectCoverageFrom: ['**/*.(t|j)s'],
   coverageDirectory: '../coverage',
   testEnvironment: 'node',
   moduleNameMapper: {
-    '^@cvh/types(.*)$': '<rootDir>/../../packages/types/src$1',
-    '^@cvh/config(.*)$': '<rootDir>/../../packages/config/src$1',
-    '^@cvh/utils(.*)$': '<rootDir>/../../packages/utils/src$1',
-    '^@cvh/job-client(.*)$': '<rootDir>/../../packages/job-client/src$1',
-    '^@cvh/api-client(.*)$': '<rootDir>/../../packages/api-client/src$1',
+    '^\\.\\./generated/prisma-client$': '<rootDir>/__mocks__/prisma-client.ts',
+    '^@nestjs/schedule$': '<rootDir>/__mocks__/@nestjs/schedule.ts',
   },
 };
