@@ -13,28 +13,38 @@
 
 ```bash
 # 1. Clone and enter the repository
-git clone <repo-url> && cd CryptoVaultHub
+git clone https://github.com/marcelosilva78/CryptoVaultHub.git && cd CryptoVaultHub
 
-# 2. Copy and configure environment variables
+# 2. Automated setup (recommended)
+bash scripts/setup.sh
+
+# --- OR manual steps below ---
+
+# 2a. Copy and configure environment variables
 cp .env.example .env
 # Edit .env with production values (see section 3 below)
 
-# 3. Run database migrations
+# 3. Ensure DNS records point to your server IP before starting
+#    admin.vaulthub.live, portal.vaulthub.live, api.vaulthub.live,
+#    grafana.vaulthub.live, jaeger.vaulthub.live
+
+# 4. Run database migrations
 cd database
 ./migrate.sh -h $MYSQL_HOST -u $MYSQL_USER -p
 cd ..
 
-# 4. Generate Prisma clients for all services
+# 5. Generate Prisma clients for all services
 npx turbo build --filter='./services/*'
 
-# 5. Build and start all containers
+# 6. Build and start all containers
 docker compose up -d --build
+# Traefik will automatically provision SSL certificates via Let's Encrypt (~30s)
 
-# 6. Verify all services are healthy
+# 7. Verify all services are healthy
 docker compose ps
 # All services should show "healthy" status
 
-# 7. Verify health endpoints
+# 8. Verify health endpoints
 curl http://localhost:3001/health  # admin-api
 curl http://localhost:3002/health  # client-api
 curl http://localhost:3003/health  # auth-service
@@ -43,7 +53,13 @@ curl http://localhost:3005/health  # key-vault-service
 curl http://localhost:3006/health  # chain-indexer-service
 curl http://localhost:3007/health  # notification-service
 curl http://localhost:3008/health  # cron-worker-service
+
+# 9. Verify Traefik SSL certificates
+curl -s https://admin.vaulthub.live/health
+curl -s https://api.vaulthub.live/auth/health
 ```
+
+> **Note:** SSL is handled automatically by Traefik v3.0 via Let's Encrypt. There is no `init-ssl.sh` script or manual certificate setup required. Traefik provisions and renews certificates automatically as long as DNS records point to the server.
 
 ### Container Build
 
@@ -188,6 +204,7 @@ Docker Compose health checks are configured for all services:
 
 | Service | Endpoint | Interval | Timeout | Retries |
 |---------|----------|----------|---------|---------|
+| Traefik | `GET /ping` | 10s | 3s | 3 |
 | admin-api | `GET /health` | 30s | 5s | 3 |
 | client-api | `GET /health` | 30s | 5s | 3 |
 | auth-service | `GET /health` | 30s | 5s | 3 |
@@ -207,6 +224,15 @@ The admin API's `/admin/monitoring/health` endpoint provides a composite health 
 ---
 
 ## 5. Monitoring Stack
+
+### Traefik (Reverse Proxy / TLS)
+
+- **External ports:** 80 (HTTP, redirects to HTTPS), 443 (HTTPS)
+- **Dashboard:** `traefik.vaulthub.live` (internal access only)
+- **SSL:** Automatic via Let's Encrypt (ACME HTTP-01 challenge)
+- **Routing:** Docker label-based subdomain routing (no config files)
+- **Subdomains:** `admin.vaulthub.live`, `portal.vaulthub.live`, `api.vaulthub.live`, `grafana.vaulthub.live`, `jaeger.vaulthub.live`
+- **Metrics:** Exposed to Prometheus for scraping
 
 ### Prometheus
 
@@ -250,6 +276,33 @@ The admin API's `/admin/monitoring/health` endpoint provides a composite health 
 ---
 
 ## 6. Common Troubleshooting
+
+### Traefik / SSL Issues
+
+**Symptoms:** SSL certificate errors in browser, HTTPS not working, `ERR_SSL_PROTOCOL_ERROR`.
+
+**Diagnosis:**
+```bash
+# Check Traefik logs for certificate provisioning errors
+docker compose logs traefik
+
+# Check if Traefik container is running and healthy
+docker compose ps traefik
+
+# Verify DNS records resolve to your server IP
+dig admin.vaulthub.live +short
+dig api.vaulthub.live +short
+```
+
+**Resolution:**
+1. **DNS not pointing to server:** Verify all subdomain DNS A records (`admin`, `portal`, `api`, `grafana`, `jaeger` `.vaulthub.live`) resolve to your server's public IP. Traefik cannot provision certificates if DNS does not point to the server.
+2. **Certificate not provisioned yet:** After first start, wait approximately 30 seconds for Let's Encrypt to issue certificates. Check progress in `docker compose logs traefik`.
+3. **Force certificate renewal:** Restart the Traefik container: `docker compose restart traefik`. Traefik will re-check and renew any expiring certificates.
+4. **Rate limit hit:** Let's Encrypt has rate limits (50 certificates per registered domain per week). If you hit the limit during testing, wait or use Let's Encrypt staging environment.
+5. **Port 80 blocked:** Traefik uses HTTP-01 challenge on port 80. Ensure port 80 is open in your firewall and not blocked by any upstream load balancer.
+6. **Check Traefik dashboard:** Access `traefik.vaulthub.live` to inspect router and service status, active certificates, and middleware chain.
+
+---
 
 ### Indexer Falling Behind
 

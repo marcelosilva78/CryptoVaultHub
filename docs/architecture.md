@@ -22,44 +22,57 @@ CVH consists of **8 backend microservices**, **2 frontend applications**, and su
 
 ```mermaid
 graph TB
-    subgraph "Public Zone"
-        AdminUI["Admin Panel<br/>(Next.js :3010)"]
-        ClientUI["Client Portal<br/>(Next.js :3011)"]
-        Kong["Kong API Gateway<br/>(:8000 / :8443)"]
+    Internet((Internet<br/>ports 80/443))
+
+    subgraph Docker["Docker Host"]
+        Traefik["Traefik v3.0<br/>Auto SSL · Let's Encrypt"]
+
+        subgraph "Public Zone"
+            AdminUI["admin.vaulthub.live<br/>Admin Panel (Next.js)"]
+            ClientUI["portal.vaulthub.live<br/>Client Portal (Next.js)"]
+            Kong["api.vaulthub.live<br/>Kong API Gateway"]
+        end
+
+        subgraph "Application Services"
+            AdminAPI["admin-api<br/>(:3001)"]
+            ClientAPI["client-api<br/>(:3002)"]
+            AuthSvc["auth-service<br/>(:3003)"]
+            CoreWallet["core-wallet-service<br/>(:3004)"]
+            ChainIndexer["chain-indexer-service<br/>(:3006)"]
+            NotifSvc["notification-service<br/>(:3007)"]
+            CronWorker["cron-worker-service<br/>(:3008)"]
+            RpcGw["rpc-gateway-service<br/>(:3009)"]
+        end
+
+        subgraph "Vault Zone (isolated)"
+            KeyVault["key-vault-service<br/>(:3005)"]
+        end
+
+        subgraph "Infrastructure"
+            Redis["Redis 7<br/>(cache + BullMQ)"]
+        end
+
+        subgraph "Monitoring"
+            Prometheus["Prometheus"]
+            Grafana["grafana.vaulthub.live<br/>Grafana"]
+            Loki["Loki"]
+            Jaeger["jaeger.vaulthub.live<br/>Jaeger"]
+            PostHog["PostHog"]
+        end
     end
 
-    subgraph "Application Services"
-        AdminAPI["admin-api<br/>(:3001)"]
-        ClientAPI["client-api<br/>(:3002)"]
-        AuthSvc["auth-service<br/>(:3003)"]
-        CoreWallet["core-wallet-service<br/>(:3004)"]
-        ChainIndexer["chain-indexer-service<br/>(:3006)"]
-        NotifSvc["notification-service<br/>(:3007)"]
-        CronWorker["cron-worker-service<br/>(:3008)"]
-    end
+    MySQL["MySQL 8.0+<br/>(10 databases, external)"]
 
-    subgraph "Vault Zone (isolated)"
-        KeyVault["key-vault-service<br/>(:3005)"]
-    end
-
-    subgraph "Infrastructure"
-        MySQL["MySQL 8.0+<br/>(10 databases)"]
-        Redis["Redis 7<br/>(cache + BullMQ)"]
-    end
-
-    subgraph "Monitoring"
-        Prometheus["Prometheus"]
-        Grafana["Grafana"]
-        Loki["Loki"]
-        Jaeger["Jaeger"]
-        PostHog["PostHog"]
-    end
+    Internet --> Traefik
+    Traefik --> AdminUI
+    Traefik --> ClientUI
+    Traefik --> Kong
+    Traefik --> Grafana
+    Traefik --> Jaeger
 
     Kong --> AdminAPI
     Kong --> ClientAPI
     Kong --> AuthSvc
-    AdminUI --> Kong
-    ClientUI --> Kong
 
     AdminAPI --> MySQL
     AdminAPI --> Redis
@@ -72,12 +85,29 @@ graph TB
     CoreWallet --> KeyVault
     ChainIndexer --> MySQL
     ChainIndexer --> Redis
+    ChainIndexer --> RpcGw
     NotifSvc --> MySQL
     NotifSvc --> Redis
     CronWorker --> MySQL
     CronWorker --> Redis
     KeyVault --> MySQL
+    RpcGw --> MySQL
+    Prometheus --> Traefik
 ```
+
+### Reverse Proxy -- Traefik v3.0
+
+Traefik v3.0 serves as the single entry point for all external traffic. It is the only container that exposes ports 80 and 443 to the internet. Key characteristics:
+
+- **Automatic SSL**: Let's Encrypt certificates are provisioned and renewed automatically via ACME HTTP-01 challenge. No manual certificate setup or renewal scripts are needed.
+- **Docker label routing**: Each service declares its routing rules (Host, PathPrefix, middleware) as Docker labels in `docker-compose.yml`. No separate config files like `nginx.conf` are required.
+- **Subdomain-based routing**: Traffic is routed based on the Host header to the appropriate service:
+  - `admin.vaulthub.live` -> Admin Panel (Next.js)
+  - `portal.vaulthub.live` -> Client Portal (Next.js)
+  - `api.vaulthub.live` -> Kong API Gateway
+  - `grafana.vaulthub.live` -> Grafana
+  - `jaeger.vaulthub.live` -> Jaeger
+- **HTTP-to-HTTPS redirect**: All HTTP traffic on port 80 is automatically redirected to HTTPS on port 443.
 
 ### Service Responsibilities
 
@@ -162,10 +192,12 @@ Docker Compose defines four isolated networks:
 
 | Network | Type | Access | Services |
 |---------|------|--------|----------|
-| `public-net` | bridge | External-facing | Kong, admin-api, client-api, admin (UI), client (UI) |
+| `public-net` | bridge | External-facing | Traefik, Kong, admin-api, client-api, admin (UI), client (UI) |
 | `internal-net` | bridge, **internal: true** | Service-to-service only | All backend services, Redis, Loki, Jaeger, PostHog |
 | `vault-net` | bridge, **internal: true** | Isolated key operations | key-vault-service, core-wallet-service only |
 | `monitoring-net` | bridge | Observability stack | Prometheus, Grafana, Loki, Jaeger, PostHog (+ Kafka, ClickHouse, Zookeeper) |
+
+**Traefik** is the single entry point on `public-net`, exposing only ports 80 and 443 to the internet. All other services are routed through Traefik via Docker label-based subdomain routing. No other container exposes ports externally.
 
 The `vault-net` is deliberately isolated so that **only** `core-wallet-service` can reach `key-vault-service`. The key vault has no Redis dependency and no public network access. Internal service-to-service calls are authenticated via the `INTERNAL_SERVICE_KEY` shared secret.
 
@@ -183,6 +215,7 @@ The `vault-net` is deliberately isolated so that **only** `core-wallet-service` 
 | **Database** | MySQL | 8.0+ | Primary data store (10 databases) |
 | **Cache / Queue** | Redis 7 | Alpine | Caching, BullMQ job queues, Redis Streams |
 | **API Gateway** | Kong | 3.6 | Rate limiting, routing, CORS, request size limiting |
+| **Reverse Proxy / TLS** | Traefik | v3.0 | Automatic SSL via Let's Encrypt, subdomain routing via Docker labels, single entry point (ports 80/443) |
 | **Blockchain** | ethers.js | 6.x | EVM RPC interaction |
 | **Smart Contracts** | Solidity | 0.8.27 | CvhWalletSimple, CvhForwarder, CvhForwarderFactory, CvhBatcher |
 | **Contract Tooling** | Hardhat | latest | Contract compilation, testing, deployment |
@@ -374,6 +407,7 @@ Supporting contracts:
 | Area | Path |
 |------|------|
 | Docker Compose | `docker-compose.yml` |
+| Traefik config | `infra/traefik/` (auto SSL, Docker label routing) |
 | Kong config | `infra/kong/kong.yml` |
 | Prometheus config | `infra/prometheus/prometheus.yml` |
 | Dockerfiles | `infra/docker/Dockerfile.nestjs`, `infra/docker/Dockerfile.nextjs` |

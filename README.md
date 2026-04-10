@@ -112,7 +112,7 @@ The Client Portal (port 3011) gives each client self-service access to their wal
 
 ### API Gateway
 
-Kong 3.6 runs in declarative (DB-less) mode, providing centralized request routing, multi-level rate limiting (global per-service and per-tenant via Redis-backed counters), CORS restriction to known origins (`localhost:3010`, `localhost:3011`, `admin.cryptovaulthub.com`, `portal.cryptovaulthub.com`), request size limiting (1 MB), and TLS termination.
+Kong 3.6 runs in declarative (DB-less) mode, providing centralized request routing, multi-level rate limiting (global per-service and per-tenant via Redis-backed counters), CORS restriction to known origins (`localhost:3010`, `localhost:3011`, `admin.vaulthub.live`, `portal.vaulthub.live`), and request size limiting (1 MB). TLS termination is handled upstream by Traefik v3.0 with automatic Let's Encrypt certificates.
 
 ### Full Observability Stack
 
@@ -197,53 +197,77 @@ Super admins can impersonate any client organization to view the platform exactl
 
 ### High-Level Architecture Diagram
 
+```mermaid
+graph TB
+    Internet((Internet<br/>ports 80/443))
+    
+    subgraph Docker["Docker Host"]
+        Traefik["Traefik v3.0<br/>Auto SSL · Let's Encrypt"]
+        
+        subgraph Frontend["Frontend Layer"]
+            Admin["admin.vaulthub.live<br/>Next.js 14"]
+            Portal["portal.vaulthub.live<br/>Next.js 14"]
+        end
+        
+        subgraph Gateway["API Gateway"]
+            Kong["api.vaulthub.live<br/>Kong 3.6"]
+        end
+        
+        subgraph Services["Microservices (internal only)"]
+            AdminAPI["admin-api<br/>:3001"]
+            ClientAPI["client-api<br/>:3002"]
+            Auth["auth-service<br/>:3003"]
+            Wallet["core-wallet<br/>:3004"]
+            KeyVault["key-vault<br/>:3005"]
+            Indexer["chain-indexer<br/>:3006"]
+            Notify["notification<br/>:3007"]
+            CronWorker["cron-worker<br/>:3008"]
+            RpcGw["rpc-gateway<br/>:3009"]
+        end
+        
+        subgraph Infra["Infrastructure"]
+            Redis["Redis 7"]
+        end
+        
+        subgraph Monitoring["Observability"]
+            Grafana["grafana.vaulthub.live<br/>Grafana"]
+            Prometheus["Prometheus"]
+            Loki["Loki"]
+            Jaeger["jaeger.vaulthub.live<br/>Jaeger"]
+        end
+    end
+    
+    MySQL[("MySQL Cluster<br/>(External)<br/>10 databases")]
+    
+    Internet --> Traefik
+    Traefik --> Admin
+    Traefik --> Portal
+    Traefik --> Kong
+    Traefik --> Grafana
+    Traefik --> Jaeger
+    Kong --> AdminAPI
+    Kong --> ClientAPI
+    Kong --> Auth
+    AdminAPI --> Redis
+    ClientAPI --> Redis
+    Auth --> Redis
+    Wallet --> KeyVault
+    Indexer --> RpcGw
+    CronWorker --> Redis
+    Notify --> Redis
+    AdminAPI --> MySQL
+    ClientAPI --> MySQL
+    Auth --> MySQL
+    Wallet --> MySQL
+    KeyVault --> MySQL
+    Indexer --> MySQL
+    Notify --> MySQL
+    CronWorker --> MySQL
+    RpcGw --> MySQL
+    Prometheus --> Traefik
 ```
-                              Internet / Clients
-                                     |
-                            +--------v---------+
-                            |  Load Balancer   |
-                            +--------+---------+
-                                     |
-                  +------------------v-------------------+
-                  |        Kong API Gateway              |     public-net
-                  |        Port 8000 / 8443              |
-                  |   Rate Limiting | CORS | Size Limit  |
-                  +---+--------+--------+--------+-------+
-                      |        |        |        |
-           +----------+   +---+---+  +-+----+   +----------+
-           |               |       |  |      |              |
-   +-------v------+ +-----v------++ +v------v-----+ +------v-------+
-   | Admin API    | | Client API  | | Auth Service | | Admin Panel  |
-   | :3001        | | :3002       | | :3003        | | :3010        |
-   | JWT Auth     | | API Key     | | JWT / TOTP   | | Next.js 14   |
-   | Admin CRUD   | | Auth        | | API Keys     | +------+-------+
-   +------+-------+ | Client Ops  | | RBAC         |        |
-          |          +------+------+ +-----+--------+ +------v-------+
-          |                 |              |          | Client Portal|
-          +--------+--------+              |          | :3011        |
-                   |                       |          | Next.js 14   |
-           +-------v--------+             |          +--------------+
-           |  Core Wallet   |<------------+
-           |  Service :3004 |                        internal-net
-           |  Wallets       |
-           |  Deposits      |
-           |  Withdrawals   |
-           |  Compliance    |
-           +--+---+---+--+-+
-              |   |   |  |
-        +-----+   |   |  +-------+
-        |         |   |          |
-   +----v--+ +---v---++ +-------v----+ +-----------+
-   |Key    | |Chain   | |Notification| |Cron/Worker|
-   |Vault  | |Indexer | |Service     | |Service    |
-   |:3005  | |:3006   | |:3007       | |:3008      |
-   |       | |        | |            | |           |
-   |vault- | |WS+Poll | |Webhooks    | |Sweeps     |
-   |net    | |Block   | |Email       | |Gas Mgmt   |
-   |ONLY   | |Scan    | |HMAC-SHA256 | |OFAC Sync  |
-   +-------+ +--------+ |Retry/DLQ  | |Fwd Deploy |
-                         +------------+ +-----------+
-```
+
+**Traefik v3.0** is the single entry point for all external traffic. It terminates TLS via automatic Let's Encrypt certificates (ACME HTTP-01 challenge), routes requests to internal services based on Host header rules (Docker labels), and exposes only ports 80 and 443 to the internet. No manual certificate setup is required -- SSL provisioning happens automatically when DNS records point to the server.
 
 ### Network Isolation
 
@@ -251,10 +275,12 @@ CryptoVaultHub uses four Docker networks to enforce strict security boundaries:
 
 | Network | Type | Purpose | Services |
 |---------|------|---------|----------|
-| `public-net` | Bridge | External access | Kong, Admin Panel, Client Portal |
+| `public-net` | Bridge | External access | Traefik, Kong, Admin Panel, Client Portal |
 | `internal-net` | Bridge, internal | Inter-service communication (no external access) | All NestJS services, Redis, Kong, PostHog Web, Loki, Jaeger, Prometheus |
 | `vault-net` | Bridge, internal | Isolated key management (zero internet access) | Core Wallet Service <-> Key Vault Service only |
 | `monitoring-net` | Bridge | Observability stack | PostHog, Prometheus, Grafana, Loki, Jaeger, ClickHouse, Kafka, Zookeeper |
+
+> **Note:** Only Traefik exposes ports 80 and 443 to the internet. All other services are accessible only through Traefik's reverse proxy via subdomain routing.
 
 The Key Vault Service exists ONLY on `vault-net`. It has zero connectivity to the internet, internal services, or monitoring. Only the Core Wallet Service bridges both `internal-net` and `vault-net`, serving as the sole gateway to key material.
 
@@ -343,6 +369,7 @@ Client submits POST /client/v1/withdrawals
 | Smart Contracts | Solidity | 0.8.27 | Adapted from BitGo eth-multisig-v4 (EIP-1167, CREATE2) |
 | Build Tool | Hardhat | -- | Contract compilation (optimizer: 1000 runs, Cancun EVM), testing, deployment |
 | API Gateway | Kong | 3.6 | Declarative DB-less mode, rate limiting, CORS, request size limiting |
+| Reverse Proxy / TLS | Traefik | v3.0 | Automatic SSL via Let's Encrypt, subdomain routing via Docker labels, single entry point (ports 80/443) |
 | Monitoring - Metrics | Prometheus | v2.50.0 | Metrics collection from Kong and all NestJS services (15s scrape) |
 | Monitoring - Dashboards | Grafana | 10.3.0 | Visualization for Prometheus metrics and Loki logs |
 | Monitoring - Logs | Loki | 2.9.0 | Structured JSON log aggregation from all services |
@@ -354,7 +381,7 @@ Client submits POST /client/v1/withdrawals
 | Animation | Framer Motion | -- | Frontend micro-interactions, wizard transitions |
 | Typography | Outfit + JetBrains Mono | -- | Dual-font system (display + monospace for blockchain data) |
 | Monorepo | Turborepo + npm workspaces | v2.3+ | Build orchestration, dependency management |
-| Infrastructure | Docker + docker-compose | 3.9 | Containerization with 4 isolated networks |
+| Infrastructure | Docker + docker-compose | 3.9 | Containerization with 4 isolated networks, Traefik v3.0 reverse proxy with auto SSL |
 
 ---
 
@@ -589,7 +616,7 @@ CryptoVaultHub implements defense-in-depth security across all layers.
 | TOTP Encryption | AES-256-GCM + scrypt | TOTP secrets encrypted with per-operation random salt. Key derived via scrypt from `TOTP_ENCRYPTION_KEY`. |
 | Password Security | bcryptjs | Password hashing with salt rounds for user authentication. |
 | Rate Limiting | Kong + Redis | Multi-level: Admin API 50/s, Client API 100/s, Auth Service 10/s. Redis-backed for distributed consistency. Per-tenant and per-endpoint limits via tier system. 1 MB request size limit. |
-| CORS | Kong global plugin | Restricted to known origins: `localhost:3010`, `localhost:3011`, `admin.cryptovaulthub.com`, `portal.cryptovaulthub.com`. |
+| CORS | Kong global plugin | Restricted to known origins: `localhost:3010`, `localhost:3011`, `admin.vaulthub.live`, `portal.vaulthub.live`. |
 | Input Validation | class-validator (NestJS DTOs) | All API inputs validated via decorator-based DTOs. Ethereum address format validation. |
 | On-Chain Security | CvhWalletSimple | 2-of-3 multisig, sequence ID replay protection, chain ID binding, signature malleability prevention (`s <= secp256k1n/2`), operation expiry, `ReentrancyGuard`, irrevocable safe mode. |
 | Contract Admin | Ownable2Step (CvhBatcher) | Two-step ownership transfer prevents accidental ownership loss. |
@@ -638,10 +665,22 @@ CryptoVaultHub has a comprehensive visual identity system documented in [docs/id
 | MySQL | 8.0+ | External cluster (not in docker-compose) |
 | Git | >= 2.30 | For cloning the repository |
 
-### 1. Clone and Install
+### Automated Setup (Recommended)
 
 ```bash
-git clone <repo-url> CryptoVaultHub
+git clone https://github.com/marcelosilva78/CryptoVaultHub.git
+cd CryptoVaultHub
+bash scripts/setup.sh
+```
+
+The setup script handles environment configuration, database migrations, Docker image builds, and service startup. SSL certificates are provisioned automatically by Traefik via Let's Encrypt -- no manual certificate setup is required.
+
+### Manual Setup
+
+#### 1. Clone and Install
+
+```bash
+git clone https://github.com/marcelosilva78/CryptoVaultHub.git
 cd CryptoVaultHub
 npm install
 ```
@@ -737,7 +776,19 @@ FLUSH PRIVILEGES;
 docker compose up -d
 ```
 
-This starts Redis, Kong, Prometheus, Grafana, Loki, Jaeger, and the full PostHog stack.
+This starts Traefik (reverse proxy with automatic SSL), Redis, Kong, Prometheus, Grafana, Loki, Jaeger, and the full PostHog stack. Traefik will automatically provision Let's Encrypt SSL certificates for all configured subdomains once DNS records point to the server.
+
+#### DNS Records
+
+Before starting, ensure the following DNS records point to your server IP:
+
+| Record | Type | Value |
+|---|---|---|
+| `admin.vaulthub.live` | A | server IP |
+| `portal.vaulthub.live` | A | server IP |
+| `api.vaulthub.live` | A | server IP |
+| `grafana.vaulthub.live` | A | server IP |
+| `jaeger.vaulthub.live` | A | server IP |
 
 ### 5. Build and Run Services
 
@@ -842,6 +893,7 @@ CryptoVaultHub/
 +-- infra/                      # Infrastructure configuration
 |   +-- docker/                 # Dockerfiles (NestJS, Next.js -- multi-stage builds)
 |   +-- kong/                   # Kong declarative config (kong.yml)
+|   +-- traefik/                # Traefik v3.0 config (auto SSL, Docker label routing)
 |   +-- prometheus/             # Prometheus scrape config
 |   +-- grafana/                # Grafana provisioning
 +-- docs/                       # Documentation
@@ -1028,6 +1080,7 @@ The Admin Panel and Client Portal have been designed with the CryptoVaultHub vis
 
 | Service | Port | Network | Auth Method |
 |---------|------|---------|-------------|
+| Traefik | 80 / 443 | public-net | -- (only external-facing ports) |
 | Kong Proxy | 8000 / 8443 | public-net, internal-net | -- |
 | Admin API | 3001 | internal-net, public-net | JWT (via Kong) |
 | Client API | 3002 | internal-net, public-net | API Key (via Kong) |
@@ -1057,7 +1110,8 @@ The Admin Panel and Client Portal have been designed with the CryptoVaultHub vis
 - [ ] Set strong `REDIS_PASSWORD`
 - [ ] Configure real RPC endpoints with API keys for all target chains
 - [ ] Set up MySQL cluster with replication and backups
-- [ ] Configure TLS certificates for Kong (port 8443)
+- [ ] Verify DNS records for all subdomains (admin/portal/api/grafana/jaeger.vaulthub.live) point to server IP
+- [ ] Verify Traefik has auto-provisioned Let's Encrypt SSL certificates (check `docker compose logs traefik`)
 - [ ] Deploy smart contracts to all target chains
 - [ ] Register chain and token configurations via Admin API
 - [ ] Create initial admin user and enable 2FA
@@ -1067,7 +1121,7 @@ The Admin Panel and Client Portal have been designed with the CryptoVaultHub vis
 - [ ] Set up external backup for Redis AOF, MySQL dumps, and Shamir shares
 - [ ] Load-test rate limiting configuration per tier
 - [ ] Verify Key Vault has zero internet access: `docker exec key-vault-service ping -c 1 google.com` (should fail)
-- [ ] Set up DNS and load balancer for Kong
+- [ ] Set up DNS records for Traefik (all subdomains point to server IP)
 
 ---
 

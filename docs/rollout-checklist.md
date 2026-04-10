@@ -79,7 +79,30 @@ npx turbo build --filter='./services/*'
 
 ---
 
-## 4. Deploy New Services
+## 4. Verify DNS Records
+
+Before deploying, ensure all DNS A records point to your server's public IP:
+
+- [ ] `admin.vaulthub.live` resolves to server IP
+- [ ] `portal.vaulthub.live` resolves to server IP
+- [ ] `api.vaulthub.live` resolves to server IP
+- [ ] `grafana.vaulthub.live` resolves to server IP
+- [ ] `jaeger.vaulthub.live` resolves to server IP
+
+```bash
+# Verify DNS resolution
+dig admin.vaulthub.live +short
+dig portal.vaulthub.live +short
+dig api.vaulthub.live +short
+dig grafana.vaulthub.live +short
+dig jaeger.vaulthub.live +short
+```
+
+> **Important:** DNS must be correctly configured before starting Traefik, or Let's Encrypt certificate provisioning will fail.
+
+---
+
+## 5. Deploy New Services
 
 - [ ] Build all Docker images
 
@@ -107,9 +130,24 @@ docker compose ps
 # All services should show (healthy)
 ```
 
+- [ ] Wait for Traefik to auto-provision SSL certificates (~30 seconds)
+
+```bash
+# Check Traefik logs for certificate provisioning
+docker compose logs traefik | grep -i "certificate"
+```
+
+- [ ] Verify HTTPS is working on all subdomains
+
+```bash
+curl -s -o /dev/null -w "%{http_code}" https://admin.vaulthub.live
+curl -s -o /dev/null -w "%{http_code}" https://portal.vaulthub.live
+curl -s -o /dev/null -w "%{http_code}" https://api.vaulthub.live
+```
+
 ---
 
-## 5. Configure RPC Providers
+## 6. Configure RPC Providers
 
 - [ ] Add RPC providers via admin panel or API
 
@@ -133,8 +171,13 @@ curl -X POST "http://localhost:3001/admin/rpc/providers" \
 
 ---
 
-## 6. Verify Health Checks
+## 7. Verify Health Checks
 
+- [ ] Verify Traefik is running: `docker compose ps traefik`
+- [ ] Verify SSL certificates are provisioned: `docker compose logs traefik | grep -i "certificate"`
+- [ ] `curl https://admin.vaulthub.live` -- Admin Panel loads via HTTPS
+- [ ] `curl https://portal.vaulthub.live` -- Client Portal loads via HTTPS
+- [ ] `curl https://api.vaulthub.live/auth/health` -- Auth via Kong/Traefik returns 200
 - [ ] `curl http://localhost:3001/health` -- admin-api returns 200
 - [ ] `curl http://localhost:3002/health` -- client-api returns 200
 - [ ] `curl http://localhost:3003/health` -- auth-service returns 200
@@ -147,7 +190,7 @@ curl -X POST "http://localhost:3001/admin/rpc/providers" \
 
 ---
 
-## 7. Verify Core Functionality
+## 8. Verify Core Functionality
 
 ### Test Project System
 
@@ -199,19 +242,19 @@ curl -X POST "http://localhost:3003/auth/impersonate" \
 
 ---
 
-## 8. Monitor
+## 9. Monitor
 
-- [ ] Open Grafana dashboards (http://localhost:3000)
-- [ ] Verify Prometheus is scraping all targets (http://localhost:9090/targets)
+- [ ] Open Grafana dashboards (https://grafana.vaulthub.live)
+- [ ] Verify Prometheus is scraping all targets (including Traefik)
 - [ ] Check Loki for error logs (query: `{job="services"} |= "error"`)
-- [ ] Verify Jaeger is receiving traces (http://localhost:16686)
+- [ ] Verify Jaeger is receiving traces (https://jaeger.vaulthub.live)
 - [ ] Monitor queue depths: `GET /admin/monitoring/queues`
 - [ ] Monitor gas tank balances: `GET /admin/gas-tanks`
 - [ ] Watch for the first 30 minutes after deployment for any anomalies
 
 ---
 
-## 9. Post-Deployment Verification (T+1 hour)
+## 10. Post-Deployment Verification (T+1 hour)
 
 - [ ] Verify deposits are being detected on all active chains
 - [ ] Verify sweeps are executing (check `cvh_transactions.deposits` for recent `swept` status)
@@ -222,7 +265,7 @@ curl -X POST "http://localhost:3003/auth/impersonate" \
 
 ---
 
-## 10. Post-Deployment Verification (T+24 hours)
+## 11. Post-Deployment Verification (T+24 hours)
 
 - [ ] Verify daily reconciliation ran successfully (check chain-indexer-service logs)
 - [ ] Verify sanctions list sync completed (check cron-worker-service logs)
