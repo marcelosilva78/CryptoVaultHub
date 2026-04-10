@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1440">
+<title>Client Header with Project Selector - Dark</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{width:1440px;height:700px;overflow:hidden;font-family:'Outfit',sans-serif;background:#08090B;color:#E8E9ED;-webkit-font-smoothing:antialiased;}
+.sidebar{position:fixed;left:0;top:0;bottom:0;width:240px;background:#0D0F14;border-right:1px solid #1E2028;display:flex;flex-direction:column;z-index:100;}
+.sidebar-logo{height:56px;display:flex;align-items:center;gap:10px;padding:0 20px;}
+.sidebar-logo span{font-size:15px;letter-spacing:-0.02em;color:#E8E9ED;}
+.sidebar-logo b{font-weight:700;}
+.logo-hex{width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#0D0F14;background:linear-gradient(135deg,#E2A828,#C9941F);clip-path:polygon(50% 0%,93% 25%,93% 75%,50% 100%,7% 75%,7% 25%);}
+.nav-section{padding:0 12px;margin-top:16px;}
+.nav-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:#4E5364;padding:0 12px;margin-bottom:6px;}
+.nav-item{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:6px;font-size:13px;font-weight:500;color:#858A9B;text-decoration:none;margin-bottom:2px;position:relative;}
+.nav-item.active{background:rgba(226,168,40,0.10);color:#E2A828;font-weight:600;}
+.nav-item.active::before{content:'';position:absolute;left:0;top:50%;transform:translateY(-50%);width:3px;height:18px;background:#E2A828;border-radius:0 3px 3px 0;}
+.sidebar-footer{margin-top:auto;padding:12px 16px;border-top:1px solid #151820;display:flex;align-items:center;gap:10px;}
+.avatar-hex{width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#0D0F14;background:linear-gradient(135deg,#E2A828,#C9941F);clip-path:polygon(50% 0%,93% 25%,93% 75%,50% 100%,7% 75%,7% 25%);}
+.user-name{font-size:13px;font-weight:500;color:#E8E9ED;}
+.user-role{font-size:11px;color:#4E5364;}
+/* Header with project selector */
+.header{position:fixed;top:0;left:240px;right:0;height:56px;z-index:99;display:flex;align-items:center;justify-content:space-between;padding:0 24px;border-bottom:1px solid #151820;background:rgba(8,9,11,0.85);backdrop-filter:blur(12px);}
+.header-left{display:flex;align-items:center;gap:16px;}
+.project-selector{display:flex;align-items:center;gap:10px;padding:6px 14px;background:#111318;border:1px solid #1E2028;border-radius:8px;cursor:pointer;position:relative;}
+.project-icon{width:24px;height:24px;border-radius:6px;background:linear-gradient(135deg,#3B82F6,#1D4ED8);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;}
+.project-name{font-size:13px;font-weight:600;color:#E8E9ED;}
+.project-env{font-size:10px;font-weight:600;padding:2px 6px;border-radius:3px;background:rgba(46,189,133,0.12);color:#2EBD85;}
+.project-arrow{color:#4E5364;font-size:10px;margin-left:4px;}
+/* Dropdown */
+.dropdown{position:absolute;top:100%;left:0;margin-top:8px;width:320px;background:#111318;border:1px solid #1E2028;border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,0.5);overflow:hidden;z-index:200;}
+.dropdown-search{padding:12px;border-bottom:1px solid #151820;}
+.dropdown-search input{width:100%;padding:8px 12px;background:#0D0F14;border:1px solid #1E2028;border-radius:6px;color:#E8E9ED;font-size:12px;font-family:inherit;outline:none;}
+.dropdown-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#4E5364;padding:8px 16px 4px;}
+.dropdown-item{display:flex;align-items:center;gap:10px;padding:8px 16px;cursor:pointer;}
+.dropdown-item:hover{background:#22252F;}
+.dropdown-item.active{background:rgba(226,168,40,0.06);}
+.project-item-icon{width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;}
+.project-item-info{flex:1;}
+.project-item-name{font-size:12px;font-weight:600;color:#E8E9ED;}
+.project-item-id{font-size:10px;font-family:'JetBrains Mono',monospace;color:#4E5364;}
+.project-item-env{font-size:9px;font-weight:600;padding:2px 6px;border-radius:3px;}
+.env-prod{background:rgba(46,189,133,0.12);color:#2EBD85;}
+.env-staging{background:rgba(226,168,40,0.12);color:#E2A828;}
+.env-dev{background:rgba(59,130,246,0.12);color:#3B82F6;}
+.dropdown-footer{padding:10px 16px;border-top:1px solid #151820;display:flex;align-items:center;gap:6px;font-size:11px;color:#E2A828;font-weight:600;cursor:pointer;}
+.dropdown-footer:hover{background:#22252F;}
+.check-icon{color:#E2A828;font-size:12px;font-weight:700;}
+.breadcrumb{display:flex;align-items:center;gap:6px;font-size:13px;}
+.breadcrumb .sep{color:#4E5364;font-size:10px;}
+.breadcrumb .crumb{color:#4E5364;}
+.breadcrumb .crumb.active{color:#E8E9ED;font-weight:600;}
+.header-actions{display:flex;align-items:center;gap:8px;}
+.header-btn{padding:8px;border-radius:6px;color:#4E5364;background:none;border:none;cursor:pointer;display:flex;align-items:center;font-size:14px;}
+.mini-avatar{width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#0D0F14;background:linear-gradient(135deg,#E2A828,#C9941F);clip-path:polygon(50% 0%,93% 25%,93% 75%,50% 100%,7% 75%,7% 25%);}
+.main{margin-left:240px;margin-top:56px;padding:24px;min-height:calc(100vh - 56px);}
+.page-title{font-size:22px;font-weight:700;margin-bottom:4px;}
+.page-sub{font-size:13px;color:#858A9B;margin-bottom:20px;}
+/* Dashboard content behind */
+.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;}
+.stat-card{background:#111318;border:1px solid #1E2028;border-radius:10px;padding:16px;opacity:0.6;}
+.stat-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#4E5364;margin-bottom:10px;}
+.stat-value{font-size:22px;font-weight:700;color:#E8E9ED;line-height:1;margin-bottom:6px;}
+.stat-sub{font-size:11px;color:#4E5364;}
+</style>
+</head>
+<body>
+<aside class="sidebar">
+  <div class="sidebar-logo"><div class="logo-hex">CV</div><span>Crypto<b>VaultHub</b></span></div>
+  <nav class="nav-section">
+    <div class="nav-label">Wallet Ops</div>
+    <a class="nav-item active" href="#">Dashboard</a>
+    <a class="nav-item" href="#">Wallets</a>
+    <a class="nav-item" href="#">Address Groups</a>
+    <a class="nav-item" href="#">Deposits</a>
+    <a class="nav-item" href="#">Withdrawals</a>
+    <a class="nav-item" href="#">Flush Operations</a>
+  </nav>
+  <nav class="nav-section">
+    <div class="nav-label">Tools</div>
+    <a class="nav-item" href="#">Exports</a>
+    <a class="nav-item" href="#">Webhooks</a>
+    <a class="nav-item" href="#">API Keys</a>
+  </nav>
+  <div class="sidebar-footer">
+    <div class="avatar-hex">BX</div>
+    <div><div class="user-name">BitExchange Inc.</div><div class="user-role">Client</div></div>
+  </div>
+</aside>
+<header class="header">
+  <div class="header-left">
+    <div class="project-selector">
+      <div class="project-icon">P1</div>
+      <div>
+        <div class="project-name">Production Mainnet</div>
+      </div>
+      <span class="project-env">PROD</span>
+      <span class="project-arrow">&#9660;</span>
+      <!-- Dropdown open -->
+      <div class="dropdown">
+        <div class="dropdown-search">
+          <input type="text" placeholder="Search projects..." value="">
+        </div>
+        <div class="dropdown-label">Active Projects</div>
+        <div class="dropdown-item active">
+          <div class="project-item-icon" style="background:linear-gradient(135deg,#3B82F6,#1D4ED8);">P1</div>
+          <div class="project-item-info">
+            <div class="project-item-name">Production Mainnet</div>
+            <div class="project-item-id">proj_a7f3b2c1</div>
+          </div>
+          <span class="project-item-env env-prod">PROD</span>
+          <span class="check-icon">&#10003;</span>
+        </div>
+        <div class="dropdown-item">
+          <div class="project-item-icon" style="background:linear-gradient(135deg,#E2A828,#C9941F);">S1</div>
+          <div class="project-item-info">
+            <div class="project-item-name">Staging Environment</div>
+            <div class="project-item-id">proj_b8e4c3d2</div>
+          </div>
+          <span class="project-item-env env-staging">STAGING</span>
+        </div>
+        <div class="dropdown-item">
+          <div class="project-item-icon" style="background:linear-gradient(135deg,#8B5CF6,#6D28D9);">D1</div>
+          <div class="project-item-info">
+            <div class="project-item-name">Development Testnet</div>
+            <div class="project-item-id">proj_c9f5d4e3</div>
+          </div>
+          <span class="project-item-env env-dev">DEV</span>
+        </div>
+        <div class="dropdown-item">
+          <div class="project-item-icon" style="background:linear-gradient(135deg,#2EBD85,#1A9A6A);">P2</div>
+          <div class="project-item-info">
+            <div class="project-item-name">BSC Payment Gateway</div>
+            <div class="project-item-id">proj_d1a6e5f4</div>
+          </div>
+          <span class="project-item-env env-prod">PROD</span>
+        </div>
+        <div class="dropdown-footer">+ Create New Project</div>
+      </div>
+    </div>
+    <div class="breadcrumb">
+      <span class="crumb active">Dashboard</span>
+    </div>
+  </div>
+  <div class="header-actions">
+    <button class="header-btn" title="Notifications">&#128276;</button>
+    <button class="header-btn" title="Settings">&#9881;</button>
+    <div class="mini-avatar">BX</div>
+  </div>
+</header>
+<main class="main">
+  <div class="page-title">Dashboard</div>
+  <div class="page-sub">Production Mainnet overview -- real-time balances and activity</div>
+  <div class="stats-grid">
+    <div class="stat-card"><div class="stat-label">Total Balance</div><div class="stat-value">$1.24M</div><div class="stat-sub">across 4 chains</div></div>
+    <div class="stat-card"><div class="stat-label">Deposits (24h)</div><div class="stat-value">127</div><div class="stat-sub">$84,291 volume</div></div>
+    <div class="stat-card"><div class="stat-label">Withdrawals (24h)</div><div class="stat-value">43</div><div class="stat-sub">$52,100 volume</div></div>
+    <div class="stat-card"><div class="stat-label">Active Addresses</div><div class="stat-value">1,204</div><div class="stat-sub">847 deployed</div></div>
+  </div>
+</main>
+</body>
+</html>

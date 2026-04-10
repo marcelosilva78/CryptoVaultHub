@@ -10,6 +10,7 @@ CryptoVaultHub is a B2B multi-tenant platform purpose-built for cryptocurrency e
 
 - [The Problem We Solve](#the-problem-we-solve)
 - [Key Features](#key-features)
+- [v2 -- New Features](#v2----new-features)
 - [Architecture](#architecture)
 - [Tech Stack](#tech-stack)
 - [Services](#services)
@@ -97,7 +98,7 @@ Configurable sanctions screening checks deposit source addresses and withdrawal 
 
 A dual-strategy deposit detection system combines WebSocket subscriptions (`newHeads` events) for real-time detection with polling-based block scanning as a fallback. The Chain Indexer Service monitors deposit addresses across all configured chains, publishes deposit events to Redis Streams, and hands off to the confirmation tracker (BullMQ) which verifies receipts at milestone confirmations (1, 3, 6, 12) with reorg protection.
 
-### Webhook Notifications
+### Webhook Notifications with Retry System
 
 All transaction lifecycle events (deposit.pending, deposit.confirming, deposit.confirmed, deposit.swept, withdrawal.broadcasted, withdrawal.confirmed) are delivered to client-configured webhook endpoints. Each payload is signed with HMAC-SHA256 using a per-endpoint secret. Failed deliveries are retried with exponential backoff and jitter, with persistent failures routed to a Dead Letter Queue (DLQ).
 
@@ -116,6 +117,79 @@ Kong 3.6 runs in declarative (DB-less) mode, providing centralized request routi
 ### Full Observability Stack
 
 Self-hosted PostHog captures every API request, webhook delivery, blockchain event, and compliance action via NestJS interceptors. Prometheus (v2.50.0) scrapes metrics from Kong and all NestJS services at 15-second intervals. Grafana (10.3.0) provides dashboards with Prometheus and Loki data sources. Loki (2.9.0) aggregates structured JSON logs from all services. Jaeger (1.54) provides distributed tracing via OTLP. All events share trace IDs for end-to-end correlation.
+
+---
+
+## v2 -- New Features
+
+CryptoVaultHub v2 introduces 14 major features across infrastructure resilience, operational tooling, and client self-service capabilities. Each feature was designed for production-grade reliability with full audit traceability.
+
+### 1. Multi-Project Scoping
+
+Clients can organize their wallets, deposit addresses, and transaction history across multiple isolated projects within a single organization. Each project maintains its own chain configuration, API keys, and webhook endpoints, enabling separation between production, staging, and development environments -- or between distinct business lines (e.g., exchange vs. payment gateway).
+
+![Client Portal -- Project Selector Dropdown](docs/screenshots/v2-project-selector.png)
+
+### 2. RPC Provider Management
+
+A dedicated RPC provider registry replaces hardcoded RPC URLs. Admins register multiple endpoints per chain with automatic health monitoring, latency tracking, and failover. Each provider is health-checked on a configurable interval, and the system automatically routes requests to the healthiest available node. Dead nodes are deprioritized and re-tested periodically for recovery.
+
+![Admin Panel -- RPC Providers Management](docs/screenshots/v2-rpc-providers.png)
+
+### 3. Resilient Job Queue Dashboard
+
+Full visibility into the BullMQ job queue system across all 8 queues (polling-detector, deposit-detection, withdrawal-processing, forwarder-deploy, sweep, webhook-delivery, sanctions-sync, gas-tank-monitor). The Jobs Dashboard shows real-time active/waiting/completed/failed counts, per-job progress tracking, attempt history, and Dead Letter Queue (DLQ) management with manual retry controls.
+
+![Admin Panel -- Jobs Dashboard](docs/screenshots/v2-jobs-dashboard.png)
+
+### 4. Chain Indexer v2 -- Sync Health Dashboard
+
+Per-chain synchronization health monitoring with blocks-behind counters, gap detection (missing blocks in the scan history), reorg event tracking, and sync progress visualization. Each chain card shows the last processed block, average block time, and indexer performance. Stalled chains (RPC unreachable) and degraded chains (falling behind) are highlighted with amber/red indicators for immediate operator attention.
+
+![Admin Panel -- Sync Health Dashboard](docs/screenshots/v2-sync-health.png)
+
+### 5. Webhook Retry System with Delivery History
+
+Complete webhook delivery audit trail with per-attempt timeline visualization. Each delivery shows the HTTP status code, response time, response body, and retry scheduling with exponential backoff and jitter. Failed deliveries progress through configurable retry attempts (default: 5) before landing in the DLQ. Operators can manually retry any delivery or inspect the full attempt history for debugging endpoint connectivity issues.
+
+![Client Portal -- Webhook Delivery History](docs/screenshots/v2-webhook-delivery.png)
+
+### 6. Flush Operations UI
+
+Self-service flush operations for clients to sweep ERC-20 tokens and native currency from forwarder deposit addresses to their hot wallet. The interface shows pending flushes with token-level detail, gas cost estimation (using `batchFlushERC20Tokens` for multi-token efficiency), and a real-time status tracker for in-progress operations. Supports both single-forwarder and batch flush across multiple addresses.
+
+![Client Portal -- Flush Operations](docs/screenshots/v2-flush-operations.png)
+
+### 7. Deploy Traceability with Enhanced JSON Viewer
+
+A redesigned JSON artifact viewer (v2) for transaction traceability, featuring syntax-highlighted JSON with line numbers, collapsible sections, full-text search with match navigation, copy-to-clipboard, and raw view toggle. Each transaction lifecycle stage (detected, screened, confirming, confirmed, swept) produces a JSON artifact that can be inspected in detail. The viewer integrates with PostHog events, Loki logs, and Jaeger traces via shared trace IDs.
+
+![Admin Panel -- Enhanced JSON Viewer v2](docs/screenshots/v2-json-viewer.png)
+
+### 8. Multi-Chain Address Groups
+
+Address groups bundle the same CREATE2 deterministic deposit address across multiple EVM chains under a single logical entity. Since EVM address derivation is chain-agnostic, the same salt produces the same forwarder address on all chains. Each group shows deployment status per chain (computed vs. deployed), total received value, and deposit count. Clients can generate multi-chain address groups in a single operation.
+
+![Client Portal -- Multi-Chain Address Groups](docs/screenshots/v2-address-groups.png)
+
+### 9. Export System
+
+Clients can export transaction history, deposit records, withdrawal logs, address data, and compliance screening results in multiple formats (CSV, JSON, XLSX, PDF). Exports are generated asynchronously as background jobs with configurable date ranges, chain filters, and field selection. Completed exports are stored with download links and retention policies. Designed for accounting reconciliation and compliance reporting.
+
+![Client Portal -- Exports](docs/screenshots/v2-exports.png)
+
+### 10. Admin Impersonation
+
+Super admins can impersonate any client organization to view the platform exactly as the client sees it, without requiring client credentials. A persistent red banner indicates active impersonation mode, and all actions performed during impersonation are logged to the audit trail with both the admin identity and the impersonated client identity. Impersonation sessions are time-limited and can be exited at any time.
+
+![Admin Panel -- Client Impersonation Mode](docs/screenshots/v2-impersonation.png)
+
+### 11. Additional v2 Improvements
+
+- **10 new MySQL databases**: `cvh_jobs` for queue state persistence and `cvh_exports` for export metadata, adding to the original 8 databases for a total of 10.
+- **Redis Streams expansion**: New streams for job lifecycle events (`jobs:created`, `jobs:completed`, `jobs:failed`) and export progress tracking.
+- **Prisma 5.22 transactions**: Key generation operations wrapped in Prisma transactions to prevent race conditions during concurrent wallet creation.
+- **Rate limit per-project**: Project-scoped rate limiting via Kong, allowing different projects under the same client to have independent rate limit quotas.
 
 ---
 
@@ -257,13 +331,13 @@ Client submits POST /client/v1/withdrawals
 | Category | Technology | Version | Purpose |
 |----------|-----------|---------|---------|
 | Runtime | Node.js | >= 20 | Server-side JavaScript runtime for all services |
-| Framework | NestJS | -- | Backend microservices framework (8 services) |
+| Framework | NestJS | 10.3 | Backend microservices framework (8 services) |
 | Frontend | Next.js 14 | 14.x | App Router, React Server Components for Admin Panel and Client Portal |
 | UI Components | shadcn/ui + Tailwind CSS | -- | Component library with custom design tokens and semantic theming |
 | Charts | Recharts | -- | Analytics dashboards in Admin Panel |
 | API Client | @cvh/api-client + TanStack Query | v5 | Type-safe API client SDK with React Query hooks for both frontends |
-| Database | MySQL | 8.0+ | External cluster, 8 separate databases for domain isolation |
-| ORM | Prisma | -- | Type-safe database access, one schema per service |
+| Database | MySQL | 8.0+ | External cluster, 10 separate databases for domain isolation |
+| ORM | Prisma | 5.22 | Type-safe database access with transactions, one schema per service |
 | Cache / Queue | Redis 7 + BullMQ | 7.x | Job queues, Redis Streams, rate limiting state, caching |
 | Blockchain | ethers.js | v6 | EVM interaction, contract calls, transaction signing |
 | Smart Contracts | Solidity | 0.8.27 | Adapted from BitGo eth-multisig-v4 (EIP-1167, CREATE2) |
@@ -355,6 +429,10 @@ Internal administration application built with Next.js 14 (App Router), Tailwind
 | Monitoring | `/monitoring` | Service health, queue depths, RPC node status |
 | Analytics - Operations | `/analytics/operations` | Deposit/withdrawal volumes, success rates, processing times |
 | Analytics - Compliance | `/analytics/compliance` | Screening volumes, hit rates, alert resolution times |
+| **RPC Providers** (v2) | `/rpc-providers` | RPC endpoint registry with health scores, latency, and failover |
+| **Jobs Dashboard** (v2) | `/jobs` | BullMQ queue monitoring with retry controls and DLQ management |
+| **Sync Health** (v2) | `/sync-health` | Per-chain indexer synchronization status with gap detection |
+| **Impersonation** (v2) | `/clients/[id]/impersonate` | View platform as a specific client with full audit logging |
 
 ### Client Portal (Port 3011)
 
@@ -376,6 +454,10 @@ Self-service application for client exchanges and payment gateways. Built with t
 | API Keys | `/api-keys` | Create, list, and revoke API keys with scope management |
 | Security | `/security` | Two-factor authentication setup and management |
 | Settings | `/settings` | Account and organization settings |
+| **Flush Operations** (v2) | `/flush` | Self-service ERC-20/native token flush from forwarders |
+| **Address Groups** (v2) | `/address-groups` | Multi-chain deposit address groups with CREATE2 |
+| **Exports** (v2) | `/exports` | Export transaction/address/compliance data (CSV, JSON, XLSX, PDF) |
+| **Project Selector** (v2) | Header component | Switch between isolated projects within the organization |
 
 ---
 
@@ -422,7 +504,7 @@ Batch transfer contract for distributing ETH or ERC-20 tokens to multiple recipi
 
 ## Database Schema
 
-CryptoVaultHub uses 8 separate MySQL databases for strict domain isolation. All databases use `utf8mb4` with `utf8mb4_unicode_ci` collation. Each service uses Prisma ORM with its own schema pointing to the relevant database.
+CryptoVaultHub uses 10 separate MySQL databases for strict domain isolation (8 original + 2 added in v2 for jobs and exports). All databases use `utf8mb4` with `utf8mb4_unicode_ci` collation. Each service uses Prisma ORM with its own schema pointing to the relevant database.
 
 ```
 +------------------+     +------------------+     +------------------+
@@ -765,8 +847,9 @@ CryptoVaultHub/
 +-- docs/                       # Documentation
 |   +-- api/                    # Admin API and Client API endpoint reference
 |   +-- identity/               # Visual identity system
-|   +-- screenshots/            # UI screenshots (PNG) and HTML mockups
+|   +-- screenshots/            # UI screenshots (PNG) and HTML mockups (v1 + v2)
 |   +-- database/               # Database documentation
+|   +-- superpowers/            # Implementation plans and architecture decisions
 +-- docker-compose.yml          # Full orchestration (4 networks, 20+ containers)
 +-- turbo.json                  # Turborepo pipeline config
 +-- package.json                # Root workspace config (npm workspaces)
@@ -786,6 +869,14 @@ CryptoVaultHub/
 | Admin API Reference | [docs/api/admin-api.md](docs/api/admin-api.md) | Admin API endpoint documentation |
 | Client API Reference | [docs/api/client-api.md](docs/api/client-api.md) | Client API endpoint documentation |
 | Visual Identity | [docs/identity/cryptovaulthub-visual-identity.md](docs/identity/cryptovaulthub-visual-identity.md) | Design system, tokens, component specifications |
+| Database Schema | [docs/database-schema.md](docs/database-schema.md) | All 10 databases, table definitions, relationships |
+| Flush Operations (v2) | [docs/flush-operations.md](docs/flush-operations.md) | Flush/sweep guide, gas tank lifecycle, batch operations |
+| Queue System (v2) | [docs/queue-system.md](docs/queue-system.md) | BullMQ queues, Redis Streams, job lifecycle, DLQ handling |
+| Webhook System (v2) | [docs/webhook-system.md](docs/webhook-system.md) | Webhook configuration, HMAC signing, retry strategy, delivery logs |
+| Chain Indexer (v2) | [docs/indexer.md](docs/indexer.md) | Hybrid polling + WebSocket indexer, gap detection, reconciliation |
+| Multi-Chain Addresses (v2) | [docs/multi-chain-addresses.md](docs/multi-chain-addresses.md) | CREATE2 deterministic addressing, address groups, cross-chain identity |
+| Operations Guide (v2) | [docs/operations.md](docs/operations.md) | Operational runbooks, monitoring, alerting, troubleshooting |
+| Rollout Checklist (v2) | [docs/rollout-checklist.md](docs/rollout-checklist.md) | v2 migration checklist, feature flags, rollback procedures |
 
 ---
 
@@ -865,6 +956,23 @@ The Admin Panel and Client Portal have been designed with the CryptoVaultHub vis
 #### Login (Light Mode)
 ![Admin Login - Light Mode](docs/screenshots/admin-login-light.png)
 
+### Admin Panel -- v2 Pages
+
+#### RPC Providers Management
+![Admin RPC Providers](docs/screenshots/v2-rpc-providers.png)
+
+#### Jobs Dashboard
+![Admin Jobs Dashboard](docs/screenshots/v2-jobs-dashboard.png)
+
+#### Sync Health Dashboard
+![Admin Sync Health](docs/screenshots/v2-sync-health.png)
+
+#### Client Impersonation Mode
+![Admin Impersonation](docs/screenshots/v2-impersonation.png)
+
+#### Enhanced JSON Viewer v2
+![Admin JSON Viewer](docs/screenshots/v2-json-viewer.png)
+
 ### Client Portal
 
 #### Dashboard (Dark Mode)
@@ -896,6 +1004,23 @@ The Admin Panel and Client Portal have been designed with the CryptoVaultHub vis
 
 #### Login (Light Mode)
 ![Client Login - Light Mode](docs/screenshots/client-login-light.png)
+
+### Client Portal -- v2 Pages
+
+#### Project Selector
+![Client Project Selector](docs/screenshots/v2-project-selector.png)
+
+#### Flush Operations
+![Client Flush Operations](docs/screenshots/v2-flush-operations.png)
+
+#### Multi-Chain Address Groups
+![Client Address Groups](docs/screenshots/v2-address-groups.png)
+
+#### Exports
+![Client Exports](docs/screenshots/v2-exports.png)
+
+#### Webhook Delivery History
+![Client Webhook Delivery](docs/screenshots/v2-webhook-delivery.png)
 
 ---
 

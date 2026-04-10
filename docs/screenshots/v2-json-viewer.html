@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1440">
+<title>Enhanced JSON Viewer v2 - Dark</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{width:1440px;height:700px;overflow:hidden;font-family:'Outfit',sans-serif;background:#08090B;color:#E8E9ED;-webkit-font-smoothing:antialiased;}
+.sidebar{position:fixed;left:0;top:0;bottom:0;width:240px;background:#0D0F14;border-right:1px solid #1E2028;display:flex;flex-direction:column;z-index:100;}
+.sidebar-logo{height:56px;display:flex;align-items:center;gap:10px;padding:0 20px;}
+.sidebar-logo span{font-size:15px;letter-spacing:-0.02em;color:#E8E9ED;}
+.sidebar-logo b{font-weight:700;}
+.logo-hex{width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#0D0F14;background:linear-gradient(135deg,#E2A828,#C9941F);clip-path:polygon(50% 0%,93% 25%,93% 75%,50% 100%,7% 75%,7% 25%);}
+.nav-section{padding:0 12px;margin-top:16px;}
+.nav-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:#4E5364;padding:0 12px;margin-bottom:6px;}
+.nav-item{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:6px;font-size:13px;font-weight:500;color:#858A9B;text-decoration:none;margin-bottom:2px;position:relative;}
+.nav-item.active{background:rgba(226,168,40,0.10);color:#E2A828;font-weight:600;}
+.nav-item.active::before{content:'';position:absolute;left:0;top:50%;transform:translateY(-50%);width:3px;height:18px;background:#E2A828;border-radius:0 3px 3px 0;}
+.sidebar-footer{margin-top:auto;padding:12px 16px;border-top:1px solid #151820;display:flex;align-items:center;gap:10px;}
+.avatar-hex{width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#0D0F14;background:linear-gradient(135deg,#E2A828,#C9941F);clip-path:polygon(50% 0%,93% 25%,93% 75%,50% 100%,7% 75%,7% 25%);}
+.user-name{font-size:13px;font-weight:500;color:#E8E9ED;}
+.user-role{font-size:11px;color:#4E5364;}
+.header{position:fixed;top:0;left:240px;right:0;height:56px;z-index:99;display:flex;align-items:center;justify-content:space-between;padding:0 24px;border-bottom:1px solid #151820;background:rgba(8,9,11,0.85);backdrop-filter:blur(12px);}
+.breadcrumb{display:flex;align-items:center;gap:6px;font-size:13px;}
+.breadcrumb .sep{color:#4E5364;font-size:10px;}
+.breadcrumb .crumb{color:#4E5364;}
+.breadcrumb .crumb.active{color:#E8E9ED;font-weight:600;}
+.main{margin-left:240px;margin-top:56px;padding:24px;min-height:calc(100vh - 56px);}
+.page-title{font-size:22px;font-weight:700;margin-bottom:4px;}
+.page-sub{font-size:13px;color:#858A9B;margin-bottom:20px;}
+/* JSON Viewer */
+.json-viewer-card{background:#111318;border:1px solid #1E2028;border-radius:10px;overflow:hidden;}
+.json-toolbar{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid #151820;background:#0D0F14;}
+.json-toolbar-left{display:flex;align-items:center;gap:8px;}
+.json-toolbar-title{font-size:13px;font-weight:600;color:#E8E9ED;}
+.json-toolbar-badge{font-size:10px;font-weight:600;padding:2px 8px;border-radius:4px;background:rgba(226,168,40,0.12);color:#E2A828;}
+.json-search{display:flex;align-items:center;gap:6px;}
+.json-search input{padding:5px 10px;background:#111318;border:1px solid #1E2028;border-radius:4px;color:#E8E9ED;font-size:11px;font-family:'JetBrains Mono',monospace;width:200px;outline:none;}
+.json-search-count{font-size:10px;color:#4E5364;}
+.json-toolbar-actions{display:flex;gap:4px;}
+.toolbar-btn{padding:4px 10px;border-radius:4px;font-size:10px;font-weight:600;border:1px solid #1E2028;background:transparent;color:#858A9B;cursor:pointer;font-family:inherit;}
+.toolbar-btn.active{color:#E2A828;border-color:rgba(226,168,40,0.3);}
+/* JSON content */
+.json-content{padding:16px;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.8;overflow:hidden;}
+.json-line{display:flex;align-items:flex-start;}
+.json-gutter{width:36px;text-align:right;color:#2A2D38;font-size:11px;padding-right:12px;user-select:none;flex-shrink:0;}
+.json-code{flex:1;}
+.json-key{color:#E2A828;}
+.json-string{color:#2EBD85;}
+.json-number{color:#3B82F6;}
+.json-bool{color:#8B5CF6;}
+.json-null{color:#F6465D;}
+.json-brace{color:#858A9B;}
+.json-collapse{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:3px;background:#1E2028;color:#858A9B;font-size:9px;cursor:pointer;margin-right:4px;vertical-align:middle;border:none;font-family:monospace;}
+.json-collapse:hover{background:#2A2D38;color:#E8E9ED;}
+.json-collapsed-hint{color:#4E5364;font-style:italic;font-size:11px;}
+.search-highlight{background:rgba(226,168,40,0.25);border-radius:2px;padding:0 2px;}
+.search-highlight.current{background:rgba(226,168,40,0.5);outline:1px solid #E2A828;}
+.json-path-bar{display:flex;align-items:center;gap:4px;padding:8px 16px;border-top:1px solid #151820;background:#0D0F14;font-size:11px;}
+.json-path-bar span{color:#4E5364;}
+.json-path-bar .path-segment{color:#858A9B;}
+.json-path-bar .path-active{color:#E2A828;font-weight:600;}
+.content-split{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+.context-card{background:#111318;border:1px solid #1E2028;border-radius:10px;padding:16px;}
+.context-title{font-size:14px;font-weight:600;margin-bottom:12px;}
+.context-row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #151820;font-size:12px;}
+.context-row:last-child{border-bottom:none;}
+.context-label{color:#4E5364;}
+.context-value{font-family:'JetBrains Mono',monospace;font-size:11px;}
+</style>
+</head>
+<body>
+<aside class="sidebar">
+  <div class="sidebar-logo"><div class="logo-hex">CV</div><span>Crypto<b>VaultHub</b></span></div>
+  <nav class="nav-section">
+    <div class="nav-label">Operations</div>
+    <a class="nav-item" href="#">Dashboard</a>
+    <a class="nav-item active" href="#">Traceability</a>
+    <a class="nav-item" href="#">Jobs Dashboard</a>
+    <a class="nav-item" href="#">Compliance</a>
+  </nav>
+  <div class="sidebar-footer">
+    <div class="avatar-hex">MS</div>
+    <div><div class="user-name">Marcelo Silva</div><div class="user-role">Super Admin</div></div>
+  </div>
+</aside>
+<header class="header">
+  <div class="breadcrumb">
+    <span class="crumb">Traceability</span><span class="sep">/</span><span class="crumb">Deposit #dep_8e2c4d1a</span><span class="sep">/</span><span class="crumb active">JSON Artifact</span>
+  </div>
+</header>
+<main class="main">
+  <div class="page-title">Transaction Artifact</div>
+  <div class="page-sub">Deposit confirmation artifact with full blockchain receipt and KYT screening data</div>
+  <div class="content-split">
+    <div class="json-viewer-card">
+      <div class="json-toolbar">
+        <div class="json-toolbar-left">
+          <span class="json-toolbar-title">deposit.confirmed</span>
+          <span class="json-toolbar-badge">Stage 4/5</span>
+        </div>
+        <div class="json-search">
+          <input type="text" placeholder="Search JSON..." value="txHash">
+          <span class="json-search-count">1 of 2</span>
+        </div>
+        <div class="json-toolbar-actions">
+          <button class="toolbar-btn active">Expand All</button>
+          <button class="toolbar-btn">Collapse All</button>
+          <button class="toolbar-btn">Copy</button>
+          <button class="toolbar-btn">Raw</button>
+        </div>
+      </div>
+      <div class="json-content">
+        <div class="json-line"><span class="json-gutter">1</span><span class="json-code"><span class="json-brace">{</span></span></div>
+        <div class="json-line"><span class="json-gutter">2</span><span class="json-code">&nbsp;&nbsp;<span class="json-key">"event"</span>: <span class="json-string">"deposit.confirmed"</span>,</span></div>
+        <div class="json-line"><span class="json-gutter">3</span><span class="json-code">&nbsp;&nbsp;<span class="json-key">"depositId"</span>: <span class="json-string">"dep_8e2c4d1a"</span>,</span></div>
+        <div class="json-line"><span class="json-gutter">4</span><span class="json-code">&nbsp;&nbsp;<span class="json-key">"traceId"</span>: <span class="json-string">"tr_7f3a9b2c-4d1e-8a5b"</span>,</span></div>
+        <div class="json-line"><span class="json-gutter">5</span><span class="json-code">&nbsp;&nbsp;<span class="json-key">"timestamp"</span>: <span class="json-string">"2026-04-09T14:32:18.442Z"</span>,</span></div>
+        <div class="json-line"><span class="json-gutter">6</span><span class="json-code">&nbsp;&nbsp;<span class="json-key">"chain"</span>: <span class="json-brace">{</span></span></div>
+        <div class="json-line"><span class="json-gutter">7</span><span class="json-code">&nbsp;&nbsp;&nbsp;&nbsp;<span class="json-key">"id"</span>: <span class="json-number">1</span>,</span></div>
+        <div class="json-line"><span class="json-gutter">8</span><span class="json-code">&nbsp;&nbsp;&nbsp;&nbsp;<span class="json-key">"name"</span>: <span class="json-string">"Ethereum"</span>,</span></div>
+        <div class="json-line"><span class="json-gutter">9</span><span class="json-code">&nbsp;&nbsp;&nbsp;&nbsp;<span class="json-key">"symbol"</span>: <span class="json-string">"ETH"</span></span></div>
+        <div class="json-line"><span class="json-gutter">10</span><span class="json-code">&nbsp;&nbsp;<span class="json-brace">}</span>,</span></div>
+        <div class="json-line"><span class="json-gutter">11</span><span class="json-code">&nbsp;&nbsp;<span class="json-key">"amount"</span>: <span class="json-string">"12500.000000"</span>,</span></div>
+        <div class="json-line"><span class="json-gutter">12</span><span class="json-code">&nbsp;&nbsp;<span class="json-key">"token"</span>: <span class="json-string">"USDT"</span>,</span></div>
+        <div class="json-line"><span class="json-gutter">13</span><span class="json-code">&nbsp;&nbsp;<span class="json-key">"<span class="search-highlight current">txHash</span>"</span>: <span class="json-string">"0x8e2c4d1a...7f3a"</span>,</span></div>
+        <div class="json-line"><span class="json-gutter">14</span><span class="json-code">&nbsp;&nbsp;<span class="json-key">"blockNumber"</span>: <span class="json-number">19847291</span>,</span></div>
+        <div class="json-line"><span class="json-gutter">15</span><span class="json-code">&nbsp;&nbsp;<span class="json-key">"confirmations"</span>: <span class="json-number">12</span>,</span></div>
+        <div class="json-line"><span class="json-gutter">16</span><span class="json-code">&nbsp;&nbsp;<span class="json-key">"forwarder"</span>: <span class="json-string">"0x7a3b...9f2e"</span>,</span></div>
+        <div class="json-line"><span class="json-gutter">17</span><span class="json-code">&nbsp;&nbsp;<span class="json-key">"sender"</span>: <span class="json-string">"0x4b1e...2c8d"</span>,</span></div>
+        <div class="json-line"><span class="json-gutter">18</span><span class="json-code">&nbsp;&nbsp;<span class="json-key">"kytScreening"</span>: <span class="json-brace">{</span></span></div>
+        <div class="json-line"><span class="json-gutter">19</span><span class="json-code">&nbsp;&nbsp;&nbsp;&nbsp;<span class="json-key">"result"</span>: <span class="json-string">"CLEAR"</span>,</span></div>
+        <div class="json-line"><span class="json-gutter">20</span><span class="json-code">&nbsp;&nbsp;&nbsp;&nbsp;<span class="json-key">"listsChecked"</span>: <span class="json-brace">[</span><span class="json-string">"OFAC_SDN"</span>, <span class="json-string">"EU"</span>, <span class="json-string">"UN"</span>, <span class="json-string">"UK_OFSI"</span><span class="json-brace">]</span>,</span></div>
+        <div class="json-line"><span class="json-gutter">21</span><span class="json-code">&nbsp;&nbsp;&nbsp;&nbsp;<span class="json-key">"screenedAt"</span>: <span class="json-string">"2026-04-09T14:30:02Z"</span></span></div>
+        <div class="json-line"><span class="json-gutter">22</span><span class="json-code">&nbsp;&nbsp;<span class="json-brace">}</span>,</span></div>
+        <div class="json-line"><span class="json-gutter">23</span><span class="json-code">&nbsp;&nbsp;<button class="json-collapse">-</button><span class="json-key">"receipt"</span>: <span class="json-brace">{</span></span></div>
+        <div class="json-line"><span class="json-gutter">24</span><span class="json-code">&nbsp;&nbsp;&nbsp;&nbsp;<span class="json-key">"status"</span>: <span class="json-number">1</span>,</span></div>
+        <div class="json-line"><span class="json-gutter">25</span><span class="json-code">&nbsp;&nbsp;&nbsp;&nbsp;<span class="json-key">"gasUsed"</span>: <span class="json-number">65000</span>,</span></div>
+        <div class="json-line"><span class="json-gutter">26</span><span class="json-code">&nbsp;&nbsp;&nbsp;&nbsp;<span class="json-key">"effectiveGasPrice"</span>: <span class="json-string">"12400000000"</span></span></div>
+        <div class="json-line"><span class="json-gutter">27</span><span class="json-code">&nbsp;&nbsp;<span class="json-brace">}</span></span></div>
+        <div class="json-line"><span class="json-gutter">28</span><span class="json-code"><span class="json-brace">}</span></span></div>
+      </div>
+      <div class="json-path-bar">
+        <span>Path:</span>
+        <span class="path-segment">root</span>
+        <span>.</span>
+        <span class="path-active">txHash</span>
+      </div>
+    </div>
+    <div>
+      <div class="context-card" style="margin-bottom:16px;">
+        <div class="context-title">Artifact Metadata</div>
+        <div class="context-row"><span class="context-label">Stage</span><span class="context-value" style="color:#2EBD85;">4 of 5 (confirmed)</span></div>
+        <div class="context-row"><span class="context-label">Trace ID</span><span class="context-value">tr_7f3a9b2c-4d1e-8a5b</span></div>
+        <div class="context-row"><span class="context-label">Created</span><span class="context-value">Apr 9, 2026 14:32:18</span></div>
+        <div class="context-row"><span class="context-label">Size</span><span class="context-value">1.2 KB (28 lines)</span></div>
+        <div class="context-row"><span class="context-label">Hash</span><span class="context-value">sha256:8e2c4d...7f3a</span></div>
+      </div>
+      <div class="context-card" style="margin-bottom:16px;">
+        <div class="context-title">Artifact Timeline</div>
+        <div class="context-row"><span class="context-label" style="color:#2EBD85;">1. deposit.detected</span><span class="context-value">14:28:41</span></div>
+        <div class="context-row"><span class="context-label" style="color:#2EBD85;">2. kyt.screened</span><span class="context-value">14:30:02</span></div>
+        <div class="context-row"><span class="context-label" style="color:#2EBD85;">3. deposit.confirming</span><span class="context-value">14:30:18</span></div>
+        <div class="context-row"><span class="context-label" style="color:#E2A828;">4. deposit.confirmed</span><span class="context-value" style="color:#E2A828;">14:32:18 (current)</span></div>
+        <div class="context-row"><span class="context-label" style="color:#4E5364;">5. deposit.swept</span><span class="context-value" style="color:#4E5364;">pending</span></div>
+      </div>
+      <div class="context-card">
+        <div class="context-title">Related Resources</div>
+        <div class="context-row"><span class="context-label">PostHog Event</span><span class="context-value" style="color:#E2A828;">View &rarr;</span></div>
+        <div class="context-row"><span class="context-label">Loki Logs</span><span class="context-value" style="color:#E2A828;">View &rarr;</span></div>
+        <div class="context-row"><span class="context-label">Jaeger Trace</span><span class="context-value" style="color:#E2A828;">View &rarr;</span></div>
+      </div>
+    </div>
+  </div>
+</main>
+</body>
+</html>

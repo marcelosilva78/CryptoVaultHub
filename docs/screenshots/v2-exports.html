@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1440">
+<title>Exports - Dark</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{width:1440px;height:900px;overflow:hidden;font-family:'Outfit',sans-serif;background:#08090B;color:#E8E9ED;-webkit-font-smoothing:antialiased;}
+.sidebar{position:fixed;left:0;top:0;bottom:0;width:240px;background:#0D0F14;border-right:1px solid #1E2028;display:flex;flex-direction:column;z-index:100;}
+.sidebar-logo{height:56px;display:flex;align-items:center;gap:10px;padding:0 20px;}
+.sidebar-logo span{font-size:15px;letter-spacing:-0.02em;color:#E8E9ED;}
+.sidebar-logo b{font-weight:700;}
+.logo-hex{width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#0D0F14;background:linear-gradient(135deg,#E2A828,#C9941F);clip-path:polygon(50% 0%,93% 25%,93% 75%,50% 100%,7% 75%,7% 25%);}
+.nav-section{padding:0 12px;margin-top:16px;}
+.nav-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:#4E5364;padding:0 12px;margin-bottom:6px;}
+.nav-item{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:6px;font-size:13px;font-weight:500;color:#858A9B;text-decoration:none;margin-bottom:2px;position:relative;}
+.nav-item.active{background:rgba(226,168,40,0.10);color:#E2A828;font-weight:600;}
+.nav-item.active::before{content:'';position:absolute;left:0;top:50%;transform:translateY(-50%);width:3px;height:18px;background:#E2A828;border-radius:0 3px 3px 0;}
+.sidebar-footer{margin-top:auto;padding:12px 16px;border-top:1px solid #151820;display:flex;align-items:center;gap:10px;}
+.avatar-hex{width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#0D0F14;background:linear-gradient(135deg,#E2A828,#C9941F);clip-path:polygon(50% 0%,93% 25%,93% 75%,50% 100%,7% 75%,7% 25%);}
+.user-name{font-size:13px;font-weight:500;color:#E8E9ED;}
+.user-role{font-size:11px;color:#4E5364;}
+.header{position:fixed;top:0;left:240px;right:0;height:56px;z-index:99;display:flex;align-items:center;justify-content:space-between;padding:0 24px;border-bottom:1px solid #151820;background:rgba(8,9,11,0.85);backdrop-filter:blur(12px);}
+.breadcrumb{display:flex;align-items:center;gap:6px;font-size:13px;}
+.breadcrumb .sep{color:#4E5364;font-size:10px;}
+.breadcrumb .crumb{color:#4E5364;}
+.breadcrumb .crumb.active{color:#E8E9ED;font-weight:600;}
+.main{margin-left:240px;margin-top:56px;padding:24px;min-height:calc(100vh - 56px);}
+.page-title{font-size:22px;font-weight:700;margin-bottom:4px;}
+.page-sub{font-size:13px;color:#858A9B;margin-bottom:20px;}
+.content-grid{display:grid;grid-template-columns:1fr 340px;gap:16px;}
+.table-card{background:#111318;border:1px solid #1E2028;border-radius:10px;overflow:hidden;}
+.table-header{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;border-bottom:1px solid #151820;}
+.table-header h2{font-size:16px;font-weight:600;color:#E8E9ED;}
+table{width:100%;border-collapse:collapse;}
+thead tr{background:#1A1D25;}
+th{text-align:left;padding:10px 16px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#4E5364;}
+td{padding:10px 16px;border-bottom:1px solid #151820;font-size:12px;}
+tr:hover{background:#22252F;}
+.mono{font-family:'JetBrains Mono',monospace;font-size:11px;color:#858A9B;}
+.badge{display:inline-block;padding:3px 8px;border-radius:4px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;}
+.badge-green{background:rgba(46,189,133,0.12);color:#2EBD85;}
+.badge-amber{background:rgba(226,168,40,0.12);color:#E2A828;}
+.badge-blue{background:rgba(59,130,246,0.12);color:#3B82F6;}
+.badge-gray{background:rgba(133,138,155,0.12);color:#858A9B;}
+.download-btn{padding:4px 10px;border-radius:4px;font-size:10px;font-weight:600;border:1px solid rgba(226,168,40,0.3);background:transparent;color:#E2A828;cursor:pointer;font-family:inherit;}
+/* Export form panel */
+.export-panel{background:#111318;border:1px solid #1E2028;border-radius:10px;padding:20px;height:fit-content;}
+.panel-title{font-size:16px;font-weight:600;margin-bottom:4px;}
+.panel-sub{font-size:12px;color:#858A9B;margin-bottom:16px;}
+.form-group{margin-bottom:14px;}
+.form-label{font-size:11px;font-weight:600;color:#4E5364;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;display:block;}
+.form-select{width:100%;padding:8px 12px;background:#0D0F14;border:1px solid #1E2028;border-radius:6px;color:#E8E9ED;font-size:12px;font-family:inherit;appearance:none;}
+.form-input{width:100%;padding:8px 12px;background:#0D0F14;border:1px solid #1E2028;border-radius:6px;color:#E8E9ED;font-size:12px;font-family:inherit;}
+.format-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.format-option{padding:10px;background:#0D0F14;border:1px solid #1E2028;border-radius:6px;text-align:center;cursor:pointer;}
+.format-option.selected{border-color:#E2A828;background:rgba(226,168,40,0.05);}
+.format-name{font-size:12px;font-weight:600;margin-bottom:2px;}
+.format-ext{font-size:10px;color:#4E5364;font-family:'JetBrains Mono',monospace;}
+.format-option.selected .format-name{color:#E2A828;}
+.checkbox-group{display:flex;flex-direction:column;gap:6px;}
+.checkbox-item{display:flex;align-items:center;gap:8px;font-size:12px;color:#858A9B;}
+.checkbox{width:14px;height:14px;border:1px solid #1E2028;border-radius:3px;background:#0D0F14;display:inline-flex;align-items:center;justify-content:center;}
+.checkbox.checked{background:#E2A828;border-color:#E2A828;}
+.checkbox.checked::after{content:'';width:6px;height:3px;border-left:2px solid #0D0F14;border-bottom:2px solid #0D0F14;transform:rotate(-45deg);margin-top:-2px;}
+.btn-export{width:100%;padding:10px;background:#E2A828;color:#0D0F14;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;margin-top:16px;}
+.size-hint{font-size:10px;color:#4E5364;margin-top:8px;text-align:center;}
+</style>
+</head>
+<body>
+<aside class="sidebar">
+  <div class="sidebar-logo"><div class="logo-hex">CV</div><span>Crypto<b>VaultHub</b></span></div>
+  <nav class="nav-section">
+    <div class="nav-label">Wallet Ops</div>
+    <a class="nav-item" href="#">Dashboard</a>
+    <a class="nav-item" href="#">Wallets</a>
+    <a class="nav-item" href="#">Deposits</a>
+    <a class="nav-item" href="#">Withdrawals</a>
+    <a class="nav-item" href="#">Transactions</a>
+  </nav>
+  <nav class="nav-section">
+    <div class="nav-label">Tools</div>
+    <a class="nav-item active" href="#">Exports</a>
+    <a class="nav-item" href="#">Webhooks</a>
+    <a class="nav-item" href="#">API Keys</a>
+  </nav>
+  <div class="sidebar-footer">
+    <div class="avatar-hex">BX</div>
+    <div><div class="user-name">BitExchange Inc.</div><div class="user-role">Client</div></div>
+  </div>
+</aside>
+<header class="header">
+  <div class="breadcrumb">
+    <span class="crumb">Tools</span><span class="sep">/</span><span class="crumb active">Exports</span>
+  </div>
+</header>
+<main class="main">
+  <div class="page-title">Exports</div>
+  <div class="page-sub">Export transaction history, deposit records, and address data in multiple formats for accounting and compliance.</div>
+  <div class="content-grid">
+    <div class="table-card">
+      <div class="table-header">
+        <h2>Export History</h2>
+      </div>
+      <table>
+        <thead><tr>
+          <th>Export ID</th>
+          <th>Type</th>
+          <th>Date Range</th>
+          <th>Format</th>
+          <th>Records</th>
+          <th>Size</th>
+          <th>Status</th>
+          <th>Action</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td class="mono">exp_a7f3b2c1</td>
+            <td>Transactions</td>
+            <td class="mono">Mar 1 - Mar 31</td>
+            <td><span class="badge badge-blue">CSV</span></td>
+            <td class="mono">2,847</td>
+            <td class="mono">1.2 MB</td>
+            <td><span class="badge badge-green">READY</span></td>
+            <td><button class="download-btn">Download</button></td>
+          </tr>
+          <tr>
+            <td class="mono">exp_b8e4c3d2</td>
+            <td>Deposits</td>
+            <td class="mono">Apr 1 - Apr 9</td>
+            <td><span class="badge badge-amber">JSON</span></td>
+            <td class="mono">412</td>
+            <td class="mono">890 KB</td>
+            <td><span class="badge badge-green">READY</span></td>
+            <td><button class="download-btn">Download</button></td>
+          </tr>
+          <tr>
+            <td class="mono">exp_c9f5d4e3</td>
+            <td>Addresses</td>
+            <td class="mono">All time</td>
+            <td><span class="badge badge-blue">CSV</span></td>
+            <td class="mono">1,204</td>
+            <td class="mono">340 KB</td>
+            <td><span class="badge badge-green">READY</span></td>
+            <td><button class="download-btn">Download</button></td>
+          </tr>
+          <tr>
+            <td class="mono">exp_d1a6e5f4</td>
+            <td>Withdrawals</td>
+            <td class="mono">Q1 2026</td>
+            <td><span class="badge badge-gray">XLSX</span></td>
+            <td class="mono">891</td>
+            <td class="mono">2.1 MB</td>
+            <td><span class="badge badge-blue">GENERATING</span></td>
+            <td><button class="download-btn" style="opacity:0.4;">Pending</button></td>
+          </tr>
+          <tr>
+            <td class="mono">exp_e2b7f6a5</td>
+            <td>Compliance</td>
+            <td class="mono">Mar 1 - Mar 31</td>
+            <td><span class="badge badge-amber">JSON</span></td>
+            <td class="mono">156</td>
+            <td class="mono">420 KB</td>
+            <td><span class="badge badge-green">READY</span></td>
+            <td><button class="download-btn">Download</button></td>
+          </tr>
+          <tr>
+            <td class="mono">exp_f3c8a7b6</td>
+            <td>Transactions</td>
+            <td class="mono">Feb 2026</td>
+            <td><span class="badge badge-blue">CSV</span></td>
+            <td class="mono">3,102</td>
+            <td class="mono">1.5 MB</td>
+            <td><span class="badge badge-green">READY</span></td>
+            <td><button class="download-btn">Download</button></td>
+          </tr>
+          <tr>
+            <td class="mono">exp_a4d9b8c7</td>
+            <td>Audit Log</td>
+            <td class="mono">Apr 1 - Apr 9</td>
+            <td><span class="badge badge-amber">JSON</span></td>
+            <td class="mono">8,421</td>
+            <td class="mono">4.8 MB</td>
+            <td><span class="badge badge-green">READY</span></td>
+            <td><button class="download-btn">Download</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="export-panel">
+      <div class="panel-title">New Export</div>
+      <div class="panel-sub">Configure and generate a new data export</div>
+      <div class="form-group">
+        <label class="form-label">Data Type</label>
+        <div class="form-select">Transactions (Deposits + Withdrawals)</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Date Range</label>
+        <div style="display:flex;gap:8px;">
+          <div class="form-input" style="flex:1;">Apr 1, 2026</div>
+          <div class="form-input" style="flex:1;">Apr 9, 2026</div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Chains</label>
+        <div class="form-select">All Chains (7)</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Format</label>
+        <div class="format-grid">
+          <div class="format-option selected"><div class="format-name">CSV</div><div class="format-ext">.csv</div></div>
+          <div class="format-option"><div class="format-name">JSON</div><div class="format-ext">.json</div></div>
+          <div class="format-option"><div class="format-name">Excel</div><div class="format-ext">.xlsx</div></div>
+          <div class="format-option"><div class="format-name">PDF</div><div class="format-ext">.pdf</div></div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Include Fields</label>
+        <div class="checkbox-group">
+          <label class="checkbox-item"><span class="checkbox checked"></span>Transaction ID</label>
+          <label class="checkbox-item"><span class="checkbox checked"></span>Amount & Token</label>
+          <label class="checkbox-item"><span class="checkbox checked"></span>Chain & Addresses</label>
+          <label class="checkbox-item"><span class="checkbox checked"></span>Status & Timestamps</label>
+          <label class="checkbox-item"><span class="checkbox"></span>Tx Hash & Block</label>
+          <label class="checkbox-item"><span class="checkbox"></span>KYT Screening Results</label>
+        </div>
+      </div>
+      <button class="btn-export">Generate Export</button>
+      <div class="size-hint">Estimated ~450 records, ~180 KB</div>
+    </div>
+  </div>
+</main>
+</body>
+</html>

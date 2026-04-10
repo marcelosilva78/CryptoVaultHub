@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1440">
+<title>Admin Impersonation - Dark</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{width:1440px;height:700px;overflow:hidden;font-family:'Outfit',sans-serif;background:#08090B;color:#E8E9ED;-webkit-font-smoothing:antialiased;}
+.sidebar{position:fixed;left:0;top:0;bottom:0;width:240px;background:#0D0F14;border-right:1px solid #1E2028;display:flex;flex-direction:column;z-index:100;}
+.sidebar-logo{height:56px;display:flex;align-items:center;gap:10px;padding:0 20px;}
+.sidebar-logo span{font-size:15px;letter-spacing:-0.02em;color:#E8E9ED;}
+.sidebar-logo b{font-weight:700;}
+.logo-hex{width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#0D0F14;background:linear-gradient(135deg,#E2A828,#C9941F);clip-path:polygon(50% 0%,93% 25%,93% 75%,50% 100%,7% 75%,7% 25%);}
+.nav-section{padding:0 12px;margin-top:16px;}
+.nav-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:#4E5364;padding:0 12px;margin-bottom:6px;}
+.nav-item{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:6px;font-size:13px;font-weight:500;color:#858A9B;text-decoration:none;margin-bottom:2px;position:relative;}
+.nav-item.active{background:rgba(226,168,40,0.10);color:#E2A828;font-weight:600;}
+.nav-item.active::before{content:'';position:absolute;left:0;top:50%;transform:translateY(-50%);width:3px;height:18px;background:#E2A828;border-radius:0 3px 3px 0;}
+.sidebar-footer{margin-top:auto;padding:12px 16px;border-top:1px solid #151820;display:flex;align-items:center;gap:10px;}
+.avatar-hex{width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#0D0F14;background:linear-gradient(135deg,#E2A828,#C9941F);clip-path:polygon(50% 0%,93% 25%,93% 75%,50% 100%,7% 75%,7% 25%);}
+.user-name{font-size:13px;font-weight:500;color:#E8E9ED;}
+.user-role{font-size:11px;color:#4E5364;}
+/* Impersonation banner */
+.impersonation-banner{position:fixed;top:0;left:240px;right:0;height:36px;z-index:101;display:flex;align-items:center;justify-content:center;gap:12px;background:linear-gradient(90deg,rgba(246,70,93,0.15),rgba(246,70,93,0.08));border-bottom:1px solid rgba(246,70,93,0.3);font-size:12px;font-weight:600;color:#F6465D;}
+.banner-dot{width:8px;height:8px;border-radius:50%;background:#F6465D;box-shadow:0 0 8px rgba(246,70,93,0.6);animation:pulse 2s infinite;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.5;}}
+.banner-client{font-family:'JetBrains Mono',monospace;font-size:11px;padding:2px 8px;background:rgba(246,70,93,0.12);border-radius:4px;}
+.banner-exit{padding:3px 10px;border-radius:4px;border:1px solid rgba(246,70,93,0.4);background:transparent;color:#F6465D;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;margin-left:8px;}
+/* Header */
+.header{position:fixed;top:36px;left:240px;right:0;height:56px;z-index:99;display:flex;align-items:center;justify-content:space-between;padding:0 24px;border-bottom:1px solid #151820;background:rgba(8,9,11,0.85);backdrop-filter:blur(12px);}
+.header-left{display:flex;align-items:center;gap:16px;}
+.breadcrumb{display:flex;align-items:center;gap:6px;font-size:13px;}
+.breadcrumb .sep{color:#4E5364;font-size:10px;}
+.breadcrumb .crumb{color:#4E5364;}
+.breadcrumb .crumb.active{color:#E8E9ED;font-weight:600;}
+.header-actions{display:flex;align-items:center;gap:8px;}
+.header-btn{padding:8px;border-radius:6px;color:#4E5364;background:none;border:none;cursor:pointer;display:flex;align-items:center;font-size:14px;}
+.mini-avatar{width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#0D0F14;background:linear-gradient(135deg,#E2A828,#C9941F);clip-path:polygon(50% 0%,93% 25%,93% 75%,50% 100%,7% 75%,7% 25%);}
+/* Impersonation target badge */
+.impersonate-badge{display:flex;align-items:center;gap:8px;padding:5px 12px;background:rgba(246,70,93,0.08);border:1px solid rgba(246,70,93,0.2);border-radius:6px;}
+.impersonate-badge .imp-icon{width:20px;height:20px;border-radius:4px;background:linear-gradient(135deg,#F6465D,#CC3344);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff;}
+.impersonate-badge .imp-name{font-size:12px;font-weight:600;color:#F6465D;}
+.main{margin-left:240px;margin-top:92px;padding:24px;min-height:calc(100vh - 92px);}
+.page-title{font-size:22px;font-weight:700;margin-bottom:4px;}
+.page-sub{font-size:13px;color:#858A9B;margin-bottom:20px;}
+/* Client detail view */
+.client-header{background:#111318;border:1px solid #1E2028;border-radius:10px;padding:20px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;}
+.client-info{display:flex;align-items:center;gap:16px;}
+.client-avatar{width:48px;height:48px;border-radius:10px;background:linear-gradient(135deg,#3B82F6,#1D4ED8);display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:#fff;}
+.client-name{font-size:18px;font-weight:700;}
+.client-id{font-size:11px;font-family:'JetBrains Mono',monospace;color:#4E5364;}
+.client-meta{display:flex;gap:12px;margin-top:4px;}
+.client-tag{font-size:10px;font-weight:600;padding:3px 8px;border-radius:4px;}
+.tag-custody{background:rgba(59,130,246,0.12);color:#3B82F6;}
+.tag-tier{background:rgba(226,168,40,0.12);color:#E2A828;}
+.tag-active{background:rgba(46,189,133,0.12);color:#2EBD85;}
+.client-actions{display:flex;gap:8px;}
+.action-btn{padding:6px 14px;border-radius:6px;font-size:11px;font-weight:600;border:1px solid #1E2028;background:transparent;color:#858A9B;cursor:pointer;font-family:inherit;}
+.action-btn.primary{background:#E2A828;color:#0D0F14;border-color:#E2A828;}
+.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;}
+.stat-card{background:#111318;border:1px solid #1E2028;border-radius:10px;padding:16px;}
+.stat-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#4E5364;margin-bottom:10px;}
+.stat-value{font-size:22px;font-weight:700;color:#E8E9ED;line-height:1;margin-bottom:6px;}
+.stat-sub{font-size:11px;color:#4E5364;}
+</style>
+</head>
+<body>
+<aside class="sidebar">
+  <div class="sidebar-logo"><div class="logo-hex">CV</div><span>Crypto<b>VaultHub</b></span></div>
+  <nav class="nav-section">
+    <div class="nav-label">Platform</div>
+    <a class="nav-item" href="#">Dashboard</a>
+    <a class="nav-item active" href="#">Clients</a>
+    <a class="nav-item" href="#">Chains</a>
+    <a class="nav-item" href="#">RPC Providers</a>
+  </nav>
+  <nav class="nav-section">
+    <div class="nav-label">Operations</div>
+    <a class="nav-item" href="#">Jobs Dashboard</a>
+    <a class="nav-item" href="#">Sync Health</a>
+    <a class="nav-item" href="#">Traceability</a>
+    <a class="nav-item" href="#">Compliance</a>
+  </nav>
+  <div class="sidebar-footer">
+    <div class="avatar-hex">MS</div>
+    <div><div class="user-name">Marcelo Silva</div><div class="user-role">Super Admin</div></div>
+  </div>
+</aside>
+<div class="impersonation-banner">
+  <span class="banner-dot"></span>
+  Impersonating Client:
+  <span class="banner-client">BitExchange Inc. (client_a7f3b2c1)</span>
+  All actions are logged and attributed to admin.
+  <button class="banner-exit">Exit Impersonation</button>
+</div>
+<header class="header">
+  <div class="header-left">
+    <div class="impersonate-badge">
+      <div class="imp-icon">BX</div>
+      <span class="imp-name">BitExchange Inc.</span>
+    </div>
+    <div class="breadcrumb">
+      <span class="crumb">Clients</span><span class="sep">/</span><span class="crumb active">BitExchange Inc.</span>
+    </div>
+  </div>
+  <div class="header-actions">
+    <button class="header-btn">&#128276;</button>
+    <div class="mini-avatar">MS</div>
+  </div>
+</header>
+<main class="main">
+  <div class="client-header">
+    <div class="client-info">
+      <div class="client-avatar">BX</div>
+      <div>
+        <div class="client-name">BitExchange Inc.</div>
+        <div class="client-id">client_a7f3b2c1</div>
+        <div class="client-meta">
+          <span class="client-tag tag-custody">Full Custody</span>
+          <span class="client-tag tag-tier">Enterprise Tier</span>
+          <span class="client-tag tag-active">Active</span>
+        </div>
+      </div>
+    </div>
+    <div class="client-actions">
+      <button class="action-btn">View as Client</button>
+      <button class="action-btn">Audit Log</button>
+      <button class="action-btn primary">Manage</button>
+    </div>
+  </div>
+  <div class="stats-grid">
+    <div class="stat-card"><div class="stat-label">Total Balance</div><div class="stat-value">$1.24M</div><div class="stat-sub">across 4 chains</div></div>
+    <div class="stat-card"><div class="stat-label">Deposit Addresses</div><div class="stat-value">1,204</div><div class="stat-sub">847 deployed</div></div>
+    <div class="stat-card"><div class="stat-label">Pending Flushes</div><div class="stat-value" style="color:#E2A828;">12</div><div class="stat-sub">$34,200 value</div></div>
+    <div class="stat-card"><div class="stat-label">KYT Alerts</div><div class="stat-value" style="color:#F6465D;">2</div><div class="stat-sub">require review</div></div>
+  </div>
+</main>
+</body>
+</html>

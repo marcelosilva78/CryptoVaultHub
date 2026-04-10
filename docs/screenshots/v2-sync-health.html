@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1440">
+<title>Sync Health Dashboard - Dark</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{width:1440px;height:900px;overflow:hidden;font-family:'Outfit',sans-serif;background:#08090B;color:#E8E9ED;-webkit-font-smoothing:antialiased;}
+.sidebar{position:fixed;left:0;top:0;bottom:0;width:240px;background:#0D0F14;border-right:1px solid #1E2028;display:flex;flex-direction:column;z-index:100;}
+.sidebar-logo{height:56px;display:flex;align-items:center;gap:10px;padding:0 20px;}
+.sidebar-logo span{font-size:15px;letter-spacing:-0.02em;color:#E8E9ED;}
+.sidebar-logo b{font-weight:700;}
+.logo-hex{width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#0D0F14;background:linear-gradient(135deg,#E2A828,#C9941F);clip-path:polygon(50% 0%,93% 25%,93% 75%,50% 100%,7% 75%,7% 25%);}
+.nav-section{padding:0 12px;margin-top:16px;}
+.nav-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:#4E5364;padding:0 12px;margin-bottom:6px;}
+.nav-item{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:6px;font-size:13px;font-weight:500;color:#858A9B;text-decoration:none;margin-bottom:2px;position:relative;}
+.nav-item.active{background:rgba(226,168,40,0.10);color:#E2A828;font-weight:600;}
+.nav-item.active::before{content:'';position:absolute;left:0;top:50%;transform:translateY(-50%);width:3px;height:18px;background:#E2A828;border-radius:0 3px 3px 0;}
+.sidebar-footer{margin-top:auto;padding:12px 16px;border-top:1px solid #151820;display:flex;align-items:center;gap:10px;}
+.avatar-hex{width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#0D0F14;background:linear-gradient(135deg,#E2A828,#C9941F);clip-path:polygon(50% 0%,93% 25%,93% 75%,50% 100%,7% 75%,7% 25%);}
+.user-name{font-size:13px;font-weight:500;color:#E8E9ED;}
+.user-role{font-size:11px;color:#4E5364;}
+.header{position:fixed;top:0;left:240px;right:0;height:56px;z-index:99;display:flex;align-items:center;justify-content:space-between;padding:0 24px;border-bottom:1px solid #151820;background:rgba(8,9,11,0.85);backdrop-filter:blur(12px);}
+.breadcrumb{display:flex;align-items:center;gap:6px;font-size:13px;}
+.breadcrumb .sep{color:#4E5364;font-size:10px;}
+.breadcrumb .crumb{color:#4E5364;}
+.breadcrumb .crumb.active{color:#E8E9ED;font-weight:600;}
+.main{margin-left:240px;margin-top:56px;padding:24px;min-height:calc(100vh - 56px);}
+.page-title{font-size:22px;font-weight:700;margin-bottom:4px;}
+.page-sub{font-size:13px;color:#858A9B;margin-bottom:20px;}
+.chain-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:20px;}
+.chain-card{background:#111318;border:1px solid #1E2028;border-radius:10px;padding:20px;position:relative;overflow:hidden;}
+.chain-card.warning{border-color:rgba(226,168,40,0.3);}
+.chain-card.error{border-color:rgba(246,70,93,0.3);}
+.chain-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;}
+.chain-name{display:flex;align-items:center;gap:10px;font-size:15px;font-weight:600;}
+.chain-hex{width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#0D0F14;clip-path:polygon(50% 0%,93% 25%,93% 75%,50% 100%,7% 75%,7% 25%);}
+.dot-indicator{width:10px;height:10px;border-radius:50%;display:inline-block;}
+.dot-green{background:#2EBD85;box-shadow:0 0 6px rgba(46,189,133,0.4);}
+.dot-amber{background:#E2A828;box-shadow:0 0 6px rgba(226,168,40,0.4);}
+.dot-red{background:#F6465D;box-shadow:0 0 6px rgba(246,70,93,0.4);}
+.chain-metrics{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.metric{padding:10px;background:#0D0F14;border-radius:6px;border:1px solid #1A1D25;}
+.metric-label{font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#4E5364;margin-bottom:4px;}
+.metric-value{font-size:16px;font-weight:700;font-family:'JetBrains Mono',monospace;}
+.metric-value.ok{color:#2EBD85;}
+.metric-value.warn{color:#E2A828;}
+.metric-value.err{color:#F6465D;}
+.metric-sub{font-size:10px;color:#4E5364;margin-top:2px;}
+.sync-bar{width:100%;height:4px;background:#1E2028;border-radius:2px;margin-top:12px;overflow:hidden;}
+.sync-fill{height:100%;border-radius:2px;}
+.sync-label{font-size:10px;color:#4E5364;margin-top:6px;display:flex;justify-content:space-between;}
+.badge{display:inline-block;padding:3px 8px;border-radius:4px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;}
+.badge-green{background:rgba(46,189,133,0.12);color:#2EBD85;}
+.badge-amber{background:rgba(226,168,40,0.12);color:#E2A828;}
+.badge-red{background:rgba(246,70,93,0.12);color:#F6465D;}
+.summary-bar{display:flex;gap:12px;margin-bottom:20px;}
+.summary-item{background:#111318;border:1px solid #1E2028;border-radius:8px;padding:12px 20px;flex:1;text-align:center;}
+.summary-val{font-size:20px;font-weight:700;margin-bottom:2px;}
+.summary-lbl{font-size:10px;color:#4E5364;text-transform:uppercase;letter-spacing:0.08em;}
+</style>
+</head>
+<body>
+<aside class="sidebar">
+  <div class="sidebar-logo"><div class="logo-hex">CV</div><span>Crypto<b>VaultHub</b></span></div>
+  <nav class="nav-section">
+    <div class="nav-label">Platform</div>
+    <a class="nav-item" href="#">Dashboard</a>
+    <a class="nav-item" href="#">Clients</a>
+    <a class="nav-item" href="#">Chains</a>
+    <a class="nav-item" href="#">RPC Providers</a>
+  </nav>
+  <nav class="nav-section">
+    <div class="nav-label">Operations</div>
+    <a class="nav-item" href="#">Jobs Dashboard</a>
+    <a class="nav-item active" href="#">Sync Health</a>
+    <a class="nav-item" href="#">Flush Operations</a>
+    <a class="nav-item" href="#">Traceability</a>
+  </nav>
+  <div class="sidebar-footer">
+    <div class="avatar-hex">MS</div>
+    <div><div class="user-name">Marcelo Silva</div><div class="user-role">Super Admin</div></div>
+  </div>
+</aside>
+<header class="header">
+  <div class="breadcrumb">
+    <span class="crumb">Operations</span><span class="sep">/</span><span class="crumb active">Sync Health</span>
+  </div>
+</header>
+<main class="main">
+  <div class="page-title">Sync Health</div>
+  <div class="page-sub">Chain indexer synchronization status. Block gap monitoring, reorg detection, and indexer performance per chain.</div>
+  <div class="summary-bar">
+    <div class="summary-item"><div class="summary-val" style="color:#2EBD85;">5</div><div class="summary-lbl">Chains Synced</div></div>
+    <div class="summary-item"><div class="summary-val" style="color:#E2A828;">1</div><div class="summary-lbl">Behind</div></div>
+    <div class="summary-item"><div class="summary-val" style="color:#F6465D;">1</div><div class="summary-lbl">Stalled</div></div>
+    <div class="summary-item"><div class="summary-val">0</div><div class="summary-lbl">Reorgs (24h)</div></div>
+  </div>
+  <div class="chain-grid">
+    <!-- Ethereum -->
+    <div class="chain-card">
+      <div class="chain-top">
+        <div class="chain-name"><div class="chain-hex" style="background:linear-gradient(135deg,#627EEA,#3B5AC6);">E</div>Ethereum</div>
+        <span class="dot-indicator dot-green"></span>
+      </div>
+      <div class="chain-metrics">
+        <div class="metric"><div class="metric-label">Blocks Behind</div><div class="metric-value ok">0</div><div class="metric-sub">fully synced</div></div>
+        <div class="metric"><div class="metric-label">Gap Count</div><div class="metric-value ok">0</div><div class="metric-sub">no gaps detected</div></div>
+        <div class="metric"><div class="metric-label">Last Block</div><div class="metric-value" style="color:#E8E9ED;font-size:13px;">19,847,291</div><div class="metric-sub">2s ago</div></div>
+        <div class="metric"><div class="metric-label">Avg Block Time</div><div class="metric-value" style="color:#E8E9ED;font-size:13px;">12.1s</div><div class="metric-sub">target: 12s</div></div>
+      </div>
+      <div class="sync-bar"><div class="sync-fill" style="width:100%;background:#2EBD85;"></div></div>
+      <div class="sync-label"><span>Sync Progress</span><span style="color:#2EBD85;">100%</span></div>
+    </div>
+    <!-- BSC -->
+    <div class="chain-card">
+      <div class="chain-top">
+        <div class="chain-name"><div class="chain-hex" style="background:linear-gradient(135deg,#F3BA2F,#D4A21F);">B</div>BSC</div>
+        <span class="dot-indicator dot-green"></span>
+      </div>
+      <div class="chain-metrics">
+        <div class="metric"><div class="metric-label">Blocks Behind</div><div class="metric-value ok">0</div><div class="metric-sub">fully synced</div></div>
+        <div class="metric"><div class="metric-label">Gap Count</div><div class="metric-value ok">0</div><div class="metric-sub">no gaps detected</div></div>
+        <div class="metric"><div class="metric-label">Last Block</div><div class="metric-value" style="color:#E8E9ED;font-size:13px;">42,183,402</div><div class="metric-sub">1s ago</div></div>
+        <div class="metric"><div class="metric-label">Avg Block Time</div><div class="metric-value" style="color:#E8E9ED;font-size:13px;">3.0s</div><div class="metric-sub">target: 3s</div></div>
+      </div>
+      <div class="sync-bar"><div class="sync-fill" style="width:100%;background:#2EBD85;"></div></div>
+      <div class="sync-label"><span>Sync Progress</span><span style="color:#2EBD85;">100%</span></div>
+    </div>
+    <!-- Polygon -->
+    <div class="chain-card warning">
+      <div class="chain-top">
+        <div class="chain-name"><div class="chain-hex" style="background:linear-gradient(135deg,#8247E5,#6B37C4);">P</div>Polygon</div>
+        <span class="dot-indicator dot-amber"></span>
+      </div>
+      <div class="chain-metrics">
+        <div class="metric"><div class="metric-label">Blocks Behind</div><div class="metric-value warn">47</div><div class="metric-sub">~94s behind</div></div>
+        <div class="metric"><div class="metric-label">Gap Count</div><div class="metric-value warn">2</div><div class="metric-sub">blocks: 59012731-32</div></div>
+        <div class="metric"><div class="metric-label">Last Block</div><div class="metric-value" style="color:#E8E9ED;font-size:13px;">59,012,731</div><div class="metric-sub">47s ago</div></div>
+        <div class="metric"><div class="metric-label">Avg Block Time</div><div class="metric-value" style="color:#E8E9ED;font-size:13px;">2.1s</div><div class="metric-sub">target: 2s</div></div>
+      </div>
+      <div class="sync-bar"><div class="sync-fill" style="width:99.9%;background:#E2A828;"></div></div>
+      <div class="sync-label"><span>Sync Progress</span><span style="color:#E2A828;">99.9%</span></div>
+    </div>
+    <!-- Arbitrum -->
+    <div class="chain-card">
+      <div class="chain-top">
+        <div class="chain-name"><div class="chain-hex" style="background:linear-gradient(135deg,#28A0F0,#1C7AC5);">A</div>Arbitrum</div>
+        <span class="dot-indicator dot-green"></span>
+      </div>
+      <div class="chain-metrics">
+        <div class="metric"><div class="metric-label">Blocks Behind</div><div class="metric-value ok">0</div><div class="metric-sub">fully synced</div></div>
+        <div class="metric"><div class="metric-label">Gap Count</div><div class="metric-value ok">0</div><div class="metric-sub">no gaps detected</div></div>
+        <div class="metric"><div class="metric-label">Last Block</div><div class="metric-value" style="color:#E8E9ED;font-size:13px;">215,492,103</div><div class="metric-sub">0.3s ago</div></div>
+        <div class="metric"><div class="metric-label">Avg Block Time</div><div class="metric-value" style="color:#E8E9ED;font-size:13px;">0.26s</div><div class="metric-sub">target: 0.25s</div></div>
+      </div>
+      <div class="sync-bar"><div class="sync-fill" style="width:100%;background:#2EBD85;"></div></div>
+      <div class="sync-label"><span>Sync Progress</span><span style="color:#2EBD85;">100%</span></div>
+    </div>
+    <!-- Optimism -->
+    <div class="chain-card error">
+      <div class="chain-top">
+        <div class="chain-name"><div class="chain-hex" style="background:linear-gradient(135deg,#FF0420,#CC0319);">O</div>Optimism</div>
+        <span class="dot-indicator dot-red"></span>
+      </div>
+      <div class="chain-metrics">
+        <div class="metric"><div class="metric-label">Blocks Behind</div><div class="metric-value err">1,842</div><div class="metric-sub">RPC unreachable</div></div>
+        <div class="metric"><div class="metric-label">Gap Count</div><div class="metric-value err">12</div><div class="metric-sub">since stall</div></div>
+        <div class="metric"><div class="metric-label">Last Block</div><div class="metric-value" style="color:#858A9B;font-size:13px;">121,447,889</div><div class="metric-sub">6m ago</div></div>
+        <div class="metric"><div class="metric-label">Avg Block Time</div><div class="metric-value" style="color:#858A9B;font-size:13px;">--</div><div class="metric-sub">stalled</div></div>
+      </div>
+      <div class="sync-bar"><div class="sync-fill" style="width:99.8%;background:#F6465D;"></div></div>
+      <div class="sync-label"><span>Sync Progress</span><span style="color:#F6465D;">99.8% (stalled)</span></div>
+    </div>
+    <!-- Avalanche -->
+    <div class="chain-card">
+      <div class="chain-top">
+        <div class="chain-name"><div class="chain-hex" style="background:linear-gradient(135deg,#E84142,#C43738);">V</div>Avalanche</div>
+        <span class="dot-indicator dot-green"></span>
+      </div>
+      <div class="chain-metrics">
+        <div class="metric"><div class="metric-label">Blocks Behind</div><div class="metric-value ok">1</div><div class="metric-sub">catching up</div></div>
+        <div class="metric"><div class="metric-label">Gap Count</div><div class="metric-value ok">0</div><div class="metric-sub">no gaps detected</div></div>
+        <div class="metric"><div class="metric-label">Last Block</div><div class="metric-value" style="color:#E8E9ED;font-size:13px;">48,291,444</div><div class="metric-sub">3s ago</div></div>
+        <div class="metric"><div class="metric-label">Avg Block Time</div><div class="metric-value" style="color:#E8E9ED;font-size:13px;">2.0s</div><div class="metric-sub">target: 2s</div></div>
+      </div>
+      <div class="sync-bar"><div class="sync-fill" style="width:100%;background:#2EBD85;"></div></div>
+      <div class="sync-label"><span>Sync Progress</span><span style="color:#2EBD85;">100%</span></div>
+    </div>
+  </div>
+</main>
+</body>
+</html>

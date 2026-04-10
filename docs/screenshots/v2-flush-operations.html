@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1440">
+<title>Flush Operations - Dark</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{width:1440px;height:900px;overflow:hidden;font-family:'Outfit',sans-serif;background:#08090B;color:#E8E9ED;-webkit-font-smoothing:antialiased;}
+.sidebar{position:fixed;left:0;top:0;bottom:0;width:240px;background:#0D0F14;border-right:1px solid #1E2028;display:flex;flex-direction:column;z-index:100;}
+.sidebar-logo{height:56px;display:flex;align-items:center;gap:10px;padding:0 20px;}
+.sidebar-logo span{font-size:15px;letter-spacing:-0.02em;color:#E8E9ED;}
+.sidebar-logo b{font-weight:700;}
+.logo-hex{width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#0D0F14;background:linear-gradient(135deg,#E2A828,#C9941F);clip-path:polygon(50% 0%,93% 25%,93% 75%,50% 100%,7% 75%,7% 25%);}
+.nav-section{padding:0 12px;margin-top:16px;}
+.nav-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:#4E5364;padding:0 12px;margin-bottom:6px;}
+.nav-item{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:6px;font-size:13px;font-weight:500;color:#858A9B;text-decoration:none;margin-bottom:2px;position:relative;}
+.nav-item.active{background:rgba(226,168,40,0.10);color:#E2A828;font-weight:600;}
+.nav-item.active::before{content:'';position:absolute;left:0;top:50%;transform:translateY(-50%);width:3px;height:18px;background:#E2A828;border-radius:0 3px 3px 0;}
+.sidebar-footer{margin-top:auto;padding:12px 16px;border-top:1px solid #151820;display:flex;align-items:center;gap:10px;}
+.avatar-hex{width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#0D0F14;background:linear-gradient(135deg,#E2A828,#C9941F);clip-path:polygon(50% 0%,93% 25%,93% 75%,50% 100%,7% 75%,7% 25%);}
+.user-name{font-size:13px;font-weight:500;color:#E8E9ED;}
+.user-role{font-size:11px;color:#4E5364;}
+.header{position:fixed;top:0;left:240px;right:0;height:56px;z-index:99;display:flex;align-items:center;justify-content:space-between;padding:0 24px;border-bottom:1px solid #151820;background:rgba(8,9,11,0.85);backdrop-filter:blur(12px);}
+.breadcrumb{display:flex;align-items:center;gap:6px;font-size:13px;}
+.breadcrumb .sep{color:#4E5364;font-size:10px;}
+.breadcrumb .crumb{color:#4E5364;}
+.breadcrumb .crumb.active{color:#E8E9ED;font-weight:600;}
+.main{margin-left:240px;margin-top:56px;padding:24px;min-height:calc(100vh - 56px);}
+.page-title{font-size:22px;font-weight:700;margin-bottom:4px;}
+.page-sub{font-size:13px;color:#858A9B;margin-bottom:20px;}
+.content-grid{display:grid;grid-template-columns:1fr 380px;gap:16px;}
+.table-card{background:#111318;border:1px solid #1E2028;border-radius:10px;overflow:hidden;}
+.table-header{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;border-bottom:1px solid #151820;}
+.table-header h2{font-size:16px;font-weight:600;color:#E8E9ED;}
+.btn-gold{background:#E2A828;color:#0D0F14;border:none;padding:7px 16px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;}
+table{width:100%;border-collapse:collapse;}
+thead tr{background:#1A1D25;}
+th{text-align:left;padding:10px 16px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#4E5364;}
+td{padding:10px 16px;border-bottom:1px solid #151820;font-size:12px;}
+tr:hover{background:#22252F;}
+.mono{font-family:'JetBrains Mono',monospace;font-size:11px;color:#858A9B;}
+.badge{display:inline-block;padding:3px 8px;border-radius:4px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;}
+.badge-green{background:rgba(46,189,133,0.12);color:#2EBD85;}
+.badge-amber{background:rgba(226,168,40,0.12);color:#E2A828;}
+.badge-red{background:rgba(246,70,93,0.12);color:#F6465D;}
+.badge-blue{background:rgba(59,130,246,0.12);color:#3B82F6;}
+.chain-hex{width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#0D0F14;clip-path:polygon(50% 0%,93% 25%,93% 75%,50% 100%,7% 75%,7% 25%);vertical-align:middle;margin-right:6px;}
+/* Modal preview */
+.modal-preview{background:#111318;border:1px solid #1E2028;border-radius:10px;padding:20px;height:fit-content;}
+.modal-title{font-size:16px;font-weight:600;margin-bottom:4px;}
+.modal-sub{font-size:12px;color:#858A9B;margin-bottom:16px;}
+.form-group{margin-bottom:14px;}
+.form-label{font-size:11px;font-weight:600;color:#4E5364;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;display:block;}
+.form-select,.form-input{width:100%;padding:8px 12px;background:#0D0F14;border:1px solid #1E2028;border-radius:6px;color:#E8E9ED;font-size:12px;font-family:inherit;}
+.form-mono{font-family:'JetBrains Mono',monospace;font-size:11px;}
+.token-row{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#0D0F14;border:1px solid #1E2028;border-radius:6px;margin-bottom:6px;}
+.token-info{display:flex;align-items:center;gap:8px;}
+.token-icon{width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;color:#fff;}
+.token-amount{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;}
+.gas-estimate{background:#0D0F14;border:1px solid #1E2028;border-radius:6px;padding:12px;margin-top:12px;}
+.gas-row{display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px;}
+.gas-label{color:#4E5364;}
+.gas-value{font-family:'JetBrains Mono',monospace;color:#E8E9ED;}
+.btn-flush{width:100%;padding:10px;background:#E2A828;color:#0D0F14;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;margin-top:16px;}
+.stats-row{display:flex;gap:12px;margin-bottom:20px;}
+.stat-card{background:#111318;border:1px solid #1E2028;border-radius:10px;padding:16px;flex:1;}
+.stat-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#4E5364;margin-bottom:10px;}
+.stat-value{font-size:22px;font-weight:700;color:#E8E9ED;line-height:1;margin-bottom:6px;}
+.stat-sub{font-size:11px;color:#4E5364;}
+</style>
+</head>
+<body>
+<aside class="sidebar">
+  <div class="sidebar-logo"><div class="logo-hex">CV</div><span>Crypto<b>VaultHub</b></span></div>
+  <nav class="nav-section">
+    <div class="nav-label">Wallet Ops</div>
+    <a class="nav-item" href="#">Dashboard</a>
+    <a class="nav-item" href="#">Wallets</a>
+    <a class="nav-item" href="#">Addresses</a>
+    <a class="nav-item" href="#">Deposits</a>
+    <a class="nav-item" href="#">Withdrawals</a>
+    <a class="nav-item active" href="#">Flush Operations</a>
+  </nav>
+  <nav class="nav-section">
+    <div class="nav-label">Settings</div>
+    <a class="nav-item" href="#">Webhooks</a>
+    <a class="nav-item" href="#">API Keys</a>
+    <a class="nav-item" href="#">Security</a>
+  </nav>
+  <div class="sidebar-footer">
+    <div class="avatar-hex">BX</div>
+    <div><div class="user-name">BitExchange Inc.</div><div class="user-role">Client</div></div>
+  </div>
+</aside>
+<header class="header">
+  <div class="breadcrumb">
+    <span class="crumb">Wallet Ops</span><span class="sep">/</span><span class="crumb active">Flush Operations</span>
+  </div>
+</header>
+<main class="main">
+  <div class="page-title">Flush Operations</div>
+  <div class="page-sub">Sweep ERC-20 tokens and native currency from forwarder deposit addresses to your hot wallet.</div>
+  <div class="stats-row">
+    <div class="stat-card"><div class="stat-label">Pending Flushes</div><div class="stat-value" style="color:#E2A828;">12</div><div class="stat-sub">across 3 chains</div></div>
+    <div class="stat-card"><div class="stat-label">Flushed Today</div><div class="stat-value" style="color:#2EBD85;">47</div><div class="stat-sub">$184,291 total value</div></div>
+    <div class="stat-card"><div class="stat-label">Gas Spent (24h)</div><div class="stat-value">0.089<span style="font-size:12px;color:#4E5364;"> ETH</span></div><div class="stat-sub">~$267.40</div></div>
+  </div>
+  <div class="content-grid">
+    <div class="table-card">
+      <div class="table-header">
+        <h2>Recent Flush Operations</h2>
+      </div>
+      <table>
+        <thead><tr>
+          <th>Chain</th>
+          <th>Forwarder</th>
+          <th>Token</th>
+          <th>Amount</th>
+          <th>Status</th>
+          <th>Tx Hash</th>
+          <th>Time</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td><span class="chain-hex" style="background:linear-gradient(135deg,#627EEA,#3B5AC6);">E</span>ETH</td>
+            <td class="mono">0x7a3b...9f2e</td>
+            <td>USDT</td>
+            <td class="mono" style="color:#E8E9ED;">12,500.00</td>
+            <td><span class="badge badge-green">CONFIRMED</span></td>
+            <td class="mono">0x8e2c...4d1a</td>
+            <td class="mono">2m ago</td>
+          </tr>
+          <tr>
+            <td><span class="chain-hex" style="background:linear-gradient(135deg,#627EEA,#3B5AC6);">E</span>ETH</td>
+            <td class="mono">0x4b1e...2c8d</td>
+            <td>USDC</td>
+            <td class="mono" style="color:#E8E9ED;">8,750.00</td>
+            <td><span class="badge badge-blue">CONFIRMING</span></td>
+            <td class="mono">0x5a1b...3e9f</td>
+            <td class="mono">5m ago</td>
+          </tr>
+          <tr>
+            <td><span class="chain-hex" style="background:linear-gradient(135deg,#F3BA2F,#D4A21F);">B</span>BSC</td>
+            <td class="mono">0x9c4e...7f2b</td>
+            <td>BUSD</td>
+            <td class="mono" style="color:#E8E9ED;">24,100.00</td>
+            <td><span class="badge badge-green">CONFIRMED</span></td>
+            <td class="mono">0x2d8a...6c1e</td>
+            <td class="mono">8m ago</td>
+          </tr>
+          <tr>
+            <td><span class="chain-hex" style="background:linear-gradient(135deg,#8247E5,#6B37C4);">P</span>MATIC</td>
+            <td class="mono">0x1e5f...8a2c</td>
+            <td>USDT</td>
+            <td class="mono" style="color:#E8E9ED;">3,200.00</td>
+            <td><span class="badge badge-amber">PENDING</span></td>
+            <td class="mono">--</td>
+            <td class="mono">12m ago</td>
+          </tr>
+          <tr>
+            <td><span class="chain-hex" style="background:linear-gradient(135deg,#627EEA,#3B5AC6);">E</span>ETH</td>
+            <td class="mono">0x6f2c...9d4b</td>
+            <td>ETH (native)</td>
+            <td class="mono" style="color:#E8E9ED;">2.4500</td>
+            <td><span class="badge badge-green">CONFIRMED</span></td>
+            <td class="mono">0x4b7d...9e3a</td>
+            <td class="mono">15m ago</td>
+          </tr>
+          <tr>
+            <td><span class="chain-hex" style="background:linear-gradient(135deg,#28A0F0,#1C7AC5);">A</span>ARB</td>
+            <td class="mono">0x3a8b...1d5e</td>
+            <td>USDC</td>
+            <td class="mono" style="color:#E8E9ED;">6,840.00</td>
+            <td><span class="badge badge-red">FAILED</span></td>
+            <td class="mono">0x7c3e...2f9a</td>
+            <td class="mono">22m ago</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="modal-preview">
+      <div class="modal-title">New Flush Operation</div>
+      <div class="modal-sub">Select forwarder and tokens to flush to hot wallet</div>
+      <div class="form-group">
+        <label class="form-label">Chain</label>
+        <div class="form-select">Ethereum (Chain ID: 1)</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Forwarder Address</label>
+        <div class="form-input form-mono">0x7a3b...9f2e</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Tokens to Flush</label>
+        <div class="token-row">
+          <div class="token-info"><div class="token-icon" style="background:#26A17B;">T</div><span>USDT</span></div>
+          <div class="token-amount" style="color:#2EBD85;">4,200.00</div>
+        </div>
+        <div class="token-row">
+          <div class="token-info"><div class="token-icon" style="background:#2775CA;">C</div><span>USDC</span></div>
+          <div class="token-amount" style="color:#2EBD85;">1,850.00</div>
+        </div>
+        <div class="token-row">
+          <div class="token-info"><div class="token-icon" style="background:#627EEA;">W</div><span>WETH</span></div>
+          <div class="token-amount" style="color:#2EBD85;">0.7200</div>
+        </div>
+      </div>
+      <div class="gas-estimate">
+        <div class="gas-row"><span class="gas-label">Method</span><span class="gas-value">batchFlushERC20Tokens</span></div>
+        <div class="gas-row"><span class="gas-label">Est. Gas</span><span class="gas-value">~145,000</span></div>
+        <div class="gas-row"><span class="gas-label">Gas Price</span><span class="gas-value">12.4 gwei</span></div>
+        <div class="gas-row"><span class="gas-label">Est. Cost</span><span class="gas-value" style="color:#E2A828;">~0.0018 ETH ($5.40)</span></div>
+      </div>
+      <button class="btn-flush">Execute Flush</button>
+    </div>
+  </div>
+</main>
+</body>
+</html>

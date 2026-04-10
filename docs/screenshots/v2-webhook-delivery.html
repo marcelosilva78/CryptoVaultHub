@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1440">
+<title>Webhook Delivery History - Dark</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{width:1440px;height:900px;overflow:hidden;font-family:'Outfit',sans-serif;background:#08090B;color:#E8E9ED;-webkit-font-smoothing:antialiased;}
+.sidebar{position:fixed;left:0;top:0;bottom:0;width:240px;background:#0D0F14;border-right:1px solid #1E2028;display:flex;flex-direction:column;z-index:100;}
+.sidebar-logo{height:56px;display:flex;align-items:center;gap:10px;padding:0 20px;}
+.sidebar-logo span{font-size:15px;letter-spacing:-0.02em;color:#E8E9ED;}
+.sidebar-logo b{font-weight:700;}
+.logo-hex{width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#0D0F14;background:linear-gradient(135deg,#E2A828,#C9941F);clip-path:polygon(50% 0%,93% 25%,93% 75%,50% 100%,7% 75%,7% 25%);}
+.nav-section{padding:0 12px;margin-top:16px;}
+.nav-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:#4E5364;padding:0 12px;margin-bottom:6px;}
+.nav-item{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:6px;font-size:13px;font-weight:500;color:#858A9B;text-decoration:none;margin-bottom:2px;position:relative;}
+.nav-item.active{background:rgba(226,168,40,0.10);color:#E2A828;font-weight:600;}
+.nav-item.active::before{content:'';position:absolute;left:0;top:50%;transform:translateY(-50%);width:3px;height:18px;background:#E2A828;border-radius:0 3px 3px 0;}
+.sidebar-footer{margin-top:auto;padding:12px 16px;border-top:1px solid #151820;display:flex;align-items:center;gap:10px;}
+.avatar-hex{width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#0D0F14;background:linear-gradient(135deg,#E2A828,#C9941F);clip-path:polygon(50% 0%,93% 25%,93% 75%,50% 100%,7% 75%,7% 25%);}
+.user-name{font-size:13px;font-weight:500;color:#E8E9ED;}
+.user-role{font-size:11px;color:#4E5364;}
+.header{position:fixed;top:0;left:240px;right:0;height:56px;z-index:99;display:flex;align-items:center;justify-content:space-between;padding:0 24px;border-bottom:1px solid #151820;background:rgba(8,9,11,0.85);backdrop-filter:blur(12px);}
+.breadcrumb{display:flex;align-items:center;gap:6px;font-size:13px;}
+.breadcrumb .sep{color:#4E5364;font-size:10px;}
+.breadcrumb .crumb{color:#4E5364;}
+.breadcrumb .crumb.active{color:#E8E9ED;font-weight:600;}
+.main{margin-left:240px;margin-top:56px;padding:24px;min-height:calc(100vh - 56px);}
+.page-title{font-size:22px;font-weight:700;margin-bottom:4px;}
+.page-sub{font-size:13px;color:#858A9B;margin-bottom:20px;}
+.content-split{display:grid;grid-template-columns:1fr 380px;gap:16px;}
+/* Delivery table */
+.table-card{background:#111318;border:1px solid #1E2028;border-radius:10px;overflow:hidden;}
+.table-header{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;border-bottom:1px solid #151820;}
+.table-header h2{font-size:16px;font-weight:600;color:#E8E9ED;}
+.filter-tabs{display:flex;gap:4px;}
+.filter-tab{padding:5px 12px;border-radius:4px;font-size:11px;font-weight:600;border:1px solid #1E2028;background:transparent;color:#858A9B;cursor:pointer;font-family:inherit;}
+.filter-tab.active{background:rgba(226,168,40,0.10);color:#E2A828;border-color:#E2A828;}
+table{width:100%;border-collapse:collapse;}
+thead tr{background:#1A1D25;}
+th{text-align:left;padding:10px 16px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#4E5364;}
+td{padding:10px 16px;border-bottom:1px solid #151820;font-size:12px;}
+tr:hover{background:#22252F;}
+tr.selected{background:rgba(226,168,40,0.04);}
+.mono{font-family:'JetBrains Mono',monospace;font-size:11px;color:#858A9B;}
+.badge{display:inline-block;padding:3px 8px;border-radius:4px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;}
+.badge-green{background:rgba(46,189,133,0.12);color:#2EBD85;}
+.badge-red{background:rgba(246,70,93,0.12);color:#F6465D;}
+.badge-amber{background:rgba(226,168,40,0.12);color:#E2A828;}
+.badge-blue{background:rgba(59,130,246,0.12);color:#3B82F6;}
+.event-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600;background:rgba(59,130,246,0.08);color:#3B82F6;border:1px solid rgba(59,130,246,0.15);}
+/* Attempt timeline panel */
+.timeline-panel{background:#111318;border:1px solid #1E2028;border-radius:10px;padding:20px;height:fit-content;}
+.timeline-title{font-size:16px;font-weight:600;margin-bottom:4px;}
+.timeline-sub{font-size:12px;color:#858A9B;margin-bottom:16px;}
+.delivery-info{margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid #1E2028;}
+.info-row{display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px;}
+.info-label{color:#4E5364;}
+.info-value{font-family:'JetBrains Mono',monospace;font-size:11px;}
+/* Timeline */
+.attempt-timeline{position:relative;padding-left:20px;}
+.attempt-timeline::before{content:'';position:absolute;left:7px;top:8px;bottom:8px;width:2px;background:#1E2028;}
+.attempt{position:relative;margin-bottom:16px;}
+.attempt:last-child{margin-bottom:0;}
+.attempt-dot{position:absolute;left:-20px;top:4px;width:14px;height:14px;border-radius:50%;border:2px solid #1E2028;background:#111318;display:flex;align-items:center;justify-content:center;}
+.attempt-dot.success{border-color:#2EBD85;background:#2EBD85;}
+.attempt-dot.success::after{content:'';width:4px;height:4px;background:#111318;border-radius:50%;}
+.attempt-dot.fail{border-color:#F6465D;background:#F6465D;}
+.attempt-dot.fail::after{content:'';width:6px;height:2px;background:#111318;border-radius:1px;}
+.attempt-dot.pending{border-color:#E2A828;}
+.attempt-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;}
+.attempt-label{font-size:12px;font-weight:600;}
+.attempt-time{font-size:10px;color:#4E5364;font-family:'JetBrains Mono',monospace;}
+.attempt-detail{font-size:11px;color:#858A9B;margin-bottom:2px;}
+.attempt-response{font-family:'JetBrains Mono',monospace;font-size:10px;padding:6px 10px;background:#0D0F14;border-radius:4px;border:1px solid #1A1D25;color:#858A9B;margin-top:4px;}
+.retry-btn{width:100%;padding:8px;background:transparent;border:1px solid rgba(226,168,40,0.3);border-radius:6px;font-size:12px;font-weight:600;color:#E2A828;cursor:pointer;font-family:inherit;margin-top:14px;}
+.stats-row{display:flex;gap:12px;margin-bottom:20px;}
+.stat-card{background:#111318;border:1px solid #1E2028;border-radius:10px;padding:16px;flex:1;}
+.stat-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#4E5364;margin-bottom:10px;}
+.stat-value{font-size:22px;font-weight:700;color:#E8E9ED;line-height:1;margin-bottom:6px;}
+.stat-sub{font-size:11px;color:#4E5364;}
+</style>
+</head>
+<body>
+<aside class="sidebar">
+  <div class="sidebar-logo"><div class="logo-hex">CV</div><span>Crypto<b>VaultHub</b></span></div>
+  <nav class="nav-section">
+    <div class="nav-label">Wallet Ops</div>
+    <a class="nav-item" href="#">Dashboard</a>
+    <a class="nav-item" href="#">Deposits</a>
+    <a class="nav-item" href="#">Withdrawals</a>
+  </nav>
+  <nav class="nav-section">
+    <div class="nav-label">Settings</div>
+    <a class="nav-item active" href="#">Webhooks</a>
+    <a class="nav-item" href="#">API Keys</a>
+    <a class="nav-item" href="#">Security</a>
+  </nav>
+  <div class="sidebar-footer">
+    <div class="avatar-hex">BX</div>
+    <div><div class="user-name">BitExchange Inc.</div><div class="user-role">Client</div></div>
+  </div>
+</aside>
+<header class="header">
+  <div class="breadcrumb">
+    <span class="crumb">Settings</span><span class="sep">/</span><span class="crumb">Webhooks</span><span class="sep">/</span><span class="crumb active">Delivery History</span>
+  </div>
+</header>
+<main class="main">
+  <div class="page-title">Webhook Delivery History</div>
+  <div class="page-sub">Delivery attempts, response codes, and retry timeline for webhook endpoint "Production Deposits"</div>
+  <div class="stats-row">
+    <div class="stat-card"><div class="stat-label">Deliveries (24h)</div><div class="stat-value">284</div><div class="stat-sub">webhook: wh_01HX...</div></div>
+    <div class="stat-card"><div class="stat-label">Success Rate</div><div class="stat-value" style="color:#2EBD85;">96.8%</div><div class="stat-sub">275 / 284 delivered</div></div>
+    <div class="stat-card"><div class="stat-label">Avg Response</div><div class="stat-value">142<span style="font-size:12px;color:#4E5364;">ms</span></div><div class="stat-sub">p99: 890ms</div></div>
+    <div class="stat-card"><div class="stat-label">Failed / DLQ</div><div class="stat-value" style="color:#F6465D;">3</div><div class="stat-sub">2 retrying, 1 DLQ</div></div>
+  </div>
+  <div class="content-split">
+    <div class="table-card">
+      <div class="table-header">
+        <h2>Recent Deliveries</h2>
+        <div class="filter-tabs">
+          <button class="filter-tab active">All</button>
+          <button class="filter-tab">Failed</button>
+          <button class="filter-tab">DLQ</button>
+        </div>
+      </div>
+      <table>
+        <thead><tr>
+          <th>Delivery ID</th>
+          <th>Event</th>
+          <th>Status</th>
+          <th>HTTP</th>
+          <th>Duration</th>
+          <th>Attempts</th>
+          <th>Time</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td class="mono">del_7f3a9b2c</td>
+            <td><span class="event-badge">deposit.confirmed</span></td>
+            <td><span class="badge badge-green">DELIVERED</span></td>
+            <td class="mono" style="color:#2EBD85;">200</td>
+            <td class="mono">89ms</td>
+            <td class="mono">1/5</td>
+            <td class="mono">1m ago</td>
+          </tr>
+          <tr>
+            <td class="mono">del_8e2c4d1a</td>
+            <td><span class="event-badge">deposit.swept</span></td>
+            <td><span class="badge badge-green">DELIVERED</span></td>
+            <td class="mono" style="color:#2EBD85;">200</td>
+            <td class="mono">124ms</td>
+            <td class="mono">1/5</td>
+            <td class="mono">3m ago</td>
+          </tr>
+          <tr class="selected">
+            <td class="mono">del_5a1b3e9f</td>
+            <td><span class="event-badge">withdrawal.confirmed</span></td>
+            <td><span class="badge badge-red">FAILED</span></td>
+            <td class="mono" style="color:#F6465D;">500</td>
+            <td class="mono">2.1s</td>
+            <td class="mono">3/5</td>
+            <td class="mono">8m ago</td>
+          </tr>
+          <tr>
+            <td class="mono">del_9c4e7f2b</td>
+            <td><span class="event-badge">deposit.confirmed</span></td>
+            <td><span class="badge badge-green">DELIVERED</span></td>
+            <td class="mono" style="color:#2EBD85;">200</td>
+            <td class="mono">95ms</td>
+            <td class="mono">1/5</td>
+            <td class="mono">12m ago</td>
+          </tr>
+          <tr>
+            <td class="mono">del_2d8a6c1e</td>
+            <td><span class="event-badge">deposit.pending</span></td>
+            <td><span class="badge badge-green">DELIVERED</span></td>
+            <td class="mono" style="color:#2EBD85;">200</td>
+            <td class="mono">112ms</td>
+            <td class="mono">1/5</td>
+            <td class="mono">15m ago</td>
+          </tr>
+          <tr>
+            <td class="mono">del_4b7d9e3a</td>
+            <td><span class="event-badge">deposit.confirmed</span></td>
+            <td><span class="badge badge-amber">RETRYING</span></td>
+            <td class="mono" style="color:#E2A828;">timeout</td>
+            <td class="mono">10.0s</td>
+            <td class="mono">2/5</td>
+            <td class="mono">22m ago</td>
+          </tr>
+          <tr>
+            <td class="mono">del_1e5f8a2c</td>
+            <td><span class="event-badge">withdrawal.broadcasted</span></td>
+            <td><span class="badge badge-green">DELIVERED</span></td>
+            <td class="mono" style="color:#2EBD85;">200</td>
+            <td class="mono">78ms</td>
+            <td class="mono">2/5</td>
+            <td class="mono">28m ago</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="timeline-panel">
+      <div class="timeline-title">Delivery Attempts</div>
+      <div class="timeline-sub">del_5a1b3e9f -- withdrawal.confirmed</div>
+      <div class="delivery-info">
+        <div class="info-row"><span class="info-label">Endpoint</span><span class="info-value">https://api.bitexchange.io/wh</span></div>
+        <div class="info-row"><span class="info-label">Event</span><span class="info-value" style="color:#3B82F6;">withdrawal.confirmed</span></div>
+        <div class="info-row"><span class="info-label">Payload</span><span class="info-value">1.4 KB</span></div>
+        <div class="info-row"><span class="info-label">Signature</span><span class="info-value">sha256=8e2c4d...</span></div>
+      </div>
+      <div class="attempt-timeline">
+        <div class="attempt">
+          <div class="attempt-dot fail"></div>
+          <div class="attempt-header"><span class="attempt-label" style="color:#F6465D;">Attempt 1</span><span class="attempt-time">14:28:41.221</span></div>
+          <div class="attempt-detail">HTTP 500 -- Internal Server Error</div>
+          <div class="attempt-detail">Response time: 2,142ms</div>
+          <div class="attempt-response">{"error":"database connection timeout"}</div>
+        </div>
+        <div class="attempt">
+          <div class="attempt-dot fail"></div>
+          <div class="attempt-header"><span class="attempt-label" style="color:#F6465D;">Attempt 2</span><span class="attempt-time">14:29:42.891 (+61s)</span></div>
+          <div class="attempt-detail">HTTP 500 -- Internal Server Error</div>
+          <div class="attempt-detail">Response time: 1,891ms</div>
+          <div class="attempt-response">{"error":"database connection timeout"}</div>
+        </div>
+        <div class="attempt">
+          <div class="attempt-dot fail"></div>
+          <div class="attempt-header"><span class="attempt-label" style="color:#F6465D;">Attempt 3</span><span class="attempt-time">14:33:44.102 (+241s)</span></div>
+          <div class="attempt-detail">HTTP 500 -- Internal Server Error</div>
+          <div class="attempt-detail">Response time: 2,031ms</div>
+          <div class="attempt-response">{"error":"service unavailable"}</div>
+        </div>
+        <div class="attempt">
+          <div class="attempt-dot pending"></div>
+          <div class="attempt-header"><span class="attempt-label" style="color:#E2A828;">Attempt 4 (scheduled)</span><span class="attempt-time">~14:41 (+480s)</span></div>
+          <div class="attempt-detail">Exponential backoff with jitter</div>
+          <div class="attempt-detail" style="color:#4E5364;">Next retry in ~7m 16s</div>
+        </div>
+      </div>
+      <button class="retry-btn">Retry Now</button>
+    </div>
+  </div>
+</main>
+</body>
+</html>

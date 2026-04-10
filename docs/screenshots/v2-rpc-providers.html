@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1440">
+<title>RPC Providers Management - Dark</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{width:1440px;height:900px;overflow:hidden;font-family:'Outfit',sans-serif;background:#08090B;color:#E8E9ED;-webkit-font-smoothing:antialiased;}
+.sidebar{position:fixed;left:0;top:0;bottom:0;width:240px;background:#0D0F14;border-right:1px solid #1E2028;display:flex;flex-direction:column;z-index:100;}
+.sidebar-logo{height:56px;display:flex;align-items:center;gap:10px;padding:0 20px;}
+.sidebar-logo span{font-size:15px;letter-spacing:-0.02em;color:#E8E9ED;}
+.sidebar-logo b{font-weight:700;}
+.logo-hex{width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#0D0F14;background:linear-gradient(135deg,#E2A828,#C9941F);clip-path:polygon(50% 0%,93% 25%,93% 75%,50% 100%,7% 75%,7% 25%);}
+.nav-section{padding:0 12px;margin-top:16px;}
+.nav-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:#4E5364;padding:0 12px;margin-bottom:6px;}
+.nav-item{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:6px;font-size:13px;font-weight:500;color:#858A9B;text-decoration:none;margin-bottom:2px;position:relative;}
+.nav-item:hover{background:#22252F;color:#E8E9ED;}
+.nav-item.active{background:rgba(226,168,40,0.10);color:#E2A828;font-weight:600;}
+.nav-item.active::before{content:'';position:absolute;left:0;top:50%;transform:translateY(-50%);width:3px;height:18px;background:#E2A828;border-radius:0 3px 3px 0;}
+.nav-icon{width:16px;height:16px;opacity:0.5;display:inline-block;}
+.nav-item.active .nav-icon{opacity:1;}
+.sidebar-footer{margin-top:auto;padding:12px 16px;border-top:1px solid #151820;display:flex;align-items:center;gap:10px;}
+.avatar-hex{width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#0D0F14;background:linear-gradient(135deg,#E2A828,#C9941F);clip-path:polygon(50% 0%,93% 25%,93% 75%,50% 100%,7% 75%,7% 25%);}
+.user-name{font-size:13px;font-weight:500;color:#E8E9ED;}
+.user-role{font-size:11px;color:#4E5364;}
+.header{position:fixed;top:0;left:240px;right:0;height:56px;z-index:99;display:flex;align-items:center;justify-content:space-between;padding:0 24px;border-bottom:1px solid #151820;background:rgba(8,9,11,0.85);backdrop-filter:blur(12px);}
+.breadcrumb{display:flex;align-items:center;gap:6px;font-size:13px;}
+.breadcrumb .sep{color:#4E5364;font-size:10px;}
+.breadcrumb .crumb{color:#4E5364;}
+.breadcrumb .crumb.active{color:#E8E9ED;font-weight:600;}
+.main{margin-left:240px;margin-top:56px;padding:24px;min-height:calc(100vh - 56px);}
+.page-title{font-size:22px;font-weight:700;margin-bottom:4px;}
+.page-sub{font-size:13px;color:#858A9B;margin-bottom:20px;}
+.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;}
+.stat-card{background:#111318;border:1px solid #1E2028;border-radius:10px;padding:16px;position:relative;overflow:hidden;}
+.stat-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#4E5364;margin-bottom:10px;}
+.stat-value{font-size:22px;font-weight:700;color:#E8E9ED;line-height:1;margin-bottom:6px;}
+.stat-sub{font-size:11px;color:#4E5364;}
+.table-card{background:#111318;border:1px solid #1E2028;border-radius:10px;overflow:hidden;}
+.table-header{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;border-bottom:1px solid #151820;}
+.table-header h2{font-size:16px;font-weight:600;color:#E8E9ED;}
+.btn-gold{background:#E2A828;color:#0D0F14;border:none;padding:7px 16px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;}
+table{width:100%;border-collapse:collapse;}
+thead tr{background:#1A1D25;}
+th{text-align:left;padding:10px 16px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#4E5364;}
+td{padding:10px 16px;border-bottom:1px solid #151820;font-size:12px;}
+tr:hover{background:#22252F;}
+.mono{font-family:'JetBrains Mono',monospace;font-size:11px;color:#858A9B;}
+.badge{display:inline-block;padding:3px 8px;border-radius:4px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;}
+.badge-green{background:rgba(46,189,133,0.12);color:#2EBD85;}
+.badge-amber{background:rgba(226,168,40,0.12);color:#E2A828;}
+.badge-red{background:rgba(246,70,93,0.12);color:#F6465D;}
+.badge-blue{background:rgba(59,130,246,0.12);color:#3B82F6;}
+.health-bar{width:80px;height:6px;background:#1E2028;border-radius:3px;overflow:hidden;display:inline-block;vertical-align:middle;margin-right:8px;}
+.health-fill{height:100%;border-radius:3px;}
+.chain-hex{width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#0D0F14;clip-path:polygon(50% 0%,93% 25%,93% 75%,50% 100%,7% 75%,7% 25%);vertical-align:middle;margin-right:8px;}
+.dot-indicator{width:8px;height:8px;border-radius:50%;display:inline-block;vertical-align:middle;margin-right:6px;}
+.dot-green{background:#2EBD85;box-shadow:0 0 6px rgba(46,189,133,0.4);}
+.dot-amber{background:#E2A828;box-shadow:0 0 6px rgba(226,168,40,0.4);}
+.dot-red{background:#F6465D;box-shadow:0 0 6px rgba(246,70,93,0.4);}
+.actions-cell{display:flex;gap:6px;}
+.action-btn{padding:4px 10px;border-radius:4px;font-size:10px;font-weight:600;border:1px solid #1E2028;background:transparent;color:#858A9B;cursor:pointer;font-family:inherit;}
+</style>
+</head>
+<body>
+<aside class="sidebar">
+  <div class="sidebar-logo"><div class="logo-hex">CV</div><span>Crypto<b>VaultHub</b></span></div>
+  <nav class="nav-section">
+    <div class="nav-label">Platform</div>
+    <a class="nav-item" href="#">Dashboard</a>
+    <a class="nav-item" href="#">Clients</a>
+    <a class="nav-item" href="#">Chains</a>
+    <a class="nav-item" href="#">Tokens</a>
+    <a class="nav-item active" href="#">RPC Providers</a>
+    <a class="nav-item" href="#">Gas Tanks</a>
+  </nav>
+  <nav class="nav-section">
+    <div class="nav-label">Operations</div>
+    <a class="nav-item" href="#">Jobs Dashboard</a>
+    <a class="nav-item" href="#">Sync Health</a>
+    <a class="nav-item" href="#">Traceability</a>
+    <a class="nav-item" href="#">Compliance</a>
+  </nav>
+  <nav class="nav-section">
+    <div class="nav-label">Insights</div>
+    <a class="nav-item" href="#">Analytics</a>
+    <a class="nav-item" href="#">Monitoring</a>
+  </nav>
+  <div class="sidebar-footer">
+    <div class="avatar-hex">MS</div>
+    <div><div class="user-name">Marcelo Silva</div><div class="user-role">Super Admin</div></div>
+  </div>
+</aside>
+<header class="header">
+  <div class="breadcrumb">
+    <span class="crumb">Platform</span><span class="sep">/</span><span class="crumb active">RPC Providers</span>
+  </div>
+</header>
+<main class="main">
+  <div class="page-title">RPC Providers</div>
+  <div class="page-sub">Manage RPC node endpoints across all chains. Monitor health, latency, and block sync status.</div>
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-label">Total Providers</div>
+      <div class="stat-value">18</div>
+      <div class="stat-sub">across 7 chains</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Healthy Nodes</div>
+      <div class="stat-value" style="color:#2EBD85;">14</div>
+      <div class="stat-sub">77.8% online</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Avg Latency</div>
+      <div class="stat-value">48<span style="font-size:14px;color:#4E5364;font-weight:400;">ms</span></div>
+      <div class="stat-sub">last 5 minutes</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Degraded</div>
+      <div class="stat-value" style="color:#E2A828;">3</div>
+      <div class="stat-sub">high latency / partial</div>
+    </div>
+  </div>
+  <div class="table-card">
+    <div class="table-header">
+      <h2>Provider Endpoints</h2>
+      <button class="btn-gold">+ Add Provider</button>
+    </div>
+    <table>
+      <thead><tr>
+        <th>Status</th>
+        <th>Chain</th>
+        <th>Provider</th>
+        <th>Endpoint</th>
+        <th>Type</th>
+        <th>Latency</th>
+        <th>Health Score</th>
+        <th>Block Height</th>
+        <th>Actions</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td><span class="dot-indicator dot-green"></span></td>
+          <td><span class="chain-hex" style="background:linear-gradient(135deg,#627EEA,#3B5AC6);">E</span>Ethereum</td>
+          <td>Tatum</td>
+          <td class="mono">https://eth-mainnet.gateway.tatum.io/</td>
+          <td><span class="badge badge-blue">HTTP</span></td>
+          <td class="mono">32ms</td>
+          <td><span class="health-bar"><span class="health-fill" style="width:96%;background:#2EBD85;"></span></span>96%</td>
+          <td class="mono">19,847,291</td>
+          <td><div class="actions-cell"><button class="action-btn">Test</button><button class="action-btn">Edit</button></div></td>
+        </tr>
+        <tr>
+          <td><span class="dot-indicator dot-green"></span></td>
+          <td><span class="chain-hex" style="background:linear-gradient(135deg,#627EEA,#3B5AC6);">E</span>Ethereum</td>
+          <td>Tatum</td>
+          <td class="mono">wss://eth-mainnet.gateway.tatum.io/ws</td>
+          <td><span class="badge badge-green">WS</span></td>
+          <td class="mono">18ms</td>
+          <td><span class="health-bar"><span class="health-fill" style="width:99%;background:#2EBD85;"></span></span>99%</td>
+          <td class="mono">19,847,291</td>
+          <td><div class="actions-cell"><button class="action-btn">Test</button><button class="action-btn">Edit</button></div></td>
+        </tr>
+        <tr>
+          <td><span class="dot-indicator dot-green"></span></td>
+          <td><span class="chain-hex" style="background:linear-gradient(135deg,#F3BA2F,#D4A21F);">B</span>BSC</td>
+          <td>Tatum</td>
+          <td class="mono">https://bsc-mainnet.gateway.tatum.io/</td>
+          <td><span class="badge badge-blue">HTTP</span></td>
+          <td class="mono">45ms</td>
+          <td><span class="health-bar"><span class="health-fill" style="width:94%;background:#2EBD85;"></span></span>94%</td>
+          <td class="mono">42,183,402</td>
+          <td><div class="actions-cell"><button class="action-btn">Test</button><button class="action-btn">Edit</button></div></td>
+        </tr>
+        <tr>
+          <td><span class="dot-indicator dot-amber"></span></td>
+          <td><span class="chain-hex" style="background:linear-gradient(135deg,#8247E5,#6B37C4);">P</span>Polygon</td>
+          <td>Alchemy</td>
+          <td class="mono">https://polygon-mainnet.g.alchemy.com/v2/***</td>
+          <td><span class="badge badge-blue">HTTP</span></td>
+          <td class="mono" style="color:#E2A828;">187ms</td>
+          <td><span class="health-bar"><span class="health-fill" style="width:72%;background:#E2A828;"></span></span>72%</td>
+          <td class="mono">59,012,778</td>
+          <td><div class="actions-cell"><button class="action-btn">Test</button><button class="action-btn">Edit</button></div></td>
+        </tr>
+        <tr>
+          <td><span class="dot-indicator dot-green"></span></td>
+          <td><span class="chain-hex" style="background:linear-gradient(135deg,#28A0F0,#1C7AC5);">A</span>Arbitrum</td>
+          <td>Tatum</td>
+          <td class="mono">https://arb-mainnet.gateway.tatum.io/</td>
+          <td><span class="badge badge-blue">HTTP</span></td>
+          <td class="mono">28ms</td>
+          <td><span class="health-bar"><span class="health-fill" style="width:98%;background:#2EBD85;"></span></span>98%</td>
+          <td class="mono">215,492,103</td>
+          <td><div class="actions-cell"><button class="action-btn">Test</button><button class="action-btn">Edit</button></div></td>
+        </tr>
+        <tr>
+          <td><span class="dot-indicator dot-red"></span></td>
+          <td><span class="chain-hex" style="background:linear-gradient(135deg,#FF0420,#CC0319);">O</span>Optimism</td>
+          <td>Infura</td>
+          <td class="mono">https://optimism-mainnet.infura.io/v3/***</td>
+          <td><span class="badge badge-blue">HTTP</span></td>
+          <td class="mono" style="color:#F6465D;">timeout</td>
+          <td><span class="health-bar"><span class="health-fill" style="width:0%;background:#F6465D;"></span></span>0%</td>
+          <td class="mono">--</td>
+          <td><div class="actions-cell"><button class="action-btn">Test</button><button class="action-btn">Edit</button></div></td>
+        </tr>
+        <tr>
+          <td><span class="dot-indicator dot-green"></span></td>
+          <td><span class="chain-hex" style="background:linear-gradient(135deg,#E84142,#C43738);">V</span>Avalanche</td>
+          <td>Tatum</td>
+          <td class="mono">https://avax-mainnet.gateway.tatum.io/</td>
+          <td><span class="badge badge-blue">HTTP</span></td>
+          <td class="mono">52ms</td>
+          <td><span class="health-bar"><span class="health-fill" style="width:91%;background:#2EBD85;"></span></span>91%</td>
+          <td class="mono">48,291,445</td>
+          <td><div class="actions-cell"><button class="action-btn">Test</button><button class="action-btn">Edit</button></div></td>
+        </tr>
+        <tr>
+          <td><span class="dot-indicator dot-amber"></span></td>
+          <td><span class="chain-hex" style="background:linear-gradient(135deg,#0052FF,#003FCC);">B</span>Base</td>
+          <td>QuickNode</td>
+          <td class="mono">https://base-mainnet.quiknode.pro/***</td>
+          <td><span class="badge badge-blue">HTTP</span></td>
+          <td class="mono" style="color:#E2A828;">142ms</td>
+          <td><span class="health-bar"><span class="health-fill" style="width:68%;background:#E2A828;"></span></span>68%</td>
+          <td class="mono">14,982,331</td>
+          <td><div class="actions-cell"><button class="action-btn">Test</button><button class="action-btn">Edit</button></div></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</main>
+</body>
+</html>
