@@ -34,7 +34,7 @@ export class CoSignService {
         },
       );
       return data;
-    } catch (error) {
+    } catch (error: any) {
       if (error.response) {
         throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
       }
@@ -54,7 +54,7 @@ export class CoSignService {
         { headers: this.headers, timeout: 30000 },
       );
       return result;
-    } catch (error) {
+    } catch (error: any) {
       if (error.response) {
         throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
       }

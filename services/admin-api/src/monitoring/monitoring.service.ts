@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 
-interface ServiceHealth {
+export interface ServiceHealth {
   service: string;
   status: 'up' | 'down' | 'degraded';
   responseTimeMs: number;

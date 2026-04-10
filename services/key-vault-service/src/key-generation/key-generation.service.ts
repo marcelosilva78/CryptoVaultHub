@@ -4,7 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { EncryptionService } from '../encryption/encryption.service';
 import { AuditService } from '../audit/audit.service';
 
-interface DerivedKeyInfo {
+export interface DerivedKeyInfo {
   publicKey: string;
   address: string;
   derivationPath: string;

@@ -82,8 +82,8 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       if (!result) return [];
 
       const entries: Array<{ id: string; fields: Record<string, string> }> = [];
-      for (const [, messages] of result) {
-        for (const [id, fieldArray] of messages) {
+      for (const [, messages] of result as any[]) {
+        for (const [id, fieldArray] of messages as any[]) {
           const fields: Record<string, string> = {};
           for (let i = 0; i < fieldArray.length; i += 2) {
             fields[fieldArray[i]] = fieldArray[i + 1];

@@ -39,7 +39,7 @@ export class AddressBookService {
         { headers: this.headers, timeout: 10000 },
       );
       return result;
-    } catch (error) {
+    } catch (error: any) {
       if (error.response) {
         throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
       }
@@ -61,7 +61,7 @@ export class AddressBookService {
         },
       );
       return data;
-    } catch (error) {
+    } catch (error: any) {
       if (error.response) {
         throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
       }
@@ -81,7 +81,7 @@ export class AddressBookService {
         { headers: this.headers, timeout: 10000 },
       );
       return result;
-    } catch (error) {
+    } catch (error: any) {
       if (error.response) {
         throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
       }
@@ -100,7 +100,7 @@ export class AddressBookService {
         },
       );
       return data;
-    } catch (error) {
+    } catch (error: any) {
       if (error.response) {
         throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
       }

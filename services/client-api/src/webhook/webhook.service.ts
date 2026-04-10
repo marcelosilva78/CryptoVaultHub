@@ -39,7 +39,7 @@ export class WebhookService {
         { headers: this.headers, timeout: 10000 },
       );
       return result;
-    } catch (error) {
+    } catch (error: any) {
       if (error.response) {
         throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
       }
@@ -61,7 +61,7 @@ export class WebhookService {
         },
       );
       return data;
-    } catch (error) {
+    } catch (error: any) {
       if (error.response) {
         throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
       }
@@ -86,7 +86,7 @@ export class WebhookService {
         { headers: this.headers, timeout: 10000 },
       );
       return result;
-    } catch (error) {
+    } catch (error: any) {
       if (error.response) {
         throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
       }
@@ -105,7 +105,7 @@ export class WebhookService {
         },
       );
       return data;
-    } catch (error) {
+    } catch (error: any) {
       if (error.response) {
         throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
       }
@@ -121,7 +121,7 @@ export class WebhookService {
         { headers: this.headers, timeout: 30000 },
       );
       return data;
-    } catch (error) {
+    } catch (error: any) {
       if (error.response) {
         throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
       }
@@ -144,7 +144,7 @@ export class WebhookService {
         },
       );
       return data;
-    } catch (error) {
+    } catch (error: any) {
       if (error.response) {
         throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
       }
@@ -160,64 +160,7 @@ export class WebhookService {
         { headers: this.headers, timeout: 30000 },
       );
       return data;
-    } catch (error) {
-      if (error.response) {
-        throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
-      }
-      throw new InternalServerErrorException('Downstream service unavailable');
-    }
-  }
-
-  async getDeliveryDetail(clientId: number, deliveryId: string) {
-    try {
-      const { data } = await axios.get(
-        `${this.notificationUrl}/webhooks/deliveries/${deliveryId}`,
-        {
-          headers: this.headers,
-          params: { clientId },
-          timeout: 10000,
-        },
-      );
-      return data;
-    } catch (error) {
-      if (error.response) {
-        throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
-      }
-      throw new InternalServerErrorException('Downstream service unavailable');
-    }
-  }
-
-  async resendDelivery(clientId: number, deliveryId: string) {
-    try {
-      const { data } = await axios.post(
-        `${this.notificationUrl}/webhooks/deliveries/${deliveryId}/resend`,
-        { clientId },
-        { headers: this.headers, timeout: 30000 },
-      );
-      return data;
-    } catch (error) {
-      if (error.response) {
-        throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
-      }
-      throw new InternalServerErrorException('Downstream service unavailable');
-    }
-  }
-
-  async listDeadLetters(
-    clientId: number,
-    params: { page?: number; limit?: number; status?: string },
-  ) {
-    try {
-      const { data } = await axios.get(
-        `${this.notificationUrl}/webhooks/dead-letters`,
-        {
-          headers: this.headers,
-          params: { clientId, ...params },
-          timeout: 10000,
-        },
-      );
-      return data;
-    } catch (error) {
+    } catch (error: any) {
       if (error.response) {
         throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
       }

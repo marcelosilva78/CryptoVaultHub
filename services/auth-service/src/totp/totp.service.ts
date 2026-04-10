@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { authenticator } from 'otplib';
+import { generateSecret, generateURI, verify as otpVerify } from 'otplib';
 import * as qrcode from 'qrcode';
 import {
   createCipheriv,
@@ -26,12 +26,6 @@ export class TotpService {
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
   ) {
-    // Configure TOTP with 30-second window
-    authenticator.options = {
-      step: 30,
-      window: 1,
-    };
-
     // Store the raw key for per-operation salt derivation
     this.rawEncryptionKey = this.configService.getOrThrow<string>('TOTP_ENCRYPTION_KEY');
     // Legacy: keep a static-derived key for decrypting old 3-part records
@@ -117,12 +111,13 @@ export class TotpService {
       throw new BadRequestException('2FA is already enabled for this user');
     }
 
-    const secret = authenticator.generateSecret();
-    const otpauthUrl = authenticator.keyuri(
-      user.email,
-      this.issuer,
+    const secret = generateSecret();
+    const otpauthUrl = generateURI({
+      issuer: this.issuer,
+      label: user.email,
       secret,
-    );
+      period: 30,
+    });
 
     // Encrypt the secret before storing in DB
     const encryptedSecret = this.encryptSecret(secret);
@@ -153,12 +148,14 @@ export class TotpService {
     }
 
     const secret = this.decryptSecret(user.totpSecret);
-    const isValid = authenticator.verify({
+    const result = await otpVerify({
       token: code,
       secret,
+      period: 30,
+      epochTolerance: 30,
     });
 
-    if (!isValid) {
+    if (!result.valid) {
       throw new BadRequestException('Invalid TOTP code');
     }
 
@@ -186,10 +183,13 @@ export class TotpService {
     }
 
     const secret = this.decryptSecret(user.totpSecret);
-    return authenticator.verify({
+    const result = await otpVerify({
       token: code,
       secret,
+      period: 30,
+      epochTolerance: 30,
     });
+    return result.valid;
   }
 
   /**
@@ -204,11 +204,13 @@ export class TotpService {
     }
 
     const secret = this.decryptSecret(user.totpSecret);
-    const isValid = authenticator.verify({
+    const result = await otpVerify({
       token: code,
       secret,
+      period: 30,
+      epochTolerance: 30,
     });
-    if (!isValid) {
+    if (!result.valid) {
       throw new BadRequestException('Invalid TOTP code');
     }
 

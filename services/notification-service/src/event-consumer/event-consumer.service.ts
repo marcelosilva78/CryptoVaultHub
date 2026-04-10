@@ -109,7 +109,7 @@ export class EventConsumerService implements OnModuleInit, OnModuleDestroy {
 
         if (!results) continue;
 
-        for (const [stream, entries] of results) {
+        for (const [stream, entries] of results as any[]) {
           const eventType = STREAM_EVENT_MAP[stream as string];
           if (!eventType) continue;
 

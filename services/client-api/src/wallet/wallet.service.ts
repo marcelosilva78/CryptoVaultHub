@@ -33,7 +33,7 @@ export class WalletService {
         },
       );
       return data;
-    } catch (error) {
+    } catch (error: any) {
       if (error.response) {
         throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
       }
@@ -51,7 +51,7 @@ export class WalletService {
         },
       );
       return data;
-    } catch (error) {
+    } catch (error: any) {
       if (error.response) {
         throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
       }

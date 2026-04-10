@@ -208,7 +208,7 @@ export class WalletService {
     if (!res.ok) {
       throw new Error(`Key Vault returned ${res.status}`);
     }
-    const body: KeyVaultResponse = await res.json();
+    const body = (await res.json()) as KeyVaultResponse;
     return body.keys ?? [];
   }
 
@@ -232,7 +232,7 @@ export class WalletService {
         `Key Vault key generation failed: ${res.status}`,
       );
     }
-    const body: KeyVaultResponse = await res.json();
+    const body = (await res.json()) as KeyVaultResponse;
     return body.keys ?? [];
   }
 
@@ -261,7 +261,7 @@ export class WalletService {
         `Key Vault gas tank derivation failed: ${res.status}`,
       );
     }
-    const body: KeyVaultResponse = await res.json();
+    const body = (await res.json()) as KeyVaultResponse;
     return body.key!;
   }
 }
