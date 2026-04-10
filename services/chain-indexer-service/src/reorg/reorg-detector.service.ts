@@ -1,11 +1,18 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ethers } from 'ethers';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../redis/redis.service';
 import { EvmProviderService } from '../blockchain/evm-provider.service';
 
+interface ReorgResult {
+  detected: boolean;
+  depth: number;
+  reorgFromBlock?: number;
+}
+
 /**
- * Detects chain reorganizations by comparing each new block's parent_hash
- * against the stored previous block hash. On mismatch, walks back to find
- * the fork point, logs in reorg_log, and deletes affected indexed_events.
+ * Detects chain reorganizations by comparing stored block hashes
+ * with canonical chain block hashes, walking backwards from the tip.
  */
 @Injectable()
 export class ReorgDetectorService {
@@ -13,154 +20,109 @@ export class ReorgDetectorService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly redis: RedisService,
     private readonly evmProvider: EvmProviderService,
   ) {}
 
   /**
-   * Check if a new block's parent matches our stored previous block.
-   * Returns the reorg depth (0 = no reorg).
+   * Check for a reorg on the given chain starting from the latest known block.
+   * Walks backwards comparing stored hashes to canonical hashes.
    */
   async checkForReorg(
     chainId: number,
-    blockNumber: number,
-    parentHash: string,
-  ): Promise<number> {
-    // Get the stored block at blockNumber - 1
-    const previousStored = await this.prisma.indexedBlock.findUnique({
-      where: {
-        uq_chain_block: {
-          chainId,
-          blockNumber: BigInt(blockNumber - 1),
-        },
-      },
+    maxDepth: number = 64,
+  ): Promise<ReorgResult> {
+    const cursor = await this.prisma.syncCursor.findUnique({
+      where: { chainId },
     });
-
-    if (!previousStored) {
-      // No previous block stored, can't detect reorg
-      return 0;
+    if (!cursor) {
+      return { detected: false, depth: 0 };
     }
 
-    if (previousStored.blockHash === parentHash) {
-      // No reorg — parent hash matches
-      return 0;
-    }
-
-    // Reorg detected! Walk back to find fork point
-    this.logger.warn(
-      `Reorg detected on chain ${chainId} at block ${blockNumber}: ` +
-        `expected parent ${previousStored.blockHash}, got ${parentHash}`,
-    );
-
-    const depth = await this.findForkDepth(chainId, blockNumber);
-    await this.handleReorg(
-      chainId,
-      blockNumber,
-      depth,
-      previousStored.blockHash,
-      parentHash,
-    );
-
-    return depth;
-  }
-
-  /**
-   * Walk backwards from blockNumber to find the fork point.
-   */
-  private async findForkDepth(
-    chainId: number,
-    blockNumber: number,
-  ): Promise<number> {
     const provider = await this.evmProvider.getProvider(chainId);
-    let depth = 1;
-    const maxDepth = 128; // Safety limit
+    const startBlock = Number(cursor.lastBlock);
+    let depth = 0;
 
-    for (
-      let checkBlock = blockNumber - 1;
-      checkBlock > 0 && depth < maxDepth;
-      checkBlock--, depth++
-    ) {
-      const storedBlock = await this.prisma.indexedBlock.findUnique({
-        where: {
-          uq_chain_block: {
-            chainId,
-            blockNumber: BigInt(checkBlock),
-          },
-        },
-      });
+    for (let i = 0; i < maxDepth; i++) {
+      const checkBlock = startBlock - i;
+      if (checkBlock < 0) break;
 
-      if (!storedBlock) break;
+      depth++;
 
-      // Fetch the canonical block from the chain
+      // Get stored block hash from cache or DB
+      const storedBlock = await this.getStoredBlockHash(chainId, checkBlock);
+      if (!storedBlock) {
+        depth--;
+        break;
+      }
+
+      // Get canonical block from chain
       const canonicalBlock = await provider.getBlock(checkBlock);
-      if (!canonicalBlock) break;
+      if (!canonicalBlock) {
+        depth--;
+        break;
+      }
 
-      if (storedBlock.blockHash === canonicalBlock.hash) {
-        // Found the fork point
-        return depth;
+      // Compare hashes
+      if (storedBlock === canonicalBlock.hash) {
+        // Found the common ancestor — blocks above this were reorged
+        if (i > 0) {
+          const reorgFromBlock = checkBlock + 1;
+          this.logger.warn(
+            `Reorg detected on chain ${chainId}: depth ${i}, reorg from block ${reorgFromBlock}`,
+          );
+
+          await this.publishReorgEvent(chainId, reorgFromBlock, depth);
+
+          return {
+            detected: true,
+            depth: i,
+            reorgFromBlock,
+          };
+        }
+        // i === 0 means the tip matches, no reorg
+        return { detected: false, depth: 0 };
       }
     }
 
-    return depth;
-  }
-
-  /**
-   * Handle a reorg: log it, delete affected events, and remove stale blocks.
-   */
-  private async handleReorg(
-    chainId: number,
-    reorgAtBlock: number,
-    depth: number,
-    oldBlockHash: string,
-    newParentHash: string,
-  ): Promise<void> {
-    const forkBlock = reorgAtBlock - depth;
-
-    // Delete affected indexed events
-    const deleteResult = await this.prisma.indexedEvent.deleteMany({
-      where: {
-        chainId,
-        blockNumber: { gt: BigInt(forkBlock) },
-      },
-    });
-
-    // Delete affected indexed blocks
-    const deletedBlocks = await this.prisma.indexedBlock.deleteMany({
-      where: {
-        chainId,
-        blockNumber: { gt: BigInt(forkBlock) },
-      },
-    });
-
-    // Log the reorg
-    await this.prisma.reorgLog.create({
-      data: {
-        chainId,
-        reorgAtBlock: BigInt(reorgAtBlock),
-        oldBlockHash,
-        newBlockHash: newParentHash,
-        depth,
-        eventsInvalidated: deleteResult.count,
-        balancesRecalculated: 0, // Will be updated when balances are recalculated
-      },
-    });
-
-    this.logger.warn(
-      `Reorg handled on chain ${chainId}: depth=${depth}, ` +
-        `invalidated ${deleteResult.count} events, ` +
-        `removed ${deletedBlocks.count} blocks from block ${forkBlock + 1}`,
+    // Walked maxDepth without finding common ancestor — deep reorg
+    this.logger.error(
+      `Deep reorg on chain ${chainId}: no common ancestor found within ${maxDepth} blocks`,
     );
+
+    return {
+      detected: true,
+      depth,
+      reorgFromBlock: startBlock - maxDepth + 1,
+    };
   }
 
   /**
-   * Mark a reorg as reindexed (called after blocks are re-processed).
+   * Get stored block hash from Redis cache or DB.
    */
-  async markReindexed(reorgId: bigint, balancesRecalculated: number): Promise<void> {
-    await this.prisma.reorgLog.update({
-      where: { id: reorgId },
-      data: {
-        reindexedAt: new Date(),
-        balancesRecalculated,
-      },
+  private async getStoredBlockHash(
+    chainId: number,
+    blockNumber: number,
+  ): Promise<string | null> {
+    const cacheKey = `block:${chainId}:${blockNumber}:hash`;
+    const cached = await this.redis.getCache(cacheKey);
+    if (cached) return cached;
+    return null;
+  }
+
+  /**
+   * Publish a reorg detection event.
+   */
+  private async publishReorgEvent(
+    chainId: number,
+    reorgFromBlock: number,
+    depth: number,
+  ): Promise<void> {
+    await this.redis.publishToStream('chain:reorg', {
+      chainId: chainId.toString(),
+      reorgFromBlock: reorgFromBlock.toString(),
+      depth: depth.toString(),
+      detectedAt: new Date().toISOString(),
     });
   }
 }

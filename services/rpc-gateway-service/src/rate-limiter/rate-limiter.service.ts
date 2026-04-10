@@ -1,105 +1,88 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { RedisService } from '../redis/redis.service';
+import Redis from 'ioredis';
+
+interface RpcNodeLimits {
+  maxRequestsPerSecond: number;
+  maxRequestsPerMinute: number;
+}
 
 /**
- * Sliding-window rate limiter using Redis.
- * Tracks per-node usage at both per-second and per-minute granularity.
+ * Redis-based rate limiter for RPC nodes using sliding window with sorted sets.
+ * Uses atomic Lua scripts to prevent TOCTOU race conditions.
  */
 @Injectable()
 export class RateLimiterService {
   private readonly logger = new Logger(RateLimiterService.name);
-
-  constructor(private readonly redisService: RedisService) {}
+  private redis!: Redis;
+  private readonly nodeLimits = new Map<string, RpcNodeLimits>();
 
   /**
-   * Check whether a node is under its rate limits.
-   * Returns true if the node can accept another request.
+   * Atomic Lua script: removes expired entries, checks count, and increments in one call.
+   * Returns 1 if allowed, 0 if rate limit exceeded.
    */
-  async checkLimit(
-    nodeId: bigint | number,
-    maxPerSecond: number | null,
-    maxPerMinute: number | null,
-  ): Promise<boolean> {
-    const redis = this.redisService.getClient();
+  private readonly CHECK_AND_INCREMENT_SCRIPT = `
+    local key = KEYS[1]
+    local limit = tonumber(ARGV[1])
+    local window = tonumber(ARGV[2])
+    local now = tonumber(ARGV[3])
+    local member = ARGV[4]
+
+    redis.call('ZREMRANGEBYSCORE', key, '-inf', now - window)
+    local count = redis.call('ZCARD', key)
+
+    if count >= limit then
+      return 0
+    end
+
+    redis.call('ZADD', key, now, member)
+    redis.call('PEXPIRE', key, window)
+    return 1
+  `;
+
+  setRedis(redis: Redis): void {
+    this.redis = redis;
+  }
+
+  /**
+   * Register rate limits for an RPC node.
+   */
+  registerNode(nodeId: string, limits: RpcNodeLimits): void {
+    this.nodeLimits.set(nodeId, limits);
+  }
+
+  /**
+   * Atomically check and record a request for rate limiting.
+   * Returns true if the request is allowed, false if rate limited.
+   */
+  async checkAndRecord(nodeId: bigint | number): Promise<boolean> {
+    const nodeKey = nodeId.toString();
+    const node = this.nodeLimits.get(nodeKey);
+    if (!node) {
+      this.logger.warn(`No rate limits configured for node ${nodeKey}`);
+      return true;
+    }
+
     const now = Date.now();
-    const id = nodeId.toString();
+    const member = `${now}:${Math.random().toString(36).substr(2, 9)}`;
 
     // Check per-second limit
-    if (maxPerSecond !== null && maxPerSecond > 0) {
-      const secKey = `rpc:rate:s:${id}`;
-      const windowStart = now - 1000;
-      // Remove expired entries
-      await redis.zremrangebyscore(secKey, '-inf', windowStart.toString());
-      const count = await redis.zcard(secKey);
-      if (count >= maxPerSecond) {
-        this.logger.debug(
-          `Rate limit hit (per-second) for node ${id}: ${count}/${maxPerSecond}`,
-        );
-        return false;
-      }
-    }
+    const perSecondKey = `rpc:rate:${nodeId}:s`;
+    const perSecondAllowed = await this.redis.eval(
+      this.CHECK_AND_INCREMENT_SCRIPT,
+      1, perSecondKey,
+      node.maxRequestsPerSecond, 1000, now, member,
+    );
+
+    if (!perSecondAllowed) return false;
 
     // Check per-minute limit
-    if (maxPerMinute !== null && maxPerMinute > 0) {
-      const minKey = `rpc:rate:m:${id}`;
-      const windowStart = now - 60000;
-      await redis.zremrangebyscore(minKey, '-inf', windowStart.toString());
-      const count = await redis.zcard(minKey);
-      if (count >= maxPerMinute) {
-        this.logger.debug(
-          `Rate limit hit (per-minute) for node ${id}: ${count}/${maxPerMinute}`,
-        );
-        return false;
-      }
-    }
+    const perMinuteKey = `rpc:rate:${nodeId}:m`;
+    const perMinuteAllowed = await this.redis.eval(
+      this.CHECK_AND_INCREMENT_SCRIPT,
+      1, perMinuteKey,
+      node.maxRequestsPerMinute, 60000, now, member,
+    );
 
-    return true;
-  }
-
-  /**
-   * Record a request against a node's rate limit counters.
-   */
-  async recordUsage(nodeId: bigint | number): Promise<void> {
-    const redis = this.redisService.getClient();
-    const now = Date.now();
-    const id = nodeId.toString();
-    const member = `${now}:${Math.random().toString(36).slice(2, 8)}`;
-
-    const pipeline = redis.pipeline();
-
-    // Per-second window
-    const secKey = `rpc:rate:s:${id}`;
-    pipeline.zadd(secKey, now.toString(), member);
-    pipeline.zremrangebyscore(secKey, '-inf', (now - 2000).toString());
-    pipeline.expire(secKey, 5);
-
-    // Per-minute window
-    const minKey = `rpc:rate:m:${id}`;
-    pipeline.zadd(minKey, now.toString(), member);
-    pipeline.zremrangebyscore(minKey, '-inf', (now - 120000).toString());
-    pipeline.expire(minKey, 180);
-
-    await pipeline.exec();
-  }
-
-  /**
-   * Get current usage counts for a node.
-   */
-  async getUsage(
-    nodeId: bigint | number,
-  ): Promise<{ perSecond: number; perMinute: number }> {
-    const redis = this.redisService.getClient();
-    const now = Date.now();
-    const id = nodeId.toString();
-
-    const pipeline = redis.pipeline();
-    pipeline.zcount(`rpc:rate:s:${id}`, (now - 1000).toString(), '+inf');
-    pipeline.zcount(`rpc:rate:m:${id}`, (now - 60000).toString(), '+inf');
-    const results = await pipeline.exec();
-
-    return {
-      perSecond: (results?.[0]?.[1] as number) ?? 0,
-      perMinute: (results?.[1]?.[1] as number) ?? 0,
-    };
+    return !!perMinuteAllowed;
   }
 }

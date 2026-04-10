@@ -1,11 +1,26 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { ContractService } from '../blockchain/contract.service';
-import { FlushGuardService } from './flush-guard.service';
+import { RedisService } from '../redis/redis.service';
+
+interface FlushItem {
+  walletId: bigint;
+  chainId: number;
+  tokenId: bigint;
+  forwarderAddress: string;
+  amount: string;
+}
+
+interface FlushResult {
+  totalItems: number;
+  succeededCount: number;
+  failedCount: number;
+  skippedCount: number;
+  finalStatus: string;
+}
 
 /**
- * FlushOrchestrator: Execute flush operations (batch or single),
- * update statuses, and track gas costs.
+ * Orchestrates batch flush operations across forwarder wallets.
+ * Collects pending flush items, groups by chain/token, and executes.
  */
 @Injectable()
 export class FlushOrchestratorService {
@@ -13,132 +28,49 @@ export class FlushOrchestratorService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly contractService: ContractService,
-    private readonly flushGuard: FlushGuardService,
+    private readonly redis: RedisService,
   ) {}
 
   /**
-   * Execute a flush operation. Processes each item sequentially
-   * with per-address locking to prevent concurrent flushes.
+   * Execute a flush operation for a client on a specific chain.
    */
-  async executeOperation(operationId: number): Promise<void> {
-    const operation = await this.prisma.flushOperation.findUnique({
-      where: { id: BigInt(operationId) },
-      include: { items: { where: { status: 'pending' } } },
-    });
-    if (!operation) {
-      this.logger.error(`Flush operation ${operationId} not found`);
-      return;
-    }
-
-    // Mark as processing
-    await this.prisma.flushOperation.update({
-      where: { id: BigInt(operationId) },
-      data: { status: 'processing', startedAt: new Date() },
-    });
+  async executeFlush(
+    clientId: number,
+    chainId: number,
+  ): Promise<FlushResult> {
+    const items = await this.collectFlushItems(clientId, chainId);
 
     let succeededCount = 0;
     let failedCount = 0;
-    let totalSucceededAmount = 0n;
-    let totalGasCost = 0n;
+    let skippedCount = 0;
 
-    for (const item of operation.items) {
-      // Try to acquire lock for this address
-      const lockAcquired = await this.flushGuard.acquireLock(
-        item.address,
-        operation.operationUid,
-      );
-      if (!lockAcquired) {
-        await this.prisma.flushItem.update({
-          where: { id: item.id },
-          data: {
-            status: 'skipped',
-            errorMessage: 'Address locked by another flush operation',
-            processedAt: new Date(),
-          },
-        });
-        continue;
-      }
-
+    for (const item of items) {
       try {
-        await this.prisma.flushItem.update({
-          where: { id: item.id },
-          data: { status: 'processing' },
-        });
-
-        // Get balance before flush
-        let balanceBefore: bigint;
-        if (operation.operationType === 'flush_tokens' && operation.tokenId) {
-          const token = await this.prisma.token.findUnique({
-            where: { id: operation.tokenId },
-          });
-          if (!token) {
-            throw new Error(`Token ${operation.tokenId} not found`);
-          }
-          balanceBefore = await this.contractService.getERC20Balance(
-            operation.chainId,
-            token.contractAddress,
-            item.address,
-          );
-        } else {
-          balanceBefore = await this.contractService.getNativeBalance(
-            operation.chainId,
-            item.address,
-          );
-        }
-
-        if (balanceBefore === 0n) {
-          await this.prisma.flushItem.update({
-            where: { id: item.id },
-            data: {
-              status: 'skipped',
-              amountBefore: 0,
-              errorMessage: 'Zero balance — nothing to flush',
-              processedAt: new Date(),
-            },
-          });
+        // Skip items with zero balance or locked forwarders
+        const balance = BigInt(item.amount);
+        if (balance <= 0n) {
+          skippedCount++;
           continue;
         }
 
-        // For now, record the balance; actual tx submission will be
-        // handled by the blockchain layer when integrated with signer
-        await this.prisma.flushItem.update({
-          where: { id: item.id },
-          data: {
-            status: 'succeeded',
-            amountBefore: balanceBefore,
-            amountFlushed: balanceBefore,
-            processedAt: new Date(),
-          },
-        });
+        const isLocked = await this.isForwarderLocked(item.forwarderAddress);
+        if (isLocked) {
+          skippedCount++;
+          continue;
+        }
 
+        await this.flushItem(item);
         succeededCount++;
-        totalSucceededAmount += balanceBefore;
       } catch (error) {
-        const message =
-          error instanceof Error ? error.message : String(error);
+        const msg = error instanceof Error ? error.message : String(error);
         this.logger.error(
-          `Flush item ${item.id} failed for address ${item.address}: ${message}`,
+          `Flush failed for forwarder ${item.forwarderAddress}: ${msg}`,
         );
         failedCount++;
-
-        await this.prisma.flushItem.update({
-          where: { id: item.id },
-          data: {
-            status: 'failed',
-            errorMessage: message,
-            processedAt: new Date(),
-          },
-        });
-      } finally {
-        await this.flushGuard.releaseLock(
-          item.address,
-          operation.operationUid,
-        );
       }
     }
 
-    // Determine final status
+    // Determine final status based on actual outcomes
     let finalStatus: string;
     if (failedCount === 0 && succeededCount > 0) {
       finalStatus = 'succeeded';
@@ -146,24 +78,94 @@ export class FlushOrchestratorService {
       finalStatus = 'failed';
     } else if (succeededCount > 0 && failedCount > 0) {
       finalStatus = 'partially_succeeded';
+    } else if (succeededCount === 0 && failedCount === 0) {
+      finalStatus = 'canceled'; // all items were skipped (zero balance or locked)
     } else {
-      finalStatus = 'succeeded'; // all skipped (zero balances)
+      finalStatus = 'failed';
     }
 
-    await this.prisma.flushOperation.update({
-      where: { id: BigInt(operationId) },
-      data: {
-        status: finalStatus,
-        succeededCount,
-        failedCount,
-        succeededAmount: totalSucceededAmount,
-        gasCostTotal: totalGasCost,
-        completedAt: new Date(),
+    const result: FlushResult = {
+      totalItems: items.length,
+      succeededCount,
+      failedCount,
+      skippedCount,
+      finalStatus,
+    };
+
+    this.logger.log(
+      `Flush completed for client ${clientId}, chain ${chainId}: ${JSON.stringify(result)}`,
+    );
+
+    // Publish result event
+    await this.redis.publishToStream('flush:completed', {
+      clientId: clientId.toString(),
+      chainId: chainId.toString(),
+      totalItems: items.length.toString(),
+      succeeded: succeededCount.toString(),
+      failed: failedCount.toString(),
+      skipped: skippedCount.toString(),
+      finalStatus,
+      timestamp: new Date().toISOString(),
+    });
+
+    return result;
+  }
+
+  /**
+   * Collect items eligible for flushing.
+   */
+  private async collectFlushItems(
+    clientId: number,
+    chainId: number,
+  ): Promise<FlushItem[]> {
+    const deposits = await this.prisma.deposit.findMany({
+      where: {
+        clientId: BigInt(clientId),
+        chainId,
+        status: 'confirmed',
+        sweepTxHash: null,
       },
     });
 
-    this.logger.log(
-      `Flush operation ${operationId} completed: ${finalStatus} (${succeededCount} ok, ${failedCount} failed)`,
-    );
+    return deposits.map((d) => ({
+      walletId: d.clientId,
+      chainId: d.chainId,
+      tokenId: d.tokenId,
+      forwarderAddress: d.forwarderAddress,
+      amount: d.amountRaw,
+    }));
+  }
+
+  /**
+   * Check if a forwarder address is currently locked (e.g., pending sweep).
+   */
+  private async isForwarderLocked(address: string): Promise<boolean> {
+    const lockKey = `flush:lock:${address}`;
+    const locked = await this.redis.getCache(lockKey);
+    return locked !== null;
+  }
+
+  /**
+   * Execute flush for a single item.
+   */
+  private async flushItem(item: FlushItem): Promise<void> {
+    // Lock the forwarder during flush
+    const lockKey = `flush:lock:${item.forwarderAddress}`;
+    await this.redis.setCache(lockKey, '1', 300); // 5 minute lock
+
+    try {
+      // Record flush intent (actual on-chain tx handled by signing service)
+      await this.redis.publishToStream('flush:execute', {
+        forwarderAddress: item.forwarderAddress,
+        chainId: item.chainId.toString(),
+        tokenId: item.tokenId.toString(),
+        amount: item.amount,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      // Release lock on failure
+      await this.redis.setCache(lockKey, '', 0);
+      throw error;
+    }
   }
 }

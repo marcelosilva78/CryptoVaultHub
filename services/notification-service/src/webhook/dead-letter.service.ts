@@ -1,12 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../prisma/prisma.service';
 
 /**
- * Manages the webhook dead letter queue (DLQ).
- * Moves exhausted deliveries to DLQ and supports resending from DLQ.
+ * Dead letter queue service for failed webhook deliveries.
+ * Manages resending of permanently failed deliveries.
  */
 @Injectable()
 export class DeadLetterService {
@@ -18,133 +17,62 @@ export class DeadLetterService {
   ) {}
 
   /**
-   * Move an exhausted delivery to the dead letter queue.
+   * List all dead-lettered deliveries for a webhook.
    */
-  async deadLetter(
-    deliveryId: bigint,
-    lastError: string,
-  ): Promise<void> {
-    const delivery = await this.prisma.webhookDelivery.findUnique({
-      where: { id: deliveryId },
-    });
-
-    if (!delivery) {
-      this.logger.warn(`Delivery ${deliveryId} not found for dead-lettering`);
-      return;
-    }
-
-    // Check if already dead-lettered
-    const existing = await this.prisma.webhookDeadLetter.findFirst({
-      where: { deliveryId },
-    });
-    if (existing) {
-      this.logger.debug(`Delivery ${deliveryId} already in DLQ`);
-      return;
-    }
-
-    await this.prisma.webhookDeadLetter.create({
-      data: {
-        deliveryId,
-        webhookId: delivery.webhookId,
-        clientId: delivery.clientId,
-        eventType: delivery.eventType,
-        payload: delivery.payload as any,
-        lastError,
-        totalAttempts: delivery.attempts,
-        status: 'pending_review',
+  async listDeadLetters(webhookId: number) {
+    const deliveries = await this.prisma.webhookDelivery.findMany({
+      where: {
+        webhookId: BigInt(webhookId),
+        status: 'failed',
       },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
     });
 
-    this.logger.warn(
-      `Delivery ${delivery.deliveryCode} moved to DLQ after ${delivery.attempts} attempts: ${lastError}`,
-    );
+    return deliveries.map((d) => ({
+      id: Number(d.id),
+      deliveryCode: d.deliveryCode,
+      webhookId: Number(d.webhookId),
+      eventType: d.eventType,
+      attempts: d.attempts,
+      maxAttempts: d.maxAttempts,
+      error: d.error,
+      lastAttemptAt: d.lastAttemptAt,
+      createdAt: d.createdAt,
+    }));
   }
 
   /**
-   * List dead-lettered deliveries for a client.
+   * Resend a dead-lettered delivery.
+   * Looks up the webhook config to get the correct retryMaxAttempts.
    */
-  async listDeadLetters(
-    clientId: bigint,
-    params: {
-      page?: number;
-      limit?: number;
-      status?: string;
-    },
-  ) {
-    const page = params.page ?? 1;
-    const limit = params.limit ?? 20;
-    const skip = (page - 1) * limit;
-
-    const where: any = { clientId };
-    if (params.status) {
-      where.status = params.status;
-    }
-
-    const [items, total] = await Promise.all([
-      this.prisma.webhookDeadLetter.findMany({
-        where,
-        orderBy: { deadLetteredAt: 'desc' },
-        skip,
-        take: limit,
-      }),
-      this.prisma.webhookDeadLetter.count({ where }),
-    ]);
-
-    return {
-      deadLetters: items.map((dl) => this.formatDeadLetter(dl)),
-      meta: {
-        page,
-        limit,
-        total: Number(total),
-        totalPages: Math.ceil(Number(total) / limit),
-      },
-    };
-  }
-
-  /**
-   * Resend a dead-lettered delivery: creates a new delivery and enqueues it.
-   */
-  async resend(deadLetterId: bigint): Promise<any> {
-    const deadLetter = await this.prisma.webhookDeadLetter.findUnique({
-      where: { id: deadLetterId },
+  async resend(deliveryId: number): Promise<boolean> {
+    const deadLetter = await this.prisma.webhookDelivery.findUnique({
+      where: { id: BigInt(deliveryId) },
     });
 
-    if (!deadLetter) {
-      throw new Error(`Dead letter ${deadLetterId} not found`);
-    }
-
-    if (deadLetter.status !== 'pending_review') {
-      throw new Error(
-        `Dead letter ${deadLetterId} is not in pending_review status`,
+    if (!deadLetter || deadLetter.status !== 'failed') {
+      this.logger.warn(
+        `Cannot resend delivery ${deliveryId}: not found or not in failed status`,
       );
+      return false;
     }
 
-    // Create a new delivery with new idempotency key
-    const deliveryCode = `dlv_${uuidv4().replace(/-/g, '')}`;
-    const idempotencyKey = `idem_${uuidv4().replace(/-/g, '')}`;
-
-    const newDelivery = await this.prisma.webhookDelivery.create({
-      data: {
-        deliveryCode,
-        webhookId: deadLetter.webhookId,
-        clientId: deadLetter.clientId,
-        eventType: deadLetter.eventType,
-        payload: deadLetter.payload as any,
-        status: 'queued',
-        maxAttempts: 5,
-        idempotencyKey,
-        isManualResend: true,
-        originalDeliveryId: deadLetter.deliveryId,
-      },
+    // Look up the webhook config to get the correct retryMaxAttempts
+    const webhook = await this.prisma.webhook.findUnique({
+      where: { id: BigInt(deadLetter.webhookId) },
     });
+    const maxAttempts = (webhook as any)?.retryMaxAttempts ?? 5;
 
-    // Update dead letter status
-    await this.prisma.webhookDeadLetter.update({
-      where: { id: deadLetterId },
+    // Reset the delivery for retry
+    await this.prisma.webhookDelivery.update({
+      where: { id: BigInt(deliveryId) },
       data: {
-        status: 'resent',
-        resentAt: new Date(),
-        resentDeliveryId: newDelivery.id,
+        status: 'queued',
+        attempts: 0,
+        maxAttempts: maxAttempts,
+        error: null,
+        nextRetryAt: null,
       },
     });
 
@@ -152,7 +80,7 @@ export class DeadLetterService {
     await this.deliveryQueue.add(
       'deliver',
       {
-        deliveryId: Number(newDelivery.id),
+        deliveryId: Number(deadLetter.id),
         webhookId: Number(deadLetter.webhookId),
       },
       {
@@ -163,34 +91,33 @@ export class DeadLetterService {
     );
 
     this.logger.log(
-      `Dead letter ${deadLetterId} resent as delivery ${deliveryCode}`,
+      `Dead letter ${deliveryId} resent (maxAttempts: ${maxAttempts})`,
     );
 
-    return {
-      delivery: {
-        id: Number(newDelivery.id),
-        deliveryCode,
-        status: 'queued',
-      },
-    };
+    return true;
   }
 
-  private formatDeadLetter(dl: any) {
-    return {
-      id: Number(dl.id),
-      deliveryId: Number(dl.deliveryId),
-      webhookId: Number(dl.webhookId),
-      clientId: Number(dl.clientId),
-      eventType: dl.eventType,
-      payload: dl.payload,
-      lastError: dl.lastError,
-      totalAttempts: dl.totalAttempts,
-      deadLetteredAt: dl.deadLetteredAt,
-      status: dl.status,
-      resentAt: dl.resentAt,
-      resentDeliveryId: dl.resentDeliveryId
-        ? Number(dl.resentDeliveryId)
-        : null,
-    };
+  /**
+   * Resend all dead-lettered deliveries for a webhook.
+   */
+  async resendAll(webhookId: number): Promise<number> {
+    const deadLetters = await this.prisma.webhookDelivery.findMany({
+      where: {
+        webhookId: BigInt(webhookId),
+        status: 'failed',
+      },
+    });
+
+    let resent = 0;
+    for (const dl of deadLetters) {
+      const success = await this.resend(Number(dl.id));
+      if (success) resent++;
+    }
+
+    this.logger.log(
+      `Resent ${resent}/${deadLetters.length} dead letters for webhook ${webhookId}`,
+    );
+
+    return resent;
   }
 }
