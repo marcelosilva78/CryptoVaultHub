@@ -3,7 +3,7 @@ import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { WebhookDeliveryService } from './webhook-delivery.service';
 
-@Processor('webhook-delivery')
+@Processor('webhook-delivery', { concurrency: 20 })
 export class WebhookWorker extends WorkerHost {
   private readonly logger = new Logger(WebhookWorker.name);
 

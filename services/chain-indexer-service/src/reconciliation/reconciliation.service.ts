@@ -63,18 +63,20 @@ export class ReconciliationService {
         `Reconciliation found ${discrepancies.length} discrepancies`,
       );
 
-      // Publish discrepancies to Redis Stream
-      for (const d of discrepancies) {
-        await this.redis.publishToStream('reconciliation:discrepancies', {
-          chainId: d.chainId.toString(),
-          address: d.address,
-          tokenAddress: d.tokenAddress ?? 'native',
-          onChainBalance: d.onChainBalance,
-          cachedBalance: d.cachedBalance,
-          difference: d.difference,
-          timestamp: new Date().toISOString(),
-        });
-      }
+      // Publish discrepancies to Redis Stream (batch)
+      await Promise.all(
+        discrepancies.map((d) =>
+          this.redis.publishToStream('reconciliation:discrepancies', {
+            chainId: d.chainId.toString(),
+            address: d.address,
+            tokenAddress: d.tokenAddress ?? 'native',
+            onChainBalance: d.onChainBalance,
+            cachedBalance: d.cachedBalance,
+            difference: d.difference,
+            timestamp: new Date().toISOString(),
+          }),
+        ),
+      );
     } else {
       this.logger.log('Reconciliation complete: no discrepancies found');
     }

@@ -140,9 +140,11 @@ export class RealtimeDetectorService implements OnModuleInit, OnModuleDestroy {
     );
     deposits.push(...nativeDeposits);
 
-    // 3. Publish detected deposits to Redis Stream
-    for (const deposit of deposits) {
-      await this.publishDepositDetected(deposit);
+    // 3. Publish detected deposits to Redis Stream (batch)
+    if (deposits.length > 0) {
+      await Promise.all(
+        deposits.map((deposit) => this.publishDepositDetected(deposit)),
+      );
     }
 
     // 4. Update sync cursor

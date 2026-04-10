@@ -26,7 +26,7 @@ export interface GasTankStatus {
  * Alerts when balance falls below threshold.
  * Optionally triggers auto-topup from hot wallet.
  */
-@Processor('gas-tank')
+@Processor('gas-tank', { concurrency: 3 })
 @Injectable()
 export class GasTankService extends WorkerHost implements OnModuleInit {
   private readonly logger = new Logger(GasTankService.name);

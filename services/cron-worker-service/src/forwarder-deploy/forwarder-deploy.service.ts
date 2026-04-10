@@ -19,7 +19,7 @@ export interface ForwarderDeployJobData {
  * Deploys forwarder contracts for deposit addresses that have received deposits
  * but are not yet deployed on-chain (CREATE2 counterfactual addresses).
  */
-@Processor('forwarder-deploy')
+@Processor('forwarder-deploy', { concurrency: 3 })
 @Injectable()
 export class ForwarderDeployService extends WorkerHost implements OnModuleInit {
   private readonly logger = new Logger(ForwarderDeployService.name);

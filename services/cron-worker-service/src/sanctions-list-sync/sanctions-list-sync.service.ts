@@ -26,7 +26,7 @@ interface ParsedSanctionEntry {
  * Downloads and parses OFAC SDN list (and optionally EU/UN lists).
  * Extracts crypto addresses and upserts to the sanctions_entries table.
  */
-@Processor('sanctions-sync')
+@Processor('sanctions-sync', { concurrency: 2 })
 @Injectable()
 export class SanctionsListSyncService extends WorkerHost implements OnModuleInit {
   private readonly logger = new Logger(SanctionsListSyncService.name);

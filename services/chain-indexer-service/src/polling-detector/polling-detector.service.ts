@@ -23,7 +23,7 @@ interface PollingJobData {
  * Cron-based balance checking via Multicall3.
  * Compares current balances with cached previous balances to detect deposits.
  */
-@Processor('polling-detector')
+@Processor('polling-detector', { concurrency: 5 })
 @Injectable()
 export class PollingDetectorService extends WorkerHost implements OnModuleInit {
   private readonly logger = new Logger(PollingDetectorService.name);

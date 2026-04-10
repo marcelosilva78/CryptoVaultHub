@@ -35,7 +35,7 @@ export interface SweepResult {
  * Token sweep service: finds forwarders with token balances > 0,
  * groups by chain and token, executes flushTokens/batchFlush via gas tank.
  */
-@Processor('sweep')
+@Processor('sweep', { concurrency: 3 })
 @Injectable()
 export class SweepService extends WorkerHost implements OnModuleInit {
   private readonly logger = new Logger(SweepService.name);

@@ -24,7 +24,7 @@ export interface ConfirmationJobData {
  * Tracks deposit confirmations block by block.
  * Publishes milestone events and detects reorgs.
  */
-@Processor('confirmation-tracker')
+@Processor('confirmation-tracker', { concurrency: 5 })
 @Injectable()
 export class ConfirmationTrackerService extends WorkerHost {
   private readonly logger = new Logger(ConfirmationTrackerService.name);
