@@ -1,426 +1,396 @@
-# Architecture
+# CryptoVaultHub v2 -- Architecture Overview
 
-## Service Topology
+## 1. What is CryptoVaultHub?
 
-CryptoVaultHub is composed of 8 backend microservices, 2 frontend applications, supporting infrastructure, and a full observability stack -- orchestrated via docker-compose with 4 isolated Docker networks.
+CryptoVaultHub (CVH) is a **B2B SaaS multi-tenant blockchain wallet management platform**. It provides enterprise clients (exchanges, payment gateways, neobanks, custodians) with a complete infrastructure for:
 
-```
-                              Internet / Clients
-                                     |
-                            +--------v---------+
-                            |  Load Balancer   |
-                            +--------+---------+
-                                     |
-                  +------------------v-------------------+
-                  |        Kong API Gateway              |     public-net
-                  |        Port 8000 / 8443              |
-                  |   Rate Limiting | CORS | Size Limit  |
-                  |   Admin: 50/s | Client: 100/s        |
-                  |   Auth: 10/s  | Max body: 1MB        |
-                  +---+--------+--------+--------+-------+
-                      |        |        |        |
-           +----------+   +---+---+  +-+----+   +----------+
-           |               |       |  |      |              |
-   +-------v------+ +-----v------++ +v------v-----+ +------v-------+
-   | Admin API    | | Client API  | | Auth Service | | Admin Panel  |
-   | :3001        | | :3002       | | :3003        | | :3010        |
-   | JWT Auth     | | API Key     | | JWT / TOTP   | | Next.js 14   |
-   | Admin CRUD   | | Auth        | | API Keys     | +------+-------+
-   | Clients,     | | Wallets,    | | RBAC         |        |
-   | Tiers,       | | Deposits,   | | Login lockout| +------v-------+
-   | Chains,      | | Withdrawals,| +-----+--------+ | Client Portal|
-   | Tokens,      | | Addresses,  |       |          | :3011        |
-   | Compliance,  | | Webhooks,   |       |          | Next.js 14   |
-   | Monitoring   | | Co-Sign     |       |          | Setup Wizard |
-   +------+-------+ +------+------+       |          +--------------+
-          |                 |              |
-          +--------+--------+--------------+
-                   |
-           +-------v--------+
-           |  Core Wallet   |                        internal-net
-           |  Service :3004 |
-           |  Wallets       |
-           |  Deposits      |
-           |  Withdrawals   |
-           |  Compliance    |
-           |  Balance Query |
-           +--+---+---+--+-+
-              |   |   |  |
-        +-----+   |   |  +-------+
-        |         |   |          |
-   +----v--+ +---v---++ +-------v----+ +-----------+
-   |Key    | |Chain   | |Notification| |Cron/Worker|
-   |Vault  | |Indexer | |Service     | |Service    |
-   |:3005  | |:3006   | |:3007       | |:3008      |
-   |       | |        | |            | |           |
-   |HD Key | |WS+Poll | |Webhooks    | |ERC-20     |
-   |Gen    | |Deposit | |HMAC-SHA256 | |Sweeps     |
-   |Sign   | |Detect  | |Email       | |Gas Tank   |
-   |Shamir | |Confirm | |Retry/DLQ   | |Fwd Deploy |
-   |Encrypt| |Track   | |            | |OFAC Sync  |
-   |       | |Reorg   | |            | |           |
-   |vault- | |Protect | |            | |           |
-   |net    | |        | |            | |           |
-   |ONLY   | |        | |            | |           |
-   +-------+ +--------+ +------------+ +-----------+
-```
+- Deterministic deposit address generation (CREATE2 forwarders)
+- Automated deposit detection and confirmation tracking
+- Secure key management with Shamir secret sharing
+- Multi-chain ERC-20 and native token sweeps
+- Multisig withdrawal processing with optional co-signing
+- KYT/AML compliance screening (OFAC, EU, UN sanctions)
+- Webhook-based real-time event notifications
 
-## Docker Network Layout
+Each client is fully isolated via `client_id` scoping across all databases. Clients are organized into **tiers** (Starter, Business, Enterprise) that govern rate limits, chain access, withdrawal limits, and compliance levels.
 
-Four isolated Docker networks enforce strict security boundaries:
+---
 
-```
-+-----------------------------------------------------------------------+
-|  public-net (bridge)                                                   |
-|  External-facing services                                              |
-|  [Kong :8000/:8443] [Admin Panel :3010] [Client Portal :3011]         |
-|  [Admin API :3001]  [Client API :3002]                                |
-+-----------------------------------------------------------------------+
+## 2. Service Topology
 
-+-----------------------------------------------------------------------+
-|  internal-net (bridge, internal: true)                                 |
-|  No external access -- inter-service communication only                |
-|  [Admin API :3001] [Client API :3002] [Auth Service :3003]            |
-|  [Core Wallet :3004] [Chain Indexer :3006] [Notification :3007]       |
-|  [Cron Worker :3008] [Redis :6379] [Kong]                             |
-|  [PostHog Web] [Loki] [Jaeger] [Prometheus]                           |
-+-----------------------------------------------------------------------+
+CVH consists of **8 backend microservices**, **2 frontend applications**, and supporting infrastructure.
 
-+-----------------------------------------------------------------------+
-|  vault-net (bridge, internal: true)                                    |
-|  ZERO internet access -- shared secret + network isolation             |
-|  [Core Wallet Service] <--INTERNAL_SERVICE_KEY--> [Key Vault :3005]   |
-|  Only Core Wallet Service bridges internal-net and vault-net           |
-+-----------------------------------------------------------------------+
+```mermaid
+graph TB
+    subgraph "Public Zone"
+        AdminUI["Admin Panel<br/>(Next.js :3010)"]
+        ClientUI["Client Portal<br/>(Next.js :3011)"]
+        Kong["Kong API Gateway<br/>(:8000 / :8443)"]
+    end
 
-+-----------------------------------------------------------------------+
-|  monitoring-net (bridge)                                               |
-|  Observability stack                                                   |
-|  [Prometheus :9090] [Grafana :3000] [Loki :3100] [Jaeger :16686]     |
-|  [PostHog Web :8010] [PostHog Worker] [ClickHouse] [Kafka]           |
-|  [Zookeeper] [PostHog Redis] [PostHog Postgres]                       |
-+-----------------------------------------------------------------------+
+    subgraph "Application Services"
+        AdminAPI["admin-api<br/>(:3001)"]
+        ClientAPI["client-api<br/>(:3002)"]
+        AuthSvc["auth-service<br/>(:3003)"]
+        CoreWallet["core-wallet-service<br/>(:3004)"]
+        ChainIndexer["chain-indexer-service<br/>(:3006)"]
+        NotifSvc["notification-service<br/>(:3007)"]
+        CronWorker["cron-worker-service<br/>(:3008)"]
+    end
+
+    subgraph "Vault Zone (isolated)"
+        KeyVault["key-vault-service<br/>(:3005)"]
+    end
+
+    subgraph "Infrastructure"
+        MySQL["MySQL 8.0+<br/>(10 databases)"]
+        Redis["Redis 7<br/>(cache + BullMQ)"]
+    end
+
+    subgraph "Monitoring"
+        Prometheus["Prometheus"]
+        Grafana["Grafana"]
+        Loki["Loki"]
+        Jaeger["Jaeger"]
+        PostHog["PostHog"]
+    end
+
+    Kong --> AdminAPI
+    Kong --> ClientAPI
+    Kong --> AuthSvc
+    AdminUI --> Kong
+    ClientUI --> Kong
+
+    AdminAPI --> MySQL
+    AdminAPI --> Redis
+    ClientAPI --> MySQL
+    ClientAPI --> Redis
+    AuthSvc --> MySQL
+    AuthSvc --> Redis
+    CoreWallet --> MySQL
+    CoreWallet --> Redis
+    CoreWallet --> KeyVault
+    ChainIndexer --> MySQL
+    ChainIndexer --> Redis
+    NotifSvc --> MySQL
+    NotifSvc --> Redis
+    CronWorker --> MySQL
+    CronWorker --> Redis
+    KeyVault --> MySQL
 ```
 
-### Key Security Properties
+### Service Responsibilities
 
-1. **Key Vault has ZERO internet access**: `vault-net` is an internal Docker bridge network. The Key Vault container has no route to the internet, no route to Redis, no route to any service other than Core Wallet.
-2. **internal-net is internal**: Marked `internal: true` in docker-compose, meaning no external access is possible. All NestJS service-to-service communication happens here.
-3. **Core Wallet is the sole bridge**: Only the Core Wallet Service exists on both `internal-net` and `vault-net`, serving as the single gateway to key material.
-4. **Monitoring is separated**: Observability stack runs on its own network, with select bridges to `internal-net` for metric scraping and log collection.
+| Service | Port | Responsibility |
+|---------|------|---------------|
+| **admin-api** | 3001 | Client/chain/tier/token/compliance management, monitoring dashboard, project management, job management, RPC management, sync management, export management |
+| **client-api** | 3002 | Wallet queries, deposit address generation, withdrawals, webhooks, address book, co-sign, projects, flush operations, deploy traces, address groups, exports |
+| **auth-service** | 3003 | JWT login/refresh/logout, TOTP 2FA, API key issuance and validation, RBAC, impersonation |
+| **core-wallet-service** | 3004 | Wallet creation, balance queries, deposit address computation, withdrawal signing, compliance screening |
+| **key-vault-service** | 3005 | HD key generation, Shamir secret sharing (3-of-5), transaction signing, key audit logging |
+| **chain-indexer-service** | 3006 | Hybrid polling + WebSocket block scanning, ERC-20 Transfer event detection, native transfer detection, confirmation tracking, reconciliation |
+| **notification-service** | 3007 | Webhook delivery with retry, HMAC signing, email notifications, event consumption from Redis Streams |
+| **cron-worker-service** | 3008 | Forwarder contract deployment, token sweep/flush, gas tank monitoring, sanctions list sync |
 
-### Verification
+### Frontend Applications
 
-To verify Key Vault network isolation from inside the container:
+| App | Port | Description |
+|-----|------|-------------|
+| **Admin Panel** | 3010 | Next.js dashboard for platform operators. Client management, chain config, compliance alerts, monitoring, BI/analytics (integrated -- no separate app). |
+| **Client Portal** | 3011 | Next.js dashboard for client organizations. Wallet overview, deposits, withdrawals, webhook config, API key management. |
 
-```bash
-docker exec key-vault-service ping -c 1 google.com          # Should FAIL
-docker exec key-vault-service ping -c 1 admin-api           # Should FAIL
-docker exec key-vault-service ping -c 1 redis               # Should FAIL
-docker exec key-vault-service ping -c 1 core-wallet-service # Should SUCCEED
+---
+
+## 3. Database Architecture
+
+CVH uses **10 MySQL 8.0+ databases**, each scoped to a specific domain. This separation enables independent scaling, backup granularity, and security boundaries.
+
+```mermaid
+graph LR
+    subgraph "Auth Domain"
+        cvh_auth["cvh_auth<br/>users, sessions, api_keys"]
+    end
+    subgraph "Key Management"
+        cvh_keyvault["cvh_keyvault<br/>master_seeds, derived_keys,<br/>shamir_shares, key_vault_audit"]
+    end
+    subgraph "Admin Domain"
+        cvh_admin["cvh_admin<br/>clients, tiers, chains, tokens,<br/>client_tokens, client_chain_config,<br/>audit_logs"]
+    end
+    subgraph "Wallet Domain"
+        cvh_wallets["cvh_wallets<br/>wallets, deposit_addresses,<br/>whitelisted_addresses"]
+    end
+    subgraph "Transaction Domain"
+        cvh_transactions["cvh_transactions<br/>deposits, withdrawals"]
+    end
+    subgraph "Compliance Domain"
+        cvh_compliance["cvh_compliance<br/>sanctions_entries, screening_results,<br/>compliance_alerts"]
+    end
+    subgraph "Notification Domain"
+        cvh_notifications["cvh_notifications<br/>webhooks, webhook_deliveries,<br/>email_logs"]
+    end
+    subgraph "Indexer Domain"
+        cvh_indexer["cvh_indexer<br/>sync_cursors, monitored_addresses"]
+    end
+    subgraph "Jobs Domain"
+        cvh_jobs["cvh_jobs<br/>job queue tables (v2)"]
+    end
+    subgraph "Exports Domain"
+        cvh_exports["cvh_exports<br/>export requests, files (v2)"]
+    end
 ```
 
-## Inter-Service Communication
+| Database | Service(s) | Tables | Purpose |
+|----------|-----------|--------|---------|
+| `cvh_auth` | auth-service | users, sessions, api_keys | Authentication, authorization, API key lifecycle |
+| `cvh_keyvault` | key-vault-service | master_seeds, derived_keys, shamir_shares, key_vault_audit | Encrypted key storage, Shamir shares, signing audit trail |
+| `cvh_admin` | admin-api, core-wallet-service | clients, tiers, chains, tokens, client_tokens, client_chain_config, client_tier_overrides, audit_logs | Platform configuration, client management, chain/token registry |
+| `cvh_wallets` | core-wallet-service, cron-worker-service | wallets, deposit_addresses, whitelisted_addresses | Wallet records, deposit address inventory, whitelist |
+| `cvh_transactions` | core-wallet-service, cron-worker-service | deposits, withdrawals | Deposit and withdrawal lifecycle tracking |
+| `cvh_compliance` | core-wallet-service, cron-worker-service | sanctions_entries, screening_results, compliance_alerts | Sanctions lists, screening results, compliance alerts |
+| `cvh_notifications` | notification-service | webhooks, webhook_deliveries, email_logs | Webhook config, delivery tracking, email audit |
+| `cvh_indexer` | chain-indexer-service | sync_cursors, monitored_addresses | Block sync progress, watched deposit addresses |
+| `cvh_jobs` | cron-worker-service | (v2 tables) | Job queue state, dead letter, retry tracking |
+| `cvh_exports` | admin-api, client-api | (v2 tables) | CSV/JSON export requests and file references |
 
-| From | To | Protocol | Network | Purpose |
-|------|----|----------|---------|---------|
-| Kong | Admin API, Client API, Auth Service | HTTP/REST | public-net -> internal-net | Request routing with rate limiting |
-| Admin API / Client API | Auth Service | HTTP/REST | internal-net | Token validation, API key validation |
-| Admin API / Client API | Core Wallet Service | HTTP/REST | internal-net | Synchronous wallet and transaction operations |
-| Core Wallet Service | Key Vault Service | HTTP/REST via InternalServiceGuard | vault-net | Key generation, signing, Shamir operations |
-| Core Wallet Service | Chain Indexer Service | Redis Streams | internal-net | Deposit notifications, address monitoring |
-| Core Wallet Service | Notification Service | BullMQ (Redis) | internal-net | Queue webhook deliveries and emails |
-| Cron Worker Service | Core Wallet Service | HTTP/REST | internal-net | Execute sweeps, gas top-ups, forwarder deployments |
-| Cron Worker Service | Blockchain | JSON-RPC (ethers.js) | external | Contract calls for sweeps and deployments |
-| Chain Indexer Service | Blockchain | JSON-RPC + WebSocket | external | Block scanning, Transfer event detection |
-| All Services | PostHog | HTTP | internal-net | Business event tracking via NestJS interceptor |
-| All Services | Loki | HTTP | internal-net | Structured JSON log shipping |
-| All Services | Jaeger | OTLP (port 4318) | internal-net | Distributed trace export |
-| All Services | Prometheus | HTTP (scrape) | monitoring-net -> internal-net | Metric collection (15s interval) |
+All databases use `utf8mb4_unicode_ci` collation and InnoDB engine. Cross-database views exist in `cvh_wallets` for traceability reporting (see `database/011-traceability-views.sql`).
 
-### Inter-Service Authentication
+---
 
-Communication between Core Wallet Service and Key Vault Service (and other internal services such as Notification Service) is authenticated using a shared secret (`INTERNAL_SERVICE_KEY`):
+## 4. Network Topology
 
-1. The calling service includes the secret in the `X-Internal-Service-Key` HTTP header.
-2. The receiving service validates the header using `InternalServiceGuard`, which performs a timing-safe comparison (`crypto.timingSafeEqual`) to prevent timing attacks.
-3. If the key is missing, has a different length, or does not match, the request is rejected with `401 Unauthorized`.
-4. Docker network isolation (`vault-net`) ensures only the Core Wallet Service can reach the Key Vault.
+Docker Compose defines four isolated networks:
 
-Implementation: `services/key-vault-service/src/common/guards/internal-service.guard.ts` (identical copies in core-wallet-service and notification-service).
+| Network | Type | Access | Services |
+|---------|------|--------|----------|
+| `public-net` | bridge | External-facing | Kong, admin-api, client-api, admin (UI), client (UI) |
+| `internal-net` | bridge, **internal: true** | Service-to-service only | All backend services, Redis, Loki, Jaeger, PostHog |
+| `vault-net` | bridge, **internal: true** | Isolated key operations | key-vault-service, core-wallet-service only |
+| `monitoring-net` | bridge | Observability stack | Prometheus, Grafana, Loki, Jaeger, PostHog (+ Kafka, ClickHouse, Zookeeper) |
 
-## Data Flow: Deposit
+The `vault-net` is deliberately isolated so that **only** `core-wallet-service` can reach `key-vault-service`. The key vault has no Redis dependency and no public network access. Internal service-to-service calls are authenticated via the `INTERNAL_SERVICE_KEY` shared secret.
 
-```
-User sends ETH/tokens to forwarder address (0xDeterministic...)
-          |
-          v
-[1] Chain Indexer Service (RealtimeDetectorService)
-    - Subscribes to new blocks via WebSocket (newHeads) per chain
-    - On each new block: scans for ERC-20 Transfer events to monitored addresses
-    - Also detects native ETH transfers via transaction receipts
-    - Fallback: polling-based block scanning if WebSocket is unavailable
-    - Publishes DetectedDeposit to Redis Stream:
-      { chainId, txHash, blockNumber, fromAddress, toAddress,
-        contractAddress, amount, clientId, walletId }
-          |
-          v
-[2] Core Wallet Service
-    - Consumes deposit events from Redis Stream
-    - Records deposit in cvh_transactions.deposits
-    - Starts confirmation tracking via BullMQ delayed job
-    - If KYT enabled: triggers compliance screening on source address
-      (OFAC SDN, EU, UN, UK OFSI via ComplianceService)
-          |
-          v
-[3] Confirmation Tracking (ConfirmationTrackerService, BullMQ)
-    - Worker processes confirmation jobs
-    - Checks current block vs. deposit block
-    - Verifies tx receipt still exists at each check (reorg protection)
-    - Publishes webhook events at milestones: [1, 3, 6, 12] confirmations
-    - Status progression: deposit.pending -> deposit.confirming -> deposit.confirmed
-    - If receipt disappears: marks deposit as reorged
-          |
-          v
-[4] Auto-Sweep
-    - If ETH: already auto-forwarded by CvhForwarder.receive() -> flush()
-    - If ERC-20: token sits in forwarder, awaiting sweep
-          |
-          v
-[5] Cron Worker Service (Sweep cycle)
-    - Queries forwarders with pending ERC-20 balances
-    - Gas Tank (feeAddress) calls flushTokens() or batchFlushERC20Tokens()
-    - If forwarder not yet deployed: deploys via CvhForwarderFactory.createForwarder()
-    - Token transferred from forwarder to hot wallet (CvhWalletSimple)
-          |
-          v
-[6] Notification Service
-    - BullMQ job triggers webhook delivery
-    - Signs payload with HMAC-SHA256 using per-endpoint secret
-    - Sends POST to client's webhook URL with X-CVH-Signature header
-    - On failure: exponential backoff retry with jitter
-    - Persistent failures: routed to Dead Letter Queue (DLQ)
-    - Delivery logged in cvh_notifications.webhook_deliveries
-```
+---
 
-## Data Flow: Withdrawal
+## 5. Technology Stack
 
-```
-Client submits withdrawal via POST /client/v1/withdrawals
-          |
-          v
-[1] Client API
-    - Validates API key (scope: withdraw) via Auth Service
-    - Validates request DTO (class-validator)
-    - Forwards to Core Wallet Service
-          |
-          v
-[2] Core Wallet Service - Validation
-    - Checks destination is in whitelisted_addresses (past 24h cooldown)
-    - Checks idempotency key (prevents duplicate withdrawals)
-    - Verifies wallet balance >= withdrawal amount (via Multicall3 or RPC)
-    - Creates withdrawal record (status: pending_kyt)
-          |
-          v
-[3] KYT Screening (if enabled)
-    - ComplianceService screens destination address
-    - Checks against OFAC SDN + Consolidated, EU, UN, UK OFSI lists
-    - CLEAR -> proceed (status: pending_signing)
-    - HIT -> block + create compliance alert (status: blocked)
-    - POSSIBLE_MATCH -> route to review queue (status: pending_review)
-          |
-          v
-[4] Signing (via Key Vault Service over vault-net)
-    - Core Wallet constructs operationHash:
-      keccak256(networkId, toAddress, value, data, expireTime, sequenceId)
-    - Sends hash to Key Vault via POST /keys/:clientId/sign
-    - Key Vault decrypts platformKey, signs hash, returns signature
-    - Full custody: Key Vault also signs with clientKey (signer 2)
-    - Co-sign: returns status pending_co_sign; waits for client
-      to submit their signature via POST /client/v1/co-sign/:id/sign
-          |
-          v
-[5] On-Chain Submission
-    - Core Wallet calls CvhWalletSimple.sendMultiSig() or sendMultiSigToken()
-    - Transaction broadcasted to chain via RPC
-    - Status: broadcasted
-          |
-          v
-[6] Confirmation Tracking
-    - Same BullMQ mechanism as deposits
-    - Verifies receipt at milestone confirmations
-    - Status: withdrawal.broadcasted -> withdrawal.confirming -> withdrawal.confirmed
-    - Reorg protection: verifies receipt still exists at each check
-          |
-          v
-[7] Notification Service
-    - Sends withdrawal.confirmed webhook to client endpoint
-    - HMAC-SHA256 signed payload
-    - Updates final status in cvh_transactions.withdrawals
+| Layer | Technology | Version | Purpose |
+|-------|-----------|---------|---------|
+| **Language** | TypeScript | 5.4+ | All services and frontends |
+| **Runtime** | Node.js | 20+ | Backend and build |
+| **Backend Framework** | NestJS | latest | All microservices |
+| **Frontend Framework** | Next.js | latest | Admin Panel, Client Portal |
+| **ORM** | Prisma | latest | Database access (per-service schema) |
+| **Database** | MySQL | 8.0+ | Primary data store (10 databases) |
+| **Cache / Queue** | Redis 7 | Alpine | Caching, BullMQ job queues, Redis Streams |
+| **API Gateway** | Kong | 3.6 | Rate limiting, routing, CORS, request size limiting |
+| **Blockchain** | ethers.js | 6.x | EVM RPC interaction |
+| **Smart Contracts** | Solidity | 0.8.27 | CvhWalletSimple, CvhForwarder, CvhForwarderFactory, CvhBatcher |
+| **Contract Tooling** | Hardhat | latest | Contract compilation, testing, deployment |
+| **Monorepo** | Turborepo | 2.3+ | Build orchestration across workspaces |
+| **Containerization** | Docker Compose | 3.9 | Local and production deployment |
+| **Monitoring** | Prometheus | 2.50 | Metrics collection (15s scrape interval) |
+| **Dashboards** | Grafana | 10.3 | Visualization and alerting |
+| **Logging** | Loki | 2.9 | Log aggregation |
+| **Tracing** | Jaeger | 1.54 | Distributed tracing (OpenTelemetry, port 4318) |
+| **Product Analytics** | PostHog | latest | User behavior tracking, feature flags (+ ClickHouse, Kafka, Postgres) |
+
+---
+
+## 6. Authentication Flows
+
+### Admin Authentication (JWT)
+
+Admin users authenticate via email/password to `auth-service`, which issues a short-lived JWT access token (15-minute TTL, configurable via `JWT_EXPIRES_IN_SECONDS`) and a refresh token (7-day TTL, configurable via `REFRESH_TOKEN_TTL_DAYS`). Optional TOTP 2FA adds a second factor.
+
+```mermaid
+sequenceDiagram
+    participant Admin as Admin User
+    participant UI as Admin Panel
+    participant Auth as auth-service
+    participant Redis as Redis
+
+    Admin->>UI: Enter email + password
+    UI->>Auth: POST /auth/login
+    Auth->>Auth: Check login rate limit (per IP + email)
+    Auth->>Auth: Verify credentials (bcrypt)
+
+    alt 2FA Enabled
+        Auth->>UI: { requires2fa: true, challengeToken }
+        Note over Auth,UI: challengeToken is a 2-min JWT<br/>with purpose=2fa_challenge
+        UI->>Admin: Prompt for TOTP code
+        Admin->>UI: Enter TOTP code
+        UI->>Auth: POST /auth/2fa/challenge { challengeToken, code }
+        Auth->>Auth: Verify JWT, check TOTP rate limit
+        Auth->>Auth: Validate TOTP code
+    end
+
+    Auth->>Auth: Reset login attempt counters
+    Auth->>Auth: Create session (store refresh_token_hash)
+    Auth->>UI: { accessToken, refreshToken, user }
+    UI->>UI: Store tokens, attach Bearer header
 ```
 
-## Database Design
+**JWT Payload:** `{ userId, role, clientId?, clientRole? }`
 
-CryptoVaultHub uses 8 MySQL databases for strict domain separation. Each service accesses only its relevant database(s) via Prisma ORM with its own schema.
+**Roles:**
+- `super_admin` -- Full platform access
+- `admin` -- Client and config management (no destructive system ops)
+- `viewer` -- Read-only access
 
-```
-+------------------+     +------------------+     +------------------+
-|   cvh_auth       |     |   cvh_admin      |     |   cvh_keyvault   |
-|                  |     |                  |     |                  |
-| - users          |     | - clients        |     | - master_seeds   |
-| - sessions       |     | - tiers          |     | - derived_keys   |
-| - api_keys       |     | - client_tier_   |     | - shamir_shares  |
-|                  |     |   overrides      |     | - key_vault_audit|
-|                  |     | - chains         |     |                  |
-|                  |     | - tokens         |     |                  |
-|                  |     | - client_tokens  |     |                  |
-|                  |     | - client_chain_  |     |                  |
-|                  |     |   config         |     |                  |
-|                  |     | - audit_logs     |     |                  |
-+------------------+     +------------------+     +------------------+
+**2FA Security:** The 2FA challenge uses an opaque JWT (not the userId directly) to prevent user enumeration. TOTP attempt rate limiting prevents brute-force attacks on the 6-digit code.
 
-+------------------+     +------------------+     +------------------+
-|   cvh_wallets    |     | cvh_transactions |     | cvh_compliance   |
-|                  |     |                  |     |                  |
-| - wallets        |     | - deposits       |     | - sanctions_     |
-| - deposit_       |     | - withdrawals    |     |   entries        |
-|   addresses      |     |                  |     | - screening_     |
-| - whitelisted_   |     |                  |     |   results        |
-|   addresses      |     |                  |     | - compliance_    |
-|                  |     |                  |     |   alerts         |
-+------------------+     +------------------+     +------------------+
+### Client Authentication (API Key)
 
-+------------------+     +------------------+
-| cvh_notifications|     |   cvh_indexer    |
-|                  |     |                  |
-| - webhooks       |     | - sync_cursors   |
-| - webhook_       |     | - monitored_     |
-|   deliveries     |     |   addresses      |
-| - email_logs     |     |                  |
-+------------------+     +------------------+
+Client applications authenticate via API keys passed in the `X-API-Key` header. Keys are hashed (SHA-256) before storage and carry metadata:
+
+- **Scopes:** `read`, `write`, `admin`
+- **IP Allowlist:** Optional JSON array of allowed IP addresses
+- **Chain Restriction:** Optional JSON array of allowed chain IDs
+- **Expiry:** Optional expiration timestamp
+- **Label:** Human-readable description
+
+```mermaid
+sequenceDiagram
+    participant Client as Client App
+    participant Kong as Kong Gateway
+    participant API as client-api
+    participant Auth as auth-service
+
+    Client->>Kong: GET /client/v1/wallets<br/>(X-API-Key: cvh_live_xxx)
+    Kong->>API: Forward request
+    API->>Auth: POST /auth/api-keys/validate { apiKey }
+    Auth->>Auth: Extract prefix, hash remainder
+    Auth->>Auth: Lookup by key_hash
+    Auth->>Auth: Verify: active, not expired, IP match, scope
+    Auth->>API: { valid, clientId, scopes, allowedChains }
+    API->>API: Execute with client_id context
+    API->>Client: { success: true, ... }
 ```
 
-### Key Relationships
+---
 
-- `cvh_admin.clients` is the central entity -- referenced by wallets, transactions, API keys, compliance records, and webhooks across all databases.
-- `cvh_auth.api_keys.client_id` links API keys to clients for scope-based authorization.
-- `cvh_wallets.wallets` holds one hot wallet per client per chain, containing the on-chain wallet address and contract references.
-- `cvh_wallets.deposit_addresses` tracks forwarder deployment status via an `is_deployed` flag -- addresses are first computed (free, no gas) and deployed on demand.
-- `cvh_transactions.deposits` links to the forwarder deposit address that received the deposit, including chain ID, block number, confirmation count.
-- `cvh_keyvault` is accessed ONLY by the Key Vault Service -- no cross-database joins are permitted. Contains encrypted private keys, Shamir shares, and an append-only audit log.
-- `cvh_indexer.sync_cursors` tracks the last processed block number per chain, enabling resumable block scanning after restarts.
+## 7. Multi-Tenant Model
 
-### Character Set
-
-All databases use `utf8mb4` with `utf8mb4_unicode_ci` collation for full Unicode support.
-
-### Migration Scripts
-
-12 SQL migration scripts in `database/` create the schema in order. The `database/migrate.sh` script runs them sequentially. Additional scripts provide seed data (`009`), performance indexes (`010`), traceability views (`011`), and schema corrections (`012`).
-
-## Monorepo Structure
-
-The project uses Turborepo for build orchestration with npm workspaces:
+All data is scoped by `client_id` and optionally by `project_id` (v2). There is no shared data between clients at the application level.
 
 ```
-Workspaces:
-  contracts        -> Hardhat project (Solidity 0.8.27)
-  packages/*       -> Shared libraries
-                      - api-client: Type-safe API client SDK with TanStack Query hooks
-                      - config: Shared configuration
-                      - posthog: PostHog client wrapper (@cvh/posthog)
-                      - types: Shared TypeScript types (@cvh/types)
-                      - utils: Formatters, helpers (@cvh/utils)
-  services/*       -> NestJS microservices (8 services)
-  apps/*           -> Next.js 14 applications (2 frontends)
-
-Build Pipeline (turbo.json):
-  build   -> depends on ^build (topological order), outputs dist/ and .next/
-  dev     -> no cache, persistent (watch mode)
-  lint    -> depends on ^build
-  test    -> depends on ^build, outputs coverage/
-  clean   -> no cache
+Platform
+  +-- Client (client_id)
+       +-- Project (project_id) [v2]
+       |    +-- Wallets
+       |    +-- Deposit Addresses
+       |    +-- Deposits / Withdrawals
+       +-- API Keys (scoped to client)
+       +-- Webhooks (scoped to client)
+       +-- Whitelisted Addresses (scoped to client)
+       +-- Tier Assignment (shared tier def, per-client overrides)
+       +-- Chain Config (per-client per-chain settings)
+       +-- Token Config (per-client token enablement)
 ```
 
-## Client Onboarding Flow
+**Tier system:** Each client is assigned a tier that defines:
 
-The Client Portal includes a 7-step interactive setup wizard (`apps/client/app/setup/page.tsx`) that guides new clients through their entire onboarding:
+| Setting | Description | Starter | Business | Enterprise |
+|---------|-------------|---------|----------|------------|
+| `global_rate_limit` | Requests/second | 60 | 300 | 1000 |
+| `max_forwarders_per_chain` | Deposit addresses | 100 | 1,000 | 50,000 |
+| `max_chains` | Supported networks | 3 | 5 | 10 |
+| `max_webhooks` | Webhook endpoints | 5 | 20 | 50 |
+| `daily_withdrawal_limit_usd` | USD limit | $10,000 | $100,000 | $1,000,000 |
+| `monitoring_mode` | Indexer strategy | polling | hybrid | real-time |
+| `kyt_level` | Compliance level | basic | enhanced | full |
 
+Custom tiers can inherit from a base tier (`base_tier_id`) and override specific settings. Per-client overrides are stored in `client_tier_overrides`.
+
+---
+
+## 8. Data Flow: Deposit Lifecycle
+
+The complete flow from a deposit arriving on-chain to funds being swept to the hot wallet:
+
+```mermaid
+sequenceDiagram
+    participant Sender as External Sender
+    participant Chain as Blockchain
+    participant Indexer as chain-indexer-service
+    participant Redis as Redis Streams
+    participant CoreWallet as core-wallet-service
+    participant CronWorker as cron-worker-service
+    participant NotifSvc as notification-service
+    participant Client as Client Webhook
+
+    Note over Sender, Chain: 1. Deposit Detection
+    Sender->>Chain: Send ETH/ERC20 to forwarder address
+    Indexer->>Chain: WebSocket new block / polling cycle
+    Indexer->>Indexer: Scan Transfer events + native txs
+    Indexer->>Indexer: Match to monitored_addresses (in-memory lookup)
+    Indexer->>Redis: XADD deposits:detected { chainId, txHash, amount, ... }
+
+    Note over Redis, CoreWallet: 2. Deposit Recording
+    CoreWallet->>Redis: XREAD deposits:detected
+    CoreWallet->>CoreWallet: Create deposit (status=pending, confirmations=0)
+    CoreWallet->>CoreWallet: Run KYT screening if kyt_enabled
+    NotifSvc->>Client: POST webhook (deposit.detected)
+
+    Note over Indexer, CoreWallet: 3. Confirmation Tracking
+    loop Every new block
+        Indexer->>CoreWallet: Update confirmation count
+        CoreWallet->>CoreWallet: Check: confirmations >= confirmations_required?
+    end
+    CoreWallet->>CoreWallet: Status = confirmed
+    NotifSvc->>Client: POST webhook (deposit.confirmed)
+
+    Note over CronWorker, Chain: 4. Sweep
+    CronWorker->>CronWorker: Sweep job fires (every 60s per chain+client)
+    CronWorker->>CronWorker: Query confirmed deposits with sweep_tx_hash=NULL
+    CronWorker->>CronWorker: Verify on-chain balance via Multicall3
+    CronWorker->>Chain: Call forwarder.flushTokens() or batchFlushERC20Tokens()
+    CronWorker->>CronWorker: Update status=swept, set sweep_tx_hash + swept_at
+    CronWorker->>Redis: XADD deposits:swept
+    NotifSvc->>Client: POST webhook (deposit.swept)
 ```
-Step 1: Chain Selection
-  +-> Client selects which EVM chains to activate
-  |   (Ethereum, BSC, Polygon, Arbitrum, Optimism, Avalanche, Base)
-  |
-Step 2: Wallet Creation
-  +-> System generates HD keys (via Key Vault)
-  |   Displays wallet addresses, creation JSON artifact
-  |   Shows private key reveal component (one-time view)
-  |
-Step 3: First Deposit
-  +-> Generates first deposit address (CREATE2 forwarder)
-  |   Displays QR code for deposit address
-  |   Simulates/demonstrates deposit flow
-  |
-Step 4: Withdrawal Configuration
-  +-> Configures address whitelist
-  |   Explains 24-hour cooldown
-  |   Sets up withdrawal limits
-  |
-Step 5: Smart Contract Deployment
-  +-> Deploys CvhWalletFactory, CvhForwarderFactory
-  |   Shows live deployment pipeline:
-  |   Pending -> Deploying -> Confirming (X/12) -> Confirmed
-  |   Displays contract addresses with explorer links
-  |
-Step 6: Test Transaction
-  +-> Live balance monitoring with heartbeat indicator
-  |   Test deposit verification
-  |   Confirmation tracking display
-  |
-Step 7: Complete
-  +-> Summary of all configured resources
-  +-> Links to dashboard, webhooks, API keys
-```
 
-The wizard features blockchain-themed visual components: hexagonal step indicators connected by chain links, live contract deployment status with hexagonal spinners, QR code display, JSON artifact viewers with syntax highlighting and copy/download, private key reveal with one-time view warning, and live balance display with digit slide animation.
+---
 
-## Visual Identity System
+## 9. Smart Contract Architecture
 
-CryptoVaultHub implements a comprehensive visual identity documented in `docs/identity/cryptovaulthub-visual-identity.md`. The design system is not an afterthought -- it is a core part of the product's identity.
+CVH deploys four core contracts per chain:
 
-### Core Design Decisions
+| Contract | Source | Purpose |
+|----------|--------|---------|
+| **CvhWalletSimple** | `contracts/contracts/CvhWalletSimple.sol` | 2-of-3 multisig hot wallet (BitGo-style). Holds client funds. Supports `sendMultiSig`, `sendMultiSigToken`, `sendMultiSigBatch`, `flushForwarderTokens`, and `activateSafeMode`. Sequence ID replay protection with a sliding window of 10. |
+| **CvhForwarder** | `contracts/contracts/CvhForwarder.sol` | Deposit address (forwarder) contract. Auto-forwards native ETH to parent wallet on `receive()`. Supports `flushTokens(address)`, `batchFlushERC20Tokens(address[])`, ERC-721/ERC-1155 auto-forwarding. Initialized via `init(parent, feeAddress, autoFlush721, autoFlush1155)`. |
+| **CvhForwarderFactory** | `contracts/contracts/CvhForwarderFactory.sol` | CREATE2 clone factory. Deploys EIP-1167 minimal proxy clones of CvhForwarder with deterministic addresses. `createForwarder(parent, feeAddress, salt, ...)` deploys + initializes. `computeForwarderAddress(deployer, parent, feeAddress, salt)` predicts addresses off-chain. |
+| **CvhBatcher** | `contracts/contracts/CvhBatcher.sol` | Gas-efficient batch transfer. `batchTransfer(recipients[], values[])` for ETH, `batchTransferToken(token, recipients[], values[])` for ERC-20. Max 255 recipients per batch. Owned by platform operator (Ownable2Step). |
 
-- **Single accent color**: Vault Gold (#E2A828) against neutral scales. No rainbow category colors.
-- **Dual-font system**: Outfit (display, geometric) for interface text; JetBrains Mono (monospace) for blockchain data. The font switch signals "this is data from the chain" vs. "this is the interface speaking."
-- **Dark-first**: Dark mode is the default. Depth via surface layers (4 levels: page, card, elevated, hover), not shadows.
-- **Data-driven richness**: Visual richness comes from live data (balances updating, confirmations counting, statuses transitioning) -- not decorative illustrations.
+Supporting contracts:
+- `CloneFactory.sol` -- EIP-1167 minimal proxy deployment via CREATE2
+- `TransferHelper.sol` -- Safe ERC-20 transfer wrapper (handles non-standard `transfer` return values)
 
-### Design Token Categories
+---
 
-- **Surfaces**: page, sidebar, card, elevated, hover, input (separate values for dark/light mode)
-- **Text**: primary, secondary, muted (separate values for dark/light mode)
-- **Accent**: primary (#E2A828), hover, subtle, glow, text
-- **Status**: success (green), error (red), warning (amber) -- only for functional feedback
-- **Borders**: default, strong, accent
-- **Radius**: card (8px), button (8px), input (6px), badge (6px), modal (12px)
-- **Typography**: heading (20px), stat (28px), body (13px), code (12px), display (32px)
+## 10. Key File Paths
 
-All values are defined as semantic Tailwind CSS tokens in `tailwind.config`. No hardcoded values in components.
-
-## External Dependencies
-
-| Dependency | Purpose | Notes |
-|-----------|---------|-------|
-| MySQL 8+ | Primary database | External cluster, not in docker-compose |
-| Tatum.io / GetBlock.io | RPC node providers | Primary blockchain access, requires API key |
-| OFAC / EU / UN / UK OFSI | Sanctions lists | Daily XML sync via Cron Worker Service |
-
-## Scalability Considerations
-
-- **Stateless Services**: All NestJS services are stateless; scale horizontally behind Kong. No in-memory session state.
-- **Redis as Backbone**: BullMQ queues and Redis Streams decouple producers from consumers. Redis handles rate limiting state, job queues, and inter-service messaging.
-- **Multicall3 Batching**: Single RPC call queries 500+ balances, dramatically reducing RPC costs for balance monitoring.
-- **EIP-1167 Proxies**: Forwarder deployment costs approximately 45,000 gas (vs. 2M+ for full contract deployment). All forwarders share one implementation contract.
-- **Lazy Deployment**: Forwarder addresses are computed (free) via `computeForwarderAddress(deployer, parent, feeAddress, salt)` using CREATE2 and deployed only when needed for ERC-20 flushing. ETH can be received at the address before the contract exists.
-- **Per-Service Databases**: 8 separate MySQL databases prevent cross-service coupling and enable independent scaling. Each service uses its own Prisma schema.
-- **API Client SDK**: The `@cvh/api-client` package with TanStack Query hooks provides type-safe API access with automatic caching, deduplication, and background refetching for both frontend applications.
+| Area | Path |
+|------|------|
+| Docker Compose | `docker-compose.yml` |
+| Kong config | `infra/kong/kong.yml` |
+| Prometheus config | `infra/prometheus/prometheus.yml` |
+| Dockerfiles | `infra/docker/Dockerfile.nestjs`, `infra/docker/Dockerfile.nextjs` |
+| SQL migrations | `database/000-create-databases.sql` through `database/012-schema-fixes.sql` |
+| Migration runner | `database/migrate.sh` |
+| Seed data | `database/009-seed-data.sql` |
+| Admin API | `services/admin-api/` |
+| Client API | `services/client-api/` |
+| Auth Service | `services/auth-service/` |
+| Core Wallet Service | `services/core-wallet-service/` |
+| Key Vault Service | `services/key-vault-service/` |
+| Chain Indexer Service | `services/chain-indexer-service/` |
+| Notification Service | `services/notification-service/` |
+| Cron Worker Service | `services/cron-worker-service/` |
+| Admin Panel | `apps/admin/` |
+| Client Portal | `apps/client/` |
+| Smart Contracts | `contracts/contracts/` |
+| Shared Packages | `packages/` (api-client, config, posthog, types, utils) |
+| Turbo config | `turbo.json` |
+| TS base config | `tsconfig.base.json` |
