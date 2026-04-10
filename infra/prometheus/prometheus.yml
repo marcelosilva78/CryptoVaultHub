@@ -12,6 +12,8 @@ scrape_configs:
         - 'client-api:3002'
         - 'auth-service:3003'
         - 'core-wallet-service:3004'
+        - 'key-vault-service:3005'
         - 'chain-indexer-service:3006'
         - 'notification-service:3007'
         - 'cron-worker-service:3008'
+        - 'rpc-gateway-service:3009'

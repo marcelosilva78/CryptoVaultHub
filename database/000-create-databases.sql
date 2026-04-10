@@ -1,6 +1,6 @@
 -- =============================================================================
 -- CryptoVaultHub — Database Creation Script
--- Creates all 8 databases for the CryptoVaultHub platform
+-- Creates all 10 databases for the CryptoVaultHub platform
 -- Target: MySQL 8.0+
 -- =============================================================================
 
@@ -35,3 +35,23 @@ CREATE DATABASE IF NOT EXISTS `cvh_notifications`
 CREATE DATABASE IF NOT EXISTS `cvh_indexer`
   CHARACTER SET utf8mb4
   COLLATE utf8mb4_unicode_ci;
+
+CREATE DATABASE IF NOT EXISTS `cvh_jobs`
+  CHARACTER SET utf8mb4
+  COLLATE utf8mb4_unicode_ci;
+
+CREATE DATABASE IF NOT EXISTS `cvh_exports`
+  CHARACTER SET utf8mb4
+  COLLATE utf8mb4_unicode_ci;
+
+-- =============================================================================
+-- MySQL Users for new databases
+-- =============================================================================
+
+CREATE USER IF NOT EXISTS 'cvh_jobs'@'%' IDENTIFIED BY 'changeme';
+GRANT SELECT, INSERT, UPDATE, DELETE ON `cvh_jobs`.* TO 'cvh_jobs'@'%';
+
+CREATE USER IF NOT EXISTS 'cvh_exports'@'%' IDENTIFIED BY 'changeme';
+GRANT SELECT, INSERT, UPDATE, DELETE ON `cvh_exports`.* TO 'cvh_exports'@'%';
+
+FLUSH PRIVILEGES;

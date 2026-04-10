@@ -687,3 +687,102 @@ INSERT INTO `audit_logs` (
   ('1', 'tier.update',      'tier',   '3', '{"field":"daily_withdrawal_limit_usd","old":500000,"new":1000000}', '10.0.0.1', '2025-04-01 11:00:00'),
   ('1', 'client.activate',  'client', '1', '{"status":"active"}',                                '10.0.0.1',  '2025-01-15 10:05:00'),
   ('1', 'chain.activate',   'chain',  '1', '{"chain":"Ethereum Mainnet"}',                       '10.0.0.1',  '2025-01-15 10:10:00');
+
+-- =============================================================================
+-- 18. RPC Providers (cvh_jobs) — Default providers
+-- =============================================================================
+
+USE `cvh_jobs`;
+
+INSERT INTO `rpc_providers` (
+  `id`, `name`, `slug`, `api_key_env_var`, `base_url`, `is_active`, `priority`, `created_at`
+) VALUES
+  (1, 'Tatum',  'tatum',  'TATUM_API_KEY',  'https://api.tatum.io',     1, 1, NOW()),
+  (2, 'Infura', 'infura', 'INFURA_API_KEY', 'https://mainnet.infura.io', 1, 2, NOW())
+ON DUPLICATE KEY UPDATE `name` = VALUES(`name`);
+
+-- =============================================================================
+-- 19. RPC Nodes per chain (cvh_jobs) — Default nodes using Tatum endpoints
+-- =============================================================================
+
+INSERT INTO `rpc_nodes` (
+  `id`, `provider_id`, `chain_id`, `url`, `ws_url`, `is_active`, `priority`,
+  `max_rps`, `health_status`, `last_health_check`, `created_at`
+) VALUES
+  (1,  1, 1,     'https://eth-mainnet.gateway.tatum.io/',       'wss://eth-mainnet.gateway.tatum.io/ws',       1, 1, 50, 'healthy', NOW(), NOW()),
+  (2,  1, 56,    'https://bsc-mainnet.gateway.tatum.io/',       'wss://bsc-mainnet.gateway.tatum.io/ws',       1, 1, 50, 'healthy', NOW(), NOW()),
+  (3,  1, 137,   'https://polygon-mainnet.gateway.tatum.io/',   NULL,                                          1, 1, 50, 'healthy', NOW(), NOW()),
+  (4,  1, 42161, 'https://arbitrum-mainnet.gateway.tatum.io/',  NULL,                                          1, 1, 50, 'healthy', NOW(), NOW()),
+  (5,  1, 10,    'https://optimism-mainnet.gateway.tatum.io/',  NULL,                                          1, 1, 50, 'healthy', NOW(), NOW()),
+  (6,  1, 43114, 'https://avalanche-mainnet.gateway.tatum.io/', NULL,                                          1, 1, 50, 'healthy', NOW(), NOW()),
+  (7,  1, 8453,  'https://base-mainnet.gateway.tatum.io/',      NULL,                                          1, 1, 50, 'healthy', NOW(), NOW()),
+  (8,  2, 1,     'https://mainnet.infura.io/v3/',               'wss://mainnet.infura.io/ws/v3/',              1, 2, 25, 'healthy', NOW(), NOW()),
+  (9,  2, 137,   'https://polygon-mainnet.infura.io/v3/',       'wss://polygon-mainnet.infura.io/ws/v3/',      1, 2, 25, 'healthy', NOW(), NOW()),
+  (10, 2, 42161, 'https://arbitrum-mainnet.infura.io/v3/',      'wss://arbitrum-mainnet.infura.io/ws/v3/',     1, 2, 25, 'healthy', NOW(), NOW())
+ON DUPLICATE KEY UPDATE `url` = VALUES(`url`);
+
+-- =============================================================================
+-- 20. Job Schedules (cvh_jobs) — Default cron schedules
+-- =============================================================================
+
+INSERT INTO `job_schedules` (
+  `id`, `job_type`, `description`, `cron_expression`, `interval_seconds`,
+  `is_active`, `last_run_at`, `next_run_at`, `created_at`
+) VALUES
+  (1, 'sweep',           'Sweep deposits from forwarders to hot wallets',    NULL,             60,    1, NULL, NOW(), NOW()),
+  (2, 'health_check',    'Check health of all RPC nodes',                    NULL,             30,    1, NULL, NOW(), NOW()),
+  (3, 'sanctions_sync',  'Sync sanctions lists (OFAC, EU)',                  '0 0 * * *',      NULL,  1, NULL, NOW(), NOW()),
+  (4, 'gas_price_update','Update gas price estimates for all chains',        NULL,             15,    1, NULL, NOW(), NOW()),
+  (5, 'stale_tx_check',  'Check for stale/stuck transactions',              '*/5 * * * *',    NULL,  1, NULL, NOW(), NOW())
+ON DUPLICATE KEY UPDATE `description` = VALUES(`description`);
+
+-- =============================================================================
+-- 21. Export Templates (cvh_exports) — Common export presets
+-- =============================================================================
+
+USE `cvh_exports`;
+
+INSERT INTO `export_templates` (
+  `id`, `name`, `slug`, `description`, `entity_type`, `columns`, `filters`,
+  `format`, `is_system`, `created_at`
+) VALUES
+  (1, 'All Deposits',
+   'all-deposits',
+   'Export all deposits with full transaction details',
+   'deposits',
+   '["id","client_id","chain_id","forwarder_address","token_id","amount","tx_hash","status","detected_at","confirmed_at","swept_at"]',
+   '{}',
+   'csv', 1, NOW()),
+
+  (2, 'All Withdrawals',
+   'all-withdrawals',
+   'Export all withdrawals with full transaction details',
+   'withdrawals',
+   '["id","client_id","chain_id","token_id","from_wallet","to_address","amount","tx_hash","status","created_at","confirmed_at"]',
+   '{}',
+   'csv', 1, NOW()),
+
+  (3, 'Compliance Report',
+   'compliance-report',
+   'Screening results and compliance alerts for audit',
+   'screening_results',
+   '["id","client_id","address","direction","trigger","tx_hash","result","action","screened_at"]',
+   '{}',
+   'csv', 1, NOW()),
+
+  (4, 'Wallet Summary',
+   'wallet-summary',
+   'All wallets with balances and forwarder counts',
+   'wallets',
+   '["id","client_id","chain_id","address","wallet_type","is_active","created_at"]',
+   '{}',
+   'csv', 1, NOW()),
+
+  (5, 'Daily Volume Report',
+   'daily-volume',
+   'Daily transaction volumes grouped by chain and token',
+   'daily_volume',
+   '["tx_date","tx_type","chain_name","token_symbol","tx_count","total_amount"]',
+   '{}',
+   'xlsx', 1, NOW())
+ON DUPLICATE KEY UPDATE `name` = VALUES(`name`);
