@@ -28,7 +28,7 @@ export class JobMonitorService {
     const offset = (page - 1) * limit;
 
     const conditions: string[] = [];
-    const params: unknown[] = [];
+    const params: any[] = [];
 
     if (filters.status) {
       conditions.push('status = ?');
@@ -187,7 +187,7 @@ export class JobMonitorService {
     const offset = (page - 1) * limit;
 
     const conditions: string[] = [];
-    const params: unknown[] = [];
+    const params: any[] = [];
 
     if (filters.status) {
       conditions.push('status = ?');

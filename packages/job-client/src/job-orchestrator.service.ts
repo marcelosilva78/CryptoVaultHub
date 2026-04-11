@@ -85,7 +85,7 @@ export class JobOrchestratorService {
   ): Promise<void> {
     const now = new Date();
     const sets: string[] = ['status = ?', 'updated_at = ?'];
-    const values: unknown[] = [status, now];
+    const values: any[] = [status, now];
 
     if (result !== undefined) {
       sets.push('result = ?');
