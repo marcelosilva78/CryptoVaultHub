@@ -646,6 +646,7 @@ services:
       CLICKHOUSE_PORT: "8123"
       CLICKHOUSE_SECURE: "false"
       CLICKHOUSE_VERIFY: "false"
+      CLICKHOUSE_REPLICATION: "false"
       KAFKA_HOSTS: kafka:9092
       SECRET_KEY: ${POSTHOG_SECRET_KEY}
       DISABLE_ASYNC_MIGRATIONS_SETUP: "0"
@@ -669,6 +670,7 @@ services:
       CLICKHOUSE_PORT: "8123"
       CLICKHOUSE_SECURE: "false"
       CLICKHOUSE_VERIFY: "false"
+      CLICKHOUSE_REPLICATION: "false"
       KAFKA_HOSTS: kafka:9092
       SECRET_KEY: ${POSTHOG_SECRET_KEY}
     depends_on:
