@@ -93,13 +93,13 @@ export class DeployTraceService {
         initCodeHash: dto.initCodeHash ?? null,
         gasUsed: BigInt(receipt.gasUsed),
         gasPrice: BigInt(receipt.gasPrice),
-        gasCostWei: gasCostWei,
+        gasCostWei: gasCostWei.toString(), // Decimal field: bigint → string
         explorerUrl,
         correlationId: dto.correlationId ?? null,
         triggeredBy: dto.triggeredBy ? BigInt(dto.triggeredBy) : null,
         triggerType: dto.triggerType ?? 'system',
         eventLogs,
-        metadata: dto.metadata ?? null,
+        metadata: dto.metadata ?? undefined, // Json?: null not assignable; undefined → DB NULL
       },
     });
 

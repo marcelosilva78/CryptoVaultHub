@@ -104,7 +104,7 @@ export class FlushService {
           tokenId: dto.tokenId ? BigInt(dto.tokenId) : null,
           walletId: BigInt(dto.walletId),
           totalAddresses: depositAddresses.length,
-          filtersApplied: dto.filters ?? null,
+          filtersApplied: dto.filters ?? undefined, // Json?: null not assignable; undefined → DB NULL
         },
       });
 
