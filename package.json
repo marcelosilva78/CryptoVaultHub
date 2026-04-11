@@ -1,6 +1,7 @@
 {
   "name": "cryptovaulthub",
   "private": true,
+  "packageManager": "npm@10.8.2",
   "workspaces": [
     "contracts",
     "packages/*",
