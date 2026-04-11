@@ -76,6 +76,22 @@ ok "Docker Compose installed: $(docker compose version | head -1)"
 command -v mysql >/dev/null 2>&1 || warn "mysql client not found — migrations will need to be run manually"
 MYSQL_CLIENT_AVAILABLE=$(command -v mysql >/dev/null 2>&1 && echo true || echo false)
 
+# ─── /docker LVM mount pre-flight ─────────────────────────────────────────
+# All persistent data (images, volumes, exports, DB) MUST live on /docker.
+# On the VPS this is an LVM volume. If it is not mounted, Docker will write
+# to the OS root disk and fill it up rapidly.
+if mountpoint -q /docker 2>/dev/null; then
+  DOCKER_MOUNT_INFO=$(df -h /docker 2>/dev/null | awk 'NR==2{print $1, $2, "free:"$4}')
+  ok "/docker is a mounted volume: $DOCKER_MOUNT_INFO"
+else
+  warn "WARNING: /docker is NOT a separate mount point!"
+  warn "Docker daemon data-root is configured as /docker/lib but /docker is on the OS disk."
+  warn "For production: provision an LVM volume and mount it at /docker before running this script."
+  echo ""
+  read -rp "$(echo -e "${YELLOW}Continue anyway? (not recommended for production) [y/N]:${NC} ")" cont
+  [[ "${cont,,}" == "y" ]] || fail "Aborted. Mount /docker LVM volume and retry."
+fi
+
 # ─── Configure Docker Data Root on /docker ──────────────────────────────────
 header "Docker Storage Configuration (/docker)"
 
@@ -89,18 +105,39 @@ fi
 if [ -d "/docker" ]; then
   # Create directory structure on the LVM volume
   log "Creating directory structure on /docker..."
-  sudo mkdir -p /docker/lib                    # Docker daemon data-root (images, containers, overlays)
-  sudo mkdir -p /docker/data/mysql             # MySQL data (Docker mode only)
-  sudo mkdir -p /docker/data/redis             # Redis AOF persistence
-  sudo mkdir -p /docker/data/prometheus        # Prometheus TSDB
-  sudo mkdir -p /docker/data/grafana           # Grafana dashboards + plugins
-  sudo mkdir -p /docker/data/traefik/letsencrypt # SSL certificates
-  sudo mkdir -p /docker/data/exports           # Export file storage (host bind-mount)
-  sudo mkdir -p /docker/data/posthog-postgres  # PostHog PostgreSQL
-  sudo mkdir -p /docker/data/clickhouse        # ClickHouse analytics
-  sudo chown -R 472:472 /docker/data/grafana   # Grafana runs as UID 472
-  sudo chown -R 65534:65534 /docker/data/prometheus  # Prometheus runs as nobody
-  ok "Directory structure created on /docker"
+  # ── Core infrastructure ─────────────────────────────────────────
+  sudo mkdir -p /docker/lib                         # Docker daemon data-root (images, layers, build cache)
+  sudo mkdir -p /docker/data/traefik/letsencrypt    # Traefik TLS certificates (Let's Encrypt)
+
+  # ── Databases ───────────────────────────────────────────────────
+  sudo mkdir -p /docker/data/mysql                  # MySQL data (used in Docker MySQL mode)
+
+  # ── Caches / message brokers ────────────────────────────────────
+  sudo mkdir -p /docker/data/redis                  # Redis AOF + RDB (main app cache)
+  sudo mkdir -p /docker/data/posthog-redis          # Redis AOF (PostHog queue/session)
+  sudo mkdir -p /docker/data/kafka                  # Kafka KRaft broker logs (PostHog events)
+
+  # ── Observability ───────────────────────────────────────────────
+  sudo mkdir -p /docker/data/prometheus             # Prometheus TSDB
+  sudo mkdir -p /docker/data/grafana                # Grafana dashboards + plugins
+  sudo mkdir -p /docker/data/loki                   # Loki log chunks + index
+
+  # ── Analytics (PostHog) ─────────────────────────────────────────
+  sudo mkdir -p /docker/data/posthog-postgres       # PostHog PostgreSQL data
+  sudo mkdir -p /docker/data/clickhouse             # ClickHouse analytics data
+
+  # ── Application data ────────────────────────────────────────────
+  sudo mkdir -p /docker/data/exports                # Export files (CSV/XLSX downloads)
+
+  # ── Ownership / permissions ─────────────────────────────────────
+  sudo chown -R 472:472 /docker/data/grafana        # Grafana runs as UID 472
+  sudo chown -R 65534:65534 /docker/data/prometheus # Prometheus runs as nobody (65534)
+  sudo chown -R 10001:10001 /docker/data/loki       # Loki runs as UID 10001
+
+  ok "Directory structure created on /docker (LVM volume)"
+  log "Storage layout:"
+  log "  /docker/lib          — Docker engine data-root (images, layers, cache)"
+  log "  /docker/data/*       — Service-specific persistent data"
 
   # Configure Docker daemon to use /docker/lib as data-root
   DAEMON_JSON="/etc/docker/daemon.json"
@@ -393,13 +430,10 @@ else
   echo "  bash database/migrate.sh"
 fi
 
-# ─── Create Export Storage Directory ─────────────────────────────────────────
-header "Preparing File Storage"
-
-# /docker/data/exports is the host bind-mount path (see docker-compose.yml).
-# EXPORT_STORAGE_PATH is the path *inside* the container — already created above.
-sudo mkdir -p /docker/data/exports 2>/dev/null || warn "Could not create /docker/data/exports"
-ok "Export storage (host): /docker/data/exports → container: ${EXPORT_STORAGE_PATH}"
+# ─── Confirm Export Storage ───────────────────────────────────────────────────
+# /docker/data/exports is already created in the /docker directory-structure block above.
+# EXPORT_STORAGE_PATH is the path *inside* the container (set in .env).
+ok "Export storage ready — host: /docker/data/exports → container: ${EXPORT_STORAGE_PATH}"
 
 # ─── Start Services ──────────────────────────────────────────────────────────
 header "Starting Docker Compose Services"

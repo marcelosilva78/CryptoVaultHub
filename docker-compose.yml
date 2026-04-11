@@ -170,6 +170,10 @@ services:
 
   loki:
     image: grafana/loki:2.9.0
+    command: -config.file=/etc/loki/loki.yml
+    volumes:
+      - ./infra/loki/loki.yml:/etc/loki/loki.yml:ro
+      - /docker/data/loki:/loki
     networks:
       - monitoring-net
       - internal-net
@@ -567,6 +571,9 @@ services:
 
   posthog-redis:
     image: redis:7-alpine
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - /docker/data/posthog-redis:/data
     networks:
       - monitoring-net
     restart: unless-stopped
@@ -591,6 +598,9 @@ services:
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
       CLUSTER_ID: "cvh-posthog-kafka-001"
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+    volumes:
+      - /docker/data/kafka:/var/lib/kafka/data
     networks:
       - monitoring-net
     restart: unless-stopped
@@ -629,5 +639,18 @@ services:
       - monitoring-net
     restart: unless-stopped
 
-# All persistent data stored on /docker/data/ (LVM volume)
-# Docker daemon data-root also at /docker/lib (see infra/docker/daemon.json)
+# ─── Storage Layout (all on /docker LVM volume) ──────────────────────────────
+# Docker daemon data-root : /docker/lib          (images, layers, build cache)
+# Persistent bind-mounts  : /docker/data/<svc>
+#   mysql          → /docker/data/mysql
+#   redis          → /docker/data/redis
+#   loki           → /docker/data/loki
+#   prometheus     → /docker/data/prometheus
+#   grafana        → /docker/data/grafana
+#   traefik TLS    → /docker/data/traefik/letsencrypt
+#   exports        → /docker/data/exports
+#   posthog-pg     → /docker/data/posthog-postgres
+#   posthog-redis  → /docker/data/posthog-redis
+#   clickhouse     → /docker/data/clickhouse
+#   kafka          → /docker/data/kafka
+# OS disk (/var)   : only Docker socket + daemon config (< 10 MB)
