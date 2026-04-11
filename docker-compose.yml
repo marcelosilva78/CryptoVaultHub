@@ -655,6 +655,7 @@ services:
       KAFKA_HOSTS: kafka:9092
       SECRET_KEY: ${POSTHOG_SECRET_KEY}
       DISABLE_ASYNC_MIGRATIONS_SETUP: "0"
+      POSTHOG_SKIP_MIGRATION_CHECKS: "1"
     depends_on:
       - posthog-postgres
       - posthog-redis
