@@ -17,13 +17,35 @@ networks:
 
 services:
 
+  # ─── Docker Socket Proxy (API version compatibility for Traefik) ────────────
+  # Traefik's internal Go client sends Docker API v1.24 during initial
+  # negotiation; Docker 29+ requires min v1.40. The socket proxy accepts
+  # any version and forwards to the real socket transparently.
+
+  docker-proxy:
+    image: tecnativa/docker-socket-proxy:latest
+    environment:
+      - CONTAINERS=1
+      - NETWORKS=1
+      - SERVICES=1
+      - POST=0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - internal-net
+    restart: unless-stopped
+    privileged: true
+
   # ─── Traefik Reverse Proxy + SSL ─────────────────────────────
 
   traefik:
     image: traefik:v3.3
+    depends_on:
+      - docker-proxy
     command:
       - "--api.dashboard=true"
       - "--providers.docker=true"
+      - "--providers.docker.endpoint=tcp://docker-proxy:2375"
       - "--providers.docker.exposedbydefault=false"
       - "--providers.docker.network=public-net"
       - "--entrypoints.web.address=:80"
@@ -43,15 +65,14 @@ services:
       - "--entrypoints.metrics.address=:8082"
     environment:
       - CF_DNS_API_TOKEN=${CLOUDFLARE_DNS_API_TOKEN}
-      - DOCKER_API_VERSION=1.45
     ports:
       - "80:80"
       - "443:443"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
       - /docker/data/traefik/letsencrypt:/letsencrypt
     networks:
       - public-net
+      - internal-net
       - monitoring-net
     labels:
       # Traefik dashboard at traefik.vaulthub.live (protected by basic auth)
