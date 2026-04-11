@@ -6,8 +6,6 @@ import {
   Logger,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Observable } from 'rxjs';
-import { tap } from 'rxjs/operators';
 import { v4 as uuidv4 } from 'uuid';
 import { PostHogService } from '@cvh/posthog';
 
@@ -31,31 +29,26 @@ export class PostHogInterceptor implements NestInterceptor {
 
     const start = Date.now();
     const request = context.switchToHttp().getRequest();
+    const response = context.switchToHttp().getResponse();
 
-    return next.handle().pipe(
-      tap({
-        next: () => {
-          const response = context.switchToHttp().getResponse();
-          this.posthog!.trackApiRequest({
-            clientId: request.clientId?.toString() || 'anonymous',
-            method: request.method,
-            path: request.url,
-            statusCode: response.statusCode,
-            responseTimeMs: Date.now() - start,
-            traceId: request.headers['x-trace-id'] || uuidv4(),
-          });
-        },
-        error: (err) => {
-          this.posthog!.trackApiRequest({
-            clientId: request.clientId?.toString() || 'anonymous',
-            method: request.method,
-            path: request.url,
-            statusCode: err.status || 500,
-            responseTimeMs: Date.now() - start,
-            traceId: request.headers['x-trace-id'] || uuidv4(),
-          });
-        },
-      }),
-    );
+    // Use response.on('finish') instead of pipe/tap to avoid the rxjs
+    // dual-version conflict that occurs in npm workspaces where transitive
+    // NestJS deps install a local rxjs copy alongside the root one.
+    response.on('finish', () => {
+      try {
+        this.posthog!.trackApiRequest({
+          clientId: request.clientId?.toString() || 'anonymous',
+          method: request.method,
+          path: request.url,
+          statusCode: response.statusCode,
+          responseTimeMs: Date.now() - start,
+          traceId: request.headers['x-trace-id'] || uuidv4(),
+        });
+      } catch {
+        // Tracking failure must never affect the response
+      }
+    });
+
+    return next.handle();
   }
 }
