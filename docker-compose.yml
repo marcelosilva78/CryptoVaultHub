@@ -641,6 +641,9 @@ services:
 
   posthog-web:
     image: posthog/posthog:latest
+    # Run only postgres migrations (skip ClickHouse which crashes on single-node
+    # with the new ClickHouse 24.x query analyzer). The worker is a separate container.
+    command: bash -c "./bin/migrate --scope=postgres --scope=async && ./bin/docker-server"
     environment:
       DATABASE_URL: postgres://posthog:posthog@posthog-postgres:5432/posthog
       REDIS_URL: redis://posthog-redis:6379
