@@ -30,7 +30,7 @@ export class DeliveryAttemptRecorderService {
    * Record a single delivery attempt.
    */
   async recordAttempt(attempt: AttemptRecord): Promise<void> {
-    await (this.prisma as any).webhookDeliveryAttempt.create({
+    await this.prisma.webhookDeliveryAttempt.create({
       data: {
         deliveryId: attempt.deliveryId,
         attemptNumber: attempt.attemptNumber,
@@ -60,7 +60,7 @@ export class DeliveryAttemptRecorderService {
    * Get all attempts for a delivery.
    */
   async getAttemptsForDelivery(deliveryId: bigint) {
-    const attempts = await (this.prisma as any).webhookDeliveryAttempt.findMany({
+    const attempts = await this.prisma.webhookDeliveryAttempt.findMany({
       where: { deliveryId },
       orderBy: { attemptNumber: 'asc' },
     });

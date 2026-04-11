@@ -62,7 +62,7 @@ export class WebhookDeliveryService {
           idempotencyKey,
           correlationId,
           requestUrl: webhook.url,
-        } as any,
+        },
       });
 
       await this.deliveryQueue.add(
@@ -121,7 +121,7 @@ export class WebhookDeliveryService {
           error: `Webhook ${webhookId} not found`,
           errorMessage: `Webhook ${webhookId} not found`,
           lastAttemptAt: new Date(),
-        } as any,
+        },
       });
       return null;
     }
@@ -137,7 +137,7 @@ export class WebhookDeliveryService {
           error: 'Webhook is inactive',
           errorMessage: 'Webhook is inactive',
           lastAttemptAt: new Date(),
-        } as any,
+        },
       });
       return null;
     }
@@ -213,7 +213,7 @@ export class WebhookDeliveryService {
             attempts: attemptNumber,
             lastAttemptAt: new Date(),
             nextRetryAt: null,
-          } as any,
+          },
         });
         this.logger.log(
           `Delivery ${delivery.deliveryCode} sent (HTTP ${response.status}, ${responseTimeMs}ms)`,
@@ -307,7 +307,7 @@ export class WebhookDeliveryService {
           error: errorMessage,
           errorMessage,
           errorCode: errorCode ?? null,
-        } as any,
+        },
       });
 
       // Move to dead letter queue
@@ -341,7 +341,7 @@ export class WebhookDeliveryService {
         error: errorMessage,
         errorMessage,
         errorCode: errorCode ?? null,
-      } as any,
+      },
     });
 
     // Enqueue retry
@@ -386,7 +386,7 @@ export class WebhookDeliveryService {
    * Get a single delivery with all attempts.
    */
   async getDeliveryDetail(deliveryId: bigint) {
-    const delivery: any = await (this.prisma.webhookDelivery as any).findUnique({
+    const delivery = await this.prisma.webhookDelivery.findUnique({
       where: { id: deliveryId },
       include: { attempts_log: { orderBy: { attemptNumber: 'asc' } } },
     });

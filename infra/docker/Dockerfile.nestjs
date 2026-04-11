@@ -6,6 +6,12 @@ COPY package*.json turbo.json tsconfig.base.json ./
 COPY packages/ packages/
 COPY ${SERVICE_PATH}/ ${SERVICE_PATH}/
 RUN npm ci
+# Regenerate Prisma client from the current schema before compiling.
+# This ensures the generated client always matches the schema even when
+# the committed generated files are stale.
+RUN if [ -f "${SERVICE_PATH}/prisma/schema.prisma" ]; then \
+      cd ${SERVICE_PATH} && npx prisma generate; \
+    fi
 RUN npx turbo build --filter=./${SERVICE_PATH}
 
 # Runner stage

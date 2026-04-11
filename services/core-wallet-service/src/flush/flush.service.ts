@@ -89,7 +89,7 @@ export class FlushService {
 
     // Create the operation and items in a transaction
     const operation = await this.prisma.$transaction(async (tx) => {
-      const op = await (tx as any).flushOperation.create({
+      const op = await tx.flushOperation.create({
         data: {
           operationUid,
           clientId: BigInt(dto.clientId),
@@ -109,7 +109,7 @@ export class FlushService {
       });
 
       // Create flush items
-      await (tx as any).flushItem.createMany({
+      await tx.flushItem.createMany({
         data: depositAddresses.map((da) => ({
           operationId: op.id,
           depositAddressId: da.id,
@@ -162,13 +162,13 @@ export class FlushService {
     if (params.chainId) where.chainId = params.chainId;
 
     const [operations, total] = await Promise.all([
-      (this.prisma as any).flushOperation.findMany({
+      this.prisma.flushOperation.findMany({
         where,
         orderBy: { createdAt: 'desc' },
         skip,
         take: limit,
       }),
-      (this.prisma as any).flushOperation.count({ where }),
+      this.prisma.flushOperation.count({ where }),
     ]);
 
     return {
@@ -181,7 +181,7 @@ export class FlushService {
    * Get a single operation with its items.
    */
   async getOperation(clientId: number, operationId: number) {
-    const operation = await (this.prisma as any).flushOperation.findFirst({
+    const operation = await this.prisma.flushOperation.findFirst({
       where: {
         id: BigInt(operationId),
         clientId: BigInt(clientId),
@@ -216,7 +216,7 @@ export class FlushService {
    * Cancel a pending flush operation.
    */
   async cancelOperation(clientId: number, operationId: number) {
-    const operation = await (this.prisma as any).flushOperation.findFirst({
+    const operation = await this.prisma.flushOperation.findFirst({
       where: {
         id: BigInt(operationId),
         clientId: BigInt(clientId),
@@ -234,11 +234,11 @@ export class FlushService {
     }
 
     await this.prisma.$transaction([
-      (this.prisma as any).flushOperation.update({
+      this.prisma.flushOperation.update({
         where: { id: BigInt(operationId) },
         data: { status: 'canceled', completedAt: new Date() },
       }),
-      (this.prisma as any).flushItem.updateMany({
+      this.prisma.flushItem.updateMany({
         where: {
           operationId: BigInt(operationId),
           status: 'pending',
