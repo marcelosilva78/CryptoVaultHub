@@ -160,11 +160,16 @@ else
   warn "mysql client not available — skipping connection test"
 fi
 
-# ─── Domain Configuration ────────────────────────────────────────────────────
-header "Domain Configuration"
+# ─── Domain + SSL Configuration ─────────────────────────────────────────────
+header "Domain & SSL Configuration"
 
 read -rp "$(echo -e "${CYAN}Base domain${NC} [vaulthub.live]: ")" input_domain
 BASE_DOMAIN="${input_domain:-vaulthub.live}"
+
+read -rp "$(echo -e "${CYAN}Cloudflare DNS API Token${NC} (for SSL certificates): ")" input_cf_token
+CLOUDFLARE_DNS_API_TOKEN="${input_cf_token:-}"
+[ -z "$CLOUDFLARE_DNS_API_TOKEN" ] && warn "No Cloudflare token — SSL certificates will NOT be provisioned"
+[ -n "$CLOUDFLARE_DNS_API_TOKEN" ] && ok "Cloudflare DNS API token configured"
 
 # ─── Collect Optional Settings ───────────────────────────────────────────────
 header "Optional Configuration"
@@ -210,6 +215,9 @@ cat > .env << ENVEOF
 
 # ─── Domain ─────────────────────────────────────────────────────────────────
 BASE_DOMAIN=${BASE_DOMAIN}
+
+# ─── Cloudflare (SSL via DNS-01 challenge) ──────────────────────────────────
+CLOUDFLARE_DNS_API_TOKEN=${CLOUDFLARE_DNS_API_TOKEN}
 
 # ─── MySQL Cluster (External) ───────────────────────────────────────────────
 MYSQL_HOST=${MYSQL_HOST}
