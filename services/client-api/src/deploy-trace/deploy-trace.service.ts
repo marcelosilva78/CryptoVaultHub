@@ -38,7 +38,7 @@ export class DeployTraceService {
         { headers: this.headers, params, timeout: 10000 },
       );
       return data;
-    } catch (error) {
+    } catch (error: any) {
       if (error.response) {
         throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
       }
@@ -53,7 +53,7 @@ export class DeployTraceService {
         { headers: this.headers, timeout: 10000 },
       );
       return data;
-    } catch (error) {
+    } catch (error: any) {
       if (error.response) {
         throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
       }

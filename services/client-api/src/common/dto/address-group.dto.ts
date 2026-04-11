@@ -7,6 +7,29 @@ import {
   ArrayMinSize,
   ArrayMaxSize,
 } from 'class-validator';
+import { ApiPropertyOptional } from '@nestjs/swagger';
+
+export class ListDeployTracesQueryDto {
+  @ApiPropertyOptional({ type: Number, example: 1 })
+  @IsOptional()
+  @IsInt()
+  page?: number = 1;
+
+  @ApiPropertyOptional({ type: Number, example: 20 })
+  @IsOptional()
+  @IsInt()
+  limit?: number = 20;
+
+  @ApiPropertyOptional({ type: String, example: '1' })
+  @IsOptional()
+  @IsString()
+  chainId?: string;
+
+  @ApiPropertyOptional({ type: String, example: 'forwarder' })
+  @IsOptional()
+  @IsString()
+  resourceType?: string;
+}
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateAddressGroupDto {

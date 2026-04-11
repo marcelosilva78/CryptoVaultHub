@@ -2,27 +2,9 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 
-export interface ExportRequest {
-  exportType: string;
-  format: 'CSV' | 'XLSX' | 'JSON';
-  dateFrom?: string;
-  dateTo?: string;
-}
-
-export interface ExportResult {
-  requestUid: string;
-  status: 'queued' | 'processing' | 'completed' | 'failed';
-  exportType: string;
-  format: string;
-  totalRows?: number;
-  fileSize?: string;
-  downloadUrl?: string;
-  createdAt: string;
-}
-
 @Injectable()
-export class ExportService {
-  private readonly logger = new Logger(ExportService.name);
+export class ExportApiService {
+  private readonly logger = new Logger(ExportApiService.name);
   private readonly cronWorkerUrl: string;
 
   constructor(private readonly configService: ConfigService) {
@@ -36,71 +18,61 @@ export class ExportService {
     return { 'X-Internal-Service-Key': process.env.INTERNAL_SERVICE_KEY || '' };
   }
 
-  async requestExport(
-    clientUid: string,
-    request: ExportRequest,
-  ): Promise<ExportResult> {
+  async createExportRequest(
+    clientId: number,
+    request: { exportType: string; format: string; filters?: any },
+  ) {
     try {
       const response = await axios.post(
         `${this.cronWorkerUrl}/exports`,
-        { clientUid, ...request },
+        { clientId, ...request },
         { headers: this.headers, timeout: 10000 },
       );
       return response.data;
-    } catch (err) {
-      this.logger.error(
-        `Failed to request export: ${(err as Error).message}`,
-      );
-      throw err;
+    } catch (error: any) {
+      this.logger.error(`Failed to create export: ${error?.message}`);
+      throw error;
     }
   }
 
-  async listExports(clientUid: string): Promise<ExportResult[]> {
+  async listExportRequests(
+    clientId: number,
+    params: { page?: number; limit?: number },
+  ) {
     try {
       const response = await axios.get(
         `${this.cronWorkerUrl}/exports`,
-        {
-          headers: this.headers,
-          params: { clientUid },
-          timeout: 10000,
-        },
+        { headers: this.headers, params: { clientId, ...params }, timeout: 10000 },
       );
       return response.data;
-    } catch (err) {
-      this.logger.error(
-        `Failed to list exports: ${(err as Error).message}`,
-      );
-      throw err;
+    } catch (error: any) {
+      this.logger.error(`Failed to list exports: ${error?.message}`);
+      throw error;
     }
   }
 
-  async getExportStatus(requestUid: string): Promise<ExportResult> {
+  async getExportRequest(clientId: number, id: string) {
     try {
       const response = await axios.get(
-        `${this.cronWorkerUrl}/exports/${requestUid}`,
-        { headers: this.headers, timeout: 5000 },
+        `${this.cronWorkerUrl}/exports/${id}`,
+        { headers: this.headers, params: { clientId }, timeout: 10000 },
       );
       return response.data;
-    } catch (err) {
-      this.logger.error(
-        `Failed to get export status: ${(err as Error).message}`,
-      );
-      throw err;
+    } catch (error: any) {
+      this.logger.error(`Failed to get export: ${error?.message}`);
+      throw error;
     }
   }
 
-  async getDownloadUrl(requestUid: string): Promise<{ url: string }> {
-    try {
-      const response = await axios.get(
-        `${this.cronWorkerUrl}/exports/${requestUid}/download`,
-        { headers: this.headers, timeout: 5000 },
-      );
-      return response.data;
-    } catch (err) {
-      this.logger.error(
-        `Failed to get download URL: ${(err as Error).message}`,
-      );
-      throw err;
-    }
+  async downloadExport(clientId: number, id: string) {
+    const response = await axios.get(
+      `${this.cronWorkerUrl}/exports/${id}/download`,
+      {
+        headers: { ...this.headers, 'x-client-id': String(clientId) },
+        timeout: 30000,
+        responseType: 'stream',
+      },
+    );
+    return response.data;
   }
 }

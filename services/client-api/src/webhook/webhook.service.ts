@@ -39,7 +39,7 @@ export class WebhookService {
         { headers: this.headers, timeout: 10000 },
       );
       return result;
-    } catch (error) {
+    } catch (error: any) {
       if (error.response) {
         throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
       }
@@ -61,7 +61,7 @@ export class WebhookService {
         },
       );
       return data;
-    } catch (error) {
+    } catch (error: any) {
       if (error.response) {
         throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
       }
@@ -86,7 +86,7 @@ export class WebhookService {
         { headers: this.headers, timeout: 10000 },
       );
       return result;
-    } catch (error) {
+    } catch (error: any) {
       if (error.response) {
         throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
       }
@@ -105,7 +105,7 @@ export class WebhookService {
         },
       );
       return data;
-    } catch (error) {
+    } catch (error: any) {
       if (error.response) {
         throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
       }
@@ -121,7 +121,7 @@ export class WebhookService {
         { headers: this.headers, timeout: 30000 },
       );
       return data;
-    } catch (error) {
+    } catch (error: any) {
       if (error.response) {
         throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
       }
@@ -144,7 +144,7 @@ export class WebhookService {
         },
       );
       return data;
-    } catch (error) {
+    } catch (error: any) {
       if (error.response) {
         throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
       }
@@ -160,7 +160,7 @@ export class WebhookService {
         { headers: this.headers, timeout: 30000 },
       );
       return data;
-    } catch (error) {
+    } catch (error: any) {
       if (error.response) {
         throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
       }
@@ -178,7 +178,7 @@ export class WebhookService {
         { headers: this.headers, params: { clientId }, timeout: 10000 },
       );
       return data;
-    } catch (error) {
+    } catch (error: any) {
       if (error.response) {
         throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
       }
@@ -197,7 +197,7 @@ export class WebhookService {
         { headers: this.headers, timeout: 30000 },
       );
       return data;
-    } catch (error) {
+    } catch (error: any) {
       if (error.response) {
         throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
       }
@@ -208,14 +208,14 @@ export class WebhookService {
   /**
    * HIGH-3: List dead letter entries for a client.
    */
-  async listDeadLetters(clientId: number, params: { page?: number; limit?: number }) {
+  async listDeadLetters(clientId: number, params: { page?: number; limit?: number; status?: string }) {
     try {
       const { data } = await axios.get(
         `${this.notificationUrl}/webhooks/dead-letters`,
         { headers: this.headers, params: { clientId, ...params }, timeout: 10000 },
       );
       return data;
-    } catch (error) {
+    } catch (error: any) {
       if (error.response) {
         throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
       }
