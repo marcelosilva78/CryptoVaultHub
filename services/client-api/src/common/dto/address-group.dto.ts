@@ -7,7 +7,7 @@ import {
   ArrayMinSize,
   ArrayMaxSize,
 } from 'class-validator';
-import { ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class ListDeployTracesQueryDto {
   @ApiPropertyOptional({ type: Number, example: 1 })
@@ -30,7 +30,6 @@ export class ListDeployTracesQueryDto {
   @IsString()
   resourceType?: string;
 }
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateAddressGroupDto {
   @ApiProperty({

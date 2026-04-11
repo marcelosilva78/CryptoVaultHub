@@ -26,7 +26,7 @@ export class PostHogInterceptor implements NestInterceptor {
     }
   }
 
-  intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
+  intercept(context: ExecutionContext, next: CallHandler): any {
     if (!this.posthog) return next.handle();
 
     const start = Date.now();
