@@ -611,7 +611,7 @@ services:
     restart: unless-stopped
 
   clickhouse:
-    image: clickhouse/clickhouse-server:23.12
+    image: clickhouse/clickhouse-server:24.3
     volumes:
       - /docker/data/clickhouse:/var/lib/clickhouse
       - ./infra/clickhouse/clickhouse-config.xml:/etc/clickhouse-server/config.d/posthog.xml:ro
