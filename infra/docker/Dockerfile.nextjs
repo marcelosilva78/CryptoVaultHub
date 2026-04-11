@@ -5,7 +5,7 @@ COPY packages/ ./packages/
 ARG APP_PATH
 COPY ${APP_PATH}/ ./${APP_PATH}/
 RUN npm ci
-RUN npx turbo build --filter=${APP_PATH}
+RUN npx turbo build --filter=./${APP_PATH}
 
 FROM node:20-alpine AS runner
 WORKDIR /app
