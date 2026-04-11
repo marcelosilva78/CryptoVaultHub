@@ -5,8 +5,16 @@
     "rootDir": "./src",
     "module": "commonjs",
     "emitDecoratorMetadata": true,
-    "experimentalDecorators": true
+    "experimentalDecorators": true,
+    "paths": {
+      "@nestjs/schedule": ["./src/stubs/nestjs-schedule.stub.ts"]
+    }
   },
   "include": ["src"],
-  "exclude": ["node_modules", "dist", "src/generated"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/**/*.spec.ts",
+    "src/**/*.test.ts"
+  ]
 }

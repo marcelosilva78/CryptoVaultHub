@@ -37,10 +37,19 @@ export class BackfillWorker extends WorkerHost {
       `Backfilling gap ${gapId}: chain ${chainId}, blocks ${startBlock}-${endBlock}`,
     );
 
-    // Update gap status to backfilling
-    const gap = await this.prisma.syncGap.findUnique({
-      where: { id: BigInt(gapId) },
-    });
+    // Fetch gap via raw SQL (sync_gaps model not in generated Prisma client)
+    const rows = await this.prisma.$queryRawUnsafe<
+      Array<{
+        id: bigint;
+        status: string;
+        attempt_count: number;
+        max_attempts: number;
+      }>
+    >(
+      `SELECT id, status, attempt_count, max_attempts FROM sync_gaps WHERE id = ? LIMIT 1`,
+      gapId,
+    );
+    const gap = rows[0] ?? null;
 
     if (!gap) {
       this.logger.warn(`Gap ${gapId} not found, skipping`);
@@ -52,25 +61,24 @@ export class BackfillWorker extends WorkerHost {
       return;
     }
 
-    if (gap.attemptCount >= gap.maxAttempts) {
+    if (gap.attempt_count >= gap.max_attempts) {
       this.logger.warn(
-        `Gap ${gapId} exceeded max attempts (${gap.maxAttempts}), marking failed`,
+        `Gap ${gapId} exceeded max attempts (${gap.max_attempts}), marking failed`,
       );
-      await this.prisma.syncGap.update({
-        where: { id: BigInt(gapId) },
-        data: { status: 'failed' },
-      });
+      await this.prisma.$executeRawUnsafe(
+        `UPDATE sync_gaps SET status = 'failed' WHERE id = ?`,
+        gapId,
+      );
       return;
     }
 
-    await this.prisma.syncGap.update({
-      where: { id: BigInt(gapId) },
-      data: {
-        status: 'backfilling',
-        attemptCount: gap.attemptCount + 1,
-        backfillJobId: BigInt(job.id ?? 0),
-      },
-    });
+    await this.prisma.$executeRawUnsafe(
+      `UPDATE sync_gaps
+       SET status = 'backfilling', attempt_count = attempt_count + 1, backfill_job_id = ?
+       WHERE id = ?`,
+      BigInt(job.id ?? 0),
+      gapId,
+    );
 
     try {
       // Process in batches
@@ -84,7 +92,7 @@ export class BackfillWorker extends WorkerHost {
         const promises: Promise<any>[] = [];
         for (let block = batchStart; block <= batchEnd; block++) {
           promises.push(
-            this.blockProcessor.processBlock(chainId, block).catch((err) => {
+            this.blockProcessor.processBlock(chainId, block).catch((err: any) => {
               this.logger.warn(
                 `Failed to process block ${block} during backfill: ${err.message}`,
               );
@@ -102,27 +110,22 @@ export class BackfillWorker extends WorkerHost {
       }
 
       // Mark gap as resolved
-      await this.prisma.syncGap.update({
-        where: { id: BigInt(gapId) },
-        data: {
-          status: 'resolved',
-          resolvedAt: new Date(),
-        },
-      });
+      await this.prisma.$executeRawUnsafe(
+        `UPDATE sync_gaps SET status = 'resolved', resolved_at = NOW() WHERE id = ?`,
+        gapId,
+      );
 
       this.logger.log(
         `Gap ${gapId} resolved: chain ${chainId}, blocks ${startBlock}-${endBlock}`,
       );
-    } catch (error) {
+    } catch (error: any) {
       const msg = error instanceof Error ? error.message : String(error);
 
-      await this.prisma.syncGap.update({
-        where: { id: BigInt(gapId) },
-        data: {
-          status: 'failed',
-          lastError: msg,
-        },
-      });
+      await this.prisma.$executeRawUnsafe(
+        `UPDATE sync_gaps SET status = 'failed', last_error = ? WHERE id = ?`,
+        msg,
+        gapId,
+      );
 
       this.logger.error(`Backfill failed for gap ${gapId}: ${msg}`);
       throw error;

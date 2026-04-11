@@ -89,7 +89,7 @@ export class FlushService {
 
     // Create the operation and items in a transaction
     const operation = await this.prisma.$transaction(async (tx) => {
-      const op = await tx.flushOperation.create({
+      const op = await (tx as any).flushOperation.create({
         data: {
           operationUid,
           clientId: BigInt(dto.clientId),
@@ -109,7 +109,7 @@ export class FlushService {
       });
 
       // Create flush items
-      await tx.flushItem.createMany({
+      await (tx as any).flushItem.createMany({
         data: depositAddresses.map((da) => ({
           operationId: op.id,
           depositAddressId: da.id,
@@ -162,17 +162,17 @@ export class FlushService {
     if (params.chainId) where.chainId = params.chainId;
 
     const [operations, total] = await Promise.all([
-      this.prisma.flushOperation.findMany({
+      (this.prisma as any).flushOperation.findMany({
         where,
         orderBy: { createdAt: 'desc' },
         skip,
         take: limit,
       }),
-      this.prisma.flushOperation.count({ where }),
+      (this.prisma as any).flushOperation.count({ where }),
     ]);
 
     return {
-      operations: operations.map((op) => this.serializeOperation(op)),
+      operations: operations.map((op: any) => this.serializeOperation(op)),
       meta: { page, limit, total, totalPages: Math.ceil(total / limit) },
     };
   }
@@ -181,7 +181,7 @@ export class FlushService {
    * Get a single operation with its items.
    */
   async getOperation(clientId: number, operationId: number) {
-    const operation = await this.prisma.flushOperation.findFirst({
+    const operation = await (this.prisma as any).flushOperation.findFirst({
       where: {
         id: BigInt(operationId),
         clientId: BigInt(clientId),
@@ -196,7 +196,7 @@ export class FlushService {
 
     return {
       ...this.serializeOperation(operation),
-      items: operation.items.map((item) => ({
+      items: operation.items.map((item: any) => ({
         id: Number(item.id),
         depositAddressId: Number(item.depositAddressId),
         address: item.address,
@@ -216,7 +216,7 @@ export class FlushService {
    * Cancel a pending flush operation.
    */
   async cancelOperation(clientId: number, operationId: number) {
-    const operation = await this.prisma.flushOperation.findFirst({
+    const operation = await (this.prisma as any).flushOperation.findFirst({
       where: {
         id: BigInt(operationId),
         clientId: BigInt(clientId),
@@ -234,11 +234,11 @@ export class FlushService {
     }
 
     await this.prisma.$transaction([
-      this.prisma.flushOperation.update({
+      (this.prisma as any).flushOperation.update({
         where: { id: BigInt(operationId) },
         data: { status: 'canceled', completedAt: new Date() },
       }),
-      this.prisma.flushItem.updateMany({
+      (this.prisma as any).flushItem.updateMany({
         where: {
           operationId: BigInt(operationId),
           status: 'pending',

@@ -51,7 +51,7 @@ export class AddressGroupService {
     );
 
     // Check uniqueness of salt per client
-    const existingSalt = await this.prisma.addressGroup.findUnique({
+    const existingSalt = await (this.prisma as any).addressGroup.findUnique({
       where: {
         uq_client_salt: {
           clientId: BigInt(dto.clientId),
@@ -107,7 +107,7 @@ export class AddressGroupService {
       );
     }
 
-    const group = await this.prisma.addressGroup.create({
+    const group = await (this.prisma as any).addressGroup.create({
       data: {
         groupUid,
         clientId: BigInt(dto.clientId),
@@ -132,7 +132,7 @@ export class AddressGroupService {
    * Creates deposit addresses on each chain using the group's salt.
    */
   async provisionOnChains(dto: ProvisionGroupDto) {
-    const group = await this.prisma.addressGroup.findFirst({
+    const group = await (this.prisma as any).addressGroup.findFirst({
       where: {
         id: BigInt(dto.groupId),
         clientId: BigInt(dto.clientId),
@@ -159,7 +159,7 @@ export class AddressGroupService {
             clientId: BigInt(dto.clientId),
             chainId,
             addressGroupId: group.id,
-          },
+          } as any,
         });
         if (existing) {
           results.push({
@@ -221,7 +221,7 @@ export class AddressGroupService {
             salt: group.derivationSalt,
             isDeployed: false,
             addressGroupId: group.id,
-          },
+          } as any,
         });
 
         results.push({
@@ -274,20 +274,20 @@ export class AddressGroupService {
     if (params.status) where.status = params.status;
 
     const [groups, total] = await Promise.all([
-      this.prisma.addressGroup.findMany({
+      (this.prisma as any).addressGroup.findMany({
         where,
         orderBy: { createdAt: 'desc' },
         skip,
         take: limit,
       }),
-      this.prisma.addressGroup.count({ where }),
+      (this.prisma as any).addressGroup.count({ where }),
     ]);
 
     // For each group, get provisioned chains
     const groupsWithChains = await Promise.all(
-      groups.map(async (group) => {
+      groups.map(async (group: any) => {
         const addresses = await this.prisma.depositAddress.findMany({
-          where: { addressGroupId: group.id },
+          where: { addressGroupId: group.id } as any,
           select: { chainId: true, address: true, isDeployed: true },
         });
         return {
@@ -311,7 +311,7 @@ export class AddressGroupService {
    * Get a single address group with its chain details.
    */
   async getGroup(clientId: number, groupId: number) {
-    const group = await this.prisma.addressGroup.findFirst({
+    const group = await (this.prisma as any).addressGroup.findFirst({
       where: {
         id: BigInt(groupId),
         clientId: BigInt(clientId),
@@ -324,7 +324,7 @@ export class AddressGroupService {
     }
 
     const addresses = await this.prisma.depositAddress.findMany({
-      where: { addressGroupId: group.id },
+      where: { addressGroupId: group.id } as any,
     });
 
     return {

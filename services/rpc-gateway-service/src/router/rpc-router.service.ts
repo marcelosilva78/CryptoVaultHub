@@ -57,18 +57,14 @@ export class RpcRouterService {
 
     for (const node of nodes) {
       // Check circuit breaker
-      const circuitOpen = await this.circuitBreaker.isOpen(node.id);
-      if (circuitOpen) {
+      const circuitAllowed = this.circuitBreaker.isAllowed(node.id.toString());
+      if (!circuitAllowed) {
         this.logger.debug(`Node ${node.id} skipped: circuit open`);
         continue;
       }
 
-      // Check rate limits
-      const withinLimits = await this.rateLimiter.checkLimit(
-        node.id,
-        node.maxRequestsPerSecond,
-        node.maxRequestsPerMinute,
-      );
+      // Check rate limits (also records the usage atomically)
+      const withinLimits = await this.rateLimiter.checkAndRecord(node.id);
       if (!withinLimits) {
         this.logger.debug(`Node ${node.id} skipped: rate limited`);
         continue;
@@ -110,14 +106,10 @@ export class RpcRouterService {
       let selectedNode: RpcNode | null = null;
 
       for (const node of nodes) {
-        const circuitOpen = await this.circuitBreaker.isOpen(node.id);
-        if (circuitOpen) continue;
+        const circuitAllowed = this.circuitBreaker.isAllowed(node.id.toString());
+        if (!circuitAllowed) continue;
 
-        const withinLimits = await this.rateLimiter.checkLimit(
-          node.id,
-          node.maxRequestsPerSecond,
-          node.maxRequestsPerMinute,
-        );
+        const withinLimits = await this.rateLimiter.checkAndRecord(node.id);
         if (!withinLimits) continue;
 
         selectedNode = node;
@@ -132,9 +124,8 @@ export class RpcRouterService {
 
       try {
         const result = await this.callNode(selectedNode, method, params);
-        // Record success
-        await this.rateLimiter.recordUsage(selectedNode.id);
-        await this.circuitBreaker.recordSuccess(selectedNode.id);
+        // Record success in circuit breaker (rate usage already recorded by checkAndRecord)
+        this.circuitBreaker.recordSuccess(selectedNode.id.toString());
         return result;
       } catch (err) {
         lastError = err as Error;
@@ -142,9 +133,8 @@ export class RpcRouterService {
           `RPC call failed on node ${selectedNode.id} (attempt ${attempt + 1}/${MAX_RETRIES}): ${lastError.message}`,
         );
 
-        // Record failure
-        await this.circuitBreaker.recordFailure(selectedNode.id);
-        await this.rateLimiter.recordUsage(selectedNode.id);
+        // Record failure in circuit breaker
+        this.circuitBreaker.recordFailure(selectedNode.id.toString());
 
         // Update consecutive failures in DB
         await this.prisma.rpcNode.update({

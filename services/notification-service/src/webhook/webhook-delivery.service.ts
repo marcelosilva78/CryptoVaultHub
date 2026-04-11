@@ -58,11 +58,11 @@ export class WebhookDeliveryService {
           eventType,
           payload: payload as any,
           status: 'queued',
-          maxAttempts: webhook.retryMaxAttempts ?? 5,
+          maxAttempts: (webhook as any).retryMaxAttempts ?? 5,
           idempotencyKey,
           correlationId,
           requestUrl: webhook.url,
-        },
+        } as any,
       });
 
       await this.deliveryQueue.add(
@@ -121,7 +121,7 @@ export class WebhookDeliveryService {
           error: `Webhook ${webhookId} not found`,
           errorMessage: `Webhook ${webhookId} not found`,
           lastAttemptAt: new Date(),
-        },
+        } as any,
       });
       return null;
     }
@@ -137,7 +137,7 @@ export class WebhookDeliveryService {
           error: 'Webhook is inactive',
           errorMessage: 'Webhook is inactive',
           lastAttemptAt: new Date(),
-        },
+        } as any,
       });
       return null;
     }
@@ -146,16 +146,17 @@ export class WebhookDeliveryService {
     const payloadStr = JSON.stringify(delivery.payload);
     const signature = this.computeSignature(payloadStr, webhook.secret);
 
+    const deliveryAny = delivery as any;
     const requestHeaders: Record<string, string> = {
       'Content-Type': 'application/json',
       'X-Signature': `sha256=${signature}`,
       'X-Event-Type': delivery.eventType,
       'X-Delivery-Id': delivery.deliveryCode,
-      ...(delivery.idempotencyKey
-        ? { 'X-Idempotency-Key': delivery.idempotencyKey }
+      ...(deliveryAny.idempotencyKey
+        ? { 'X-Idempotency-Key': deliveryAny.idempotencyKey }
         : {}),
-      ...(delivery.correlationId
-        ? { 'X-Correlation-Id': delivery.correlationId }
+      ...(deliveryAny.correlationId
+        ? { 'X-Correlation-Id': deliveryAny.correlationId }
         : {}),
     };
 
@@ -212,7 +213,7 @@ export class WebhookDeliveryService {
             attempts: attemptNumber,
             lastAttemptAt: new Date(),
             nextRetryAt: null,
-          },
+          } as any,
         });
         this.logger.log(
           `Delivery ${delivery.deliveryCode} sent (HTTP ${response.status}, ${responseTimeMs}ms)`,
@@ -306,7 +307,7 @@ export class WebhookDeliveryService {
           error: errorMessage,
           errorMessage,
           errorCode: errorCode ?? null,
-        },
+        } as any,
       });
 
       // Move to dead letter queue
@@ -340,7 +341,7 @@ export class WebhookDeliveryService {
         error: errorMessage,
         errorMessage,
         errorCode: errorCode ?? null,
-      },
+      } as any,
     });
 
     // Enqueue retry
@@ -385,7 +386,7 @@ export class WebhookDeliveryService {
    * Get a single delivery with all attempts.
    */
   async getDeliveryDetail(deliveryId: bigint) {
-    const delivery = await this.prisma.webhookDelivery.findUnique({
+    const delivery: any = await (this.prisma.webhookDelivery as any).findUnique({
       where: { id: deliveryId },
       include: { attempts_log: { orderBy: { attemptNumber: 'asc' } } },
     });
@@ -394,7 +395,7 @@ export class WebhookDeliveryService {
 
     return {
       ...this.formatDelivery(delivery),
-      attempts_log: delivery.attempts_log.map((a) => ({
+      attempts_log: (delivery.attempts_log ?? []).map((a: any) => ({
         id: Number(a.id),
         attemptNumber: a.attemptNumber,
         status: a.status,

@@ -52,16 +52,11 @@ export class ExportManagementController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async createExport(@Body() dto: CreateAdminExportDto, @Req() req: Request) {
-    const user = (req as any).user;
-    const result = await this.exportService.createExportRequest(
-      Number(user.userId),
-      {
-        exportType: dto.exportType,
-        format: dto.format,
-        filters: dto.filters,
-        clientId: dto.clientId,
-      },
-    );
+    const result = await this.exportService.requestExport({
+      exportType: dto.exportType,
+      format: dto.format as 'CSV' | 'XLSX' | 'JSON',
+      clientUid: dto.clientId !== undefined ? String(dto.clientId) : undefined,
+    });
     return { success: true, ...result };
   }
 
@@ -78,12 +73,10 @@ export class ExportManagementController {
     description: 'Export requests retrieved.',
   })
   async listExports(@Query() query: ListExportsQueryDto) {
-    const result = await this.exportService.listExportRequests({
-      page: query.page ?? 1,
-      limit: query.limit ?? 20,
-      clientId: query.clientId,
+    const result = await this.exportService.listExports({
+      clientUid: query.clientId !== undefined ? String(query.clientId) : undefined,
     });
-    return { success: true, ...result };
+    return { success: true, items: result };
   }
 
   @Get(':id')
@@ -96,7 +89,7 @@ export class ExportManagementController {
   @ApiResponse({ status: 200, description: 'Export request details.' })
   @ApiResponse({ status: 404, description: 'Export request not found.' })
   async getExport(@Param('id') id: string) {
-    const request = await this.exportService.getExportRequest(id);
+    const request = await this.exportService.getExportStatus(id);
     return { success: true, request };
   }
 
@@ -110,7 +103,11 @@ export class ExportManagementController {
   @ApiResponse({ status: 200, description: 'File download stream.' })
   @ApiResponse({ status: 404, description: 'Export file not found or expired.' })
   async downloadExport(@Param('id') id: string, @Res() res: Response) {
-    const stream = await this.exportService.downloadExport(id);
-    stream.pipe(res);
+    const exportRecord = await this.exportService.getExportStatus(id);
+    if (!exportRecord.downloadUrl) {
+      res.status(404).json({ success: false, message: 'Export file not ready or not found.' });
+      return;
+    }
+    res.redirect(exportRecord.downloadUrl);
   }
 }

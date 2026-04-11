@@ -16,10 +16,10 @@ export interface SanctionsSyncResult {
 }
 
 interface ParsedSanctionEntry {
-  entityId: string;
+  sdnId: string;
   entityName: string;
-  address: string;
-  addressType: string;
+  cryptoAddress: string;
+  currency: string;
 }
 
 /**
@@ -113,8 +113,7 @@ export class SanctionsListSyncService extends WorkerHost implements OnModuleInit
     // Use staging approach to avoid deactivate-all window vulnerability:
     // 1. Upsert all new entries (set isActive: true)
     // 2. After all upserts, deactivate entries NOT in the new list
-    const newAddresses = entries.map(e => e.address.toLowerCase());
-    const now = new Date();
+    const newAddresses = entries.map(e => e.cryptoAddress.toLowerCase());
 
     // Upsert each entry within a transaction
     try {
@@ -122,26 +121,24 @@ export class SanctionsListSyncService extends WorkerHost implements OnModuleInit
         entries.map(entry =>
           this.prisma.sanctionsEntry.upsert({
             where: {
-              listSource_address: {
+              uq_list_address: {
                 listSource: 'OFAC_SDN',
-                address: entry.address.toLowerCase(),
+                cryptoAddress: entry.cryptoAddress.toLowerCase(),
               },
             },
             update: {
               isActive: true,
               entityName: entry.entityName,
-              entityId: entry.entityId,
-              addressType: entry.addressType,
-              lastSyncedAt: now,
+              sdnId: entry.sdnId,
+              currency: entry.currency,
             },
             create: {
               listSource: 'OFAC_SDN',
-              address: entry.address.toLowerCase(),
-              addressType: entry.addressType,
+              cryptoAddress: entry.cryptoAddress.toLowerCase(),
+              currency: entry.currency,
               entityName: entry.entityName,
-              entityId: entry.entityId,
+              sdnId: entry.sdnId,
               isActive: true,
-              lastSyncedAt: now,
             },
           }),
         ),
@@ -158,7 +155,7 @@ export class SanctionsListSyncService extends WorkerHost implements OnModuleInit
       const deactivateResult = await this.prisma.sanctionsEntry.updateMany({
         where: {
           listSource: 'OFAC_SDN',
-          address: { notIn: newAddresses },
+          cryptoAddress: { notIn: newAddresses },
           isActive: true,
         },
         data: { isActive: false },
@@ -227,12 +224,12 @@ export class SanctionsListSyncService extends WorkerHost implements OnModuleInit
             const address = id.idNumber ?? id.idValue ?? '';
 
             if (address) {
-              const currency = id.idCountry ?? id.currency ?? 'Unknown';
+              const currencyVal = id.idCountry ?? id.currency ?? 'Unknown';
               entries.push({
-                entityId: sdnId,
+                sdnId,
                 entityName,
-                address: address.trim(),
-                addressType: typeof currency === 'string' ? currency : 'Unknown',
+                cryptoAddress: address.trim(),
+                currency: typeof currencyVal === 'string' ? currencyVal : 'Unknown',
               });
             }
           }

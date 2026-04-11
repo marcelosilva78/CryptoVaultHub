@@ -26,7 +26,7 @@ export class FlushController {
     // If not a dry run, queue the execution
     if (!dto.isDryRun) {
       // Fire and forget — orchestrator runs async
-      this.orchestrator.executeOperation(result.id).catch((err) => {
+      this.orchestrator.executeFlush(dto.clientId, dto.chainId).catch((_err: any) => {
         // Logged inside orchestrator
       });
     }

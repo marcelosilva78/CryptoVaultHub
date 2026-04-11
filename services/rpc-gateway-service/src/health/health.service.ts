@@ -177,7 +177,7 @@ export class HealthService {
     return nodes.map((node) => ({
       nodeId: node.id.toString(),
       providerId: node.providerId.toString(),
-      providerName: node.provider.name,
+      providerName: node.provider?.name ?? 'unknown',
       chainId: node.chainId,
       endpointUrl: node.endpointUrl,
       status: node.status,

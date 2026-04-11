@@ -17,29 +17,59 @@ export class DeadLetterService {
   ) {}
 
   /**
-   * List all dead-lettered deliveries for a webhook.
+   * Move a delivery to dead letter status by recording it.
    */
-  async listDeadLetters(webhookId: number) {
-    const deliveries = await this.prisma.webhookDelivery.findMany({
-      where: {
-        webhookId: BigInt(webhookId),
-        status: 'failed',
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 100,
-    });
+  async deadLetter(deliveryId: bigint, errorMessage: string): Promise<void> {
+    this.logger.warn(
+      `Dead-lettering delivery ${deliveryId}: ${errorMessage}`,
+    );
+    // The delivery status is already set to 'failed' by the caller.
+    // This method is a hook for additional dead-letter bookkeeping (e.g. WebhookDeadLetter table).
+  }
 
-    return deliveries.map((d) => ({
-      id: Number(d.id),
-      deliveryCode: d.deliveryCode,
-      webhookId: Number(d.webhookId),
-      eventType: d.eventType,
-      attempts: d.attempts,
-      maxAttempts: d.maxAttempts,
-      error: d.error,
-      lastAttemptAt: d.lastAttemptAt,
-      createdAt: d.createdAt,
-    }));
+  /**
+   * List all dead-lettered deliveries for a client with optional pagination and status filter.
+   */
+  async listDeadLetters(
+    clientId: bigint,
+    options?: { page?: number; limit?: number; status?: string },
+  ) {
+    const page = options?.page ?? 1;
+    const limit = Math.min(options?.limit ?? 20, 100);
+    const skip = (page - 1) * limit;
+
+    const where: any = {
+      clientId,
+      status: options?.status ?? 'failed',
+    };
+
+    const [deliveries, total] = await Promise.all([
+      this.prisma.webhookDelivery.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.webhookDelivery.count({ where }),
+    ]);
+
+    return {
+      data: deliveries.map((d) => ({
+        id: Number(d.id),
+        deliveryCode: d.deliveryCode,
+        webhookId: Number(d.webhookId),
+        clientId: Number(d.clientId),
+        eventType: d.eventType,
+        attempts: d.attempts,
+        maxAttempts: d.maxAttempts,
+        error: d.error,
+        lastAttemptAt: d.lastAttemptAt,
+        createdAt: d.createdAt,
+      })),
+      total,
+      page,
+      limit,
+    };
   }
 
   /**

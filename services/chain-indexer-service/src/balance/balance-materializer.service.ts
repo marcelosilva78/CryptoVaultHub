@@ -1,10 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Prisma } from '../generated/prisma-client';
 import { PrismaService } from '../prisma/prisma.service';
 
 /**
  * Computes materialized balances by summing inbound/outbound events
  * per (address, token) for finalized blocks.
+ *
+ * NOTE: Uses raw SQL because indexed_events and materialized_balances models
+ * are not yet reflected in the generated Prisma client. Run `prisma generate`
+ * after schema migrations to re-enable typed ORM access.
  */
 @Injectable()
 export class BalanceMaterializerService {
@@ -19,26 +22,30 @@ export class BalanceMaterializerService {
     chainId: number,
     upToBlock: number,
   ): Promise<number> {
-    // Get all finalized events that need balance computation
-    const events = await this.prisma.indexedEvent.findMany({
-      where: {
-        chainId,
-        blockNumber: { lte: BigInt(upToBlock) },
-        processedAt: { not: null },
-        eventType: { in: ['erc20_transfer', 'native_transfer'] },
-      },
-      select: {
-        toAddress: true,
-        fromAddress: true,
-        tokenId: true,
-        amount: true,
-        clientId: true,
-        projectId: true,
-        walletId: true,
-        isInbound: true,
-        blockNumber: true,
-      },
-    });
+    // Get all finalized events that need balance computation via raw SQL
+    const events = await this.prisma.$queryRawUnsafe<
+      Array<{
+        to_address: string | null;
+        from_address: string | null;
+        token_id: bigint | null;
+        amount: string | null;
+        client_id: bigint | null;
+        project_id: bigint | null;
+        wallet_id: bigint | null;
+        is_inbound: boolean | null;
+        block_number: bigint;
+      }>
+    >(
+      `SELECT to_address, from_address, token_id, amount, client_id, project_id,
+              wallet_id, is_inbound, block_number
+       FROM indexed_events
+       WHERE chain_id = ?
+         AND block_number <= ?
+         AND processed_at IS NOT NULL
+         AND event_type IN ('erc20_transfer', 'native_transfer')`,
+      chainId,
+      BigInt(upToBlock),
+    );
 
     if (events.length === 0) return 0;
 
@@ -59,83 +66,75 @@ export class BalanceMaterializerService {
     for (const event of events) {
       if (!event.amount) continue;
 
-      const amount = BigInt(event.amount.toString());
+      const amount = BigInt(event.amount);
 
       // Process inbound (to_address receives)
-      if (event.toAddress && event.isInbound) {
-        const key = `${event.toAddress.toLowerCase()}:${event.tokenId ?? 'native'}`;
+      if (event.to_address && event.is_inbound) {
+        const key = `${event.to_address.toLowerCase()}:${event.token_id ?? 'native'}`;
         const existing = balanceMap.get(key);
         if (existing) {
           existing.netAmount += amount;
-          if (event.blockNumber > existing.lastBlock) {
-            existing.lastBlock = event.blockNumber;
+          if (event.block_number > existing.lastBlock) {
+            existing.lastBlock = event.block_number;
           }
         } else {
           balanceMap.set(key, {
-            address: event.toAddress.toLowerCase(),
-            tokenId: event.tokenId,
-            clientId: event.clientId!,
-            projectId: event.projectId,
-            walletId: event.walletId,
+            address: event.to_address.toLowerCase(),
+            tokenId: event.token_id,
+            clientId: event.client_id!,
+            projectId: event.project_id,
+            walletId: event.wallet_id,
             netAmount: amount,
-            lastBlock: event.blockNumber,
+            lastBlock: event.block_number,
           });
         }
       }
 
       // Process outbound (from_address sends)
-      if (event.fromAddress && !event.isInbound) {
-        const key = `${event.fromAddress.toLowerCase()}:${event.tokenId ?? 'native'}`;
+      if (event.from_address && !event.is_inbound) {
+        const key = `${event.from_address.toLowerCase()}:${event.token_id ?? 'native'}`;
         const existing = balanceMap.get(key);
         if (existing) {
           existing.netAmount -= amount;
-          if (event.blockNumber > existing.lastBlock) {
-            existing.lastBlock = event.blockNumber;
+          if (event.block_number > existing.lastBlock) {
+            existing.lastBlock = event.block_number;
           }
-        } else if (event.clientId) {
+        } else if (event.client_id) {
           balanceMap.set(key, {
-            address: event.fromAddress.toLowerCase(),
-            tokenId: event.tokenId,
-            clientId: event.clientId,
-            projectId: event.projectId,
-            walletId: event.walletId,
+            address: event.from_address.toLowerCase(),
+            tokenId: event.token_id,
+            clientId: event.client_id,
+            projectId: event.project_id,
+            walletId: event.wallet_id,
             netAmount: -amount,
-            lastBlock: event.blockNumber,
+            lastBlock: event.block_number,
           });
         }
       }
     }
 
-    // Upsert materialized balances
+    // Upsert materialized balances via raw SQL
     let updated = 0;
     for (const entry of balanceMap.values()) {
       if (!entry.clientId) continue;
 
-      await this.prisma.materializedBalance.upsert({
-        where: {
-          uq_chain_addr_token: {
-            chainId,
-            address: entry.address,
-            tokenId: entry.tokenId,
-          },
-        },
-        update: {
-          balance: new Prisma.Decimal(entry.netAmount.toString()),
-          lastUpdatedBlock: entry.lastBlock,
-          lastUpdatedAt: new Date(),
-        },
-        create: {
-          chainId,
-          address: entry.address,
-          tokenId: entry.tokenId,
-          clientId: entry.clientId,
-          projectId: entry.projectId ?? BigInt(0),
-          walletId: entry.walletId,
-          balance: new Prisma.Decimal(entry.netAmount.toString()),
-          lastUpdatedBlock: entry.lastBlock,
-          lastUpdatedAt: new Date(),
-        },
-      });
+      await this.prisma.$executeRawUnsafe(
+        `INSERT INTO materialized_balances
+           (chain_id, address, token_id, client_id, project_id, wallet_id, balance, last_updated_block, last_updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
+         ON DUPLICATE KEY UPDATE
+           balance = VALUES(balance),
+           last_updated_block = VALUES(last_updated_block),
+           last_updated_at = NOW()`,
+        chainId,
+        entry.address,
+        entry.tokenId,
+        entry.clientId,
+        entry.projectId ?? BigInt(0),
+        entry.walletId,
+        entry.netAmount.toString(),
+        entry.lastBlock,
+      );
       updated++;
     }
 

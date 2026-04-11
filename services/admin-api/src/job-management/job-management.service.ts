@@ -4,27 +4,142 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
-import {
-  JobOrchestratorService,
-  JobMonitorService,
-} from '@cvh/job-client';
-import type {
-  Job,
-  JobWithAttempts,
-  DeadLetterJob,
-  QueueStats,
-  PaginatedResult,
-  ListJobsFilter,
-  ListDeadLetterFilter,
-} from '@cvh/job-client';
+
+// ── Inline type definitions (mirrors @cvh/job-client types) ──────────────────
+
+export type JobStatus =
+  | 'pending'
+  | 'queued'
+  | 'processing'
+  | 'completed'
+  | 'failed'
+  | 'dead_letter'
+  | 'canceled';
+
+export type JobPriority = 'critical' | 'standard' | 'bulk';
+export type BackoffType = 'exponential' | 'linear' | 'fixed';
+export type AttemptStatus = 'processing' | 'completed' | 'failed';
+export type DeadLetterStatus = 'pending_review' | 'reprocessed' | 'discarded';
+
+export interface Job {
+  id: string;
+  jobUid: string;
+  queueName: string;
+  jobType: string;
+  priority: JobPriority;
+  status: JobStatus;
+  clientId: string | null;
+  projectId: string | null;
+  chainId: number | null;
+  payload: Record<string, unknown>;
+  result: Record<string, unknown> | null;
+  correlationId: string | null;
+  parentJobId: string | null;
+  maxAttempts: number;
+  attemptCount: number;
+  backoffType: BackoffType;
+  backoffDelayMs: number;
+  timeoutMs: number;
+  scheduledAt: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  failedAt: string | null;
+  nextRetryAt: string | null;
+  lockedBy: string | null;
+  lockedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface JobAttempt {
+  id: string;
+  jobId: string;
+  attemptNumber: number;
+  status: AttemptStatus;
+  workerId: string | null;
+  startedAt: string;
+  completedAt: string | null;
+  durationMs: number | null;
+  errorMessage: string | null;
+  errorStack: string | null;
+  result: Record<string, unknown> | null;
+}
+
+export interface DeadLetterJob {
+  id: string;
+  originalJobId: string;
+  jobUid: string;
+  queueName: string;
+  jobType: string;
+  clientId: string | null;
+  projectId: string | null;
+  payload: Record<string, unknown>;
+  lastError: string | null;
+  totalAttempts: number;
+  deadLetteredAt: string;
+  reprocessedAt: string | null;
+  reprocessedJobId: string | null;
+  status: DeadLetterStatus;
+  reviewedBy: string | null;
+  reviewNotes: string | null;
+}
+
+export interface JobWithAttempts extends Job {
+  attempts: JobAttempt[];
+}
+
+export interface ListJobsFilter {
+  status?: JobStatus;
+  jobType?: string;
+  queueName?: string;
+  clientId?: string | number;
+  projectId?: string | number;
+  chainId?: number;
+  dateFrom?: string;
+  dateTo?: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface ListDeadLetterFilter {
+  status?: DeadLetterStatus;
+  jobType?: string;
+  clientId?: string | number;
+  page?: number;
+  limit?: number;
+}
+
+export interface PaginatedResult<T> {
+  items: T[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface QueueStats {
+  totalJobs: number;
+  pendingCount: number;
+  queuedCount: number;
+  processingCount: number;
+  completedCount: number;
+  failedCount: number;
+  deadLetterCount: number;
+  canceledCount: number;
+  avgDurationMs: number | null;
+  stuckCount: number;
+  jobsByType: Array<{ jobType: string; count: number }>;
+  jobsByQueue: Array<{ queueName: string; count: number }>;
+}
+
+// ── Service ───────────────────────────────────────────────────────────────────
 
 @Injectable()
 export class JobManagementService {
   private readonly logger = new Logger(JobManagementService.name);
 
   constructor(
-    private readonly orchestrator: JobOrchestratorService,
-    private readonly monitor: JobMonitorService,
+    private readonly orchestrator: any,
+    private readonly monitor: any,
   ) {}
 
   async listJobs(filters: ListJobsFilter): Promise<PaginatedResult<Job>> {

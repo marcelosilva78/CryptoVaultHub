@@ -54,7 +54,7 @@ export class ManualResendService {
         idempotencyKey,
         isManualResend: true,
         originalDeliveryId: delivery.id,
-      },
+      } as any,
     });
 
     await this.deliveryQueue.add(

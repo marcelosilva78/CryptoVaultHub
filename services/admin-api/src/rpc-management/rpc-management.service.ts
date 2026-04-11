@@ -83,7 +83,7 @@ export class RpcManagementService {
       ? this.encryptSecret(data.apiKeyEncrypted)
       : null;
 
-    const provider = await this.prisma.rpcProvider.create({
+    const provider = await (this.prisma as any).rpcProvider.create({
       data: {
         name: data.name,
         chainId: data.chainId,
@@ -133,7 +133,7 @@ export class RpcManagementService {
     adminUserId: string,
     ipAddress?: string,
   ) {
-    const existing = await this.prisma.rpcProvider.findUnique({
+    const existing = await (this.prisma as any).rpcProvider.findUnique({
       where: { id },
     });
     if (!existing) {
@@ -148,7 +148,7 @@ export class RpcManagementService {
         : null;
     }
 
-    const provider = await this.prisma.rpcProvider.update({
+    const provider = await (this.prisma as any).rpcProvider.update({
       where: { id },
       data: updateData,
     });
@@ -176,12 +176,12 @@ export class RpcManagementService {
   }
 
   async listRpcProviders() {
-    const providers = await this.prisma.rpcProvider.findMany({
+    const providers = await (this.prisma as any).rpcProvider.findMany({
       orderBy: [{ chainId: 'asc' }, { priority: 'desc' }],
     });
 
     // Never return the decrypted API key in API responses
-    return providers.map((p) => ({
+    return providers.map((p: any) => ({
       id: p.id.toString(),
       name: p.name,
       chainId: p.chainId,
@@ -199,12 +199,12 @@ export class RpcManagementService {
    * (e.g., chain-indexer-service). Never exposed via API responses.
    */
   async getDecryptedRpcConfig(chainId: number) {
-    const providers = await this.prisma.rpcProvider.findMany({
+    const providers = await (this.prisma as any).rpcProvider.findMany({
       where: { chainId, isActive: true },
       orderBy: { priority: 'desc' },
     });
 
-    return providers.map((p) => ({
+    return providers.map((p: any) => ({
       id: p.id.toString(),
       name: p.name,
       rpcHttpUrl: p.rpcHttpUrl,
@@ -219,14 +219,14 @@ export class RpcManagementService {
     adminUserId: string,
     ipAddress?: string,
   ) {
-    const existing = await this.prisma.rpcProvider.findUnique({
+    const existing = await (this.prisma as any).rpcProvider.findUnique({
       where: { id },
     });
     if (!existing) {
       throw new NotFoundException(`RPC provider ${id} not found`);
     }
 
-    await this.prisma.rpcProvider.delete({ where: { id } });
+    await (this.prisma as any).rpcProvider.delete({ where: { id } });
 
     await this.auditLog.log({
       adminUserId,

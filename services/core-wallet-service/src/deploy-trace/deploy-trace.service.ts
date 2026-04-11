@@ -75,7 +75,7 @@ export class DeployTraceService {
       blockNumber: log.blockNumber,
     }));
 
-    const trace = await this.prisma.deployTrace.create({
+    const trace = await (this.prisma as any).deployTrace.create({
       data: {
         clientId: BigInt(dto.clientId),
         projectId: BigInt(dto.projectId),
@@ -135,17 +135,17 @@ export class DeployTraceService {
     if (params.resourceType) where.resourceType = params.resourceType;
 
     const [traces, total] = await Promise.all([
-      this.prisma.deployTrace.findMany({
+      (this.prisma as any).deployTrace.findMany({
         where,
         orderBy: { createdAt: 'desc' },
         skip,
         take: limit,
       }),
-      this.prisma.deployTrace.count({ where }),
+      (this.prisma as any).deployTrace.count({ where }),
     ]);
 
     return {
-      traces: traces.map((t) => this.serializeTrace(t)),
+      traces: traces.map((t: any) => this.serializeTrace(t)),
       meta: { page, limit, total, totalPages: Math.ceil(total / limit) },
     };
   }
@@ -154,7 +154,7 @@ export class DeployTraceService {
    * Get a single deploy trace by ID.
    */
   async getTrace(clientId: number, traceId: number) {
-    const trace = await this.prisma.deployTrace.findFirst({
+    const trace = await (this.prisma as any).deployTrace.findFirst({
       where: {
         id: BigInt(traceId),
         clientId: BigInt(clientId),

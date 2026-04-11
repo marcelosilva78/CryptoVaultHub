@@ -1,5 +1,4 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { EvmProviderService } from '../blockchain/evm-provider.service';
 import { RedisService } from '../redis/redis.service';
@@ -42,8 +41,8 @@ export class SyncHealthService {
 
   /**
    * Check sync health every 30 seconds.
+   * Called by a scheduler (setInterval or @nestjs/schedule) in the module.
    */
-  @Cron(CronExpression.EVERY_30_SECONDS)
   async checkHealth(): Promise<void> {
     const chains = await this.prisma.chain.findMany({
       where: { isActive: true },
@@ -51,7 +50,7 @@ export class SyncHealthService {
 
     await Promise.all(
       chains.map((chain) =>
-        this.checkChainHealth(chain.id, chain.name).catch((err) => {
+        this.checkChainHealth(chain.id, chain.name).catch((err: any) => {
           const msg = err instanceof Error ? err.message : String(err);
           this.logger.error(
             `Health check failed for chain ${chain.id}: ${msg}`,
@@ -68,48 +67,64 @@ export class SyncHealthService {
     chainId: number,
     chainName: string,
   ): Promise<ChainSyncHealth> {
-    const cursor = await this.prisma.syncCursor.findUnique({
-      where: { chainId },
-    });
+    // Fetch full cursor row via raw SQL to access extended columns
+    const cursors = await this.prisma.$queryRawUnsafe<
+      Array<{
+        chain_id: number;
+        id: bigint;
+        last_block: bigint;
+        latest_finalized_block: bigint | null;
+        blocks_behind: number | null;
+        indexer_status: string | null;
+        last_error: string | null;
+        last_error_at: Date | null;
+        updated_at: Date;
+      }>
+    >(
+      `SELECT chain_id, id, last_block, latest_finalized_block, blocks_behind,
+              indexer_status, last_error, last_error_at, updated_at
+       FROM sync_cursors WHERE chain_id = ? LIMIT 1`,
+      chainId,
+    );
+    const cursorRow = cursors[0] ?? null;
 
     let chainHeadBlock: number;
     try {
       const provider = await this.evmProvider.getProvider(chainId);
       chainHeadBlock = await provider.getBlockNumber();
-    } catch (error) {
+    } catch (error: any) {
       const msg = error instanceof Error ? error.message : String(error);
 
-      // Update cursor to error state
-      if (cursor) {
-        await this.prisma.syncCursor.update({
-          where: { chainId },
-          data: {
-            indexerStatus: 'error',
-            lastError: msg,
-            lastErrorAt: new Date(),
-          },
-        });
+      // Update cursor to error state via raw SQL
+      if (cursorRow) {
+        await this.prisma.$executeRawUnsafe(
+          `UPDATE sync_cursors
+           SET indexer_status = 'error', last_error = ?, last_error_at = NOW(), updated_at = NOW()
+           WHERE chain_id = ?`,
+          msg,
+          chainId,
+        );
       }
 
       return {
         chainId,
         chainName,
-        lastBlock: cursor ? Number(cursor.lastBlock) : 0,
-        latestFinalizedBlock: cursor
-          ? Number(cursor.latestFinalizedBlock)
+        lastBlock: cursorRow ? Number(cursorRow.last_block) : 0,
+        latestFinalizedBlock: cursorRow
+          ? Number(cursorRow.latest_finalized_block ?? 0n)
           : 0,
         chainHeadBlock: 0,
         blocksBehind: 0,
         status: 'error',
         gapCount: 0,
-        lastUpdated: cursor?.updatedAt ?? new Date(),
+        lastUpdated: cursorRow?.updated_at ?? new Date(),
         lastError: msg,
       };
     }
 
-    const lastBlock = cursor ? Number(cursor.lastBlock) : 0;
-    const latestFinalized = cursor
-      ? Number(cursor.latestFinalizedBlock)
+    const lastBlock = cursorRow ? Number(cursorRow.last_block) : 0;
+    const latestFinalized = cursorRow
+      ? Number(cursorRow.latest_finalized_block ?? 0n)
       : 0;
     const blocksBehind = chainHeadBlock - lastBlock;
 
@@ -140,31 +155,49 @@ export class SyncHealthService {
       indexerStatus = 'synced';
     }
 
-    // Count open gaps
-    const gapCount = await this.prisma.syncGap.count({
-      where: {
-        chainId,
-        status: { in: ['detected', 'backfilling'] },
-      },
-    });
+    // Count open gaps via raw SQL
+    const gapCountRows = await this.prisma.$queryRawUnsafe<
+      Array<{ cnt: bigint }>
+    >(
+      `SELECT COUNT(*) AS cnt FROM sync_gaps
+       WHERE chain_id = ? AND status IN ('detected', 'backfilling')`,
+      chainId,
+    );
+    const gapCount = Number(gapCountRows[0]?.cnt ?? 0n);
 
-    // Update sync cursor
-    await this.prisma.syncCursor.upsert({
-      where: { chainId },
-      update: {
-        blocksBehind,
-        indexerStatus,
-        ...(status === 'error'
-          ? { lastError: 'Indexer stale - no progress', lastErrorAt: new Date() }
-          : { lastError: null, lastErrorAt: null }),
-      },
-      create: {
+    // Update sync cursor via raw SQL upsert
+    if (status === 'error') {
+      await this.prisma.$executeRawUnsafe(
+        `INSERT INTO sync_cursors (chain_id, last_block, blocks_behind, indexer_status, last_error, last_error_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, NOW(), NOW())
+         ON DUPLICATE KEY UPDATE
+           blocks_behind = VALUES(blocks_behind),
+           indexer_status = VALUES(indexer_status),
+           last_error = VALUES(last_error),
+           last_error_at = NOW(),
+           updated_at = NOW()`,
         chainId,
-        lastBlock: BigInt(0),
+        BigInt(0),
         blocksBehind,
         indexerStatus,
-      },
-    });
+        'Indexer stale - no progress',
+      );
+    } else {
+      await this.prisma.$executeRawUnsafe(
+        `INSERT INTO sync_cursors (chain_id, last_block, blocks_behind, indexer_status, last_error, last_error_at, updated_at)
+         VALUES (?, ?, ?, ?, NULL, NULL, NOW())
+         ON DUPLICATE KEY UPDATE
+           blocks_behind = VALUES(blocks_behind),
+           indexer_status = VALUES(indexer_status),
+           last_error = NULL,
+           last_error_at = NULL,
+           updated_at = NOW()`,
+        chainId,
+        BigInt(0),
+        blocksBehind,
+        indexerStatus,
+      );
+    }
 
     // Update progress timestamp if we're advancing
     if (blocksBehind < this.DEGRADED_THRESHOLD) {
@@ -184,8 +217,8 @@ export class SyncHealthService {
       blocksBehind,
       status,
       gapCount,
-      lastUpdated: cursor?.updatedAt ?? new Date(),
-      lastError: cursor?.lastError ?? null,
+      lastUpdated: cursorRow?.updated_at ?? new Date(),
+      lastError: cursorRow?.last_error ?? null,
     };
   }
 
@@ -202,7 +235,7 @@ export class SyncHealthService {
       try {
         const health = await this.checkChainHealth(chain.id, chain.name);
         results.push(health);
-      } catch (error) {
+      } catch (error: any) {
         results.push({
           chainId: chain.id,
           chainName: chain.name,

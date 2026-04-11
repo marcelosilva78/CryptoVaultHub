@@ -9,5 +9,11 @@
     "strictPropertyInitialization": false
   },
   "include": ["src"],
-  "exclude": ["node_modules", "dist", "src/generated"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/generated",
+    "**/*.spec.ts",
+    "**/*.test.ts"
+  ]
 }

@@ -1,5 +1,4 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { EvmProviderService } from '../blockchain/evm-provider.service';
 import { BalanceMaterializerService } from '../balance/balance-materializer.service';
@@ -44,8 +43,8 @@ export class FinalityTrackerService {
 
   /**
    * Check finality for all active chains every 30 seconds.
+   * Called by a scheduler (setInterval or @nestjs/schedule) in the module.
    */
-  @Cron(CronExpression.EVERY_30_SECONDS)
   async checkFinality(): Promise<void> {
     const chains = await this.prisma.chain.findMany({
       where: { isActive: true },
@@ -53,7 +52,7 @@ export class FinalityTrackerService {
 
     await Promise.all(
       chains.map((chain) =>
-        this.checkFinalityForChain(chain.id).catch((err) => {
+        this.checkFinalityForChain(chain.id).catch((err: any) => {
           const msg = err instanceof Error ? err.message : String(err);
           this.logger.error(
             `Finality check failed for chain ${chain.id}: ${msg}`,
@@ -75,43 +74,44 @@ export class FinalityTrackerService {
 
     if (finalizedBlock <= 0) return 0;
 
-    // Find unfinalized blocks that are now final
-    const unfinalizedBlocks = await this.prisma.indexedBlock.findMany({
-      where: {
-        chainId,
-        isFinalized: false,
-        blockNumber: { lte: BigInt(finalizedBlock) },
-      },
-      orderBy: { blockNumber: 'asc' },
-    });
+    // Find unfinalized blocks that are now final using raw SQL
+    const unfinalizedBlocks = await this.prisma.$queryRawUnsafe<
+      Array<{ id: bigint; block_number: bigint }>
+    >(
+      `SELECT id, block_number FROM indexed_blocks
+       WHERE chain_id = ? AND is_finalized = 0 AND block_number <= ?
+       ORDER BY block_number ASC`,
+      chainId,
+      BigInt(finalizedBlock),
+    );
 
     if (unfinalizedBlocks.length === 0) return 0;
 
-    // Mark as finalized in batch
-    const blockIds = unfinalizedBlocks.map((b) => b.id);
-    await this.prisma.indexedBlock.updateMany({
-      where: { id: { in: blockIds } },
-      data: { isFinalized: true },
-    });
+    // Mark as finalized in batch via raw SQL
+    const blockIds = unfinalizedBlocks.map((b: { id: bigint; block_number: bigint }) => b.id);
+    await this.prisma.$executeRawUnsafe(
+      `UPDATE indexed_blocks SET is_finalized = 1
+       WHERE id IN (${blockIds.map(() => '?').join(',')})`,
+      ...blockIds,
+    );
 
-    // Update sync cursor with latest finalized block
-    await this.prisma.syncCursor.upsert({
-      where: { chainId },
-      update: { latestFinalizedBlock: BigInt(finalizedBlock) },
-      create: {
-        chainId,
-        lastBlock: BigInt(currentBlock),
-        latestFinalizedBlock: BigInt(finalizedBlock),
-      },
-    });
+    // Update sync cursor with latest finalized block via raw SQL upsert
+    await this.prisma.$executeRawUnsafe(
+      `INSERT INTO sync_cursors (chain_id, last_block, latest_finalized_block, updated_at)
+       VALUES (?, ?, ?, NOW())
+       ON DUPLICATE KEY UPDATE latest_finalized_block = VALUES(latest_finalized_block), updated_at = NOW()`,
+      chainId,
+      BigInt(currentBlock),
+      BigInt(finalizedBlock),
+    );
 
     // Trigger balance materialization for finalized blocks
     const maxFinalized = Number(
-      unfinalizedBlocks[unfinalizedBlocks.length - 1].blockNumber,
+      unfinalizedBlocks[unfinalizedBlocks.length - 1].block_number,
     );
     await this.balanceMaterializer
       .materializeForChain(chainId, maxFinalized)
-      .catch((err) => {
+      .catch((err: any) => {
         const msg = err instanceof Error ? err.message : String(err);
         this.logger.error(
           `Balance materialization failed for chain ${chainId}: ${msg}`,

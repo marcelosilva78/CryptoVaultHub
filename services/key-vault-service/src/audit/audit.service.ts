@@ -33,7 +33,7 @@ export class AuditService {
           metadata: entry.metadata ?? undefined,
         },
       });
-    } catch (error) {
+    } catch (error: any) {
       // Audit failures should not break the main flow
       this.logger.error('Failed to write audit log', error);
     }

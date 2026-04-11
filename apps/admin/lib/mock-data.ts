@@ -840,7 +840,13 @@ export const analyticsFailedTransactions = [
 ];
 
 // ─── Analytics: Infrastructure ──────────────────────────────
-export const analyticsRpcHealth = [
+export const analyticsRpcHealth: Array<{
+  chain: string;
+  status: "healthy" | "degraded" | "down";
+  latency: number[];
+  avgLatency: number;
+  uptime: number;
+}> = [
   {
     chain: "Ethereum",
     status: "healthy" as const,

@@ -1,14 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import * as fs from 'fs';
 
 /**
- * Cron service that cleans up expired export files.
- * Runs every hour to:
+ * Service that cleans up expired export files.
+ * Intended to be called from a BullMQ repeatable job (every hour) to:
  * 1. Mark expired export requests as 'expired'
  * 2. Delete the associated files from disk
- * 3. Clean up export_files records
+ * 3. Clean up failed export records older than 7 days
  */
 @Injectable()
 export class ExportCleanupService {
@@ -16,7 +15,6 @@ export class ExportCleanupService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  @Cron(CronExpression.EVERY_HOUR)
   async cleanupExpiredExports(): Promise<void> {
     this.logger.log('Starting export cleanup...');
 
