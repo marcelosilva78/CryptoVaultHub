@@ -26,7 +26,7 @@ services:
     image: nginx:alpine
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./infra/docker/docker-api-proxy.conf:/etc/nginx/nginx.conf:ro
+      - ./infra/docker/docker-api-proxy.conf:/etc/nginx/conf.d/docker-proxy.conf:ro
     networks:
       - internal-net
     restart: unless-stopped
