@@ -17,24 +17,19 @@ networks:
 
 services:
 
-  # ─── Docker Socket Proxy (API version compatibility for Traefik) ────────────
+  # ─── Docker API Version Proxy (compatibility shim for Traefik) ────────────
   # Traefik's internal Go client sends Docker API v1.24 during initial
-  # negotiation; Docker 29+ requires min v1.40. The socket proxy accepts
-  # any version and forwards to the real socket transparently.
+  # negotiation; Docker 29+ requires min v1.40. This nginx proxy rewrites
+  # any versioned path (/v1.24/...) to /v1.45/... before forwarding.
 
   docker-proxy:
-    image: tecnativa/docker-socket-proxy:latest
-    environment:
-      - CONTAINERS=1
-      - NETWORKS=1
-      - SERVICES=1
-      - POST=0
+    image: nginx:alpine
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./infra/docker/docker-api-proxy.conf:/etc/nginx/nginx.conf:ro
     networks:
       - internal-net
     restart: unless-stopped
-    privileged: true
 
   # ─── Traefik Reverse Proxy + SSL ─────────────────────────────
 
