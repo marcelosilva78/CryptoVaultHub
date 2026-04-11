@@ -13,6 +13,12 @@ RUN if [ -f "${SERVICE_PATH}/prisma/schema.prisma" ]; then \
       cd ${SERVICE_PATH} && npx prisma generate; \
     fi
 RUN npx turbo build --filter=./${SERVICE_PATH}
+# Copy Prisma generated client (JS + native engine binaries) into dist/
+# so that the compiled require('../generated/prisma-client') resolves at runtime.
+RUN if [ -d "${SERVICE_PATH}/src/generated/prisma-client" ]; then \
+      mkdir -p ${SERVICE_PATH}/dist/generated && \
+      cp -r ${SERVICE_PATH}/src/generated/prisma-client ${SERVICE_PATH}/dist/generated/prisma-client; \
+    fi
 
 # Runner stage
 FROM node:20-alpine AS runner
