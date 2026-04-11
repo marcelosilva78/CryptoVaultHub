@@ -5,6 +5,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { IS_PUBLIC_KEY } from './jwt-auth.guard';
 
 export const ADMIN_ROLES_KEY = 'admin_roles';
 
@@ -13,6 +14,12 @@ export class AdminRoleGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {
+    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (isPublic) return true;
+
     const requiredRoles = this.reflector.getAllAndOverride<string[]>(
       ADMIN_ROLES_KEY,
       [context.getHandler(), context.getClass()],
