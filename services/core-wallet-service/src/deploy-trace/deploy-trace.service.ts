@@ -99,7 +99,7 @@ export class DeployTraceService {
         triggeredBy: dto.triggeredBy ? BigInt(dto.triggeredBy) : null,
         triggerType: dto.triggerType ?? 'system',
         eventLogs,
-        metadata: dto.metadata ?? undefined, // Json?: null not assignable; undefined → DB NULL
+        metadata: dto.metadata as any ?? undefined, // Json? requires InputJsonValue; cast from Record<string,unknown>
       },
     });
 
