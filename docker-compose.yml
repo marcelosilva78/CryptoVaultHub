@@ -614,6 +614,7 @@ services:
     image: clickhouse/clickhouse-server:23.12
     volumes:
       - /docker/data/clickhouse:/var/lib/clickhouse
+      - ./infra/clickhouse/clickhouse-config.xml:/etc/clickhouse-server/config.d/posthog.xml:ro
     networks:
       - monitoring-net
     restart: unless-stopped
