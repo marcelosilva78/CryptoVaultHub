@@ -240,6 +240,11 @@ services:
       - JWT_SECRET=${JWT_SECRET}
       - CHAIN_INDEXER_URL=http://chain-indexer-service:3006
       - CRON_WORKER_SERVICE_URL=http://cron-worker-service:3008
+      - CVH_JOBS_MYSQL_HOST=${MYSQL_HOST}
+      - CVH_JOBS_MYSQL_PORT=${MYSQL_PORT}
+      - CVH_JOBS_MYSQL_USER=${MYSQL_USER}
+      - CVH_JOBS_MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - CVH_JOBS_MYSQL_DATABASE=cvh_jobs
     depends_on:
       mysql:
         condition: service_healthy
