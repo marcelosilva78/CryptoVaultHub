@@ -11,4 +11,11 @@
             <named_collection_control>1</named_collection_control>
         </default>
     </users>
+    <profiles>
+        <default>
+            <!-- Disable new query analyzer introduced in 24.x — infi/clickhouse_orm
+                 distributed table queries crash ClickHouse with the new analyzer -->
+            <allow_experimental_analyzer>0</allow_experimental_analyzer>
+        </default>
+    </profiles>
 </clickhouse>
