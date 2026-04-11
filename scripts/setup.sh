@@ -90,11 +90,12 @@ if [ -d "/docker" ]; then
   # Create directory structure on the LVM volume
   log "Creating directory structure on /docker..."
   sudo mkdir -p /docker/lib                    # Docker daemon data-root (images, containers, overlays)
+  sudo mkdir -p /docker/data/mysql             # MySQL data (Docker mode only)
   sudo mkdir -p /docker/data/redis             # Redis AOF persistence
   sudo mkdir -p /docker/data/prometheus        # Prometheus TSDB
   sudo mkdir -p /docker/data/grafana           # Grafana dashboards + plugins
   sudo mkdir -p /docker/data/traefik/letsencrypt # SSL certificates
-  sudo mkdir -p /docker/data/exports           # Export file storage
+  sudo mkdir -p /docker/data/exports           # Export file storage (host bind-mount)
   sudo mkdir -p /docker/data/posthog-postgres  # PostHog PostgreSQL
   sudo mkdir -p /docker/data/clickhouse        # ClickHouse analytics
   sudo chown -R 472:472 /docker/data/grafana   # Grafana runs as UID 472
@@ -395,8 +396,10 @@ fi
 # ─── Create Export Storage Directory ─────────────────────────────────────────
 header "Preparing File Storage"
 
-mkdir -p "$EXPORT_STORAGE_PATH" 2>/dev/null || warn "Could not create $EXPORT_STORAGE_PATH (may need sudo)"
-ok "Export storage: $EXPORT_STORAGE_PATH"
+# /docker/data/exports is the host bind-mount path (see docker-compose.yml).
+# EXPORT_STORAGE_PATH is the path *inside* the container — already created above.
+sudo mkdir -p /docker/data/exports 2>/dev/null || warn "Could not create /docker/data/exports"
+ok "Export storage (host): /docker/data/exports → container: ${EXPORT_STORAGE_PATH}"
 
 # ─── Start Services ──────────────────────────────────────────────────────────
 header "Starting Docker Compose Services"
@@ -423,6 +426,7 @@ SERVICES=(
   "chain-indexer-service:3006"
   "notification-service:3007"
   "cron-worker-service:3008"
+  "rpc-gateway-service:3009"
 )
 
 MAX_WAIT=120
@@ -507,6 +511,6 @@ echo -e ""
 echo -e "  Next steps:"
 echo -e "  1. Configure RPC providers in the Admin Panel (https://admin.${BASE_DOMAIN})"
 echo -e "  2. Create your first client via Admin API"
-echo -e "  4. Run health check: ${CYAN}bash scripts/health-check.sh${NC}"
-echo -e "  5. Check logs: ${CYAN}docker compose logs -f <service>${NC}"
+echo -e "  3. Run health check: ${CYAN}bash scripts/health-check.sh${NC}"
+echo -e "  4. Check logs: ${CYAN}docker compose logs -f <service>${NC}"
 echo ""
