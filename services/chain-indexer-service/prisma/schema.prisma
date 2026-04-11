@@ -142,7 +142,7 @@ model IndexedEvent {
   fromAddress     String?          @db.VarChar(42) @map("from_address")
   toAddress       String?          @db.VarChar(42) @map("to_address")
   tokenId         BigInt?          @map("token_id")
-  amount          Decimal?         @db.Decimal(78, 0)
+  amount          Decimal?         @db.Decimal(65, 0)
   clientId        BigInt?          @map("client_id")
   projectId       BigInt?          @map("project_id")
   walletId        BigInt?          @map("wallet_id")
@@ -170,7 +170,7 @@ model MaterializedBalance {
   clientId         BigInt   @map("client_id")
   projectId        BigInt   @map("project_id")
   walletId         BigInt?  @map("wallet_id")
-  balance          Decimal  @default(0) @db.Decimal(78, 0)
+  balance          Decimal  @default(0) @db.Decimal(65, 0)
   lastUpdatedBlock BigInt   @map("last_updated_block")
   lastUpdatedAt    DateTime @map("last_updated_at")
 
