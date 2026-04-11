@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS `deploy_traces` (
   `init_code_hash` VARCHAR(66) NULL,
   `gas_used` BIGINT NULL,
   `gas_price` BIGINT NULL,
-  `gas_cost_wei` DECIMAL(78,0) NULL,
+  `gas_cost_wei` DECIMAL(65,0) NULL,
   `rpc_provider_id` BIGINT NULL,
   `rpc_node_id` BIGINT NULL,
   `explorer_url` VARCHAR(512) NOT NULL,

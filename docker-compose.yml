@@ -232,7 +232,7 @@ services:
       - internal-net
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3001/health"]
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -266,7 +266,7 @@ services:
       - internal-net
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3002/client/v1/health"]
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3002/client/v1/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -303,7 +303,7 @@ services:
       - internal-net
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3003/health"]
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3003/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -337,7 +337,7 @@ services:
       - vault-net
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3004/health"]
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3004/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -367,7 +367,7 @@ services:
       - internal-net
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3005/health"]
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3005/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -406,7 +406,7 @@ services:
       - internal-net
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3006/health"]
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3006/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -439,7 +439,7 @@ services:
       - internal-net
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3007/health"]
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3007/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -475,7 +475,7 @@ services:
       - internal-net
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3008/health"]
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3008/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -508,7 +508,7 @@ services:
       - internal-net
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3009/health"]
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3009/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
       interval: 30s
       timeout: 5s
       retries: 3

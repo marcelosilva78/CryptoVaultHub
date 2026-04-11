@@ -14,8 +14,8 @@ ALTER TABLE `webhooks`
   ADD COLUMN `retry_backoff_max_ms` INT NOT NULL DEFAULT 3600000,
   ADD COLUMN `retry_jitter` TINYINT(1) NOT NULL DEFAULT 1,
   ADD COLUMN `retry_timeout_ms` INT NOT NULL DEFAULT 10000,
-  ADD COLUMN `retry_on_status_codes` JSON DEFAULT '["500","502","503","504","408","429"]',
-  ADD COLUMN `fail_on_status_codes` JSON DEFAULT '["400","401","403","404"]',
+  ADD COLUMN `retry_on_status_codes` JSON NULL,
+  ADD COLUMN `fail_on_status_codes` JSON NULL,
   ADD COLUMN `description` TEXT NULL;
 
 -- Enhance webhook_deliveries with full history
