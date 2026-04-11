@@ -615,6 +615,7 @@ services:
     volumes:
       - /docker/data/clickhouse:/var/lib/clickhouse
       - ./infra/clickhouse/clickhouse-config.xml:/etc/clickhouse-server/config.d/posthog.xml:ro
+      - ./infra/clickhouse/clickhouse-user-config.xml:/etc/clickhouse-server/users.d/posthog-users.xml:ro
     networks:
       - monitoring-net
     restart: unless-stopped
@@ -648,6 +649,9 @@ services:
       CLICKHOUSE_SECURE: "false"
       CLICKHOUSE_VERIFY: "false"
       CLICKHOUSE_REPLICATION: "false"
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: ""
+      CLICKHOUSE_DATABASE: posthog
       KAFKA_HOSTS: kafka:9092
       SECRET_KEY: ${POSTHOG_SECRET_KEY}
       DISABLE_ASYNC_MIGRATIONS_SETUP: "0"
@@ -672,6 +676,9 @@ services:
       CLICKHOUSE_SECURE: "false"
       CLICKHOUSE_VERIFY: "false"
       CLICKHOUSE_REPLICATION: "false"
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: ""
+      CLICKHOUSE_DATABASE: posthog
       KAFKA_HOSTS: kafka:9092
       SECRET_KEY: ${POSTHOG_SECRET_KEY}
     depends_on:
