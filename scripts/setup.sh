@@ -133,6 +133,7 @@ if [ -d "/docker" ]; then
   sudo chown -R 472:472 /docker/data/grafana        # Grafana runs as UID 472
   sudo chown -R 65534:65534 /docker/data/prometheus # Prometheus runs as nobody (65534)
   sudo chown -R 10001:10001 /docker/data/loki       # Loki runs as UID 10001
+  sudo chown -R 1000:1000 /docker/data/kafka        # Kafka (apache/kafka) runs as UID 1000
 
   ok "Directory structure created on /docker (LVM volume)"
   log "Storage layout:"
@@ -260,6 +261,9 @@ ok "JWT secret generated (48 chars)"
 TOTP_ENCRYPTION_KEY=$(generate_hex 32)
 ok "TOTP encryption key generated (64 hex chars)"
 
+POSTHOG_SECRET_KEY=$(generate_secret 50)
+ok "PostHog secret key generated (50 chars)"
+
 # ─── Generate .env File ─────────────────────────────────────────────────────
 header "Generating .env File"
 
@@ -316,6 +320,7 @@ TATUM_API_KEY=${TATUM_API_KEY}
 # ─── PostHog ─────────────────────────────────────────────────────────────────
 POSTHOG_HOST=http://posthog-web:8000
 POSTHOG_API_KEY=
+POSTHOG_SECRET_KEY=${POSTHOG_SECRET_KEY}
 
 # ─── Kong ────────────────────────────────────────────────────────────────────
 KONG_ADMIN_URL=http://api-gateway:8001
