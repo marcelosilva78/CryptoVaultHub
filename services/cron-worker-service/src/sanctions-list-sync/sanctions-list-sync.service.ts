@@ -121,24 +121,26 @@ export class SanctionsListSyncService extends WorkerHost implements OnModuleInit
         entries.map(entry =>
           this.prisma.sanctionsEntry.upsert({
             where: {
-              uq_list_address: {
+              listSource_address: {          // Prisma-generated name for @@unique([listSource, address])
                 listSource: 'OFAC_SDN',
-                cryptoAddress: entry.cryptoAddress.toLowerCase(),
+                address: entry.cryptoAddress.toLowerCase(),
               },
             },
             update: {
               isActive: true,
               entityName: entry.entityName,
-              sdnId: entry.sdnId,
-              currency: entry.currency,
+              entityId: entry.sdnId,
+              addressType: entry.currency,
+              lastSyncedAt: new Date(),
             },
             create: {
               listSource: 'OFAC_SDN',
-              cryptoAddress: entry.cryptoAddress.toLowerCase(),
-              currency: entry.currency,
+              address: entry.cryptoAddress.toLowerCase(),
+              addressType: entry.currency,
               entityName: entry.entityName,
-              sdnId: entry.sdnId,
+              entityId: entry.sdnId,
               isActive: true,
+              lastSyncedAt: new Date(),
             },
           }),
         ),
@@ -155,7 +157,7 @@ export class SanctionsListSyncService extends WorkerHost implements OnModuleInit
       const deactivateResult = await this.prisma.sanctionsEntry.updateMany({
         where: {
           listSource: 'OFAC_SDN',
-          cryptoAddress: { notIn: newAddresses },
+          address: { notIn: newAddresses },
           isActive: true,
         },
         data: { isActive: false },
