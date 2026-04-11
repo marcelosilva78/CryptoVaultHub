@@ -126,38 +126,59 @@ fi
 generate_secret()  { openssl rand -base64 "$1" 2>/dev/null | tr -d '/+=' | head -c "$1"; }
 generate_hex()     { openssl rand -hex "$1" 2>/dev/null; }
 
-# ─── Collect MySQL Cluster Credentials ───────────────────────────────────────
-header "MySQL Cluster Configuration"
+# ─── MySQL Configuration ─────────────────────────────────────────────────────
+header "MySQL Configuration"
 
-if [ -f .env ]; then
-  log "Existing .env file found. Loading MySQL settings..."
-  source <(grep -E '^MYSQL_(HOST|PORT|USER|PASSWORD|ROOT_PASSWORD)=' .env 2>/dev/null || true)
-fi
-
-# Prompt for MySQL credentials (with defaults from existing .env or empty)
-read -rp "$(echo -e "${CYAN}MySQL Host${NC} [${MYSQL_HOST:-}]: ")" input_host
-MYSQL_HOST="${input_host:-${MYSQL_HOST:-}}"
-[ -z "$MYSQL_HOST" ] && fail "MySQL host is required"
-
-read -rp "$(echo -e "${CYAN}MySQL Port${NC} [${MYSQL_PORT:-3306}]: ")" input_port
-MYSQL_PORT="${input_port:-${MYSQL_PORT:-3306}}"
-
-read -rp "$(echo -e "${CYAN}MySQL Admin User${NC} [${MYSQL_USER:-root}]: ")" input_user
-MYSQL_USER="${input_user:-${MYSQL_USER:-root}}"
-
-read -srp "$(echo -e "${CYAN}MySQL Admin Password${NC}: ")" input_password
+echo -e "  ${BOLD}(1)${NC} Use Docker MySQL (temporary local instance)"
+echo -e "  ${BOLD}(2)${NC} Use external MySQL cluster"
 echo ""
-MYSQL_PASSWORD="${input_password:-${MYSQL_PASSWORD:-}}"
-[ -z "$MYSQL_PASSWORD" ] && fail "MySQL password is required"
+read -rp "$(echo -e "${CYAN}Choose [1/2]${NC} [1]: ")" mysql_choice
+MYSQL_MODE="${mysql_choice:-1}"
 
-# Test MySQL connection
-log "Testing MySQL connection..."
-if [ "$MYSQL_CLIENT_AVAILABLE" = true ]; then
-  mysql -h "$MYSQL_HOST" -P "$MYSQL_PORT" -u "$MYSQL_USER" -p"$MYSQL_PASSWORD" -e "SELECT 1;" >/dev/null 2>&1 \
-    && ok "MySQL connection successful" \
-    || fail "Cannot connect to MySQL at $MYSQL_HOST:$MYSQL_PORT with user $MYSQL_USER"
+if [ "$MYSQL_MODE" = "2" ]; then
+  # External cluster
+  USE_LOCAL_MYSQL=false
+
+  if [ -f .env ]; then
+    log "Existing .env file found. Loading MySQL settings..."
+    source <(grep -E '^MYSQL_(HOST|PORT|USER|PASSWORD|ROOT_PASSWORD)=' .env 2>/dev/null || true)
+  fi
+
+  read -rp "$(echo -e "${CYAN}MySQL Host${NC} [${MYSQL_HOST:-}]: ")" input_host
+  MYSQL_HOST="${input_host:-${MYSQL_HOST:-}}"
+  [ -z "$MYSQL_HOST" ] && fail "MySQL host is required"
+
+  read -rp "$(echo -e "${CYAN}MySQL Port${NC} [${MYSQL_PORT:-3306}]: ")" input_port
+  MYSQL_PORT="${input_port:-${MYSQL_PORT:-3306}}"
+
+  read -rp "$(echo -e "${CYAN}MySQL User${NC} [${MYSQL_USER:-root}]: ")" input_user
+  MYSQL_USER="${input_user:-${MYSQL_USER:-root}}"
+
+  read -srp "$(echo -e "${CYAN}MySQL Password${NC}: ")" input_password
+  echo ""
+  MYSQL_PASSWORD="${input_password:-${MYSQL_PASSWORD:-}}"
+  [ -z "$MYSQL_PASSWORD" ] && fail "MySQL password is required"
+
+  log "Testing MySQL connection..."
+  if [ "$MYSQL_CLIENT_AVAILABLE" = true ]; then
+    mysql -h "$MYSQL_HOST" -P "$MYSQL_PORT" -u "$MYSQL_USER" -p"$MYSQL_PASSWORD" -e "SELECT 1;" >/dev/null 2>&1 \
+      && ok "MySQL connection successful" \
+      || fail "Cannot connect to MySQL at $MYSQL_HOST:$MYSQL_PORT with user $MYSQL_USER"
+  else
+    warn "mysql client not available — skipping connection test"
+  fi
 else
-  warn "mysql client not available — skipping connection test"
+  # Docker local MySQL
+  USE_LOCAL_MYSQL=true
+  MYSQL_HOST=mysql
+  MYSQL_PORT=3306
+  MYSQL_USER=root
+
+  log "Docker MySQL will be started automatically."
+  log "Generating MySQL root password..."
+  MYSQL_PASSWORD=$(generate_secret 24)
+  ok "MySQL configured: host=mysql (Docker), user=root, password=auto-generated"
+  warn "This is a temporary instance. Migrate to your cluster later by changing MYSQL_HOST in .env"
 fi
 
 # ─── Domain + SSL Configuration ─────────────────────────────────────────────
@@ -297,7 +318,30 @@ if [ "$ENV_ONLY" = true ]; then
 fi
 
 # ─── Run Migrations ──────────────────────────────────────────────────────────
-if [ "$SKIP_MIGRATIONS" = false ] && [ "$MYSQL_CLIENT_AVAILABLE" = true ]; then
+if [ "$USE_LOCAL_MYSQL" = true ] && [ "$SKIP_MIGRATIONS" = false ]; then
+  header "Starting Docker MySQL for Migrations"
+
+  log "Starting MySQL container (migrations run via docker-entrypoint-initdb.d)..."
+  docker compose up -d mysql 2>&1 | while IFS= read -r line; do echo -e "  ${CYAN}|${NC} $line"; done
+
+  log "Waiting for MySQL to be ready..."
+  WAIT=0
+  while [ $WAIT -lt 120 ]; do
+    if docker compose exec -T mysql mysqladmin ping -p"$MYSQL_PASSWORD" --silent 2>/dev/null; then
+      break
+    fi
+    sleep 3
+    WAIT=$((WAIT + 3))
+    echo -ne "\r  Waiting... ${WAIT}s"
+  done
+  echo ""
+
+  if [ $WAIT -ge 120 ]; then
+    fail "MySQL did not start within 120s. Check: docker compose logs mysql"
+  fi
+  ok "Docker MySQL is ready. Migrations applied via init scripts."
+
+elif [ "$SKIP_MIGRATIONS" = false ] && [ "$MYSQL_CLIENT_AVAILABLE" = true ]; then
   header "Running Database Migrations"
 
   MIGRATION_DIR="database"

@@ -61,6 +61,26 @@ services:
       - "traefik.http.routers.traefik-dashboard.service=api@internal"
     restart: unless-stopped
 
+  # ─── MySQL (temporary local — remove when migrating to cluster) ──
+
+  mysql:
+    image: mysql:8.0
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      - /docker/data/mysql:/var/lib/mysql
+      - ./database:/docker-entrypoint-initdb.d:ro
+    networks:
+      - internal-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${MYSQL_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
   # ─── Redis ───────────────────────────────────────────────────
 
   redis:
@@ -197,6 +217,8 @@ services:
       - CHAIN_INDEXER_URL=http://chain-indexer-service:3006
       - CRON_WORKER_SERVICE_URL=http://cron-worker-service:3008
     depends_on:
+      mysql:
+        condition: service_healthy
       redis:
         condition: service_healthy
     networks:
@@ -229,6 +251,8 @@ services:
       - CORE_WALLET_SERVICE_URL=http://core-wallet-service:3004
       - CRON_WORKER_SERVICE_URL=http://cron-worker-service:3008
     depends_on:
+      mysql:
+        condition: service_healthy
       redis:
         condition: service_healthy
     networks:
@@ -263,6 +287,8 @@ services:
       - REFRESH_TOKEN_TTL_DAYS=${REFRESH_TOKEN_TTL_DAYS}
       - TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY}
     depends_on:
+      mysql:
+        condition: service_healthy
       redis:
         condition: service_healthy
     networks:
@@ -356,6 +382,8 @@ services:
       - RPC_POLYGON_HTTP=${RPC_POLYGON_HTTP}
       - TATUM_API_KEY=${TATUM_API_KEY}
     depends_on:
+      mysql:
+        condition: service_healthy
       redis:
         condition: service_healthy
     networks:
@@ -386,6 +414,8 @@ services:
       - REDIS_PASSWORD=${REDIS_PASSWORD}
       - INTERNAL_SERVICE_KEY=${INTERNAL_SERVICE_KEY}
     depends_on:
+      mysql:
+        condition: service_healthy
       redis:
         condition: service_healthy
     networks:
@@ -419,6 +449,8 @@ services:
     volumes:
       - /docker/data/exports:${EXPORT_STORAGE_PATH:-/data/exports}
     depends_on:
+      mysql:
+        condition: service_healthy
       redis:
         condition: service_healthy
     networks:
@@ -449,6 +481,8 @@ services:
       - REDIS_PASSWORD=${REDIS_PASSWORD}
       - INTERNAL_SERVICE_KEY=${INTERNAL_SERVICE_KEY}
     depends_on:
+      mysql:
+        condition: service_healthy
       redis:
         condition: service_healthy
     networks:
