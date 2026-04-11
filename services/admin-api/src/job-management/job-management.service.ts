@@ -4,6 +4,7 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
+import { JobOrchestratorService, JobMonitorService } from '@cvh/job-client';
 
 // ── Inline type definitions (mirrors @cvh/job-client types) ──────────────────
 
@@ -138,8 +139,8 @@ export class JobManagementService {
   private readonly logger = new Logger(JobManagementService.name);
 
   constructor(
-    private readonly orchestrator: any,
-    private readonly monitor: any,
+    private readonly orchestrator: JobOrchestratorService,
+    private readonly monitor: JobMonitorService,
   ) {}
 
   async listJobs(filters: ListJobsFilter): Promise<PaginatedResult<Job>> {

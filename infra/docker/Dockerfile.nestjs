@@ -1,5 +1,8 @@
 # Builder stage - install and build
-FROM node:20-alpine AS builder
+# node:20-slim (Debian) provides glibc + OpenSSL 3 which Prisma's debian-openssl-3.0.x
+# binary target requires. Using Alpine would need linux-musl-openssl-3.0.x binaryTargets
+# in every schema.prisma; Debian slim avoids that.
+FROM node:20-slim AS builder
 WORKDIR /app
 ARG SERVICE_PATH
 COPY package*.json turbo.json tsconfig.base.json ./
@@ -21,13 +24,15 @@ RUN if [ -d "${SERVICE_PATH}/src/generated/prisma-client" ]; then \
     fi
 
 # Runner stage
-FROM node:20-alpine AS runner
+FROM node:20-slim AS runner
 WORKDIR /app
 ARG SERVICE_PATH
 ARG PORT=3000
 ENV NODE_ENV=production
 ENV PORT=${PORT}
-RUN addgroup -g 1001 nestjs && adduser -u 1001 -G nestjs -s /bin/sh -D nestjs
+# openssl required by Prisma engine binary (debian-openssl-3.0.x)
+RUN apt-get update && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
+RUN groupadd --gid 1001 nestjs && useradd --uid 1001 --gid 1001 --shell /bin/sh --no-create-home nestjs
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/${SERVICE_PATH}/dist ./${SERVICE_PATH}/dist
 COPY --from=builder /app/${SERVICE_PATH}/package.json ./${SERVICE_PATH}/
