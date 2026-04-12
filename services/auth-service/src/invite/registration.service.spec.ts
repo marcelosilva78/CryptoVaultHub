@@ -51,6 +51,7 @@ describe('RegistrationService', () => {
       inviteToken: {
         update: jest.fn(),
       },
+      $transaction: jest.fn((fn: any) => fn(mockPrisma)),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -87,6 +88,7 @@ describe('RegistrationService', () => {
       expect(prisma.inviteToken.update).toHaveBeenCalledWith(
         expect.objectContaining({ where: { id: BigInt(1) }, data: { usedAt: expect.any(Date) } }),
       );
+      expect(jwtAuthService.issueTokenPair).toHaveBeenCalledWith(mockUser, undefined, undefined);
     });
 
     it('should throw ConflictException if email already registered', async () => {

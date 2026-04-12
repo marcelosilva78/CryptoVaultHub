@@ -34,23 +34,29 @@ export class RegistrationService {
 
     const passwordHash = await bcrypt.hash(password, 10);
 
-    const user = await this.prisma.user.create({
-      data: {
-        email: invite.email,
-        passwordHash,
-        name,
-        role: 'viewer',
-        clientId: invite.clientId,
-        clientRole: 'owner',
-        isActive: true,
-      },
+    // Atomically create user and mark invite used
+    const user = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.user.create({
+        data: {
+          email: invite.email,
+          passwordHash,
+          name,
+          role: 'viewer',
+          clientId: invite.clientId,
+          clientRole: 'owner',
+          isActive: true,
+        },
+      });
+
+      await tx.inviteToken.update({
+        where: { id: invite.id },
+        data: { usedAt: new Date() },
+      });
+
+      return created;
     });
 
-    await this.prisma.inviteToken.update({
-      where: { id: invite.id },
-      data: { usedAt: new Date() },
-    });
-
+    // Issue JWT only after transaction commits
     const tokens = await this.jwtAuthService.issueTokenPair(user, ipAddress, userAgent);
 
     return {
