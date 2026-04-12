@@ -106,8 +106,7 @@ function TopologyPattern() {
 type PageState =
   | { kind: "loading" }
   | { kind: "form"; email: string }
-  | { kind: "error"; message: string }
-  | { kind: "success" };
+  | { kind: "error"; message: string };
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -378,13 +377,6 @@ export default function RegisterPage() {
             </form>
           )}
 
-          {pageState.kind === "success" && (
-            <div className="py-4 text-center">
-              <p className="text-body text-status-success font-display">
-                Account created! Redirecting&hellip;
-              </p>
-            </div>
-          )}
         </div>
 
         <p className="text-center text-micro text-text-muted mt-6 font-display">
