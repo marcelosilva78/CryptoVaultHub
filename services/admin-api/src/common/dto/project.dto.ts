@@ -125,6 +125,16 @@ export class UpdateProjectDto {
   @IsOptional()
   @IsObject()
   settings?: Record<string, unknown>;
+
+  @ApiPropertyOptional({
+    description: 'Custody mode for this project. Only valid when the owning client custodyPolicy is self_managed. Set to null to clear.',
+    enum: ['full_custody', 'co_sign'],
+    nullable: true,
+    type: 'string',
+  })
+  @IsOptional()
+  @IsEnum(['full_custody', 'co_sign'])
+  custodyMode?: 'full_custody' | 'co_sign' | null;
 }
 
 export class ListProjectsQueryDto {
