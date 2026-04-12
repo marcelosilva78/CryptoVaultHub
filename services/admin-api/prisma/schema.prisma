@@ -10,16 +10,17 @@ datasource db {
 }
 
 model Client {
-  id          BigInt        @id @default(autoincrement())
-  name        String        @db.VarChar(200)
-  slug        String        @unique @db.VarChar(100)
-  status      ClientStatus  @default(active)
-  tierId      BigInt?       @map("tier_id")
-  custodyMode CustodyMode   @default(full_custody) @map("custody_mode")
-  kytEnabled  Boolean       @default(false) @map("kyt_enabled")
-  kytLevel    KytLevel      @default(basic) @map("kyt_level")
-  createdAt   DateTime      @default(now()) @map("created_at")
-  updatedAt   DateTime      @updatedAt @map("updated_at")
+  id            BigInt         @id @default(autoincrement())
+  name          String         @db.VarChar(200)
+  slug          String         @unique @db.VarChar(100)
+  status        ClientStatus   @default(active)
+  tierId        BigInt?        @map("tier_id")
+  email         String?        @db.VarChar(255)
+  custodyPolicy CustodyPolicy  @default(full_custody) @map("custody_policy")
+  kytEnabled    Boolean        @default(false) @map("kyt_enabled")
+  kytLevel      KytLevel       @default(basic) @map("kyt_level")
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
 
   tier      Tier?               @relation(fields: [tierId], references: [id])
   overrides ClientTierOverride[]
@@ -31,16 +32,17 @@ model Client {
 }
 
 model Project {
-  id          BigInt        @id @default(autoincrement())
-  clientId    BigInt        @map("client_id")
-  name        String        @db.VarChar(200)
-  slug        String        @db.VarChar(100)
-  description String?       @db.VarChar(500)
-  isDefault   Boolean       @default(false) @map("is_default")
-  status      ProjectStatus @default(active)
+  id          BigInt              @id @default(autoincrement())
+  clientId    BigInt              @map("client_id")
+  name        String              @db.VarChar(200)
+  slug        String              @db.VarChar(100)
+  description String?             @db.VarChar(500)
+  isDefault   Boolean             @default(false) @map("is_default")
+  status      ProjectStatus       @default(active)
+  custodyMode ProjectCustodyMode? @map("custody_mode")
   settings    Json?
-  createdAt   DateTime      @default(now()) @map("created_at")
-  updatedAt   DateTime      @updatedAt @map("updated_at")
+  createdAt   DateTime            @default(now()) @map("created_at")
+  updatedAt   DateTime            @updatedAt @map("updated_at")
 
   client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
@@ -140,10 +142,15 @@ enum ClientStatus {
   onboarding
 }
 
-enum CustodyMode {
+enum CustodyPolicy {
   full_custody
   co_sign
-  client_initiated
+  self_managed
+}
+
+enum ProjectCustodyMode {
+  full_custody
+  co_sign
 }
 
 enum KytLevel {
