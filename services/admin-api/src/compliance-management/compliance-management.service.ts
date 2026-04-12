@@ -49,6 +49,8 @@ export class ComplianceManagementService {
       await this.auditLog.log({
         action: 'compliance.sanctions.force_sync',
         adminUserId,
+        entityType: 'sanctions_list',
+        entityId: 'all',
         details: { triggered: true },
       });
       return response.data;
