@@ -308,7 +308,7 @@ export class SyncHealthController {
           amount: e.amount != null ? String(e.amount) : null,
           tokenSymbol: token?.symbol ?? null,
           tokenDecimals: token?.decimals ?? null,
-          clientId: e.clientId != null ? Number(e.clientId) : null,
+          clientId: e.clientId != null ? String(e.clientId) : null,
           projectId: e.projectId != null ? Number(e.projectId) : null,
           walletId: e.walletId != null ? Number(e.walletId) : null,
           isInbound: e.isInbound ?? null,

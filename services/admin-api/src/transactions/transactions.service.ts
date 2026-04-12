@@ -56,17 +56,17 @@ export class TransactionsService {
       ...new Set(
         events
           .map((e: any) => e.clientId)
-          .filter((id): id is number => id != null),
+          .filter((id): id is string => id != null && id !== ''),
       ),
     ];
     const clients =
       clientIds.length > 0
         ? await this.prisma.client.findMany({
-            where: { id: { in: clientIds.map(BigInt) } },
+            where: { id: { in: clientIds.map((id) => BigInt(id)) } },
             select: { id: true, name: true },
           })
         : [];
-    const clientMap = new Map(clients.map((c) => [Number(c.id), c.name]));
+    const clientMap = new Map(clients.map((c) => [String(c.id), c.name]));
 
     // 3. Build enriched response
     return {
@@ -86,7 +86,7 @@ export class TransactionsService {
         tokenDecimals: e.tokenDecimals ?? null,
         logIndex: e.logIndex ?? null,
         clientId: e.clientId ?? null,
-        clientName: e.clientId != null ? (clientMap.get(e.clientId) ?? null) : null,
+        clientName: e.clientId != null ? (clientMap.get(String(e.clientId)) ?? null) : null,
         walletId: e.walletId ?? null,
         walletLabel: e.walletId != null ? `Wallet #${e.walletId}` : null,
         rawData: e.rawData ?? null,
