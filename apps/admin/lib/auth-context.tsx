@@ -33,6 +33,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    let cancelled = false;
+    const controller = new AbortController();
+
     function clearAndRedirect() {
       localStorage.removeItem('cvh_admin_token');
       localStorage.removeItem('cvh_admin_refresh');
@@ -42,17 +45,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     async function init() {
       try {
-        // Step 1: validate existing token
         const validateRes = await fetch(`${AUTH_API_URL}/validate`, {
           headers: { Authorization: `Bearer ${token}` },
+          signal: controller.signal,
         });
+        if (cancelled) return;
         if (validateRes.ok) {
           const data = await validateRes.json();
           setUser(data.user);
           return;
         }
 
-        // Step 2: token invalid — try refresh
         const storedRefresh = localStorage.getItem('cvh_admin_refresh');
         if (!storedRefresh) {
           clearAndRedirect();
@@ -63,7 +66,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ refreshToken: storedRefresh }),
+          signal: controller.signal,
         });
+        if (cancelled) return;
         if (!refreshRes.ok) {
           clearAndRedirect();
           return;
@@ -73,11 +78,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const accessToken = refreshData.tokens?.accessToken ?? refreshData.accessToken;
         const newRefresh = refreshData.tokens?.refreshToken ?? refreshData.refreshToken;
 
+        if (!accessToken) {
+          clearAndRedirect();
+          return;
+        }
+
         localStorage.setItem('cvh_admin_token', accessToken);
         if (newRefresh) localStorage.setItem('cvh_admin_refresh', newRefresh);
         document.cookie = `cvh_admin_token=${accessToken}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
 
-        // Step 3: use user from refresh response, or re-validate to get it
         if (refreshData.user) {
           setUser(refreshData.user);
           return;
@@ -85,21 +94,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         const revalidateRes = await fetch(`${AUTH_API_URL}/validate`, {
           headers: { Authorization: `Bearer ${accessToken}` },
+          signal: controller.signal,
         });
+        if (cancelled) return;
         if (revalidateRes.ok) {
           const revalidateData = await revalidateRes.json();
           setUser(revalidateData.user);
         } else {
           clearAndRedirect();
         }
-      } catch {
+      } catch (e: any) {
+        if (e?.name === 'AbortError' || cancelled) return;
         clearAndRedirect();
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     }
 
     init();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
   }, []);
 
   const login = async (email: string, password: string) => {
@@ -166,11 +182,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error('Token refresh failed');
     }
     const data = await res.json();
-    localStorage.setItem('cvh_admin_token', data.accessToken);
-    if (data.refreshToken) {
-      localStorage.setItem('cvh_admin_refresh', data.refreshToken);
-    }
-    document.cookie = `cvh_admin_token=${data.accessToken}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
+    const accessToken = data.tokens?.accessToken ?? data.accessToken;
+    const newRefresh = data.tokens?.refreshToken ?? data.refreshToken;
+    localStorage.setItem('cvh_admin_token', accessToken);
+    if (newRefresh) localStorage.setItem('cvh_admin_refresh', newRefresh);
+    document.cookie = `cvh_admin_token=${accessToken}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
   }, []);
 
   const logout = () => {
