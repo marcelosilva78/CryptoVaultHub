@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { EmailService } from './email.service';
 import { EmailWorker } from './email.worker';
+import { EmailController } from './email.controller';
 
 @Module({
   imports: [
@@ -9,6 +10,7 @@ import { EmailWorker } from './email.worker';
       name: 'email-delivery',
     }),
   ],
+  controllers: [EmailController],
   providers: [EmailService, EmailWorker],
   exports: [EmailService],
 })
