@@ -33,17 +33,73 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    fetch(`${AUTH_API_URL}/validate`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((res) => (res.ok ? res.json() : Promise.reject()))
-      .then((data) => setUser(data.user))
-      .catch(() => {
-        localStorage.removeItem('cvh_admin_token');
-        localStorage.removeItem('cvh_admin_refresh');
-        document.cookie = 'cvh_admin_token=; path=/; max-age=0';
-      })
-      .finally(() => setIsLoading(false));
+    function clearAndRedirect() {
+      localStorage.removeItem('cvh_admin_token');
+      localStorage.removeItem('cvh_admin_refresh');
+      document.cookie = 'cvh_admin_token=; path=/; max-age=0';
+      window.location.href = '/login';
+    }
+
+    async function init() {
+      try {
+        // Step 1: validate existing token
+        const validateRes = await fetch(`${AUTH_API_URL}/validate`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (validateRes.ok) {
+          const data = await validateRes.json();
+          setUser(data.user);
+          return;
+        }
+
+        // Step 2: token invalid — try refresh
+        const storedRefresh = localStorage.getItem('cvh_admin_refresh');
+        if (!storedRefresh) {
+          clearAndRedirect();
+          return;
+        }
+
+        const refreshRes = await fetch(`${AUTH_API_URL}/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken: storedRefresh }),
+        });
+        if (!refreshRes.ok) {
+          clearAndRedirect();
+          return;
+        }
+
+        const refreshData = await refreshRes.json();
+        const accessToken = refreshData.tokens?.accessToken ?? refreshData.accessToken;
+        const newRefresh = refreshData.tokens?.refreshToken ?? refreshData.refreshToken;
+
+        localStorage.setItem('cvh_admin_token', accessToken);
+        if (newRefresh) localStorage.setItem('cvh_admin_refresh', newRefresh);
+        document.cookie = `cvh_admin_token=${accessToken}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
+
+        // Step 3: use user from refresh response, or re-validate to get it
+        if (refreshData.user) {
+          setUser(refreshData.user);
+          return;
+        }
+
+        const revalidateRes = await fetch(`${AUTH_API_URL}/validate`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        if (revalidateRes.ok) {
+          const revalidateData = await revalidateRes.json();
+          setUser(revalidateData.user);
+        } else {
+          clearAndRedirect();
+        }
+      } catch {
+        clearAndRedirect();
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    init();
   }, []);
 
   const login = async (email: string, password: string) => {
