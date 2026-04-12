@@ -24,16 +24,16 @@ interface Client {
   status: string;
   tier?: string | { name: string };
   createdAt?: string;
-  custodyMode?: string;
+  custodyPolicy?: string;
 }
 
 /* ─── CreateClientModal ────────────────────────────────────────────────────── */
 function CreateClientModal({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: () => void }) {
-  const [form, setForm] = useState({ name: "", slug: "", custodyMode: "full_custody", kytEnabled: false, kytLevel: "basic" });
+  const [form, setForm] = useState({ name: "", slug: "", email: "", custodyPolicy: "full_custody", kytEnabled: false, kytLevel: "basic" });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => { if (open) { setForm({ name: "", slug: "", custodyMode: "full_custody", kytEnabled: false, kytLevel: "basic" }); setError(null); } }, [open]);
+  useEffect(() => { if (open) { setForm({ name: "", slug: "", email: "", custodyPolicy: "full_custody", kytEnabled: false, kytLevel: "basic" }); setError(null); } }, [open]);
   useEffect(() => {
     if (!open) return;
     const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -45,7 +45,7 @@ function CreateClientModal({ open, onClose, onCreated }: { open: boolean; onClos
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault(); setLoading(true); setError(null);
     try {
-      await adminFetch("/clients", { method: "POST", body: JSON.stringify(form) });
+      await adminFetch("/clients", { method: "POST", body: JSON.stringify({ name: form.name, slug: form.slug, email: form.email || undefined, custodyPolicy: form.custodyPolicy, kytEnabled: form.kytEnabled, kytLevel: form.kytLevel }) });
       onCreated(); onClose();
     } catch (err: any) { setError(err.message); }
     finally { setLoading(false); }
@@ -68,10 +68,23 @@ function CreateClientModal({ open, onClose, onCreated }: { open: boolean; onClos
             <input value={form.slug} onChange={(e) => setForm(f => ({ ...f, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-") }))} required className="w-full px-3 py-2 bg-surface-input border border-border-default rounded-input text-body text-text-primary outline-none focus:border-border-focus transition-colors duration-fast font-mono placeholder:text-text-muted" placeholder="acme-exchange" />
           </div>
           <div>
-            <label className="block text-caption text-text-muted mb-1 font-display">Custody Mode</label>
-            <select value={form.custodyMode} onChange={(e) => setForm(f => ({ ...f, custodyMode: e.target.value }))} className="w-full px-3 py-2 bg-surface-input border border-border-default rounded-input text-body text-text-primary outline-none focus:border-border-focus transition-colors duration-fast font-display">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Email <span className="text-gray-400 text-xs">(optional — for invite)</span>
+            </label>
+            <input
+              type="email"
+              value={form.email}
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
+              placeholder="client@example.com"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-caption text-text-muted mb-1 font-display">Custody Policy</label>
+            <select value={form.custodyPolicy} onChange={(e) => setForm(f => ({ ...f, custodyPolicy: e.target.value }))} className="w-full px-3 py-2 bg-surface-input border border-border-default rounded-input text-body text-text-primary outline-none focus:border-border-focus transition-colors duration-fast font-display">
               <option value="full_custody">Full Custody</option>
               <option value="co_sign">Co-Sign</option>
+              <option value="self_managed">Self Managed</option>
             </select>
           </div>
           <div className="grid grid-cols-2 gap-4">

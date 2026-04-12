@@ -51,7 +51,7 @@ function EditClientModal({ open, onClose, onSaved, clientId, initialData }: {
   onClose: () => void;
   onSaved: () => void;
   clientId: string;
-  initialData: { name: string; status: string; custodyMode: string; kytEnabled: boolean; kytLevel: string };
+  initialData: { name: string; status: string; custodyPolicy: string; email: string; kytEnabled: boolean; kytLevel: string };
 }) {
   const [form, setForm] = useState(initialData);
   const [loading, setLoading] = useState(false);
@@ -96,10 +96,23 @@ function EditClientModal({ open, onClose, onSaved, clientId, initialData }: {
             </select>
           </div>
           <div>
-            <label className="block text-caption text-text-muted mb-1 font-display">Custody Mode</label>
-            <select value={form.custodyMode} onChange={(e) => setForm(f => ({ ...f, custodyMode: e.target.value }))} className="w-full px-3 py-2 bg-surface-input border border-border-default rounded-input text-body text-text-primary outline-none focus:border-border-focus transition-colors duration-fast font-display">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Email <span className="text-gray-400 text-xs">(optional — for invite)</span>
+            </label>
+            <input
+              type="email"
+              value={form.email}
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
+              placeholder="client@example.com"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-caption text-text-muted mb-1 font-display">Custody Policy</label>
+            <select value={form.custodyPolicy} onChange={(e) => setForm(f => ({ ...f, custodyPolicy: e.target.value }))} className="w-full px-3 py-2 bg-surface-input border border-border-default rounded-input text-body text-text-primary outline-none focus:border-border-focus transition-colors duration-fast font-display">
               <option value="full_custody">Full Custody</option>
               <option value="co_sign">Co-Sign</option>
+              <option value="self_managed">Self Managed</option>
             </select>
           </div>
           <div className="grid grid-cols-2 gap-4">
@@ -242,7 +255,8 @@ export default function ClientDetailPage() {
   const editInitialData = {
     name: client?.name ?? "",
     status: client?.status ?? "active",
-    custodyMode: client?.custodyMode ?? "full_custody",
+    custodyPolicy: client?.custodyPolicy ?? client?.custodyMode ?? "full_custody",
+    email: client?.email ?? "",
     kytEnabled: client?.kytEnabled ?? false,
     kytLevel: client?.kytLevel ?? "basic",
   };
@@ -360,8 +374,8 @@ export default function ClientDetailPage() {
           color={statusVariant as any}
         />
         <StatCard
-          label="Custody Mode"
-          value={client.custodyMode ?? "—"}
+          label="Custody Policy"
+          value={client.custodyPolicy ?? client.custodyMode ?? "—"}
         />
         <StatCard
           label="KYT"
@@ -403,7 +417,7 @@ export default function ClientDetailPage() {
               { label: "Client ID", value: String(client.id ?? clientId), mono: true },
               { label: "Slug", value: client.slug ?? "—", mono: true },
               { label: "Status", value: client.status ?? "—", mono: false },
-              { label: "Custody Mode", value: client.custodyMode ?? "—", mono: false },
+              { label: "Custody Policy", value: client.custodyPolicy ?? client.custodyMode ?? "—", mono: false },
               { label: "KYT Enabled", value: client.kytEnabled ? "Yes" : "No", mono: false },
               { label: "KYT Level", value: client.kytLevel ?? "—", mono: false },
               { label: "Created At", value: client.createdAt ? new Date(client.createdAt).toLocaleDateString() : "—", mono: false },
