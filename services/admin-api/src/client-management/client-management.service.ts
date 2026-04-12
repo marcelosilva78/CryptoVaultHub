@@ -282,7 +282,7 @@ export class ClientManagementService {
 
     await this.auditLog.log({
       adminUserId,
-      action: 'client.invite_sent',
+      action: 'client.invite_queued',
       entityType: 'client',
       entityId: id.toString(),
       details: { email: client.email },

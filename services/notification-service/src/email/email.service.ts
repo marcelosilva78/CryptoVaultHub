@@ -178,7 +178,7 @@ export class EmailService {
       <p>You have been invited to join <strong>${escHtml(orgName)}</strong> on VaultHub.</p>
       <p>Click the button below to set up your account. This link expires in 48 hours.</p>
       <p>
-        <a href="${inviteUrl}"
+        <a href="${escHtml(inviteUrl)}"
            style="display:inline-block;padding:12px 24px;background:#4f46e5;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;">
           Accept Invitation
         </a>
