@@ -1,15 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { AlertTriangle, ShieldCheck, X } from "lucide-react";
 import { StatCard } from "@/components/stat-card";
 import { DataTable, TableCell, TableRow } from "@/components/data-table";
 import { Badge } from "@/components/badge";
-import {
-  complianceStats,
-  complianceAlerts,
-  sanctionsLists,
-} from "@/lib/mock-data";
 import type { ComponentProps } from "react";
 
 /* ─── API helper ─────────────────────────────────────────────── */
@@ -19,6 +14,25 @@ async function adminFetch(path: string, options: RequestInit = {}) {
   const res = await fetch(`${ADMIN_API}${path}`, { ...options, headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}`, ...options.headers } });
   if (!res.ok) { const e = await res.json().catch(() => ({ message: "Request failed" })); throw new Error(e.message || `HTTP ${res.status}`); }
   return res.json();
+}
+
+/* ─── Interfaces ─────────────────────────────────────────────── */
+interface ComplianceAlert {
+  id: string | number;
+  severity: string;
+  address: string;
+  type: string;
+  clientName?: string;
+  client?: string;
+  status: string;
+  createdAt?: string;
+}
+interface SanctionsList {
+  name: string;
+  entries?: number;
+  cryptoAddrs?: number;
+  lastSync?: string;
+  status?: string;
 }
 
 /* Map legacy color names to semantic badge/stat variants */
@@ -109,6 +123,21 @@ function AlertReviewModal({ open, alert, onClose, onSave }: AlertReviewModalProp
 export default function CompliancePage() {
   const [reviewModal, setReviewModal] = useState<{ open: boolean; alert: any | null }>({ open: false, alert: null });
   const [syncing, setSyncing] = useState(false);
+  const [alerts, setAlerts] = useState<ComplianceAlert[]>([]);
+  const [sanctions, setSanctions] = useState<SanctionsList[]>([]);
+  const [loadingData, setLoadingData] = useState(true);
+  const [reload, setReload] = useState(0);
+
+  useEffect(() => {
+    setLoadingData(true);
+    Promise.all([
+      adminFetch("/compliance/alerts").catch(() => ({ alerts: [] })),
+      adminFetch("/compliance/sanctions").catch(() => []),
+    ]).then(([alertsData, sanctionsData]) => {
+      setAlerts(alertsData?.alerts ?? alertsData?.data ?? (Array.isArray(alertsData) ? alertsData : []));
+      setSanctions(Array.isArray(sanctionsData) ? sanctionsData : sanctionsData?.lists ?? []);
+    }).finally(() => setLoadingData(false));
+  }, [reload]);
 
   const handleForceSync = async () => {
     setSyncing(true);
@@ -126,20 +155,17 @@ export default function CompliancePage() {
       method: "PATCH",
       body: JSON.stringify({ status, notes }),
     });
+    setReload(r => r + 1);
   };
 
   return (
     <>
       {/* KPIs */}
       <div className="grid grid-cols-4 gap-stat-grid-gap mb-section-gap">
-        {complianceStats.map((stat) => (
-          <StatCard
-            key={stat.label}
-            label={stat.label}
-            value={stat.value}
-            color={stat.color ? statColorMap[stat.color] : undefined}
-          />
-        ))}
+        <StatCard label="Open Alerts" value={String(alerts.filter(a => a.status === 'pending').length)} color="error" />
+        <StatCard label="Acknowledged" value={String(alerts.filter(a => a.status === 'acknowledged').length)} color="warning" />
+        <StatCard label="Resolved" value={String(alerts.filter(a => a.status === 'resolved').length)} color="success" />
+        <StatCard label="Total" value={String(alerts.length)} />
       </div>
 
       {/* Two column layout */}
@@ -152,15 +178,20 @@ export default function CompliancePage() {
             <div className="flex items-center gap-1.5 text-status-warning">
               <AlertTriangle className="w-3.5 h-3.5" />
               <span className="text-caption font-semibold font-display">
-                {complianceAlerts.length} open
+                {alerts.length} open
               </span>
             </div>
           }
         >
-          {complianceAlerts.map((alert, i) => (
-            <TableRow key={i}>
+          {!loadingData && alerts.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={5} className="text-center text-text-muted text-caption py-4">No alerts</TableCell>
+            </TableRow>
+          )}
+          {alerts.map((alert, i) => (
+            <TableRow key={alert.id ?? i}>
               <TableCell>
-                <Badge variant={badgeMap[alert.severityColor] ?? "warning"}>
+                <Badge variant={alert.severity === 'high' ? 'error' : alert.severity === 'medium' ? 'warning' : 'neutral'}>
                   {alert.severity}
                 </Badge>
               </TableCell>
@@ -169,11 +200,11 @@ export default function CompliancePage() {
                   {alert.address}
                 </span>
               </TableCell>
-              <TableCell className="text-caption">{alert.match}</TableCell>
-              <TableCell>{alert.client}</TableCell>
+              <TableCell className="text-caption">{alert.type}</TableCell>
+              <TableCell>{alert.clientName ?? alert.client ?? "—"}</TableCell>
               <TableCell>
                 <button
-                  onClick={() => setReviewModal({ open: true, alert: { id: i, clientName: alert.client, type: alert.match } })}
+                  onClick={() => setReviewModal({ open: true, alert: { id: alert.id, clientName: alert.clientName ?? alert.client ?? "—", type: alert.type } })}
                   className="bg-transparent text-text-secondary border border-border-default rounded-button px-2 py-0.5 text-micro font-semibold hover:border-accent-primary hover:text-text-primary transition-all duration-fast font-display"
                 >
                   Review
@@ -203,21 +234,26 @@ export default function CompliancePage() {
             </div>
           }
         >
-          {sanctionsLists.map((list) => (
+          {!loadingData && sanctions.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={5} className="text-center text-text-muted text-caption py-4">No sanctions lists</TableCell>
+            </TableRow>
+          )}
+          {sanctions.map((list) => (
             <TableRow key={list.name}>
               <TableCell>
                 <span className="font-semibold font-display text-text-primary">
                   {list.name}
                 </span>
               </TableCell>
-              <TableCell mono>{list.entries}</TableCell>
-              <TableCell mono>{list.cryptoAddrs}</TableCell>
+              <TableCell mono>{list.entries?.toLocaleString() ?? "—"}</TableCell>
+              <TableCell mono>{list.cryptoAddrs?.toLocaleString() ?? "—"}</TableCell>
               <TableCell mono className="text-caption">
-                {list.lastSync}
+                {list.lastSync ?? "—"}
               </TableCell>
               <TableCell>
-                <Badge variant={badgeMap[list.statusColor] ?? "neutral"}>
-                  {list.status}
+                <Badge variant={list.status === 'active' || list.status === 'synced' ? 'success' : 'neutral'}>
+                  {list.status ?? "—"}
                 </Badge>
               </TableCell>
             </TableRow>

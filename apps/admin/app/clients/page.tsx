@@ -6,9 +6,6 @@ import { Search, X } from "lucide-react";
 import { StatCard } from "@/components/stat-card";
 import { DataTable, TableCell, TableRow } from "@/components/data-table";
 import { Badge } from "@/components/badge";
-import { useClients } from "@cvh/api-client/hooks";
-import { clients as mockClients, clientsStats } from "@/lib/mock-data";
-import type { ComponentProps } from "react";
 
 /* ─── API fetch helper ─────────────────────────────────────────────────────── */
 const ADMIN_API = process.env.NEXT_PUBLIC_ADMIN_API_URL || "http://localhost:3001";
@@ -19,27 +16,16 @@ async function adminFetch(path: string, options: RequestInit = {}) {
   return res.json();
 }
 
-/* Map legacy mock data color names to semantic badge variants */
-const statusMap: Record<string, ComponentProps<typeof Badge>["variant"]> = {
-  green: "success",
-  orange: "warning",
-  red: "error",
-};
-
-const tierMap: Record<string, ComponentProps<typeof Badge>["variant"]> = {
-  blue: "accent",
-  purple: "accent",
-  neutral: "neutral",
-};
-
-/* Map legacy stat color to semantic StatCard color */
-const statColorMap: Record<string, ComponentProps<typeof StatCard>["color"]> = {
-  green: "success",
-  blue: "accent",
-  accent: "accent",
-  red: "error",
-  orange: "warning",
-};
+/* ─── Client interface ─────────────────────────────────────────────────────── */
+interface Client {
+  id: number | string;
+  name: string;
+  slug?: string;
+  status: string;
+  tier?: string | { name: string };
+  createdAt?: string;
+  custodyMode?: string;
+}
 
 /* ─── CreateClientModal ────────────────────────────────────────────────────── */
 function CreateClientModal({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: () => void }) {
@@ -121,48 +107,33 @@ function CreateClientModal({ open, onClose, onCreated }: { open: boolean; onClos
 /* ─── Page component ───────────────────────────────────────────────────────── */
 export default function ClientsPage() {
   const [createModal, setCreateModal] = useState(false);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [reload, setReload] = useState(0);
 
-  // API hook with mock data fallback
-  const { data: apiClients } = useClients();
-  // Use mock data when API is not available
-  const clients = apiClients?.data
-    ? apiClients.data.map((c) => ({
-        id: String(c.id),
-        name: c.name,
-        since: `Since ${c.createdAt?.slice(0, 7) ?? 'N/A'}`,
-        tier: c.tier,
-        tierColor: 'accent' as const,
-        chains: c.chains.join(', '),
-        forwarders: c.forwarderCount.toLocaleString(),
-        volume24h: c.volume24h,
-        balance: c.totalBalance,
-        status: c.status === 'active' ? 'Active' : c.status === 'suspended' ? 'Suspended' : 'Pending',
-        statusVariant: (c.status === 'active' ? 'success' : c.status === 'suspended' ? 'error' : 'warning') as ComponentProps<typeof Badge>["variant"],
-      }))
-    : mockClients.map((c) => ({
-        ...c,
-        statusVariant: (statusMap[c.statusColor] ?? "neutral") as ComponentProps<typeof Badge>["variant"],
-        tierVariant: (tierMap[c.tierColor] ?? "neutral") as ComponentProps<typeof Badge>["variant"],
-      }));
+  useEffect(() => {
+    setLoading(true);
+    adminFetch("/clients")
+      .then((data) => setClients(Array.isArray(data) ? data : data?.clients ?? data?.data ?? []))
+      .catch((err: any) => setError(err.message))
+      .finally(() => setLoading(false));
+  }, [reload]);
 
   return (
     <>
       <CreateClientModal
         open={createModal}
         onClose={() => setCreateModal(false)}
-        onCreated={() => window.location.reload()}
+        onCreated={() => setReload(r => r + 1)}
       />
 
       {/* KPIs */}
       <div className="grid grid-cols-4 gap-stat-grid-gap mb-section-gap">
-        {clientsStats.map((stat) => (
-          <StatCard
-            key={stat.label}
-            label={stat.label}
-            value={stat.value}
-            color={stat.color ? statColorMap[stat.color] : undefined}
-          />
-        ))}
+        <StatCard label="Total Clients" value={String(clients.length)} />
+        <StatCard label="Active" value={String(clients.filter(c => c.status === "active").length)} color="success" />
+        <StatCard label="Suspended" value={String(clients.filter(c => c.status === "suspended").length)} color="error" />
+        <StatCard label="Pending" value={String(clients.filter(c => c.status === "pending" || c.status === "pending_setup").length)} color="warning" />
       </div>
 
       {/* Clients Table */}
@@ -197,45 +168,76 @@ export default function ClientsPage() {
           </>
         }
       >
-        {clients.map((client) => (
-          <TableRow key={client.id}>
-            <TableCell>
-              <div className="font-semibold font-display text-text-primary">
-                {client.name}
+        {loading && (
+          <tr>
+            <td colSpan={8} className="px-4 py-3 border-b border-border-subtle">
+              <div className="flex items-center justify-center gap-2 py-6 text-text-muted text-caption font-display">
+                <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                Loading clients…
               </div>
-              <div className="text-text-muted text-caption font-display">
-                {client.since}
+            </td>
+          </tr>
+        )}
+        {!loading && error && (
+          <tr>
+            <td colSpan={8} className="px-4 py-3 border-b border-border-subtle">
+              <div className="py-6 text-center text-status-error text-caption font-display">
+                Failed to load clients: {error}
               </div>
-            </TableCell>
-            <TableCell>
-              <Badge variant={"tierVariant" in client ? client.tierVariant as ComponentProps<typeof Badge>["variant"] : "accent"}>
-                {client.tier}
-              </Badge>
-            </TableCell>
-            <TableCell>{client.chains}</TableCell>
-            <TableCell mono>{client.forwarders}</TableCell>
-            <TableCell mono className="text-status-success">
-              {client.volume24h}
-            </TableCell>
-            <TableCell mono>{client.balance}</TableCell>
-            <TableCell>
-              <Badge
-                variant={"statusVariant" in client ? client.statusVariant as ComponentProps<typeof Badge>["variant"] : "success"}
-                dot
-              >
-                {client.status}
-              </Badge>
-            </TableCell>
-            <TableCell>
-              <Link
-                href={`/clients/${client.id}`}
-                className="bg-transparent text-text-secondary border border-border-default rounded-button px-3 py-1 text-caption font-semibold hover:border-accent-primary hover:text-text-primary transition-all duration-fast inline-block font-display"
-              >
-                View
-              </Link>
-            </TableCell>
-          </TableRow>
-        ))}
+            </td>
+          </tr>
+        )}
+        {!loading && !error && clients.length === 0 && (
+          <tr>
+            <td colSpan={8} className="px-4 py-3 border-b border-border-subtle">
+              <div className="py-6 text-center text-text-muted text-caption font-display">
+                No clients found.
+              </div>
+            </td>
+          </tr>
+        )}
+        {!loading && !error && clients.map((client) => {
+          const tierName = typeof client.tier === "object" ? client.tier?.name : client.tier ?? "—";
+          const statusVariant =
+            client.status === "active" ? "success" :
+            client.status === "suspended" ? "error" : "warning";
+          const statusLabel =
+            client.status === "active" ? "Active" :
+            client.status === "suspended" ? "Suspended" : "Pending";
+
+          return (
+            <TableRow key={client.id}>
+              <TableCell>
+                <div className="font-semibold font-display text-text-primary">
+                  {client.name}
+                </div>
+                <div className="text-text-muted text-caption font-display">
+                  Since {client.createdAt?.slice(0, 7) ?? "—"}
+                </div>
+              </TableCell>
+              <TableCell>
+                <Badge variant="accent">{tierName}</Badge>
+              </TableCell>
+              <TableCell>—</TableCell>
+              <TableCell mono>—</TableCell>
+              <TableCell mono>—</TableCell>
+              <TableCell mono>—</TableCell>
+              <TableCell>
+                <Badge variant={statusVariant} dot>
+                  {statusLabel}
+                </Badge>
+              </TableCell>
+              <TableCell>
+                <Link
+                  href={`/clients/${client.id}`}
+                  className="bg-transparent text-text-secondary border border-border-default rounded-button px-3 py-1 text-caption font-semibold hover:border-accent-primary hover:text-text-primary transition-all duration-fast inline-block font-display"
+                >
+                  View
+                </Link>
+              </TableCell>
+            </TableRow>
+          );
+        })}
       </DataTable>
     </>
   );

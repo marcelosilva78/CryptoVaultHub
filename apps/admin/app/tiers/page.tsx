@@ -1,13 +1,26 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { X, Loader2 } from "lucide-react";
 import { DataTable, TableCell, TableRow } from "@/components/data-table";
 import { Badge } from "@/components/badge";
 import { cn } from "@/lib/utils";
-import { useTiers } from "@cvh/api-client/hooks";
-import { presetTiers, customTiers } from "@/lib/mock-data";
 import type { ComponentProps } from "react";
+
+/* ─── Types ───────────────────────────────────────────────────────── */
+interface Tier {
+  id: number;
+  name: string;
+  description?: string;
+  maxWallets?: number;
+  maxDailyWithdrawal?: string;
+  requestsPerSecond?: number;
+  webhookRetries?: number;
+  kytLevel?: string;
+  isDefault?: boolean;
+  isActive?: boolean;
+  clientCount?: number;
+}
 
 /* Map legacy color names to semantic badge variants */
 const badgeMap: Record<string, ComponentProps<typeof Badge>["variant"]> = {
@@ -28,9 +41,10 @@ async function adminFetch(path: string, options: RequestInit = {}) {
 /* ─── CreateTierModal ─────────────────────────────────────────────── */
 interface CreateTierModalProps {
   onClose: () => void;
+  onSaved: () => void;
 }
 
-function CreateTierModal({ onClose }: CreateTierModalProps) {
+function CreateTierModal({ onClose, onSaved }: CreateTierModalProps) {
   const [form, setForm] = useState({
     name: "",
     custodyMode: "full_custody",
@@ -64,6 +78,7 @@ function CreateTierModal({ onClose }: CreateTierModalProps) {
           ...(form.dailyWithdrawalLimitUsd !== "" && { dailyWithdrawalLimitUsd: Number(form.dailyWithdrawalLimitUsd) }),
         }),
       });
+      onSaved();
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
@@ -195,19 +210,20 @@ function CreateTierModal({ onClose }: CreateTierModalProps) {
 
 /* ─── EditTierModal ───────────────────────────────────────────────── */
 interface EditTierModalProps {
-  tier: any;
+  tier: Tier;
   onClose: () => void;
+  onSaved: () => void;
 }
 
-function EditTierModal({ tier, onClose }: EditTierModalProps) {
+function EditTierModal({ tier, onClose, onSaved }: EditTierModalProps) {
   const [form, setForm] = useState({
     name: tier.name ?? "",
-    custodyMode: tier.custodyMode ?? "full_custody",
-    globalRateLimit: tier.globalRateLimit != null ? String(tier.globalRateLimit) : "",
-    maxForwardersPerChain: tier.maxForwardersPerChain != null ? String(tier.maxForwardersPerChain) : "",
-    maxChains: tier.maxChains != null ? String(tier.maxChains) : "",
-    maxWebhooks: tier.maxWebhooks != null ? String(tier.maxWebhooks) : "",
-    dailyWithdrawalLimitUsd: tier.dailyWithdrawalLimitUsd != null ? String(tier.dailyWithdrawalLimitUsd) : "",
+    custodyMode: "full_custody",
+    globalRateLimit: "",
+    maxForwardersPerChain: tier.maxWallets != null ? String(tier.maxWallets) : "",
+    maxChains: "",
+    maxWebhooks: tier.webhookRetries != null ? String(tier.webhookRetries) : "",
+    dailyWithdrawalLimitUsd: tier.maxDailyWithdrawal != null ? String(tier.maxDailyWithdrawal) : "",
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -223,7 +239,7 @@ function EditTierModal({ tier, onClose }: EditTierModalProps) {
     try {
       const payload: Record<string, unknown> = {};
       if (form.name !== (tier.name ?? "")) payload.name = form.name;
-      if (form.custodyMode !== (tier.custodyMode ?? "full_custody")) payload.custodyMode = form.custodyMode;
+      if (form.custodyMode !== "full_custody") payload.custodyMode = form.custodyMode;
       if (form.globalRateLimit !== "") payload.globalRateLimit = Number(form.globalRateLimit);
       if (form.maxForwardersPerChain !== "") payload.maxForwardersPerChain = Number(form.maxForwardersPerChain);
       if (form.maxChains !== "") payload.maxChains = Number(form.maxChains);
@@ -233,6 +249,7 @@ function EditTierModal({ tier, onClose }: EditTierModalProps) {
         method: "PATCH",
         body: JSON.stringify(payload),
       });
+      onSaved();
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
@@ -359,119 +376,181 @@ function EditTierModal({ tier, onClose }: EditTierModalProps) {
 
 /* ─── Page ────────────────────────────────────────────────────────── */
 export default function TiersPage() {
-  // API hook with mock data fallback
-  const { data: apiTiers } = useTiers();
-  void apiTiers; // Falls back to mock presetTiers / customTiers below
+  const [tiers, setTiers] = useState<Tier[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [reload, setReload] = useState(0);
 
   const [createTierModal, setCreateTierModal] = useState(false);
-  const [editTierModal, setEditTierModal] = useState<{ open: boolean; tier: any | null }>({ open: false, tier: null });
+  const [editTierModal, setEditTierModal] = useState<{ open: boolean; tier: Tier | null }>({ open: false, tier: null });
+
+  useEffect(() => {
+    adminFetch("/tiers")
+      .then((data) => setTiers(Array.isArray(data) ? data : data?.tiers ?? data?.data ?? []))
+      .catch(() => setTiers([]))
+      .finally(() => setLoading(false));
+  }, [reload]);
 
   return (
     <>
-      {/* Preset Tiers */}
+      {/* Tiers Grid */}
       <div className="text-body font-semibold text-text-secondary uppercase tracking-[0.05em] mb-5 font-display">
-        Preset Tiers
+        Tiers
       </div>
-      <div className="grid grid-cols-4 gap-4 mb-section-gap">
-        {presetTiers.map((tier) => (
+
+      {loading ? (
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="w-6 h-6 animate-spin text-accent-primary" />
+        </div>
+      ) : tiers.length === 0 ? (
+        <div className="text-center py-16 text-text-muted font-display">
+          No tiers configured yet.
+        </div>
+      ) : (
+        <div className="grid grid-cols-4 gap-4 mb-section-gap">
+          {tiers.map((tier) => (
+            <div
+              key={tier.id}
+              className={cn(
+                "bg-surface-card border border-border-default rounded-card p-6 text-center transition-all duration-fast cursor-pointer hover:border-accent-primary shadow-card",
+                tier.isDefault && "border-accent-primary shadow-glow"
+              )}
+            >
+              <div className="text-heading font-bold mb-1 text-accent-primary font-display">
+                {tier.name}
+              </div>
+              <div className="text-caption text-text-muted mb-4 font-display">
+                {tier.description ?? "—"}
+              </div>
+              <div className="text-caption text-text-secondary py-1 border-b border-border-subtle font-display">
+                <strong className="text-text-primary">
+                  {tier.maxWallets != null ? tier.maxWallets : "Unlimited"}
+                </strong>{" "}
+                max wallets
+              </div>
+              <div className="text-caption text-text-secondary py-1 border-b border-border-subtle font-display">
+                <strong className="text-text-primary">
+                  {tier.maxDailyWithdrawal ?? "Unlimited"}
+                </strong>{" "}
+                daily withdrawal
+              </div>
+              <div className="text-caption text-text-secondary py-1 border-b border-border-subtle font-display">
+                <strong className="text-text-primary">
+                  {tier.requestsPerSecond != null ? tier.requestsPerSecond : "—"}
+                </strong>{" "}
+                req/s
+              </div>
+              <div className="text-caption text-text-secondary py-1 border-b border-border-subtle font-display">
+                <strong className="text-text-primary">
+                  {tier.webhookRetries != null ? tier.webhookRetries : "—"}
+                </strong>{" "}
+                webhook retries
+              </div>
+              <div className="text-caption text-text-secondary py-1 border-b border-border-subtle font-display">
+                KYT: <strong className="text-text-primary">{tier.kytLevel ?? "—"}</strong>
+              </div>
+              <div className="mt-3 flex items-center justify-center gap-2">
+                <Badge variant={tier.isActive !== false ? "success" : "neutral"} dot>
+                  {tier.isActive !== false ? "Active" : "Inactive"}
+                </Badge>
+                <Badge variant="accent">
+                  {tier.clientCount ?? 0} clients
+                </Badge>
+              </div>
+              <div className="mt-3">
+                <button
+                  onClick={() => setEditTierModal({ open: true, tier })}
+                  className="bg-transparent text-text-secondary border border-border-default rounded-button px-3 py-1 text-caption font-semibold hover:border-accent-primary hover:text-text-primary transition-all duration-fast font-display"
+                >
+                  Edit
+                </button>
+              </div>
+            </div>
+          ))}
+
+          {/* Custom Tier Card */}
           <div
-            key={tier.name}
-            className={cn(
-              "bg-surface-card border border-border-default rounded-card p-6 text-center transition-all duration-fast cursor-pointer hover:border-accent-primary shadow-card",
-              tier.selected &&
-                "border-accent-primary shadow-glow"
-            )}
+            onClick={() => setCreateTierModal(true)}
+            className="bg-surface-card border border-border-default border-dashed rounded-card p-6 text-center transition-all duration-fast cursor-pointer hover:border-accent-primary shadow-card"
           >
-            <div className="text-heading font-bold mb-1 text-accent-primary font-display">
-              {tier.name}
+            <div className="text-heading font-bold text-text-muted mb-1 font-display">
+              + Custom
             </div>
             <div className="text-caption text-text-muted mb-4 font-display">
-              {tier.description}
+              Create from any base tier
             </div>
-            {tier.features.map((feat) => (
-              <div
-                key={feat.label}
-                className="text-caption text-text-secondary py-1 border-b border-border-subtle last:border-b-0 font-display"
-              >
-                <strong className="text-text-primary">{feat.value}</strong>{" "}
-                {feat.label}
-              </div>
-            ))}
-            <div className="mt-3">
-              <Badge variant={badgeMap[tier.badgeColor] ?? "neutral"}>
-                {tier.clients} clients
-              </Badge>
+            <div className="py-[30px]">
+              <div className="text-4xl text-text-muted opacity-50 font-display">+</div>
             </div>
-          </div>
-        ))}
-
-        {/* Custom Tier Card */}
-        <div
-          onClick={() => setCreateTierModal(true)}
-          className="bg-surface-card border border-border-default border-dashed rounded-card p-6 text-center transition-all duration-fast cursor-pointer hover:border-accent-primary shadow-card"
-        >
-          <div className="text-heading font-bold text-text-muted mb-1 font-display">
-            + Custom
-          </div>
-          <div className="text-caption text-text-muted mb-4 font-display">
-            Create from any base tier
-          </div>
-          <div className="py-[30px]">
-            <div className="text-4xl text-text-muted opacity-50 font-display">+</div>
-          </div>
-          <div className="text-caption text-text-muted font-display">
-            Select base {"\u2192"} customize {"\u2192"} save
+            <div className="text-caption text-text-muted font-display">
+              Select base {"\u2192"} customize {"\u2192"} save
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* Custom Tiers Table */}
-      <div className="text-body font-semibold text-text-secondary uppercase tracking-[0.05em] mb-3 font-display">
-        Custom Tiers
-      </div>
-      <DataTable
-        headers={[
-          "Custom Tier Name",
-          "Based On",
-          "Key Overrides",
-          "Assigned To",
-          "Actions",
-        ]}
-      >
-        {customTiers.map((tier) => (
-          <TableRow key={tier.name}>
-            <TableCell>
-              <span className="font-semibold font-display text-text-primary">
-                {tier.name}
-              </span>
-            </TableCell>
-            <TableCell>
-              <Badge variant={badgeMap[tier.basedOnColor] ?? "neutral"}>
-                {tier.basedOn}
-              </Badge>
-            </TableCell>
-            <TableCell className="text-caption">{tier.overrides}</TableCell>
-            <TableCell>{tier.assignedTo}</TableCell>
-            <TableCell>
-              <button
-                onClick={() => setEditTierModal({ open: true, tier })}
-                className="bg-transparent text-text-secondary border border-border-default rounded-button px-3 py-1 text-caption font-semibold hover:border-accent-primary hover:text-text-primary transition-all duration-fast font-display"
-              >
-                Edit
-              </button>
-            </TableCell>
-          </TableRow>
-        ))}
-      </DataTable>
+      {/* Tiers Table */}
+      {!loading && tiers.length > 0 && (
+        <>
+          <div className="text-body font-semibold text-text-secondary uppercase tracking-[0.05em] mb-3 font-display">
+            All Tiers
+          </div>
+          <DataTable
+            headers={[
+              "Tier Name",
+              "Description",
+              "Max Wallets",
+              "Daily Withdrawal",
+              "Req/s",
+              "KYT Level",
+              "Clients",
+              "Status",
+              "Actions",
+            ]}
+          >
+            {tiers.map((tier) => (
+              <TableRow key={tier.id}>
+                <TableCell>
+                  <span className="font-semibold font-display text-text-primary">
+                    {tier.name}
+                  </span>
+                </TableCell>
+                <TableCell className="text-caption">{tier.description ?? "—"}</TableCell>
+                <TableCell mono>{tier.maxWallets != null ? String(tier.maxWallets) : "Unlimited"}</TableCell>
+                <TableCell mono>{tier.maxDailyWithdrawal ?? "Unlimited"}</TableCell>
+                <TableCell mono>{tier.requestsPerSecond != null ? String(tier.requestsPerSecond) : "—"}</TableCell>
+                <TableCell>{tier.kytLevel ?? "—"}</TableCell>
+                <TableCell mono>{String(tier.clientCount ?? 0)}</TableCell>
+                <TableCell>
+                  <Badge variant={tier.isActive !== false ? "success" : "neutral"} dot>
+                    {tier.isActive !== false ? "Active" : "Inactive"}
+                  </Badge>
+                </TableCell>
+                <TableCell>
+                  <button
+                    onClick={() => setEditTierModal({ open: true, tier })}
+                    className="bg-transparent text-text-secondary border border-border-default rounded-button px-3 py-1 text-caption font-semibold hover:border-accent-primary hover:text-text-primary transition-all duration-fast font-display"
+                  >
+                    Edit
+                  </button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </DataTable>
+        </>
+      )}
 
       {/* Modals */}
       {createTierModal && (
-        <CreateTierModal onClose={() => setCreateTierModal(false)} />
+        <CreateTierModal
+          onClose={() => setCreateTierModal(false)}
+          onSaved={() => setReload((r) => r + 1)}
+        />
       )}
       {editTierModal.open && editTierModal.tier && (
         <EditTierModal
           tier={editTierModal.tier}
           onClose={() => setEditTierModal({ open: false, tier: null })}
+          onSaved={() => setReload((r) => r + 1)}
         />
       )}
     </>

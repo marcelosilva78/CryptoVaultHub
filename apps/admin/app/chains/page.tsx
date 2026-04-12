@@ -1,20 +1,23 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { X, Loader2 } from "lucide-react";
 import { DataTable, TableCell, TableRow } from "@/components/data-table";
 import { Badge } from "@/components/badge";
 import { cn } from "@/lib/utils";
-import { useChains } from "@cvh/api-client/hooks";
-import { chains as mockChains } from "@/lib/mock-data";
 import type { ComponentProps } from "react";
 
-/* Map legacy color names to semantic badge variants */
-const badgeMap: Record<string, ComponentProps<typeof Badge>["variant"]> = {
-  green: "success",
-  orange: "warning",
-  red: "error",
-};
+/* ─── Types ───────────────────────────────────────────────────────── */
+interface Chain {
+  id: number;
+  name: string;
+  symbol: string;
+  chainId: number;
+  rpcUrl?: string;
+  explorerUrl?: string;
+  confirmationsRequired: number;
+  isActive: boolean;
+}
 
 /* ─── API helpers ─────────────────────────────────────────────────── */
 const ADMIN_API = process.env.NEXT_PUBLIC_ADMIN_API_URL || "http://localhost:3001";
@@ -43,14 +46,8 @@ function ChainHexAvatar({ name }: { name: string }) {
 }
 
 /* ─── LED indicator ───────────────────────────────────────────────── */
-function RpcLed({ status }: { status: string }) {
-  const colorClass =
-    status === "Healthy"
-      ? "bg-status-success"
-      : status === "Degraded"
-        ? "bg-status-warning"
-        : "bg-status-error";
-
+function RpcLed({ active }: { active: boolean }) {
+  const colorClass = active ? "bg-status-success" : "bg-status-error";
   return (
     <span className="relative flex h-2.5 w-2.5">
       <span
@@ -72,9 +69,10 @@ function RpcLed({ status }: { status: string }) {
 /* ─── AddChainModal ───────────────────────────────────────────────── */
 interface AddChainModalProps {
   onClose: () => void;
+  onAdded: () => void;
 }
 
-function AddChainModal({ onClose }: AddChainModalProps) {
+function AddChainModal({ onClose, onAdded }: AddChainModalProps) {
   const [form, setForm] = useState({
     name: "",
     symbol: "",
@@ -109,7 +107,7 @@ function AddChainModal({ onClose }: AddChainModalProps) {
         }),
       });
       onClose();
-      window.location.reload();
+      onAdded();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
@@ -240,15 +238,28 @@ function AddChainModal({ onClose }: AddChainModalProps) {
 
 /* ─── Page ────────────────────────────────────────────────────────── */
 export default function ChainsPage() {
-  // API hook with mock data fallback
-  const { data: apiChains } = useChains();
-  const chains = apiChains ?? mockChains;
-  void chains; // apiChains used when backend is running; mockChains below for now
+  const [chains, setChains] = useState<Chain[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [reload, setReload] = useState(0);
 
   const [addChainModal, setAddChainModal] = useState(false);
 
+  useEffect(() => {
+    setLoading(true);
+    adminFetch("/chains")
+      .then((data) => setChains(Array.isArray(data) ? data : data?.chains ?? data?.data ?? []))
+      .catch((err: any) => setError(err.message))
+      .finally(() => setLoading(false));
+  }, [reload]);
+
   return (
     <>
+      {error && (
+        <div className="mb-4 text-caption text-status-error bg-status-error/10 border border-status-error/30 rounded-input px-4 py-3 font-display">
+          Failed to load chains: {error}
+        </div>
+      )}
       <DataTable
         title="Supported Chains"
         headers={[
@@ -271,55 +282,62 @@ export default function ChainsPage() {
           </button>
         }
       >
-        {mockChains.map((chain) => (
-          <TableRow key={chain.name}>
-            <TableCell>
-              <div className="flex items-center gap-2">
-                <ChainHexAvatar name={chain.name} />
-                <span className="font-semibold font-display text-text-primary">
-                  {chain.name}
-                </span>
-              </div>
-            </TableCell>
-            <TableCell mono>{chain.chainId}</TableCell>
-            <TableCell>{chain.native}</TableCell>
-            <TableCell>{chain.blockTime}</TableCell>
-            <TableCell mono>{chain.confirmations}</TableCell>
-            <TableCell>
-              <div className="flex items-center gap-2">
-                <RpcLed status={chain.rpcHealth} />
-                <Badge variant={badgeMap[chain.rpcColor] ?? "neutral"}>
-                  {chain.rpcHealth}
-                </Badge>
-              </div>
-            </TableCell>
-            <TableCell mono className="text-caption">
-              {chain.lastBlock}
-            </TableCell>
-            <TableCell
-              mono
-              className={cn(
-                chain.lagColor === "green"
-                  ? "text-status-success"
-                  : chain.lagColor === "orange"
-                    ? "text-status-warning"
-                    : "text-status-error"
-              )}
-            >
-              {chain.lag}
-            </TableCell>
-            <TableCell>
-              <Badge variant={badgeMap[chain.statusColor] ?? "neutral"} dot>
-                {chain.status}
-              </Badge>
-            </TableCell>
+        {loading ? (
+          <TableRow>
+            <td colSpan={9} className="px-4 py-8 text-center text-text-muted font-display">
+              <span className="flex items-center justify-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Loading chains...
+              </span>
+            </td>
           </TableRow>
-        ))}
+        ) : chains.length === 0 ? (
+          <TableRow>
+            <td colSpan={9} className="px-4 py-12 text-center text-text-muted font-display">
+              No chains configured. Add your first chain to get started.
+            </td>
+          </TableRow>
+        ) : (
+          chains.map((chain) => (
+            <TableRow key={chain.id}>
+              <TableCell>
+                <div className="flex items-center gap-2">
+                  <ChainHexAvatar name={chain.name} />
+                  <span className="font-semibold font-display text-text-primary">
+                    {chain.name}
+                  </span>
+                </div>
+              </TableCell>
+              <TableCell mono>{chain.chainId}</TableCell>
+              <TableCell>{chain.symbol}</TableCell>
+              <TableCell className="text-text-muted">—</TableCell>
+              <TableCell mono>{chain.confirmationsRequired}</TableCell>
+              <TableCell>
+                <div className="flex items-center gap-2">
+                  <RpcLed active={chain.isActive} />
+                  <Badge variant={chain.isActive ? "success" : "neutral"}>
+                    {chain.isActive ? "Healthy" : "Inactive"}
+                  </Badge>
+                </div>
+              </TableCell>
+              <TableCell mono className="text-caption text-text-muted">—</TableCell>
+              <TableCell mono className="text-text-muted">—</TableCell>
+              <TableCell>
+                <Badge variant={chain.isActive ? "success" : "neutral"} dot>
+                  {chain.isActive ? "Active" : "Inactive"}
+                </Badge>
+              </TableCell>
+            </TableRow>
+          ))
+        )}
       </DataTable>
 
       {/* Modals */}
       {addChainModal && (
-        <AddChainModal onClose={() => setAddChainModal(false)} />
+        <AddChainModal
+          onClose={() => setAddChainModal(false)}
+          onAdded={() => setReload((r) => r + 1)}
+        />
       )}
     </>
   );

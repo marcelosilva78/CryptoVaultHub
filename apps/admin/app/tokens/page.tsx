@@ -4,16 +4,18 @@ import { useState, useEffect, useRef } from "react";
 import { Search, Filter, X, Loader2 } from "lucide-react";
 import { DataTable, TableCell, TableRow } from "@/components/data-table";
 import { Badge } from "@/components/badge";
-import { useTokens } from "@cvh/api-client/hooks";
-import { tokens as mockTokens } from "@/lib/mock-data";
-import type { ComponentProps } from "react";
 
-/* Map legacy color names to semantic badge variants */
-const typeColorMap: Record<string, ComponentProps<typeof Badge>["variant"]> = {
-  accent: "accent",
-  neutral: "neutral",
-  blue: "accent",
-};
+/* ─── Types ───────────────────────────────────────────────────────── */
+interface Token {
+  id: number;
+  name: string;
+  symbol: string;
+  chainId: number;
+  chainName?: string;
+  contractAddress: string;
+  decimals: number;
+  isActive: boolean;
+}
 
 /* ─── API helpers ─────────────────────────────────────────────────── */
 const ADMIN_API = process.env.NEXT_PUBLIC_ADMIN_API_URL || "http://localhost:3001";
@@ -55,9 +57,10 @@ interface ChainOption {
 
 interface AddTokenModalProps {
   onClose: () => void;
+  onAdded: () => void;
 }
 
-function AddTokenModal({ onClose }: AddTokenModalProps) {
+function AddTokenModal({ onClose, onAdded }: AddTokenModalProps) {
   const [form, setForm] = useState({
     name: "",
     symbol: "",
@@ -72,7 +75,7 @@ function AddTokenModal({ onClose }: AddTokenModalProps) {
 
   useEffect(() => {
     adminFetch("/chains")
-      .then((data: ChainOption[]) => setChainOptions(data))
+      .then((data: ChainOption[]) => setChainOptions(Array.isArray(data) ? data : data?.chains ?? data?.data ?? []))
       .catch(() => {
         // Fallback chain options if API not available
         setChainOptions([
@@ -106,6 +109,7 @@ function AddTokenModal({ onClose }: AddTokenModalProps) {
         }),
       });
       onClose();
+      onAdded();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
@@ -233,10 +237,10 @@ function AddTokenModal({ onClose }: AddTokenModalProps) {
 
 /* ─── Page ────────────────────────────────────────────────────────── */
 export default function TokensPage() {
-  // API hook with mock data fallback
-  const { data: apiTokens } = useTokens();
-  const tokens = apiTokens ?? mockTokens;
-  void tokens;
+  const [tokens, setTokens] = useState<Token[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [reload, setReload] = useState(0);
 
   const [search, setSearch] = useState("");
   const [chainFilter, setChainFilter] = useState<string | undefined>(undefined);
@@ -244,21 +248,35 @@ export default function TokensPage() {
   const [addTokenModal, setAddTokenModal] = useState(false);
   const filterRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    setLoading(true);
+    adminFetch("/tokens")
+      .then((data) => setTokens(Array.isArray(data) ? data : data?.tokens ?? data?.data ?? []))
+      .catch((err: any) => setError(err.message))
+      .finally(() => setLoading(false));
+  }, [reload]);
+
   // Derive unique chain names for the filter dropdown
-  const chainNames = Array.from(new Set(mockTokens.map((t) => t.chain))).sort();
+  const chainNames = Array.from(new Set(tokens.map((t) => t.chainName ?? String(t.chainId)))).sort();
 
   // Apply search and chain filter
-  const filteredTokens = mockTokens.filter((t) => {
+  const filteredTokens = tokens.filter((t) => {
+    const name = t.chainName ?? String(t.chainId);
     const matchesSearch =
       !search ||
       t.name.toLowerCase().includes(search.toLowerCase()) ||
       t.symbol.toLowerCase().includes(search.toLowerCase());
-    const matchesChain = !chainFilter || t.chain === chainFilter;
+    const matchesChain = !chainFilter || name === chainFilter;
     return matchesSearch && matchesChain;
   });
 
   return (
     <>
+      {error && (
+        <div className="mb-4 text-caption text-status-error bg-status-error/10 border border-status-error/30 rounded-input px-4 py-3 font-display">
+          Failed to load tokens: {error}
+        </div>
+      )}
       <DataTable
         title="Token Registry"
         headers={[
@@ -328,47 +346,67 @@ export default function TokensPage() {
           </>
         }
       >
-        {filteredTokens.map((token, i) => (
-          <TableRow key={`${token.symbol}-${token.chain}-${i}`}>
-            <TableCell>
-              <span className="font-semibold font-display text-text-primary">
-                {token.symbol}
-              </span>{" "}
-              <span className="text-text-muted text-caption font-display">
-                {token.name}
+        {loading ? (
+          <TableRow>
+            <td colSpan={7} className="px-4 py-8 text-center text-text-muted font-display">
+              <span className="flex items-center justify-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Loading tokens...
               </span>
-            </TableCell>
-            <TableCell>
-              <ChainHexBadge chain={token.chain} />
-            </TableCell>
-            <TableCell>
-              {token.contract ? (
-                <span className="font-mono text-accent-primary text-caption cursor-pointer hover:underline">
-                  {token.contract}
-                </span>
-              ) : (
-                <span className="text-text-muted text-caption font-display">
-                  {"\u2014"}
-                </span>
-              )}
-            </TableCell>
-            <TableCell mono>{token.decimals}</TableCell>
-            <TableCell>
-              <Badge variant={typeColorMap[token.typeColor] ?? "neutral"}>
-                {token.type}
-              </Badge>
-            </TableCell>
-            <TableCell mono>{token.clientsUsing}</TableCell>
-            <TableCell>
-              <Badge variant="success">{token.status}</Badge>
-            </TableCell>
+            </td>
           </TableRow>
-        ))}
+        ) : filteredTokens.length === 0 ? (
+          <TableRow>
+            <td colSpan={7} className="px-4 py-12 text-center text-text-muted font-display">
+              {tokens.length === 0
+                ? "No tokens configured. Add your first token to get started."
+                : "No tokens match your search or filter criteria."}
+            </td>
+          </TableRow>
+        ) : (
+          filteredTokens.map((token) => (
+            <TableRow key={token.id}>
+              <TableCell>
+                <span className="font-semibold font-display text-text-primary">
+                  {token.symbol}
+                </span>{" "}
+                <span className="text-text-muted text-caption font-display">
+                  {token.name}
+                </span>
+              </TableCell>
+              <TableCell>
+                <ChainHexBadge chain={token.chainName ?? String(token.chainId)} />
+              </TableCell>
+              <TableCell>
+                {token.contractAddress ? (
+                  <span className="font-mono text-accent-primary text-caption cursor-pointer hover:underline">
+                    {token.contractAddress.slice(0, 10)}...{token.contractAddress.slice(-4)}
+                  </span>
+                ) : (
+                  <span className="text-text-muted text-caption font-display">—</span>
+                )}
+              </TableCell>
+              <TableCell mono>{token.decimals}</TableCell>
+              <TableCell>
+                <Badge variant="accent">ERC-20</Badge>
+              </TableCell>
+              <TableCell mono className="text-text-muted">—</TableCell>
+              <TableCell>
+                <Badge variant={token.isActive ? "success" : "neutral"}>
+                  {token.isActive ? "Active" : "Inactive"}
+                </Badge>
+              </TableCell>
+            </TableRow>
+          ))
+        )}
       </DataTable>
 
       {/* Modals */}
       {addTokenModal && (
-        <AddTokenModal onClose={() => setAddTokenModal(false)} />
+        <AddTokenModal
+          onClose={() => setAddTokenModal(false)}
+          onAdded={() => setReload((r) => r + 1)}
+        />
       )}
     </>
   );
