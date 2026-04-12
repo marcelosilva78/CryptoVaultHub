@@ -253,7 +253,7 @@ export class ClientManagementService {
     // 1. Generate invite token via auth-service
     const authRes = await axios.post(
       `${this.authServiceUrl}/auth/invite/generate`,
-      { email: client.email, clientId: Number(client.id) },
+      { email: client.email, clientId: id },
       {
         timeout: 10000,
         headers: { 'X-Internal-Service-Key': internalKey },
@@ -267,7 +267,7 @@ export class ClientManagementService {
         `${this.notificationServiceUrl}/email/invite`,
         {
           to: client.email,
-          clientId: Number(client.id),
+          clientId: id,
           inviteUrl,
           orgName: client.name,
         },
