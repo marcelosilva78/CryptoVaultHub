@@ -40,7 +40,7 @@ export class ClientManagementController {
     summary: 'Create a new client organization',
     description: `Creates a new client organization with the specified configuration.
 
-**Custody Modes:**
+**Custody Policies:**
 - \`full_custody\`: Platform manages all signing keys
 - \`co_sign\`: Client must co-sign withdrawals above threshold
 
@@ -213,7 +213,7 @@ Results are ordered by creation date (newest first). The response includes pagin
 - \`active\` -> \`suspended\`: Blocks all new deposits and withdrawals
 - \`suspended\` -> \`active\`: Re-enables the client
 
-**Important:** Changing the custody mode or KYT level may require additional client-side configuration.`,
+**Important:** Changing the custody policy or KYT level may require additional client-side configuration.`,
   })
   @ApiParam({
     name: 'id',

@@ -8,6 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../common/audit-log.service';
+import { CustodyPolicy, KytLevel } from '../generated/prisma-client';
 
 @Injectable()
 export class ClientManagementService {
@@ -52,10 +53,10 @@ export class ClientManagementService {
         slug: data.slug,
         email: data.email ?? null,
         tierId: data.tierId ? BigInt(data.tierId) : null,
-        custodyPolicy: data.custodyPolicy ?? 'full_custody',
+        custodyPolicy: (data.custodyPolicy ?? CustodyPolicy.full_custody) as CustodyPolicy,
         kytEnabled: data.kytEnabled ?? false,
-        kytLevel: data.kytLevel ?? 'basic',
-      } as any,
+        kytLevel: (data.kytLevel ?? KytLevel.basic) as KytLevel,
+      },
       include: { tier: true },
     });
 
