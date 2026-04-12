@@ -184,6 +184,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const data = await res.json();
     const accessToken = data.tokens?.accessToken ?? data.accessToken;
     const newRefresh = data.tokens?.refreshToken ?? data.refreshToken;
+
+    if (!accessToken) {
+      localStorage.removeItem('cvh_admin_token');
+      localStorage.removeItem('cvh_admin_refresh');
+      document.cookie = 'cvh_admin_token=; path=/; max-age=0';
+      setUser(null);
+      throw new Error('Token refresh failed: malformed response');
+    }
+
     localStorage.setItem('cvh_admin_token', accessToken);
     if (newRefresh) localStorage.setItem('cvh_admin_refresh', newRefresh);
     document.cookie = `cvh_admin_token=${accessToken}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
