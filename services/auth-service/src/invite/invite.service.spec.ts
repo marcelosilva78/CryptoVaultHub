@@ -20,6 +20,7 @@ describe('InviteService', () => {
       inviteToken: {
         create: jest.fn(),
         findUnique: jest.fn(),
+        findFirst: jest.fn(),
       },
     };
 
@@ -59,6 +60,15 @@ describe('InviteService', () => {
         }),
       );
     });
+
+    it('should throw ConflictException if active invite already exists for email', async () => {
+      (prisma.inviteToken.findFirst as jest.Mock).mockResolvedValue({
+        id: BigInt(1), email: 'client@example.com', clientId: BigInt(42),
+        token: 'existing', expiresAt: new Date(Date.now() + 60_000), usedAt: null, createdAt: new Date(),
+      });
+
+      await expect(service.generateInvite('client@example.com', 42)).rejects.toThrow(ConflictException);
+    });
   });
 
   describe('validateToken', () => {
@@ -84,6 +94,12 @@ describe('InviteService', () => {
 
     it('should throw GoneException when token expired', async () => {
       const invite = { id: BigInt(1), email: 'x@x.com', clientId: BigInt(1), token: 'tok', expiresAt: new Date(Date.now() - 1000), usedAt: null, createdAt: new Date() };
+      (prisma.inviteToken.findUnique as jest.Mock).mockResolvedValue(invite);
+      await expect(service.validateToken('tok')).rejects.toThrow(GoneException);
+    });
+
+    it('should throw GoneException for token that is both expired and used', async () => {
+      const invite = { id: BigInt(1), email: 'x@x.com', clientId: BigInt(1), token: 'tok', expiresAt: new Date(Date.now() - 1000), usedAt: new Date(Date.now() - 500), createdAt: new Date() };
       (prisma.inviteToken.findUnique as jest.Mock).mockResolvedValue(invite);
       await expect(service.validateToken('tok')).rejects.toThrow(GoneException);
     });
