@@ -17,6 +17,16 @@ import { DataTable, TableCell, TableRow } from "@/components/data-table";
 import { Badge } from "@/components/badge";
 import type { ComponentProps } from "react";
 
+// ── API helpers ───────────────────────────────────────────────────────────
+
+const ADMIN_API = process.env.NEXT_PUBLIC_ADMIN_API_URL || "http://localhost:3001";
+function getToken() { return typeof window !== "undefined" ? localStorage.getItem("cvh_admin_token") ?? "" : ""; }
+async function adminFetch(path: string, options: RequestInit = {}) {
+  const res = await fetch(`${ADMIN_API}${path}`, { ...options, headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}`, ...options.headers } });
+  if (!res.ok) { const e = await res.json().catch(() => ({ message: "Request failed" })); throw new Error(e.message || `HTTP ${res.status}`); }
+  return res.json();
+}
+
 // ── Types ──────────────────────────────────────────────────────────────────
 
 interface JobRow {
@@ -259,6 +269,7 @@ const chainNames: Record<number, string> = {
 
 export default function JobsPage() {
   const [activeTab, setActiveTab] = useState<Tab>("active");
+  const [batchRetrying, setBatchRetrying] = useState(false);
   const stats = mockStats;
 
   const activeJobs = mockJobs.filter(
@@ -401,7 +412,19 @@ export default function JobsPage() {
             "Actions",
           ]}
           actions={
-            <button className="flex items-center gap-1.5 bg-accent-primary text-accent-text text-caption font-semibold px-3.5 py-1.5 rounded-button hover:bg-accent-hover transition-colors duration-fast font-display">
+            <button
+              className="flex items-center gap-1.5 bg-accent-primary text-accent-text text-caption font-semibold px-3.5 py-1.5 rounded-button hover:bg-accent-hover transition-colors duration-fast font-display"
+              onClick={async () => {
+                if (!confirm("Retry all failed jobs?")) return;
+                setBatchRetrying(true);
+                try {
+                  const ids = failedJobs.map((j: any) => j.id);
+                  await adminFetch("/job-management/jobs/batch-retry", { method: "POST", body: JSON.stringify({ jobIds: ids }) });
+                } catch (err: any) { alert(err.message); }
+                finally { setBatchRetrying(false); }
+              }}
+              disabled={batchRetrying}
+            >
               <RefreshCw className="w-3.5 h-3.5" />
               Batch Retry All
             </button>
@@ -441,6 +464,11 @@ export default function JobsPage() {
                   <button
                     className="flex items-center gap-1 bg-transparent text-text-secondary border border-border-default rounded-button px-2.5 py-1 text-caption font-semibold hover:border-accent-primary hover:text-text-primary transition-all duration-fast font-display"
                     title="Retry"
+                    onClick={async () => {
+                      if (!confirm(`Retry job ${job.id}?`)) return;
+                      try { await adminFetch(`/job-management/jobs/${job.id}/retry`, { method: "POST" }); }
+                      catch (err: any) { alert(err.message); }
+                    }}
                   >
                     <RotateCcw className="w-3 h-3" />
                     Retry
@@ -502,6 +530,11 @@ export default function JobsPage() {
                   <button
                     className="flex items-center gap-1 bg-transparent text-text-secondary border border-border-default rounded-button px-2.5 py-1 text-caption font-semibold hover:border-status-success hover:text-status-success transition-all duration-fast font-display"
                     title="Reprocess"
+                    onClick={async () => {
+                      if (!confirm(`Reprocess job ${dl.id}?`)) return;
+                      try { await adminFetch(`/job-management/dead-letter/${dl.id}/reprocess`, { method: "POST" }); }
+                      catch (err: any) { alert(err.message); }
+                    }}
                   >
                     <RotateCcw className="w-3 h-3" />
                     Reprocess
@@ -509,6 +542,11 @@ export default function JobsPage() {
                   <button
                     className="flex items-center gap-1 bg-transparent text-text-secondary border border-border-default rounded-button px-2.5 py-1 text-caption font-semibold hover:border-status-error hover:text-status-error transition-all duration-fast font-display"
                     title="Discard"
+                    onClick={async () => {
+                      if (!confirm(`Permanently discard job ${dl.id}? This cannot be undone.`)) return;
+                      try { await adminFetch(`/job-management/dead-letter/${dl.id}/discard`, { method: "POST" }); }
+                      catch (err: any) { alert(err.message); }
+                    }}
                   >
                     <Trash2 className="w-3 h-3" />
                     Discard

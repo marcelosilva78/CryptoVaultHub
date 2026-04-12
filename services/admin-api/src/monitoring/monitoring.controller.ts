@@ -1,9 +1,11 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Post, Param, Body } from '@nestjs/common';
 import {
   ApiTags,
   ApiBearerAuth,
   ApiOperation,
   ApiResponse,
+  ApiParam,
+  ApiBody,
 } from '@nestjs/swagger';
 import { AdminAuth } from '../common/decorators';
 import { MonitoringService } from './monitoring.service';
@@ -209,5 +211,27 @@ When a gas tank reaches \`critical\` status, an automated top-up is triggered fr
   async getGasTanks() {
     const gasTanks = await this.monitoringService.getGasTanks();
     return { success: true, gasTanks };
+  }
+
+  @Post('gas-tanks/:chainId/top-up')
+  @AdminAuth('super_admin', 'admin')
+  @ApiOperation({
+    summary: 'Manually top up a gas tank',
+    description: `Triggers a manual top-up of the gas tank for the specified chain. The amount to top-up defaults to bringing the balance back to the target. Optional custom amount can be specified.\n\n**Requires super_admin or admin role.**`,
+  })
+  @ApiParam({ name: 'chainId', description: 'Chain ID (e.g., 1 for Ethereum, 137 for Polygon)', type: 'number' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { amount: { type: 'string', description: 'Optional ETH/native token amount to top up. Defaults to target balance.' } },
+    },
+  })
+  @ApiResponse({ status: 200, description: 'Top-up initiated', schema: { example: { success: true, txHash: '0xabc...', chainId: 1, amount: '2.5', status: 'pending' } } })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden -- requires admin role' })
+  @ApiResponse({ status: 404, description: 'Gas tank not found for specified chain' })
+  async topUpGasTank(@Param('chainId') chainId: number, @Body() body: { amount?: string }) {
+    const result = await this.monitoringService.topUpGasTank(chainId, body.amount);
+    return { success: true, ...result };
   }
 }

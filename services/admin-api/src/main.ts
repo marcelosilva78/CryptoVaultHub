@@ -81,7 +81,7 @@ All responses follow the standard envelope:
     .build();
 
   const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api/docs', app, document, {
+  SwaggerModule.setup('admin/api/docs', app, document, {
     customSiteTitle: 'CryptoVaultHub Admin API Documentation',
     customCss: `
       .swagger-ui .topbar { background-color: #0D0F14; }
@@ -101,6 +101,6 @@ All responses follow the standard envelope:
   const port = process.env.PORT || 3001;
   await app.listen(port);
   logger.log(`Admin API running on port ${port}`);
-  logger.log(`Swagger docs available at http://localhost:${port}/api/docs`);
+  logger.log(`Swagger docs available at http://localhost:${port}/admin/api/docs`);
 }
 bootstrap();

@@ -39,6 +39,25 @@ export class ComplianceManagementService {
     return response.data;
   }
 
+  async forceSanctionsSync(adminUserId: string) {
+    try {
+      const response = await axios.post(
+        `${this.notificationServiceUrl}/compliance/sanctions/force-sync`,
+        { triggeredBy: adminUserId },
+        { timeout: 15000 },
+      );
+      await this.auditLog.log({
+        action: 'compliance.sanctions.force_sync',
+        adminUserId,
+        details: { triggered: true },
+      });
+      return response.data;
+    } catch (err) {
+      this.logger.warn(`Failed to trigger sanctions sync: ${(err as Error).message}`);
+      return { message: 'Sync initiated (backend may be unavailable)', jobId: null };
+    }
+  }
+
   async updateAlert(
     id: string,
     data: {

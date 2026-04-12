@@ -137,53 +137,53 @@ export class AdminApiClient {
   // ── RPC Management ──────────────────────────────────────
 
   async getRpcProviders(): Promise<RpcProvider[]> {
-    return this.request('GET', '/admin/rpc/providers');
+    return this.request('GET', '/admin/rpc-providers');
   }
 
   async createRpcProvider(data: any): Promise<RpcProvider> {
-    return this.request('POST', '/admin/rpc/providers', data);
+    return this.request('POST', '/admin/rpc-providers', data);
   }
 
   async updateRpcProvider(id: string, data: any): Promise<RpcProvider> {
-    return this.request('PATCH', `/admin/rpc/providers/${id}`, data);
+    return this.request('PATCH', `/admin/rpc-providers/${id}`, data);
   }
 
   async getRpcNodes(providerId: string): Promise<RpcNode[]> {
-    return this.request('GET', `/admin/rpc/providers/${providerId}/nodes`);
+    return this.request('GET', `/admin/rpc-providers/${providerId}/nodes`);
   }
 
   async createRpcNode(providerId: string, data: any): Promise<RpcNode> {
-    return this.request('POST', `/admin/rpc/providers/${providerId}/nodes`, data);
+    return this.request('POST', `/admin/rpc-providers/${providerId}/nodes`, data);
   }
 
   async updateRpcNode(nodeId: string, data: any): Promise<RpcNode> {
-    return this.request('PATCH', `/admin/rpc/nodes/${nodeId}`, data);
+    return this.request('PATCH', `/admin/rpc-providers/nodes/${nodeId}`, data);
   }
 
   async updateRpcNodeStatus(nodeId: string, status: string): Promise<RpcNode> {
-    return this.request('PATCH', `/admin/rpc/nodes/${nodeId}/status`, { status });
+    return this.request('PATCH', `/admin/rpc-providers/nodes/${nodeId}/status`, { status });
   }
 
   async getRpcHealth(): Promise<any> {
-    return this.request('GET', '/admin/rpc/health');
+    return this.request('GET', '/admin/rpc-providers/health');
   }
 
   // ── Sync Management ─────────────────────────────────────
 
   async getSyncHealth(): Promise<SyncHealth[]> {
-    return this.request('GET', '/admin/sync/health');
+    return this.request('GET', '/admin/sync-management/health');
   }
 
   async getSyncGaps(): Promise<SyncGap[]> {
-    return this.request('GET', '/admin/sync/gaps');
+    return this.request('GET', '/admin/sync-management/gaps');
   }
 
   async retrySyncGap(gapId: string): Promise<void> {
-    return this.request('POST', `/admin/sync/gaps/${gapId}/retry`);
+    return this.request('POST', `/admin/sync-management/gaps/${gapId}/retry`);
   }
 
   async getReorgs(): Promise<any[]> {
-    return this.request('GET', '/admin/sync/reorgs');
+    return this.request('GET', '/admin/sync-management/reorgs');
   }
 
   // ── Job Management ──────────────────────────────────────
@@ -196,35 +196,35 @@ export class AdminApiClient {
     if (params?.status) qs.set('status', params.status);
     if (params?.priority) qs.set('priority', params.priority);
     const query = qs.toString();
-    return this.request('GET', `/admin/jobs${query ? `?${query}` : ''}`);
+    return this.request('GET', `/admin/job-management/jobs${query ? `?${query}` : ''}`);
   }
 
   async getJob(id: string): Promise<any> {
-    return this.request('GET', `/admin/jobs/${id}`);
+    return this.request('GET', `/admin/job-management/jobs/${id}`);
   }
 
   async retryJob(id: string): Promise<void> {
-    return this.request('POST', `/admin/jobs/${id}/retry`);
+    return this.request('POST', `/admin/job-management/jobs/${id}/retry`);
   }
 
   async cancelJob(id: string): Promise<void> {
-    return this.request('POST', `/admin/jobs/${id}/cancel`);
+    return this.request('POST', `/admin/job-management/jobs/${id}/cancel`);
   }
 
   async getJobStats(): Promise<QueueStats> {
-    return this.request('GET', '/admin/jobs/stats');
+    return this.request('GET', '/admin/job-management/jobs/stats');
   }
 
   async getDeadLetterJobs(): Promise<any[]> {
-    return this.request('GET', '/admin/jobs/dead-letter');
+    return this.request('GET', '/admin/job-management/dead-letter');
   }
 
   async reprocessDeadLetterJob(id: string): Promise<void> {
-    return this.request('POST', `/admin/jobs/dead-letter/${id}/reprocess`);
+    return this.request('POST', `/admin/job-management/dead-letter/${id}/reprocess`);
   }
 
-  async discardDeadLetterJob(id: string): Promise<void> {
-    return this.request('DELETE', `/admin/jobs/dead-letter/${id}`);
+  async discardDeadLetterJob(id: string, notes?: string): Promise<void> {
+    return this.request('POST', `/admin/job-management/dead-letter/${id}/discard`, notes !== undefined ? { notes } : undefined);
   }
 
   // ── Export Management ───────────────────────────────────
@@ -267,5 +267,39 @@ export class AdminApiClient {
 
   async endImpersonation(): Promise<void> {
     return this.request('POST', '/admin/impersonation/end');
+  }
+
+  // ── Tiers (additional) ───────────────────────────────────
+
+  async updateTier(id: number, data: any): Promise<any> {
+    return this.request('PATCH', `/admin/tiers/${id}`, data);
+  }
+
+  // ── Clients (additional) ─────────────────────────────────
+
+  async generateClientKeys(id: number): Promise<any> {
+    return this.request('POST', `/admin/clients/${id}/generate-keys`);
+  }
+
+  // ── Chains (additional) ──────────────────────────────────
+
+  async createChain(data: any): Promise<any> {
+    return this.request('POST', '/admin/chains', data);
+  }
+
+  async deleteChain(id: number): Promise<any> {
+    return this.request('DELETE', `/admin/chains/${id}`);
+  }
+
+  // ── Tokens (additional) ──────────────────────────────────
+
+  async createToken(data: any): Promise<any> {
+    return this.request('POST', '/admin/tokens', data);
+  }
+
+  // ── Jobs (additional) ────────────────────────────────────
+
+  async batchRetryJobs(jobIds: string[]): Promise<any> {
+    return this.request('POST', '/admin/job-management/jobs/batch-retry', { jobIds });
   }
 }

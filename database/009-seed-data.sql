@@ -252,17 +252,17 @@ INSERT INTO `users` (
   `is_active`, `totp_secret`, `totp_enabled`, `created_at`, `updated_at`
 ) VALUES
   ('admin@cryptovaulthub.com',
-   '$2b$10$8K1p/dELQiNsNX7qJGhWaOsNfCkN6UBCzGvp.YwVr0wdF8qMkWmKy',
+   '$2b$10$H4IfJOnPRHRXA2UpqUMXYuOTJRj6y3TyBZEKzKJoBKzmHQlfmNtfe',
    'CVH Admin', 'super_admin', NULL, NULL, 1, NULL, 0, NOW(), NOW()),
   -- Client admin users
   ('admin@acme-exchange.com',
-   '$2b$10$8K1p/dELQiNsNX7qJGhWaOsNfCkN6UBCzGvp.YwVr0wdF8qMkWmKy',
+   '$2b$10$H4IfJOnPRHRXA2UpqUMXYuOTJRj6y3TyBZEKzKJoBKzmHQlfmNtfe',
    'Acme Admin', 'viewer', 1, 'owner', 1, NULL, 0, '2025-01-15 10:30:00', '2025-01-15 10:30:00'),
   ('ops@blockpay.io',
-   '$2b$10$8K1p/dELQiNsNX7qJGhWaOsNfCkN6UBCzGvp.YwVr0wdF8qMkWmKy',
+   '$2b$10$H4IfJOnPRHRXA2UpqUMXYuOTJRj6y3TyBZEKzKJoBKzmHQlfmNtfe',
    'BlockPay Ops', 'viewer', 2, 'admin', 1, NULL, 0, '2025-02-20 15:00:00', '2025-02-20 15:00:00'),
   ('finance@cryptomerchant.com',
-   '$2b$10$8K1p/dELQiNsNX7qJGhWaOsNfCkN6UBCzGvp.YwVr0wdF8qMkWmKy',
+   '$2b$10$H4IfJOnPRHRXA2UpqUMXYuOTJRj6y3TyBZEKzKJoBKzmHQlfmNtfe',
    'CM Finance', 'viewer', 3, 'owner', 1, NULL, 0, '2025-03-10 09:30:00', '2025-03-10 09:30:00')
 ON DUPLICATE KEY UPDATE `name` = VALUES(`name`);
 

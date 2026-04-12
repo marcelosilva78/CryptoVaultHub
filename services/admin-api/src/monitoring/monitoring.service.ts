@@ -116,4 +116,18 @@ export class MonitoringService {
       return { status: 'unavailable', error: (err as Error).message };
     }
   }
+
+  async topUpGasTank(chainId: number, amount?: string) {
+    try {
+      const response = await axios.post(
+        `${this.services['core-wallet-service']}/gas-tanks/${chainId}/top-up`,
+        { amount },
+        { headers: this.headers, timeout: 30000 },
+      );
+      return response.data;
+    } catch (err) {
+      this.logger.warn(`Failed to top up gas tank for chain ${chainId}: ${(err as Error).message}`);
+      return { status: 'error', error: (err as Error).message };
+    }
+  }
 }

@@ -110,7 +110,7 @@ const isValid = signature === request.headers['x-cvh-signature'];
     .build();
 
   const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api/docs', app, document, {
+  SwaggerModule.setup('client/api/docs', app, document, {
     customSiteTitle: 'CryptoVaultHub Client API Documentation',
     customCss: `
       .swagger-ui .topbar { background-color: #0D0F14; }
@@ -129,6 +129,6 @@ const isValid = signature === request.headers['x-cvh-signature'];
   const port = process.env.PORT || 3002;
   await app.listen(port);
   logger.log(`Client API running on port ${port}`);
-  logger.log(`Swagger docs available at http://localhost:${port}/api/docs`);
+  logger.log(`Swagger docs available at http://localhost:${port}/client/api/docs`);
 }
 bootstrap();

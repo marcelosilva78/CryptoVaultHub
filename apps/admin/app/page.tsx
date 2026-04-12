@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { StatusBadge } from "@/components/status-badge";
 import { CopyButton } from "@/components/copy-button";
 
@@ -508,6 +509,8 @@ const dashboardStatusMap: Record<string, string> = {
 // ─── Dashboard Page ─────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
+  const router = useRouter();
+
   return (
     <div className="animate-fade-in">
       {/* ── Live Activity Indicator ─────────────────────────────── */}
@@ -547,7 +550,10 @@ export default function DashboardPage() {
           <h2 className="font-display text-subheading text-text-primary">
             Recent Transactions
           </h2>
-          <button className="font-display text-[12px] font-semibold text-accent-primary hover:text-accent-hover transition-colors duration-fast">
+          <button
+            onClick={() => router.push('/traceability')}
+            className="font-display text-[12px] font-semibold text-accent-primary hover:text-accent-hover transition-colors duration-fast"
+          >
             View All
           </button>
         </div>

@@ -1,11 +1,11 @@
 "use client";
 
-import { Fuel } from "lucide-react";
+import { useState } from "react";
+import { Fuel, X, Loader2 } from "lucide-react";
 import { StatCard } from "@/components/stat-card";
 import { DataTable, TableCell, TableRow } from "@/components/data-table";
 import { Badge } from "@/components/badge";
 import { cn } from "@/lib/utils";
-import { useGasTanks } from "@cvh/api-client/hooks";
 import { gasTanksStats, gasTanks } from "@/lib/mock-data";
 import type { ComponentProps } from "react";
 
@@ -23,6 +23,29 @@ const statColorMap: Record<string, ComponentProps<typeof StatCard>["color"]> = {
   red: "error",
   orange: "warning",
 };
+
+/* Chain name → chainId mapping */
+const chainIdMap: Record<string, number> = {
+  Ethereum: 1,
+  ETH: 1,
+  Polygon: 137,
+  MATIC: 137,
+  BSC: 56,
+  BNB: 56,
+  Arbitrum: 42161,
+  ARB: 42161,
+  Optimism: 10,
+  OP: 10,
+};
+
+/* ─── API helpers ─────────────────────────────────────────────────── */
+const ADMIN_API = process.env.NEXT_PUBLIC_ADMIN_API_URL || "http://localhost:3001";
+function getToken() { return typeof window !== "undefined" ? localStorage.getItem("cvh_admin_token") ?? "" : ""; }
+async function adminFetch(path: string, options: RequestInit = {}) {
+  const res = await fetch(`${ADMIN_API}${path}`, { ...options, headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}`, ...options.headers } });
+  if (!res.ok) { const e = await res.json().catch(() => ({ message: "Request failed" })); throw new Error(e.message || `HTTP ${res.status}`); }
+  return res.json();
+}
 
 /**
  * Mini Vault Meter Gauge -- small arc showing fill level
@@ -100,10 +123,164 @@ function ChainHexAvatar({ name }: { name: string }) {
   );
 }
 
+/* ─── Top Up Modal ────────────────────────────────────────────────── */
+interface TopUpTank {
+  chainId: number;
+  chain: string;
+  balance: string;
+  threshold: string;
+}
+
+function TopUpModal({
+  open,
+  tank,
+  onClose,
+  onConfirm,
+}: {
+  open: boolean;
+  tank: TopUpTank | null;
+  onClose: () => void;
+  onConfirm: (amount: string) => Promise<void>;
+}) {
+  const [amount, setAmount] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+
+  if (!open || !tank) return null;
+
+  async function handleConfirm() {
+    setLoading(true);
+    setError(null);
+    try {
+      await onConfirm(amount);
+      setSuccess(true);
+      setTimeout(() => {
+        setSuccess(false);
+        setAmount("");
+        onClose();
+      }, 1500);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unknown error");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function handleClose() {
+    if (loading) return;
+    setAmount("");
+    setError(null);
+    setSuccess(false);
+    onClose();
+  }
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="bg-surface-card border border-border-subtle rounded-modal shadow-float w-full max-w-[440px] mx-4">
+        {/* Header */}
+        <div className="flex items-center justify-between p-5 border-b border-border-subtle">
+          <div className="flex items-center gap-2">
+            <Fuel className="w-4 h-4 text-accent-primary" />
+            <span className="font-display text-subheading text-text-primary">
+              Top Up Gas Tank
+            </span>
+          </div>
+          <button
+            onClick={handleClose}
+            disabled={loading}
+            className="p-1 rounded-button text-text-muted hover:text-text-primary hover:bg-surface-hover transition-all duration-fast disabled:opacity-40"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="p-5 space-y-4">
+          {/* Chain info */}
+          <div className="flex items-center gap-3 px-3 py-2.5 bg-surface-elevated rounded-input">
+            <ChainHexAvatar name={tank.chain} />
+            <div>
+              <div className="text-caption font-semibold text-text-primary font-display">
+                {tank.chain}
+              </div>
+              <div className="text-micro text-text-muted font-mono">
+                Chain ID: {tank.chainId}
+              </div>
+            </div>
+          </div>
+
+          {/* Balance vs threshold */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="px-3 py-2 bg-surface-elevated rounded-input">
+              <div className="text-micro text-text-muted font-display mb-0.5">Current Balance</div>
+              <div className="text-caption font-mono font-semibold text-status-error">
+                {tank.balance}
+              </div>
+            </div>
+            <div className="px-3 py-2 bg-surface-elevated rounded-input">
+              <div className="text-micro text-text-muted font-display mb-0.5">Threshold</div>
+              <div className="text-caption font-mono font-semibold text-text-primary">
+                {tank.threshold}
+              </div>
+            </div>
+          </div>
+
+          {/* Amount input */}
+          <div>
+            <label className="block text-caption text-text-muted mb-1 font-display">
+              Amount (optional)
+            </label>
+            <input
+              type="text"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="Leave blank to top up to target"
+              disabled={loading || success}
+              className="w-full px-3 py-2 bg-surface-input border border-border-default rounded-input text-body text-text-primary outline-none focus:border-border-focus transition-colors duration-fast font-mono placeholder:text-text-muted disabled:opacity-50"
+            />
+          </div>
+
+          {/* Error */}
+          {error && (
+            <div className="text-caption text-status-error bg-status-error/10 border border-status-error/30 rounded-input px-3 py-2 font-display">
+              {error}
+            </div>
+          )}
+
+          {/* Success */}
+          {success && (
+            <div className="text-caption text-status-success bg-status-success/10 border border-status-success/30 rounded-input px-3 py-2 font-display">
+              Top-up initiated successfully.
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-2 px-5 pb-5">
+          <button
+            onClick={handleClose}
+            disabled={loading}
+            className="px-3.5 py-1.5 rounded-button text-caption font-semibold font-display text-text-secondary border border-border-default hover:border-accent-primary hover:text-text-primary transition-all duration-fast disabled:opacity-40"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleConfirm}
+            disabled={loading || success}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-button text-caption font-semibold font-display bg-accent-primary text-accent-text hover:bg-accent-hover transition-all duration-fast disabled:opacity-50"
+          >
+            {loading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            Top Up
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function GasTanksPage() {
-  // API hook with mock data fallback
-  const { data: apiGasTanks } = useGasTanks();
-  void apiGasTanks; // Falls back to gasTanks mock data below
+  const [topUpModal, setTopUpModal] = useState<TopUpTank | null>(null);
 
   // Derive percent for vault meter from balance data
   const tanksWithPercent = gasTanks.map((tank) => {
@@ -114,13 +291,28 @@ export default function GasTanksPage() {
     const percent = Math.min(Math.round((balNum / maxEstimate) * 100), 100);
     return {
       ...tank,
+      chainId: chainIdMap[tank.chain] ?? 0,
       percent,
       tankStatus: (tank.statusColor === "red" ? "low" : "ok") as "low" | "ok",
     };
   });
 
+  async function handleTopUp(tank: TopUpTank, amount: string) {
+    await adminFetch(`/admin/gas-tanks/${tank.chainId}/top-up`, {
+      method: "POST",
+      body: JSON.stringify({ amount: amount || undefined }),
+    });
+  }
+
   return (
     <>
+      <TopUpModal
+        open={topUpModal !== null}
+        tank={topUpModal}
+        onClose={() => setTopUpModal(null)}
+        onConfirm={(amount) => handleTopUp(topUpModal!, amount)}
+      />
+
       {/* KPIs */}
       <div className="grid grid-cols-4 gap-stat-grid-gap mb-section-gap">
         {gasTanksStats.map((stat) => (
@@ -209,6 +401,14 @@ export default function GasTanksPage() {
                 {tank.status}
               </Badge>
               <button
+                onClick={() =>
+                  setTopUpModal({
+                    chainId: tank.chainId,
+                    chain: tank.chain,
+                    balance: tank.balance,
+                    threshold: tank.threshold,
+                  })
+                }
                 className={cn(
                   "text-micro font-semibold px-2.5 py-1 rounded-button transition-all duration-fast font-display",
                   tank.tankStatus === "low"
@@ -262,7 +462,7 @@ export default function GasTanksPage() {
           </>
         }
       >
-        {gasTanks.map((tank, i) => (
+        {tanksWithPercent.map((tank, i) => (
           <TableRow key={i} highlight={tank.highlight}>
             <TableCell>
               <span className="font-semibold font-display text-text-primary">
@@ -309,6 +509,14 @@ export default function GasTanksPage() {
             </TableCell>
             <TableCell>
               <button
+                onClick={() =>
+                  setTopUpModal({
+                    chainId: tank.chainId,
+                    chain: tank.chain,
+                    balance: tank.balance,
+                    threshold: tank.threshold,
+                  })
+                }
                 className={cn(
                   "text-micro font-semibold px-2.5 py-1 rounded-button transition-all duration-fast font-display",
                   tank.statusColor === "red"

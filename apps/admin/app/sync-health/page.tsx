@@ -324,6 +324,15 @@ function ChainCard({
   );
 }
 
+/* ── API helper ── */
+const ADMIN_API = process.env.NEXT_PUBLIC_ADMIN_API_URL || "http://localhost:3001";
+function getToken() { return typeof window !== "undefined" ? localStorage.getItem("cvh_admin_token") ?? "" : ""; }
+async function adminFetch(path: string, options: RequestInit = {}) {
+  const res = await fetch(`${ADMIN_API}${path}`, { ...options, headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}`, ...options.headers } });
+  if (!res.ok) { const e = await res.json().catch(() => ({ message: "Request failed" })); throw new Error(e.message || `HTTP ${res.status}`); }
+  return res.json();
+}
+
 /* ── Page ── */
 export default function SyncHealthPage() {
   const [refreshing, setRefreshing] = useState(false);
@@ -331,25 +340,31 @@ export default function SyncHealthPage() {
   const [gaps, setGaps] = useState<SyncGap[]>(mockGaps);
   const [retryingGapId, setRetryingGapId] = useState<number | null>(null);
 
-  const handleRefresh = useCallback(() => {
+  const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    // In production this would call the admin API
-    setTimeout(() => setRefreshing(false), 1000);
+    try {
+      const [healthData, gapsData] = await Promise.all([
+        adminFetch("/sync-management/health"),
+        adminFetch("/sync-management/gaps"),
+      ]);
+      if (Array.isArray(healthData)) setChains(healthData);
+      if (Array.isArray(gapsData)) setGaps(gapsData);
+    } catch (err: any) { console.error(err); }
+    finally { setRefreshing(false); }
   }, []);
 
-  const handleRetryGap = useCallback((gapId: number) => {
+  useEffect(() => {
+    handleRefresh();
+  }, [handleRefresh]);
+
+  const handleRetryGap = useCallback(async (gapId: number) => {
     setRetryingGapId(gapId);
-    // In production this would POST to /admin/sync-management/gaps/:id/retry
-    setTimeout(() => {
-      setGaps((prev) =>
-        prev.map((g) =>
-          g.id === gapId
-            ? { ...g, status: "backfilling" as const, attemptCount: 0 }
-            : g
-        )
-      );
-      setRetryingGapId(null);
-    }, 1500);
+    try {
+      await adminFetch(`/sync-management/gaps/${gapId}/retry`, { method: "POST" });
+      const gapsData = await adminFetch("/sync-management/gaps");
+      if (Array.isArray(gapsData)) setGaps(gapsData);
+    } catch (err: any) { alert(err.message); }
+    finally { setRetryingGapId(null); }
   }, []);
 
   // Compute overall health

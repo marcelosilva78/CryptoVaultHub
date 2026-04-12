@@ -8,6 +8,15 @@ import { Download, Plus, FileSpreadsheet, FileJson, FileText } from "lucide-reac
 import { cn } from "@/lib/utils";
 import type { ComponentProps } from "react";
 
+/* ── API helper ──────────────────────────────────────────────────── */
+const ADMIN_API = process.env.NEXT_PUBLIC_ADMIN_API_URL || "http://localhost:3001";
+function getToken() { return typeof window !== "undefined" ? localStorage.getItem("cvh_admin_token") ?? "" : ""; }
+async function adminFetch(path: string, options: RequestInit = {}) {
+  const res = await fetch(`${ADMIN_API}${path}`, { ...options, headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}`, ...options.headers } });
+  if (!res.ok) { const e = await res.json().catch(() => ({ message: "Request failed" })); throw new Error(e.message || `HTTP ${res.status}`); }
+  return res.json();
+}
+
 /* ── Mock data ───────────────────────────────────────────────── */
 const exportStats = [
   { label: "Total Exports", value: "184", change: "+14%", direction: "up" as const },
@@ -127,6 +136,13 @@ const formatIcon: Record<string, React.ElementType> = {
 
 /* ── Export Dialog (inline for simplicity) ────────────────────── */
 function ExportDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [selectedFormat, setSelectedFormat] = useState<"CSV" | "XLSX" | "JSON">("CSV");
+  const [exportType, setExportType] = useState("Deposits");
+  const [clientId, setClientId] = useState("All Clients");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
   if (!open) return null;
 
   return (
@@ -153,7 +169,11 @@ function ExportDialog({ open, onClose }: { open: boolean; onClose: () => void })
             <label className="block text-caption font-semibold text-text-secondary mb-1.5 font-display">
               Data Type
             </label>
-            <select className="w-full bg-surface-elevated border border-border-default rounded-button px-3 py-2 text-body text-text-primary font-display focus:outline-none focus:border-accent-primary">
+            <select
+              value={exportType}
+              onChange={(e) => setExportType(e.target.value)}
+              className="w-full bg-surface-elevated border border-border-default rounded-button px-3 py-2 text-body text-text-primary font-display focus:outline-none focus:border-accent-primary"
+            >
               <option>Deposits</option>
               <option>Withdrawals</option>
               <option>Transactions</option>
@@ -171,10 +191,17 @@ function ExportDialog({ open, onClose }: { open: boolean; onClose: () => void })
             <div className="flex gap-2">
               {(["CSV", "XLSX", "JSON"] as const).map((fmt) => {
                 const Icon = formatIcon[fmt];
+                const isSelected = selectedFormat === fmt;
                 return (
                   <button
                     key={fmt}
-                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 border border-border-default rounded-button text-caption font-semibold text-text-secondary hover:border-accent-primary hover:text-accent-primary transition-all duration-fast font-display"
+                    onClick={() => setSelectedFormat(fmt)}
+                    className={cn(
+                      "flex-1 flex items-center justify-center gap-1.5 px-3 py-2 border rounded-button text-caption font-semibold transition-all duration-fast font-display",
+                      isSelected
+                        ? "bg-accent-primary text-accent-text border-accent-primary"
+                        : "border-border-default text-text-secondary hover:border-accent-primary hover:text-accent-primary"
+                    )}
                   >
                     <Icon className="w-3.5 h-3.5" />
                     {fmt}
@@ -189,7 +216,11 @@ function ExportDialog({ open, onClose }: { open: boolean; onClose: () => void })
             <label className="block text-caption font-semibold text-text-secondary mb-1.5 font-display">
               Client (optional)
             </label>
-            <select className="w-full bg-surface-elevated border border-border-default rounded-button px-3 py-2 text-body text-text-primary font-display focus:outline-none focus:border-accent-primary">
+            <select
+              value={clientId}
+              onChange={(e) => setClientId(e.target.value)}
+              className="w-full bg-surface-elevated border border-border-default rounded-button px-3 py-2 text-body text-text-primary font-display focus:outline-none focus:border-accent-primary"
+            >
               <option>All Clients</option>
               <option>Corretora XYZ</option>
               <option>GatewayABC</option>
@@ -205,6 +236,8 @@ function ExportDialog({ open, onClose }: { open: boolean; onClose: () => void })
               </label>
               <input
                 type="date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
                 className="w-full bg-surface-elevated border border-border-default rounded-button px-3 py-2 text-body text-text-primary font-display focus:outline-none focus:border-accent-primary"
               />
             </div>
@@ -214,10 +247,19 @@ function ExportDialog({ open, onClose }: { open: boolean; onClose: () => void })
               </label>
               <input
                 type="date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
                 className="w-full bg-surface-elevated border border-border-default rounded-button px-3 py-2 text-body text-text-primary font-display focus:outline-none focus:border-accent-primary"
               />
             </div>
           </div>
+
+          {/* Error display */}
+          {error && (
+            <div className="text-caption text-status-error px-3 py-2 bg-status-error-subtle rounded-card">
+              {error}
+            </div>
+          )}
         </div>
 
         <div className="px-6 py-4 border-t border-border-subtle flex items-center justify-end gap-2">
@@ -228,7 +270,12 @@ function ExportDialog({ open, onClose }: { open: boolean; onClose: () => void })
             Cancel
           </button>
           <button
-            onClick={onClose}
+            onClick={async () => {
+              try {
+                await adminFetch("/exports", { method: "POST", body: JSON.stringify({ format: selectedFormat, exportType, clientId, dateFrom, dateTo }) });
+                onClose();
+              } catch (err: any) { setError(err.message); }
+            }}
             className="px-4 py-2 text-caption font-semibold text-accent-text bg-accent-primary rounded-button hover:bg-accent-hover transition-colors duration-fast font-display"
           >
             Request Export
@@ -314,6 +361,17 @@ export default function ExportsPage() {
               <TableCell>
                 {exp.status === "completed" && (
                   <button
+                    onClick={async () => {
+                      try {
+                        const blob = await fetch(`${ADMIN_API}/exports/${exp.request_uid}/download`, {
+                          headers: { Authorization: `Bearer ${getToken()}` }
+                        }).then(r => r.blob());
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement("a");
+                        a.href = url; a.download = `export-${exp.request_uid}.${exp.format?.toLowerCase() ?? "csv"}`; a.click();
+                        URL.revokeObjectURL(url);
+                      } catch (err: any) { alert(err.message); }
+                    }}
                     className={cn(
                       "flex items-center gap-1 px-2.5 py-1 rounded-button text-caption font-semibold transition-all duration-fast font-display",
                       "text-accent-primary border border-accent-primary/30 hover:bg-accent-subtle",

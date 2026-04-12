@@ -452,3 +452,51 @@ export function useEndImpersonation() {
     mutationFn: () => api().endImpersonation(),
   });
 }
+
+// ── Tiers (additional) ───────────────────────────────────
+
+export function useUpdateTier() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: number; data: any }) => api().updateTier(id, data),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: adminKeys.tiers() }); },
+  });
+}
+
+// ── Clients (additional) ─────────────────────────────────
+
+export function useGenerateClientKeys() {
+  return useMutation({
+    mutationFn: (id: number) => api().generateClientKeys(id),
+  });
+}
+
+// ── Chains (additional) ──────────────────────────────────
+
+export function useCreateChain() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: any) => api().createChain(data),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: adminKeys.chains() }); },
+  });
+}
+
+// ── Tokens (additional) ──────────────────────────────────
+
+export function useCreateToken() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: any) => api().createToken(data),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: adminKeys.tokens() }); },
+  });
+}
+
+// ── Jobs (additional) ────────────────────────────────────
+
+export function useBatchRetryJobs() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (jobIds: string[]) => api().batchRetryJobs(jobIds),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: [...adminKeys.all, 'jobs'] }); },
+  });
+}

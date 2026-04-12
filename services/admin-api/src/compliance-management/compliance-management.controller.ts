@@ -1,6 +1,7 @@
 import {
   Controller,
   Get,
+  Post,
   Patch,
   Param,
   Body,
@@ -195,6 +196,21 @@ export class ComplianceManagementController {
       user.userId,
       req.ip,
     );
+    return { success: true, ...result };
+  }
+
+  @Post('sanctions/force-sync')
+  @AdminAuth('super_admin', 'admin')
+  @ApiOperation({
+    summary: 'Force re-sync of sanctions lists',
+    description: `Triggers an immediate synchronization of all sanctions lists (OFAC SDN, EU Consolidated, UN Security Council, OFAC Non-SDN).\n\nNormally these lists sync automatically every 24 hours. Use this to force an immediate update after a known list publication.\n\n**Requires super_admin or admin role.**`,
+  })
+  @ApiResponse({ status: 200, description: 'Sync initiated', schema: { example: { success: true, message: 'Sanctions list sync initiated', jobId: 'sanctions-sync-123', estimatedDuration: '2-5 minutes' } } })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
+  async forceSanctionsSync(@Req() req: Request) {
+    const user = (req as any).user;
+    const result = await this.complianceService.forceSanctionsSync(user.userId);
     return { success: true, ...result };
   }
 }

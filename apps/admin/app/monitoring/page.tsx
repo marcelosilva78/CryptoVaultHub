@@ -1,10 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useHealth, useQueueStatus } from "@cvh/api-client/hooks";
-import { services, queues } from "@/lib/mock-data";
+import { services as mockServices, queues as mockQueues } from "@/lib/mock-data";
+
+/* ─── API helper ─────────────────────────────────────────────── */
+const ADMIN_API = process.env.NEXT_PUBLIC_ADMIN_API_URL || "http://localhost:3001";
+function getToken() { return typeof window !== "undefined" ? localStorage.getItem("cvh_admin_token") ?? "" : ""; }
+async function adminFetch(path: string, options: RequestInit = {}) {
+  const res = await fetch(`${ADMIN_API}${path}`, { ...options, headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}`, ...options.headers } });
+  if (!res.ok) { const e = await res.json().catch(() => ({ message: "Request failed" })); throw new Error(e.message || `HTTP ${res.status}`); }
+  return res.json();
+}
 
 /* Map legacy metric color names to semantic token classes */
 const metricColorMap: Record<string, string> = {
@@ -66,19 +74,61 @@ function QueueProgressBar({
   );
 }
 
+/* ─── Shape helpers ───────────────────────────────────────────── */
+type ServiceEntry = { name: string; status: "healthy" | "unhealthy"; p99: string };
+type QueueMetric = { label: string; value: string; color: string };
+type QueueEntry = { name: string; metrics: QueueMetric[] };
+
+function mapHealthData(raw: any): ServiceEntry[] {
+  if (!raw || !Array.isArray(raw)) return mockServices;
+  return raw.map((s: any) => ({
+    name: s.name ?? s.service ?? "Unknown",
+    status: s.status === "healthy" || s.healthy === true ? "healthy" : "unhealthy",
+    p99: s.p99 ?? s.latencyP99 ?? s.latency ?? "—",
+  }));
+}
+
+function mapQueuesData(raw: any): QueueEntry[] {
+  if (!raw || !Array.isArray(raw)) return mockQueues;
+  return raw.map((q: any) => {
+    const metrics: QueueMetric[] = [];
+    if (q.metrics && Array.isArray(q.metrics)) {
+      q.metrics.forEach((m: any) => {
+        metrics.push({
+          label: m.label ?? m.name ?? "—",
+          value: String(m.value ?? "0"),
+          color: m.color ?? "default",
+        });
+      });
+    } else {
+      if (q.waiting !== undefined) metrics.push({ label: "Waiting", value: String(q.waiting), color: "green" });
+      if (q.active !== undefined) metrics.push({ label: "Active", value: String(q.active), color: "blue" });
+      if (q.failed !== undefined) metrics.push({ label: "Failed", value: String(q.failed), color: "red" });
+      if (q.completed !== undefined) metrics.push({ label: "Completed (24h)", value: String(q.completed), color: "default" });
+    }
+    return { name: q.name ?? q.queue ?? "Unknown", metrics };
+  });
+}
+
 export default function MonitoringPage() {
   const [refreshing, setRefreshing] = useState(false);
+  const [services, setServices] = useState<ServiceEntry[]>(mockServices);
+  const [queues, setQueues] = useState<QueueEntry[]>(mockQueues);
 
-  // API hooks with mock data fallback
-  const { data: apiHealth } = useHealth();
-  const { data: apiQueues } = useQueueStatus();
-  void apiHealth; // Falls back to services mock data
-  void apiQueues; // Falls back to queues mock data
-
-  const handleRefresh = () => {
+  const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    setTimeout(() => setRefreshing(false), 1000);
-  };
+    try {
+      const [healthData, queuesData] = await Promise.all([
+        adminFetch("/monitoring/health"),
+        adminFetch("/monitoring/queues"),
+      ]);
+      setServices(mapHealthData(healthData));
+      setQueues(mapQueuesData(queuesData));
+    } catch (err: any) { console.error(err); }
+    finally { setRefreshing(false); }
+  }, []);
+
+  useEffect(() => { handleRefresh(); }, [handleRefresh]);
 
   return (
     <>

@@ -33,8 +33,18 @@
         </node>
     </zookeeper>
 
-    <!-- Cluster definition required by PostHog migrate_clickhouse -->
+    <!-- All cluster definitions required by PostHog (all pointing to this single node) -->
     <remote_servers>
+        <!-- CLICKHOUSE_CLUSTER: main cluster for DDL -->
+        <posthog>
+            <shard>
+                <replica>
+                    <host>clickhouse</host>
+                    <port>9000</port>
+                </replica>
+            </shard>
+        </posthog>
+        <!-- CLICKHOUSE_MIGRATIONS_CLUSTER -->
         <posthog_migrations>
             <shard>
                 <replica>
@@ -43,14 +53,87 @@
                 </replica>
             </shard>
         </posthog_migrations>
+        <!-- CLICKHOUSE_SINGLE_SHARD_CLUSTER and CLICKHOUSE_LOGS_CLUSTER -->
+        <posthog_single_shard>
+            <shard>
+                <replica>
+                    <host>clickhouse</host>
+                    <port>9000</port>
+                </replica>
+            </shard>
+        </posthog_single_shard>
+        <!-- CLICKHOUSE_WRITABLE_CLUSTER: Distributed writable tables -->
+        <posthog_writable>
+            <shard>
+                <replica>
+                    <host>clickhouse</host>
+                    <port>9000</port>
+                </replica>
+            </shard>
+        </posthog_writable>
+        <!-- CLICKHOUSE_PRIMARY_REPLICA_CLUSTER: Distributed read tables -->
+        <posthog_primary_replica>
+            <shard>
+                <replica>
+                    <host>clickhouse</host>
+                    <port>9000</port>
+                </replica>
+            </shard>
+        </posthog_primary_replica>
+        <!-- Satellite clusters -->
+        <ai_events>
+            <shard>
+                <replica>
+                    <host>clickhouse</host>
+                    <port>9000</port>
+                </replica>
+            </shard>
+        </ai_events>
+        <aux>
+            <shard>
+                <replica>
+                    <host>clickhouse</host>
+                    <port>9000</port>
+                </replica>
+            </shard>
+        </aux>
+        <ops>
+            <shard>
+                <replica>
+                    <host>clickhouse</host>
+                    <port>9000</port>
+                </replica>
+            </shard>
+        </ops>
+        <sessions>
+            <shard>
+                <replica>
+                    <host>clickhouse</host>
+                    <port>9000</port>
+                </replica>
+            </shard>
+        </sessions>
     </remote_servers>
 
-    <!-- Macros for ReplicatedMergeTree path interpolation -->
+    <!-- Macros for ReplicatedMergeTree path interpolation and PostHog cluster topology -->
     <macros>
         <shard>01</shard>
         <replica>clickhouse-01</replica>
-        <cluster>posthog_migrations</cluster>
+        <cluster>posthog</cluster>
+        <hostClusterType>default</hostClusterType>
+        <hostClusterRole>all</hostClusterRole>
     </macros>
+
+    <!-- Named collections - msk_cluster points to local Kafka for self-hosted setup -->
+    <named_collections>
+        <msk_cluster>
+            <kafka_broker_list>kafka:9092</kafka_broker_list>
+        </msk_cluster>
+        <!-- warpstream_ingestion: WarpStream alternative, same broker for self-hosted -->
+        <warpstream_ingestion>
+            <kafka_broker_list>kafka:9092</kafka_broker_list>
+        </warpstream_ingestion>
+    </named_collections>
 
     <!-- Reduce log noise -->
     <logger>
