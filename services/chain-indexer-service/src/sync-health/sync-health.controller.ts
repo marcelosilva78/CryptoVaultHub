@@ -261,28 +261,27 @@ export class SyncHealthController {
     @Query('limit') limit?: string,
     @Query('chainId') chainId?: string,
   ) {
-    const take = Math.min(parseInt(limit ?? '20', 10), 100);
+    const parsed = parseInt(limit ?? '20', 10);
+    const take = Math.min(isNaN(parsed) ? 20 : parsed, 100);
     const where: any = {};
     if (chainId) where.chainId = parseInt(chainId, 10);
 
     const events = await this.prisma.indexedEvent.findMany({
       where,
-      orderBy: { processedAt: 'desc' },
+      orderBy: [{ processedAt: 'desc' }, { id: 'desc' }],
       take,
     });
 
-    // Resolve token symbols from contract addresses
-    const contractAddrs = [
-      ...new Set(events.map((e) => e.contractAddress).filter(Boolean) as string[]),
-    ];
+    // Resolve token symbols from contract addresses (composite key to avoid cross-chain collisions)
+    const contractAddrs = [...new Set(events.map((e) => e.contractAddress))];
     const tokens =
       contractAddrs.length > 0
         ? await this.prisma.token.findMany({
             where: { contractAddress: { in: contractAddrs } },
-            select: { contractAddress: true, symbol: true, decimals: true },
+            select: { contractAddress: true, chainId: true, symbol: true, decimals: true },
           })
         : [];
-    const tokenMap = new Map(tokens.map((t) => [t.contractAddress, t]));
+    const tokenMap = new Map(tokens.map((t) => [`${t.chainId}:${t.contractAddress}`, t]));
 
     // Resolve chain names
     const chainIds = [...new Set(events.map((e) => e.chainId))];
@@ -294,7 +293,7 @@ export class SyncHealthController {
 
     return {
       events: events.map((e) => {
-        const token = tokenMap.get(e.contractAddress ?? '');
+        const token = tokenMap.get(`${e.chainId}:${e.contractAddress}`);
         return {
           id: String(e.id),
           chainId: e.chainId,
@@ -302,7 +301,7 @@ export class SyncHealthController {
           blockNumber: String(e.blockNumber),
           txHash: e.txHash,
           logIndex: e.logIndex,
-          contractAddress: e.contractAddress ?? null,
+          contractAddress: e.contractAddress,
           eventType: e.eventType,
           fromAddress: e.fromAddress ?? null,
           toAddress: e.toAddress ?? null,
