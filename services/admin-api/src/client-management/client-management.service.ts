@@ -29,8 +29,9 @@ export class ClientManagementService {
     data: {
       name: string;
       slug: string;
+      email?: string;
       tierId?: number;
-      custodyMode?: string;
+      custodyPolicy?: string;
       kytEnabled?: boolean;
       kytLevel?: string;
     },
@@ -49,11 +50,12 @@ export class ClientManagementService {
       data: {
         name: data.name,
         slug: data.slug,
+        email: data.email ?? null,
         tierId: data.tierId ? BigInt(data.tierId) : null,
-        custodyMode: (data.custodyMode as any) ?? 'full_custody',
+        custodyPolicy: data.custodyPolicy ?? 'full_custody',
         kytEnabled: data.kytEnabled ?? false,
-        kytLevel: (data.kytLevel as any) ?? 'basic',
-      },
+        kytLevel: data.kytLevel ?? 'basic',
+      } as any,
       include: { tier: true },
     });
 
@@ -124,9 +126,10 @@ export class ClientManagementService {
     id: number,
     data: {
       name?: string;
+      email?: string;
       status?: string;
       tierId?: number;
-      custodyMode?: string;
+      custodyPolicy?: string;
       kytEnabled?: boolean;
       kytLevel?: string;
     },
@@ -142,9 +145,10 @@ export class ClientManagementService {
 
     const updateData: any = {};
     if (data.name !== undefined) updateData.name = data.name;
+    if (data.email !== undefined) updateData.email = data.email;
     if (data.status !== undefined) updateData.status = data.status;
     if (data.tierId !== undefined) updateData.tierId = BigInt(data.tierId);
-    if (data.custodyMode !== undefined) updateData.custodyMode = data.custodyMode;
+    if (data.custodyPolicy !== undefined) updateData.custodyPolicy = data.custodyPolicy;
     if (data.kytEnabled !== undefined) updateData.kytEnabled = data.kytEnabled;
     if (data.kytLevel !== undefined) updateData.kytLevel = data.kytLevel;
 
@@ -224,9 +228,10 @@ export class ClientManagementService {
       id: client.id.toString(),
       name: client.name,
       slug: client.slug,
+      email: client.email ?? null,
       status: client.status,
       tierId: client.tierId?.toString() ?? null,
-      custodyMode: client.custodyMode,
+      custodyPolicy: client.custodyPolicy,
       kytEnabled: client.kytEnabled,
       kytLevel: client.kytLevel,
       createdAt: client.createdAt,
