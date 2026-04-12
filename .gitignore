@@ -26,3 +26,6 @@ typechain-types
 .superpowers
 .claude/worktrees/
 DEPLOYMENT_REPORT.md
+
+# Git worktrees
+.worktrees/
