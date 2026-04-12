@@ -969,7 +969,7 @@ export const analyticsClientOptions = [
 ];
 
 // ─── Navigation ──────────────────────────────────────────────
-export const navSections = [
+export const navSections: Array<{ title: string; items: Array<{ label: string; href: string; icon: string; badge?: number }> }> = [
   {
     title: "Principal",
     items: [
