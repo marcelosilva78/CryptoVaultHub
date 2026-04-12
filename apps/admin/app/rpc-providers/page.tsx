@@ -146,7 +146,7 @@ function ProviderModal({ open, mode, initial, onClose, onSave }: ProviderModalPr
       className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="bg-surface-card border border-border-subtle rounded-modal shadow-float w-full max-w-lg mx-4">
+      <div className="bg-surface-card border border-border-subtle rounded-modal shadow-float w-full max-w-lg mx-4 max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border-subtle">
           <h3 className="font-display text-subheading text-text-primary">
@@ -161,7 +161,7 @@ function ProviderModal({ open, mode, initial, onClose, onSave }: ProviderModalPr
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="px-5 py-4 space-y-4">
+        <form onSubmit={handleSubmit} className="px-5 py-4 space-y-4 overflow-y-auto flex-1">
           {/* Provider Name */}
           <div>
             <label className={labelCls}>Provider Name</label>
