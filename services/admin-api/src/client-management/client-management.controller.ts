@@ -330,4 +330,28 @@ Results are ordered by creation date (newest first). The response includes pagin
     );
     return { success: true, ...result };
   }
+
+  @Post(':id/invite')
+  @AdminAuth('super_admin', 'admin')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Send invite email to client',
+    description: 'Generates an invite token and queues an email to the client\'s email address. Also returns the invite URL for manual copy.',
+  })
+  @ApiParam({ name: 'id', type: 'integer', example: 1 })
+  @ApiResponse({
+    status: 200,
+    description: 'Invite sent',
+    schema: { example: { success: true, inviteUrl: 'https://portal.vaulthub.live/register?token=abc123' } },
+  })
+  @ApiResponse({ status: 400, description: 'Client has no email address' })
+  @ApiResponse({ status: 404, description: 'Client not found' })
+  async inviteClient(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: Request,
+  ) {
+    const user = (req as any).user;
+    const result = await this.clientService.inviteClient(id, user.userId, req.ip);
+    return { success: true, ...result };
+  }
 }
