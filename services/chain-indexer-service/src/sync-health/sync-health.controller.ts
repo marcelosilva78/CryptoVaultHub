@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, Query } from '@nestjs/common';
+import { Controller, Get, Post, Param, Query, Body } from '@nestjs/common';
 import { SyncHealthService } from './sync-health.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { InjectQueue } from '@nestjs/bullmq';
@@ -122,6 +122,92 @@ export class SyncHealthController {
     return { message: `Backfill retry enqueued for gap ${gapId}` };
   }
 
+  /* ── Chain CRUD ── */
+  @Get('chains')
+  async listChains() {
+    const chains = await this.prisma.chain.findMany({ orderBy: { id: 'asc' } });
+    return {
+      chains: chains.map((c: any) => ({
+        id: c.id,
+        chainId: c.id,
+        name: c.name,
+        symbol: c.nativeCurrencySymbol,
+        rpcUrl: Array.isArray(c.rpcEndpoints) ? c.rpcEndpoints[0] : (c.rpcEndpoints as any)?.[0] ?? '',
+        explorerUrl: c.explorerUrl ?? null,
+        confirmationsRequired: c.confirmationsDefault,
+        isActive: c.isActive,
+        createdAt: c.createdAt,
+      })),
+    };
+  }
+
+  @Post('chains')
+  async addChain(@Body() body: {
+    name: string;
+    symbol: string;
+    chainId: number;
+    rpcUrl: string;
+    explorerUrl?: string;
+    confirmationsRequired?: number;
+    isActive?: boolean;
+  }) {
+    const chain = await this.prisma.chain.create({
+      data: {
+        id: body.chainId,
+        name: body.name,
+        shortName: body.symbol,
+        nativeCurrencySymbol: body.symbol,
+        rpcEndpoints: [body.rpcUrl] as any,
+        blockTimeSeconds: 12,
+        confirmationsDefault: body.confirmationsRequired ?? 12,
+        explorerUrl: body.explorerUrl ?? null,
+        isActive: body.isActive ?? true,
+      },
+    });
+    return { chain: { ...chain, chainId: chain.id, symbol: chain.nativeCurrencySymbol, confirmationsRequired: chain.confirmationsDefault } };
+  }
+
+  /* ── Token CRUD ── */
+  @Get('tokens')
+  async listTokens() {
+    const tokens = await this.prisma.token.findMany({ orderBy: { id: 'asc' } });
+    return {
+      tokens: tokens.map((t: any) => ({
+        id: Number(t.id),
+        chainId: t.chainId,
+        contractAddress: t.contractAddress,
+        symbol: t.symbol,
+        name: t.name,
+        decimals: t.decimals,
+        isNative: t.isNative,
+        isActive: t.isActive,
+        createdAt: t.createdAt,
+      })),
+    };
+  }
+
+  @Post('tokens')
+  async addToken(@Body() body: {
+    name: string;
+    symbol: string;
+    chainId: number;
+    contractAddress: string;
+    decimals: number;
+    isActive?: boolean;
+  }) {
+    const token = await this.prisma.token.create({
+      data: {
+        chainId: body.chainId,
+        contractAddress: body.contractAddress,
+        symbol: body.symbol,
+        name: body.name,
+        decimals: body.decimals,
+        isActive: body.isActive ?? true,
+      },
+    });
+    return { token: { id: Number(token.id), chainId: token.chainId, contractAddress: token.contractAddress, symbol: token.symbol, name: token.name, decimals: token.decimals, isActive: token.isActive } };
+  }
+
   @Get('reorgs')
   async getReorgs(
     @Query('chainId') chainId?: string,
@@ -167,6 +253,70 @@ export class SyncHealthController {
         detectedAt: r.detected_at,
         reindexedAt: r.reindexed_at,
       })),
+    };
+  }
+
+  @Get('events/recent')
+  async getRecentEvents(
+    @Query('limit') limit?: string,
+    @Query('chainId') chainId?: string,
+  ) {
+    const take = Math.min(parseInt(limit ?? '20', 10), 100);
+    const where: any = {};
+    if (chainId) where.chainId = parseInt(chainId, 10);
+
+    const events = await this.prisma.indexedEvent.findMany({
+      where,
+      orderBy: { processedAt: 'desc' },
+      take,
+    });
+
+    // Resolve token symbols from contract addresses
+    const contractAddrs = [
+      ...new Set(events.map((e) => e.contractAddress).filter(Boolean) as string[]),
+    ];
+    const tokens =
+      contractAddrs.length > 0
+        ? await this.prisma.token.findMany({
+            where: { contractAddress: { in: contractAddrs } },
+            select: { contractAddress: true, symbol: true, decimals: true },
+          })
+        : [];
+    const tokenMap = new Map(tokens.map((t) => [t.contractAddress, t]));
+
+    // Resolve chain names
+    const chainIds = [...new Set(events.map((e) => e.chainId))];
+    const chains = await this.prisma.chain.findMany({
+      where: { id: { in: chainIds } },
+      select: { id: true, name: true },
+    });
+    const chainMap = new Map(chains.map((c) => [c.id, c.name]));
+
+    return {
+      events: events.map((e) => {
+        const token = tokenMap.get(e.contractAddress ?? '');
+        return {
+          id: String(e.id),
+          chainId: e.chainId,
+          chainName: chainMap.get(e.chainId) ?? null,
+          blockNumber: String(e.blockNumber),
+          txHash: e.txHash,
+          logIndex: e.logIndex,
+          contractAddress: e.contractAddress ?? null,
+          eventType: e.eventType,
+          fromAddress: e.fromAddress ?? null,
+          toAddress: e.toAddress ?? null,
+          amount: e.amount != null ? String(e.amount) : null,
+          tokenSymbol: token?.symbol ?? null,
+          tokenDecimals: token?.decimals ?? null,
+          clientId: e.clientId != null ? Number(e.clientId) : null,
+          projectId: e.projectId != null ? Number(e.projectId) : null,
+          walletId: e.walletId != null ? Number(e.walletId) : null,
+          isInbound: e.isInbound ?? null,
+          rawData: e.rawData ?? null,
+          processedAt: e.processedAt ?? null,
+        };
+      }),
     };
   }
 }
