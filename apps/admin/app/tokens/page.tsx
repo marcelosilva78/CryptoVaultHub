@@ -75,7 +75,7 @@ function AddTokenModal({ onClose, onAdded }: AddTokenModalProps) {
 
   useEffect(() => {
     adminFetch("/chains")
-      .then((data: ChainOption[]) => setChainOptions(Array.isArray(data) ? data : data?.chains ?? data?.data ?? []))
+      .then((data: any) => setChainOptions(Array.isArray(data) ? data : data?.chains ?? data?.data ?? []))
       .catch(() => {
         // Fallback chain options if API not available
         setChainOptions([
