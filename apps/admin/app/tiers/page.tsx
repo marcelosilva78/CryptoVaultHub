@@ -52,7 +52,7 @@ function CreateTierModal({ onClose }: CreateTierModalProps) {
     setLoading(true);
     setError(null);
     try {
-      await adminFetch("/admin/tiers", {
+      await adminFetch("/tiers", {
         method: "POST",
         body: JSON.stringify({
           name: form.name,
@@ -229,7 +229,7 @@ function EditTierModal({ tier, onClose }: EditTierModalProps) {
       if (form.maxChains !== "") payload.maxChains = Number(form.maxChains);
       if (form.maxWebhooks !== "") payload.maxWebhooks = Number(form.maxWebhooks);
       if (form.dailyWithdrawalLimitUsd !== "") payload.dailyWithdrawalLimitUsd = Number(form.dailyWithdrawalLimitUsd);
-      await adminFetch(`/admin/tiers/${tier.id}`, {
+      await adminFetch(`/tiers/${tier.id}`, {
         method: "PATCH",
         body: JSON.stringify(payload),
       });

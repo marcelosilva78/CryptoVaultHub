@@ -298,7 +298,7 @@ export default function GasTanksPage() {
   });
 
   async function handleTopUp(tank: TopUpTank, amount: string) {
-    await adminFetch(`/admin/gas-tanks/${tank.chainId}/top-up`, {
+    await adminFetch(`/gas-tanks/${tank.chainId}/top-up`, {
       method: "POST",
       body: JSON.stringify({ amount: amount || undefined }),
     });

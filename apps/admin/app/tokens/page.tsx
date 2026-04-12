@@ -71,7 +71,7 @@ function AddTokenModal({ onClose }: AddTokenModalProps) {
   const [chainOptions, setChainOptions] = useState<ChainOption[]>([]);
 
   useEffect(() => {
-    adminFetch("/admin/chains")
+    adminFetch("/chains")
       .then((data: ChainOption[]) => setChainOptions(data))
       .catch(() => {
         // Fallback chain options if API not available
@@ -94,7 +94,7 @@ function AddTokenModal({ onClose }: AddTokenModalProps) {
     setLoading(true);
     setError(null);
     try {
-      await adminFetch("/admin/tokens", {
+      await adminFetch("/tokens", {
         method: "POST",
         body: JSON.stringify({
           name: form.name,

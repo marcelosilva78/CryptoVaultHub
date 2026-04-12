@@ -96,7 +96,7 @@ function AddChainModal({ onClose }: AddChainModalProps) {
     setLoading(true);
     setError(null);
     try {
-      await adminFetch("/admin/chains", {
+      await adminFetch("/chains", {
         method: "POST",
         body: JSON.stringify({
           name: form.name,

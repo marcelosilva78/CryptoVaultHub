@@ -59,7 +59,7 @@ function CreateClientModal({ open, onClose, onCreated }: { open: boolean; onClos
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault(); setLoading(true); setError(null);
     try {
-      await adminFetch("/admin/clients", { method: "POST", body: JSON.stringify(form) });
+      await adminFetch("/clients", { method: "POST", body: JSON.stringify(form) });
       onCreated(); onClose();
     } catch (err: any) { setError(err.message); }
     finally { setLoading(false); }

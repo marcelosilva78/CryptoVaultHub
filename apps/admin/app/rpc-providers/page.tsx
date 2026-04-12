@@ -335,7 +335,7 @@ export default function RpcProvidersPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await adminFetch("/admin/rpc-providers");
+      const data = await adminFetch("/rpc-providers");
       setNodes(data.providers ?? []);
     } catch (err: any) {
       setError(err.message);
@@ -374,7 +374,7 @@ export default function RpcProvidersPage() {
       };
       if (form.rpcWsUrl) payload.rpcWsUrl = form.rpcWsUrl;
       if (form.apiKey) payload.apiKeyEncrypted = form.apiKey;
-      await adminFetch(`/admin/rpc-providers/${id}`, {
+      await adminFetch(`/rpc-providers/${id}`, {
         method: "PATCH",
         body: JSON.stringify(payload),
       });
@@ -388,7 +388,7 @@ export default function RpcProvidersPage() {
       };
       if (form.rpcWsUrl) payload.rpcWsUrl = form.rpcWsUrl;
       if (form.apiKey) payload.apiKeyEncrypted = form.apiKey;
-      await adminFetch("/admin/rpc-providers", {
+      await adminFetch("/rpc-providers", {
         method: "POST",
         body: JSON.stringify(payload),
       });
@@ -400,7 +400,7 @@ export default function RpcProvidersPage() {
   const handleDelete = async () => {
     setDeleteLoading(true);
     try {
-      await adminFetch(`/admin/rpc-providers/${deleteModal.nodeId}`, { method: "DELETE" });
+      await adminFetch(`/rpc-providers/${deleteModal.nodeId}`, { method: "DELETE" });
       setDeleteModal({ open: false, nodeId: "", label: "" });
       await fetchProviders();
     } finally {

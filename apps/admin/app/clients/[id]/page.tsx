@@ -81,7 +81,7 @@ function EditClientModal({ open, onClose, onSaved, clientId, initialData }: {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault(); setLoading(true); setError(null);
     try {
-      await adminFetch(`/admin/clients/${clientId}`, { method: "PATCH", body: JSON.stringify(form) });
+      await adminFetch(`/clients/${clientId}`, { method: "PATCH", body: JSON.stringify(form) });
       onSaved(); onClose();
     } catch (err: any) { setError(err.message); }
     finally { setLoading(false); }
@@ -162,7 +162,7 @@ function ChangeTierModal({ open, onClose, onSaved, clientId }: {
   useEffect(() => {
     if (!open) return;
     setError(null); setFetchError(null);
-    adminFetch("/admin/tiers")
+    adminFetch("/tiers")
       .then((res) => {
         const list: TierOption[] = (res.tiers ?? res).map((t: any) => ({ id: t.id, name: t.name }));
         setTiers(list);
@@ -182,7 +182,7 @@ function ChangeTierModal({ open, onClose, onSaved, clientId }: {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault(); setLoading(true); setError(null);
     try {
-      await adminFetch(`/admin/clients/${clientId}`, { method: "PATCH", body: JSON.stringify({ tierId: Number(tierId) }) });
+      await adminFetch(`/clients/${clientId}`, { method: "PATCH", body: JSON.stringify({ tierId: Number(tierId) }) });
       onSaved(); onClose();
     } catch (err: any) { setError(err.message); }
     finally { setLoading(false); }
@@ -271,7 +271,7 @@ export default function ClientDetailPage() {
         onConfirm={async () => {
           setKeysLoading(true);
           try {
-            await adminFetch(`/admin/clients/${clientId}/generate-keys`, { method: "POST" });
+            await adminFetch(`/clients/${clientId}/generate-keys`, { method: "POST" });
             setKeysModal(false);
             alert("Key generation started");
           } catch (err: any) {
