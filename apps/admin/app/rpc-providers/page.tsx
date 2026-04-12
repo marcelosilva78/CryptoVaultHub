@@ -465,19 +465,19 @@ export default function RpcProvidersPage() {
         {/* Loading state */}
         {loading && (
           <TableRow>
-            <TableCell colSpan={7}>
+            <td colSpan={7} className="px-4 py-3 border-b border-border-subtle">
               <div className="flex items-center justify-center gap-2 py-8 text-text-muted font-display text-body">
                 <Loader2 className="w-4 h-4 animate-spin" />
                 Loading providers…
               </div>
-            </TableCell>
+            </td>
           </TableRow>
         )}
 
         {/* Empty state */}
         {!loading && grouped.length === 0 && (
           <TableRow>
-            <TableCell colSpan={7}>
+            <td colSpan={7} className="px-4 py-3 border-b border-border-subtle">
               <div className="flex flex-col items-center justify-center gap-3 py-12 text-text-muted font-display">
                 <Radio className="w-8 h-8 opacity-30" />
                 <span className="text-body">No RPC providers configured.</span>
@@ -488,7 +488,7 @@ export default function RpcProvidersPage() {
                   Add your first provider
                 </button>
               </div>
-            </TableCell>
+            </td>
           </TableRow>
         )}
 
