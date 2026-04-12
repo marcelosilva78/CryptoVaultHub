@@ -117,8 +117,8 @@ function AddChainModal({ onClose, onAdded }: AddChainModalProps) {
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="bg-surface-card border border-border-subtle rounded-modal shadow-float w-full max-w-[480px] mx-4">
-        <div className="flex items-center justify-between p-5 border-b border-border-subtle">
+      <div className="bg-surface-card border border-border-subtle rounded-modal shadow-float w-full max-w-[480px] mx-4 max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between p-5 border-b border-border-subtle shrink-0">
           <span className="font-display text-subheading text-text-primary">Add Chain</span>
           <button
             onClick={onClose}
@@ -127,8 +127,8 @@ function AddChainModal({ onClose, onAdded }: AddChainModalProps) {
             <X className="w-4 h-4" />
           </button>
         </div>
-        <form onSubmit={handleSubmit}>
-          <div className="p-5 space-y-4">
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
+          <div className="p-5 space-y-4 overflow-y-auto flex-1">
             {error && (
               <div className="text-caption text-status-error bg-status-error/10 border border-status-error/30 rounded-input px-3 py-2 font-display">
                 {error}

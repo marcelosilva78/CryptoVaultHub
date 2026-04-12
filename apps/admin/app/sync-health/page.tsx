@@ -336,8 +336,8 @@ async function adminFetch(path: string, options: RequestInit = {}) {
 /* ── Page ── */
 export default function SyncHealthPage() {
   const [refreshing, setRefreshing] = useState(false);
-  const [chains, setChains] = useState<ChainHealth[]>(mockChains);
-  const [gaps, setGaps] = useState<SyncGap[]>(mockGaps);
+  const [chains, setChains] = useState<ChainHealth[]>([]);
+  const [gaps, setGaps] = useState<SyncGap[]>([]);
   const [retryingGapId, setRetryingGapId] = useState<number | null>(null);
 
   const handleRefresh = useCallback(async () => {
@@ -347,8 +347,10 @@ export default function SyncHealthPage() {
         adminFetch("/sync-management/health"),
         adminFetch("/sync-management/gaps"),
       ]);
-      if (Array.isArray(healthData)) setChains(healthData);
-      if (Array.isArray(gapsData)) setGaps(gapsData);
+      const chainList = Array.isArray(healthData) ? healthData : Array.isArray(healthData?.chains) ? healthData.chains : [];
+      const gapList = Array.isArray(gapsData) ? gapsData : Array.isArray(gapsData?.gaps) ? gapsData.gaps : [];
+      setChains(chainList);
+      setGaps(gapList);
     } catch (err: any) { console.error(err); }
     finally { setRefreshing(false); }
   }, []);

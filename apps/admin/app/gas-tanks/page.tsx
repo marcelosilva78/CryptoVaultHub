@@ -283,7 +283,10 @@ export default function GasTanksPage() {
 
   useEffect(() => {
     adminFetch("/gas-tanks")
-      .then((data) => setTanks(Array.isArray(data) ? data : data?.gasTanks ?? []))
+      .then((data) => {
+        const list = Array.isArray(data) ? data : Array.isArray(data?.gasTanks) ? data.gasTanks : [];
+        setTanks(list);
+      })
       .catch(() => setTanks([]))
       .finally(() => setLoading(false));
   }, [reload]);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Search, ChevronDown, ArrowDownLeft, ArrowUpRight, RefreshCw, Shuffle, Copy, Check, ChevronRight } from "lucide-react";
 import { StatCard } from "@/components/stat-card";
 import { Badge } from "@/components/badge";
@@ -14,59 +14,25 @@ import { JsonViewerV2 } from "@/components/json-viewer-v2";
 import { cn } from "@/lib/utils";
 import { shortenAddress } from "@/lib/utils";
 
-// ─── Mock: Clients ──────────────────────────────────────────
-const mockClients = [
-  { id: "client_cxyz_001", name: "Corretora XYZ", tier: "Business" },
-  { id: "client_pgw_002", name: "PayGateway International", tier: "Enterprise" },
-  { id: "client_eabc_003", name: "Exchange ABC", tier: "Starter" },
-  { id: "client_cps_004", name: "CryptoPay Solutions", tier: "Business" },
-  { id: "client_mp_005", name: "MerchantPro", tier: "Starter" },
-];
+/* ─── API helpers ─────────────────────────────────────────── */
+const ADMIN_API = process.env.NEXT_PUBLIC_ADMIN_API_URL || "http://localhost:3001";
+function getToken() { return typeof window !== "undefined" ? localStorage.getItem("cvh_admin_token") ?? "" : ""; }
+async function adminFetch(path: string, options: RequestInit = {}) {
+  const res = await fetch(`${ADMIN_API}${path}`, { ...options, headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}`, ...options.headers } });
+  if (!res.ok) { const e = await res.json().catch(() => ({ message: "Request failed" })); throw new Error(e.message || `HTTP ${res.status}`); }
+  return res.json();
+}
 
-// ─── Mock: Client Summary ───────────────────────────────────
-const mockClientSummary: Record<string, {
-  totalBalanceUsd: string;
-  totalBalanceCrypto: string;
-  totalWallets: number;
-  activeWallets: number;
-  totalTransactions: number;
-}> = {
-  client_cxyz_001: {
-    totalBalanceUsd: "$847,231.54",
-    totalBalanceCrypto: "12.50 BNB + 1.20 ETH + 1,250 MATIC",
-    totalWallets: 3,
-    activeWallets: 3,
-    totalTransactions: 1247,
-  },
-  client_pgw_002: {
-    totalBalanceUsd: "$4,215,890.00",
-    totalBalanceCrypto: "85.30 BNB + 15.40 ETH + 45,000 MATIC",
-    totalWallets: 5,
-    activeWallets: 4,
-    totalTransactions: 8912,
-  },
-  client_eabc_003: {
-    totalBalanceUsd: "$3,120.75",
-    totalBalanceCrypto: "0.15 BNB",
-    totalWallets: 1,
-    activeWallets: 0,
-    totalTransactions: 89,
-  },
-  client_cps_004: {
-    totalBalanceUsd: "$215,430.00",
-    totalBalanceCrypto: "3.20 BNB + 0.45 ETH",
-    totalWallets: 2,
-    activeWallets: 2,
-    totalTransactions: 432,
-  },
-  client_mp_005: {
-    totalBalanceUsd: "$8,745.20",
-    totalBalanceCrypto: "0.80 BNB + 890 MATIC",
-    totalWallets: 2,
-    activeWallets: 2,
-    totalTransactions: 156,
-  },
-};
+interface ClientItem {
+  id: number | string;
+  name: string;
+  tier?: string;
+  tierName?: string;
+  status?: string;
+  walletCount?: number;
+  projectCount?: number;
+}
+
 
 // ─── Mock: Wallets ──────────────────────────────────────────
 const mockWallets: Record<string, WalletData[]> = {
@@ -634,10 +600,24 @@ export default function TraceabilityPage() {
   const [expandedTxIds, setExpandedTxIds] = useState<Set<string>>(new Set());
   const [modalTx, setModalTx] = useState<TransactionDetail | null>(null);
 
-  const selectedClient = mockClients.find((c) => c.id === selectedClientId);
-  const clientSummary = selectedClientId ? mockClientSummary[selectedClientId] : null;
-  const wallets = selectedClientId ? (mockWallets[selectedClientId] || []) : [];
-  const transactions = selectedClientId ? (mockTransactions[selectedClientId] || []) : [];
+  const [clients, setClients] = useState<ClientItem[]>([]);
+
+  useEffect(() => {
+    adminFetch("/clients")
+      .then((data: any) => setClients(Array.isArray(data) ? data : data?.clients ?? data?.data ?? []))
+      .catch(() => setClients([]));
+  }, []);
+
+  const selectedClient = clients.find((c) => String(c.id) === selectedClientId);
+  const wallets: WalletData[] = [];
+  const transactions: MockTransaction[] = [];
+  const clientSummary = selectedClient ? {
+    totalBalanceUsd: "—",
+    totalBalanceCrypto: "—",
+    totalWallets: selectedClient.walletCount ?? 0,
+    activeWallets: selectedClient.walletCount ?? 0,
+    totalTransactions: 0,
+  } : null;
 
   // Filter transactions
   const filteredTransactions = useMemo(() => {
@@ -691,7 +671,7 @@ export default function TraceabilityPage() {
     });
   };
 
-  const filteredClients = mockClients.filter((c) =>
+  const filteredClients = clients.filter((c) =>
     c.name.toLowerCase().includes(clientSearch.toLowerCase())
   );
 
@@ -725,7 +705,7 @@ export default function TraceabilityPage() {
             {selectedClient ? (
               <div className="flex items-center gap-3">
                 <span className="text-body font-display font-semibold text-text-primary">{selectedClient.name}</span>
-                <Badge variant="neutral" className="text-[10px]">{selectedClient.tier}</Badge>
+                <Badge variant="neutral" className="text-[10px]">{selectedClient.tierName ?? selectedClient.tier ?? ""}</Badge>
                 <span className="text-caption text-text-muted font-mono">{selectedClient.id}</span>
               </div>
             ) : (
@@ -751,20 +731,20 @@ export default function TraceabilityPage() {
                 </div>
                 {filteredClients.map((client) => (
                   <button
-                    key={client.id}
+                    key={String(client.id)}
                     onClick={() => {
-                      setSelectedClientId(client.id);
+                      setSelectedClientId(String(client.id));
                       setClientDropdownOpen(false);
                       setClientSearch("");
                       setExpandedTxIds(new Set());
                     }}
                     className={cn(
                       "w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-surface-hover transition-colors duration-fast",
-                      selectedClientId === client.id && "bg-accent-glow"
+                      selectedClientId === String(client.id) && "bg-accent-glow"
                     )}
                   >
                     <span className="text-body font-display font-semibold text-text-primary">{client.name}</span>
-                    <Badge variant="neutral" className="text-[10px]">{client.tier}</Badge>
+                    <Badge variant="neutral" className="text-[10px]">{client.tierName ?? client.tier ?? ""}</Badge>
                     <span className="text-[10px] text-text-muted font-mono ml-auto">{client.id}</span>
                   </button>
                 ))}

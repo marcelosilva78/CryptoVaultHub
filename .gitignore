@@ -25,3 +25,4 @@ typechain-types
 # Superpowers brainstorm sessions
 .superpowers
 .claude/worktrees/
+DEPLOYMENT_REPORT.md

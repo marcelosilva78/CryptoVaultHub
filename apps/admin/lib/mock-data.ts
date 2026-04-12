@@ -1000,7 +1000,7 @@ export const navSections = [
     title: "Config",
     items: [
       { label: "Tiers & Limits", href: "/tiers", icon: "Layers" },
-      { label: "Compliance", href: "/compliance", icon: "ShieldAlert", badge: 3 },
+      { label: "Compliance", href: "/compliance", icon: "ShieldAlert" },
       { label: "Monitoring", href: "/monitoring", icon: "Activity" },
       { label: "Exports", href: "/exports", icon: "Download" },
     ],

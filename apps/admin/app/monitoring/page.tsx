@@ -80,16 +80,16 @@ type QueueMetric = { label: string; value: string; color: string };
 type QueueEntry = { name: string; metrics: QueueMetric[] };
 
 function mapHealthData(raw: any): ServiceEntry[] {
-  if (!raw || !Array.isArray(raw)) return mockServices;
+  if (!raw || !Array.isArray(raw)) return [];
   return raw.map((s: any) => ({
     name: s.name ?? s.service ?? "Unknown",
-    status: s.status === "healthy" || s.healthy === true ? "healthy" : "unhealthy",
-    p99: s.p99 ?? s.latencyP99 ?? s.latency ?? "—",
+    status: s.status === "healthy" || s.status === "up" || s.healthy === true ? "healthy" : "unhealthy",
+    p99: s.p99 ?? s.latencyP99 ?? (s.responseTimeMs != null ? `${s.responseTimeMs}ms` : "—"),
   }));
 }
 
 function mapQueuesData(raw: any): QueueEntry[] {
-  if (!raw || !Array.isArray(raw)) return mockQueues;
+  if (!raw || !Array.isArray(raw)) return [];
   return raw.map((q: any) => {
     const metrics: QueueMetric[] = [];
     if (q.metrics && Array.isArray(q.metrics)) {
@@ -112,8 +112,8 @@ function mapQueuesData(raw: any): QueueEntry[] {
 
 export default function MonitoringPage() {
   const [refreshing, setRefreshing] = useState(false);
-  const [services, setServices] = useState<ServiceEntry[]>(mockServices);
-  const [queues, setQueues] = useState<QueueEntry[]>(mockQueues);
+  const [services, setServices] = useState<ServiceEntry[]>([]);
+  const [queues, setQueues] = useState<QueueEntry[]>([]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -122,8 +122,12 @@ export default function MonitoringPage() {
         adminFetch("/monitoring/health"),
         adminFetch("/monitoring/queues"),
       ]);
-      setServices(mapHealthData(healthData));
-      setQueues(mapQueuesData(queuesData));
+      // health returns { success, overall, services: [...] }
+      const svcList = Array.isArray(healthData) ? healthData : Array.isArray(healthData?.services) ? healthData.services : [];
+      setServices(mapHealthData(svcList));
+      // queues returns { success, queues: [...] } or { status: 'unavailable' }
+      const queueList = Array.isArray(queuesData) ? queuesData : Array.isArray(queuesData?.queues) ? queuesData.queues : [];
+      setQueues(mapQueuesData(queueList));
     } catch (err: any) { console.error(err); }
     finally { setRefreshing(false); }
   }, []);
