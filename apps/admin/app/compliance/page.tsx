@@ -185,7 +185,7 @@ export default function CompliancePage() {
         >
           {!loadingData && alerts.length === 0 && (
             <TableRow>
-              <TableCell colSpan={5} className="text-center text-text-muted text-caption py-4">No alerts</TableCell>
+              <td colSpan={5} className="px-4 py-4 border-b border-border-subtle text-center text-text-muted text-caption py-4 font-display">No alerts</td>
             </TableRow>
           )}
           {alerts.map((alert, i) => (
@@ -236,7 +236,7 @@ export default function CompliancePage() {
         >
           {!loadingData && sanctions.length === 0 && (
             <TableRow>
-              <TableCell colSpan={5} className="text-center text-text-muted text-caption py-4">No sanctions lists</TableCell>
+              <td colSpan={5} className="px-4 py-4 border-b border-border-subtle text-center text-text-muted text-caption py-4 font-display">No sanctions lists</td>
             </TableRow>
           )}
           {sanctions.map((list) => (
