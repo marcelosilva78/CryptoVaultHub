@@ -273,7 +273,11 @@ export class SyncHealthController {
     });
 
     // Resolve token symbols from contract addresses (composite key to avoid cross-chain collisions)
-    const contractAddrs = [...new Set(events.map((e) => e.contractAddress))];
+    const contractAddrs = [
+      ...new Set(
+        events.map((e) => e.contractAddress).filter(Boolean) as string[],
+      ),
+    ];
     const tokens =
       contractAddrs.length > 0
         ? await this.prisma.token.findMany({

@@ -144,7 +144,7 @@ export function TxExpandedRow({ tx, colSpan }: TxExpandedRowProps) {
                   </a>
                 )}
                 <button
-                  onClick={() => router.push(`/traceability?txHash=${tx.txHash}`)}
+                  onClick={() => router.push(`/traceability?txHash=${encodeURIComponent(tx.txHash)}`)}
                   className="inline-flex items-center gap-1.5 bg-accent-subtle text-accent-primary text-[10px] font-semibold font-display px-3 py-1.5 rounded-button border border-accent-primary/20 hover:bg-accent-primary/10 transition-colors duration-fast"
                 >
                   <Search className="w-3 h-3" />

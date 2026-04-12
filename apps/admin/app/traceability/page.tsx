@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import { useState, useEffect, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import { Search, ChevronDown, ArrowDownLeft, ArrowUpRight, RefreshCw, Shuffle, Copy, Check, ChevronRight } from "lucide-react";

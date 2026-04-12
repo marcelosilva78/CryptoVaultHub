@@ -85,7 +85,7 @@ export class TransactionsService {
         tokenSymbol: e.tokenSymbol ?? null,
         tokenDecimals: e.tokenDecimals ?? null,
         logIndex: e.logIndex ?? null,
-        clientId: e.clientId ?? null,
+        clientId: e.clientId != null ? Number(e.clientId) : null,
         clientName: e.clientId != null ? (clientMap.get(String(e.clientId)) ?? null) : null,
         walletId: e.walletId ?? null,
         walletLabel: e.walletId != null ? `Wallet #${e.walletId}` : null,
