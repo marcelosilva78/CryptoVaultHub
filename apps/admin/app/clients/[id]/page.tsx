@@ -244,7 +244,7 @@ export default function ClientDetailPage() {
   async function handleSendInvite() {
     setInviteState({ loading: true });
     try {
-      const res = await fetch(`${ADMIN_API}/admin/clients/${clientId}/invite`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` } });
+      const res = await fetch(`${ADMIN_API}/clients/${clientId}/invite`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` } });
       const data = await res.json();
       if (!res.ok) {
         setInviteState({ error: data.message ?? 'Failed to send invite.' });
