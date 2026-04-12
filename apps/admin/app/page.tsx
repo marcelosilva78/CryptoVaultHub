@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { StatusBadge } from "@/components/status-badge";
 import { CopyButton } from "@/components/copy-button";
-import { Loader2 } from "lucide-react";
+import { Loader2, ChevronRight, ChevronDown } from "lucide-react";
+import { TxExpandedRow, type RecentTx } from "@/components/tx-expanded-row";
 
 /* ─── API helpers ─────────────────────────────────────────── */
 const ADMIN_API = process.env.NEXT_PUBLIC_ADMIN_API_URL || "http://localhost:3001";
@@ -20,22 +21,6 @@ interface ClientRecord {
   id: number;
   status: string;
   walletCount?: number;
-}
-
-interface RecentTx {
-  id: string | number;
-  txHash: string;
-  chain?: string;
-  chainId?: number;
-  tokenSymbol?: string;
-  amount?: string;
-  fromAddress?: string;
-  toAddress?: string;
-  eventType?: string;
-  status?: string;
-  blockNumber?: number | string;
-  processedAt?: string;
-  indexedAt?: string;
 }
 
 /* ─── Gold tones for composition bar ─────────────────────── */
@@ -186,6 +171,16 @@ export default function DashboardPage() {
   const [loadingTxs, setLoadingTxs] = useState(true);
   const [clients, setClients] = useState<ClientRecord[]>([]);
   const [transactions, setTransactions] = useState<RecentTx[]>([]);
+  const [expandedTxIds, setExpandedTxIds] = useState<Set<string>>(new Set());
+
+  function toggleExpand(id: string) {
+    setExpandedTxIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   useEffect(() => {
     adminFetch("/clients")
@@ -255,55 +250,70 @@ export default function DashboardPage() {
             <table className="w-full">
               <thead>
                 <tr className="bg-surface-elevated">
-                  {["Type", "Chain", "Hash", "From → To", "Token", "Amount", "Status", "Block"].map((h) => (
+                  {["", "Type", "Chain", "Hash", "From → To", "Token", "Amount", "Status", "Block"].map((h) => (
                     <th key={h} className="text-left px-4 py-3 font-display text-[10px] font-semibold uppercase tracking-widest text-text-muted first:pl-5 last:pr-5">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {transactions.map((tx, idx) => {
-                  const type = mapEventType(tx.eventType);
+                  const type = mapEventType(tx.eventType ?? undefined);
                   const abbr = chainAbbr(tx.chain, tx.chainId);
+                  const txId = String(tx.id);
+                  const isExpanded = expandedTxIds.has(txId);
                   return (
-                    <tr key={tx.id} className={`border-b border-border-subtle hover:bg-surface-hover transition-colors duration-fast ${idx % 2 === 0 ? "bg-surface-card" : "bg-transparent"}`}>
-                      <td className="px-5 py-3">
-                        <span className={`inline-flex items-center gap-1.5 font-display text-[12px] font-semibold ${type === "deposit" ? "text-status-success" : "text-status-error"}`}>
-                          <TxTypeIcon type={type} />
-                          {type === "deposit" ? "Deposit" : "Withdrawal"}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <ChainHexAvatar abbr={abbr} />
-                          <span className="font-display text-[12px] text-text-secondary">{tx.chain ?? `Chain ${tx.chainId}`}</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="inline-flex items-center">
-                          <span className="font-mono text-code text-text-secondary">{truncateAddress(tx.txHash)}</span>
-                          <CopyButton value={tx.txHash} size="xs" />
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="font-mono text-[10px] text-text-muted">
-                          {truncateAddress(tx.fromAddress ?? "")} → {truncateAddress(tx.toAddress ?? "")}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="font-mono text-code text-text-secondary font-medium">{tx.tokenSymbol ?? "—"}</span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`font-mono text-code font-semibold ${type === "deposit" ? "text-status-success" : "text-status-error"}`}>
-                          {type === "deposit" ? "+" : "-"}{tx.amount ?? "—"} {tx.tokenSymbol ?? ""}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <StatusBadge status={dashboardStatusMap[tx.status ?? "confirmed"] ?? "confirmed"} />
-                      </td>
-                      <td className="px-5 py-3">
-                        <span className="font-mono text-[10px] text-text-muted">{tx.blockNumber ? `#${tx.blockNumber}` : "—"}</span>
-                      </td>
-                    </tr>
+                    <React.Fragment key={txId}>
+                      <tr
+                        onClick={() => toggleExpand(txId)}
+                        className={`border-b border-border-subtle hover:bg-surface-hover transition-colors duration-fast cursor-pointer ${idx % 2 === 0 ? "bg-surface-card" : "bg-transparent"} ${isExpanded ? "bg-surface-hover border-l-2 border-l-accent-primary" : ""}`}
+                      >
+                        <td className="px-2 py-3 pl-4">
+                          {isExpanded
+                            ? <ChevronDown className="w-3.5 h-3.5 text-accent-primary" />
+                            : <ChevronRight className="w-3.5 h-3.5 text-text-muted" />}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`inline-flex items-center gap-1.5 font-display text-[12px] font-semibold ${type === "deposit" ? "text-status-success" : "text-status-error"}`}>
+                            <TxTypeIcon type={type} />
+                            {type === "deposit" ? "Deposit" : "Withdrawal"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <ChainHexAvatar abbr={abbr} />
+                            <span className="font-display text-[12px] text-text-secondary">{tx.chainName ?? tx.chain ?? `Chain ${tx.chainId}`}</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="inline-flex items-center">
+                            <span className="font-mono text-code text-text-secondary">{truncateAddress(tx.txHash)}</span>
+                            <CopyButton value={tx.txHash} size="xs" />
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="font-mono text-[10px] text-text-muted">
+                            {truncateAddress(tx.fromAddress ?? "")} → {truncateAddress(tx.toAddress ?? "")}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="font-mono text-code text-text-secondary font-medium">{tx.tokenSymbol ?? "—"}</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`font-mono text-code font-semibold ${type === "deposit" ? "text-status-success" : "text-status-error"}`}>
+                            {type === "deposit" ? "+" : "-"}{tx.amount ?? "—"} {tx.tokenSymbol ?? ""}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <StatusBadge status={dashboardStatusMap[tx.status ?? "confirmed"] ?? "confirmed"} />
+                        </td>
+                        <td className="px-5 py-3">
+                          <span className="font-mono text-[10px] text-text-muted">{tx.blockNumber ? `#${tx.blockNumber}` : "—"}</span>
+                        </td>
+                      </tr>
+                      {isExpanded && (
+                        <TxExpandedRow tx={tx} colSpan={9} />
+                      )}
+                    </React.Fragment>
                   );
                 })}
               </tbody>
