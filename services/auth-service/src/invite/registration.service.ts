@@ -1,0 +1,69 @@
+// services/auth-service/src/invite/registration.service.ts
+import {
+  Injectable,
+  ConflictException,
+} from '@nestjs/common';
+import * as bcrypt from 'bcryptjs';
+import { PrismaService } from '../prisma/prisma.service';
+import { InviteService } from './invite.service';
+import { JwtAuthService } from '../jwt/jwt-auth.service';
+
+@Injectable()
+export class RegistrationService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly inviteService: InviteService,
+    private readonly jwtAuthService: JwtAuthService,
+  ) {}
+
+  async acceptInvite(
+    token: string,
+    password: string,
+    name: string,
+    ipAddress?: string,
+    userAgent?: string,
+  ) {
+    const invite = await this.inviteService.validateToken(token);
+
+    const existing = await this.prisma.user.findUnique({
+      where: { email: invite.email },
+    });
+    if (existing) {
+      throw new ConflictException('A user with this email already exists');
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    const user = await this.prisma.user.create({
+      data: {
+        email: invite.email,
+        passwordHash,
+        name,
+        role: 'viewer',
+        clientId: invite.clientId,
+        clientRole: 'owner',
+        isActive: true,
+      },
+    });
+
+    await this.prisma.inviteToken.update({
+      where: { id: invite.id },
+      data: { usedAt: new Date() },
+    });
+
+    const tokens = await this.jwtAuthService.issueTokenPair(user, ipAddress, userAgent);
+
+    return {
+      success: true,
+      user: {
+        id: user.id.toString(),
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        clientId: user.clientId?.toString() ?? null,
+        clientRole: user.clientRole ?? null,
+      },
+      tokens,
+    };
+  }
+}
