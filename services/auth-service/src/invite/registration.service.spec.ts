@@ -1,6 +1,6 @@
 // services/auth-service/src/invite/registration.service.spec.ts
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConflictException } from '@nestjs/common';
+import { ConflictException, ServiceUnavailableException } from '@nestjs/common';
 import { RegistrationService } from './registration.service';
 import { InviteService } from './invite.service';
 import { JwtAuthService } from '../jwt/jwt-auth.service';
@@ -116,6 +116,21 @@ describe('RegistrationService', () => {
           }),
         }),
       );
+    });
+
+    it('should throw ServiceUnavailableException if issueTokenPair fails after transaction commits', async () => {
+      inviteService.validateToken.mockResolvedValue(mockInvite);
+      prisma.user.findUnique.mockResolvedValue(null);
+      prisma.user.create.mockResolvedValue(mockUser);
+      prisma.inviteToken.update.mockResolvedValue({});
+      jwtAuthService.issueTokenPair.mockRejectedValue(new Error('JWT service down'));
+
+      await expect(service.acceptInvite('tok123', 'password123', 'Test User')).rejects.toThrow(
+        ServiceUnavailableException,
+      );
+
+      expect(prisma.user.create).toHaveBeenCalled();
+      expect(prisma.inviteToken.update).toHaveBeenCalled();
     });
   });
 });

@@ -2,7 +2,9 @@
 import {
   Injectable,
   ConflictException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { InviteService } from './invite.service';
@@ -35,29 +37,44 @@ export class RegistrationService {
     const passwordHash = await bcrypt.hash(password, 10);
 
     // Atomically create user and mark invite used
-    const user = await this.prisma.$transaction(async (tx) => {
-      const created = await tx.user.create({
-        data: {
-          email: invite.email,
-          passwordHash,
-          name,
-          role: 'viewer',
-          clientId: invite.clientId,
-          clientRole: 'owner',
-          isActive: true,
-        },
-      });
+    let user: Awaited<ReturnType<typeof this.prisma.user.create>>;
+    try {
+      user = await this.prisma.$transaction(async (tx) => {
+        const created = await tx.user.create({
+          data: {
+            email: invite.email,
+            passwordHash,
+            name,
+            role: 'viewer',
+            clientId: invite.clientId,
+            clientRole: 'owner',
+            isActive: true,
+          },
+        });
 
-      await tx.inviteToken.update({
-        where: { id: invite.id },
-        data: { usedAt: new Date() },
-      });
+        await tx.inviteToken.update({
+          where: { id: invite.id },
+          data: { usedAt: new Date() },
+        });
 
-      return created;
-    });
+        return created;
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new ConflictException('A user with this email already exists');
+      }
+      throw error;
+    }
 
     // Issue JWT only after transaction commits
-    const tokens = await this.jwtAuthService.issueTokenPair(user, ipAddress, userAgent);
+    let tokens: Awaited<ReturnType<typeof this.jwtAuthService.issueTokenPair>>;
+    try {
+      tokens = await this.jwtAuthService.issueTokenPair(user, ipAddress, userAgent);
+    } catch {
+      throw new ServiceUnavailableException(
+        'Account created but session could not be issued. Please log in manually.',
+      );
+    }
 
     return {
       success: true,
