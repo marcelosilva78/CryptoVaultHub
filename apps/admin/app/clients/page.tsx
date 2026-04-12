@@ -115,7 +115,7 @@ export default function ClientsPage() {
   useEffect(() => {
     setLoading(true);
     adminFetch("/clients")
-      .then((data) => setClients(Array.isArray(data) ? data : data?.clients ?? data?.data ?? []))
+      .then((data) => setClients(Array.isArray(data) ? data : data?.items ?? data?.clients ?? data?.data ?? []))
       .catch((err: any) => setError(err.message))
       .finally(() => setLoading(false));
   }, [reload]);
