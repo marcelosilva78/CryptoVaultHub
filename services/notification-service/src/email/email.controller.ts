@@ -1,20 +1,6 @@
 import { Controller, Post, Body, HttpCode, HttpStatus } from '@nestjs/common';
-import { IsEmail, IsNumber, IsString } from 'class-validator';
+import { SendInviteEmailDto } from '../common/dto/email.dto';
 import { EmailService } from './email.service';
-
-class SendInviteEmailDto {
-  @IsEmail()
-  to!: string;
-
-  @IsNumber()
-  clientId!: number;
-
-  @IsString()
-  inviteUrl!: string;
-
-  @IsString()
-  orgName!: string;
-}
 
 @Controller('email')
 export class EmailController {

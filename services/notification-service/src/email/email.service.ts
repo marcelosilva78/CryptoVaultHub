@@ -169,10 +169,13 @@ export class EmailService {
   }) {
     const { to, clientId, inviteUrl, orgName } = params;
 
+    const escHtml = (s: string) =>
+      s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
     const subject = `You've been invited to ${orgName} on VaultHub`;
     const body = `
       <h2>Welcome to VaultHub</h2>
-      <p>You have been invited to join <strong>${orgName}</strong> on VaultHub.</p>
+      <p>You have been invited to join <strong>${escHtml(orgName)}</strong> on VaultHub.</p>
       <p>Click the button below to set up your account. This link expires in 48 hours.</p>
       <p>
         <a href="${inviteUrl}"
@@ -180,7 +183,7 @@ export class EmailService {
           Accept Invitation
         </a>
       </p>
-      <p>Or copy this link: <code>${inviteUrl}</code></p>
+      <p>Or copy this link: <code>${escHtml(inviteUrl)}</code></p>
       <hr>
       <p><em>If you did not expect this invitation, you can safely ignore this email.</em></p>
     `.trim();
