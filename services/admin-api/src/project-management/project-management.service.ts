@@ -160,7 +160,12 @@ export class ProjectManagementService {
       const client = await this.prisma.client.findUnique({
         where: { id: existing.clientId },
       });
-      if (client?.custodyPolicy !== 'self_managed') {
+      if (!client) {
+        throw new NotFoundException(
+          `Client ${existing.clientId} not found for project ${id}`,
+        );
+      }
+      if (client.custodyPolicy !== 'self_managed') {
         throw new BadRequestException(
           'custodyMode can only be set on projects whose client has custodyPolicy = self_managed',
         );
