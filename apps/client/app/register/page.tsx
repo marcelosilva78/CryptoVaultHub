@@ -193,11 +193,11 @@ export default function RegisterPage() {
       const data = await res.json();
 
       /* Store JWT tokens using the same pattern as the login page */
-      localStorage.setItem("cvh_client_token", data.accessToken);
-      if (data.refreshToken) {
-        localStorage.setItem("cvh_client_refresh", data.refreshToken);
+      localStorage.setItem("cvh_client_token", data.tokens.accessToken);
+      if (data.tokens.refreshToken) {
+        localStorage.setItem("cvh_client_refresh", data.tokens.refreshToken);
       }
-      document.cookie = `cvh_client_token=${data.accessToken}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
+      document.cookie = `cvh_client_token=${data.tokens.accessToken}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax${window.location.protocol === 'https:' ? '; Secure' : ''}`;
 
       router.push("/setup");
     } catch {
