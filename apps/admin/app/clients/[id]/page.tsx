@@ -239,6 +239,22 @@ export default function ClientDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
+  const [inviteState, setInviteState] = useState<{ loading?: boolean; url?: string; error?: string }>({});
+
+  async function handleSendInvite() {
+    setInviteState({ loading: true });
+    try {
+      const res = await fetch(`${ADMIN_API}/admin/clients/${clientId}/invite`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` } });
+      const data = await res.json();
+      if (!res.ok) {
+        setInviteState({ error: data.message ?? 'Failed to send invite.' });
+        return;
+      }
+      setInviteState({ url: data.inviteUrl });
+    } catch {
+      setInviteState({ error: 'Network error. Please try again.' });
+    }
+  }
 
   useEffect(() => {
     if (!clientId) return;
@@ -342,13 +358,35 @@ export default function ClientDetailPage() {
             {"\u00B7"} Since {client.createdAt?.slice(0, 7) ?? "—"}
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap items-center">
           <button
             onClick={() => setEditModal(true)}
             className="bg-transparent text-text-secondary border border-border-default rounded-button px-3.5 py-1.5 text-caption font-semibold hover:border-accent-primary hover:text-text-primary transition-all duration-fast font-display"
           >
             Edit Client
           </button>
+          {inviteState.url ? (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-green-700">Email sent</span>
+              <button
+                onClick={() => navigator.clipboard.writeText(inviteState.url!)}
+                className="px-3 py-1.5 text-sm bg-green-100 hover:bg-green-200 text-green-800 rounded-lg font-medium"
+              >
+                Copy invite link
+              </button>
+            </div>
+          ) : inviteState.error ? (
+            <span className="text-sm text-red-600">{inviteState.error}</span>
+          ) : (
+            <button
+              onClick={handleSendInvite}
+              disabled={!client?.email || !!inviteState.loading}
+              title={!client?.email ? 'Add an email to this client first' : undefined}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {inviteState.loading ? 'Sending...' : 'Send Invite'}
+            </button>
+          )}
           <button
             onClick={() => setTierModal(true)}
             className="bg-transparent text-text-secondary border border-border-default rounded-button px-3.5 py-1.5 text-caption font-semibold hover:border-accent-primary hover:text-text-primary transition-all duration-fast font-display"

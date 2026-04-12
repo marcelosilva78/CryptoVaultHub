@@ -21,6 +21,7 @@ interface Client {
   id: number | string;
   name: string;
   slug?: string;
+  email?: string;
   status: string;
   tier?: string | { name: string };
   createdAt?: string;
@@ -122,6 +123,22 @@ export default function ClientsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
+  const [inviteState, setInviteState] = useState<Record<string, { loading?: boolean; url?: string; error?: string }>>({});
+
+  async function handleSendInvite(clientId: string) {
+    setInviteState((prev) => ({ ...prev, [clientId]: { loading: true } }));
+    try {
+      const res = await fetch(`${ADMIN_API}/admin/clients/${clientId}/invite`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` } });
+      const data = await res.json();
+      if (!res.ok) {
+        setInviteState((prev) => ({ ...prev, [clientId]: { error: data.message ?? 'Failed to send invite.' } }));
+        return;
+      }
+      setInviteState((prev) => ({ ...prev, [clientId]: { url: data.inviteUrl } }));
+    } catch {
+      setInviteState((prev) => ({ ...prev, [clientId]: { error: 'Network error. Please try again.' } }));
+    }
+  }
 
   useEffect(() => {
     setLoading(true);
@@ -239,12 +256,44 @@ export default function ClientsPage() {
                 </Badge>
               </TableCell>
               <TableCell>
-                <Link
-                  href={`/clients/${client.id}`}
-                  className="bg-transparent text-text-secondary border border-border-default rounded-button px-3 py-1 text-caption font-semibold hover:border-accent-primary hover:text-text-primary transition-all duration-fast inline-block font-display"
-                >
-                  View
-                </Link>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Link
+                    href={`/clients/${client.id}`}
+                    className="bg-transparent text-text-secondary border border-border-default rounded-button px-3 py-1 text-caption font-semibold hover:border-accent-primary hover:text-text-primary transition-all duration-fast inline-block font-display"
+                  >
+                    View
+                  </Link>
+                  {/* Send Invite */}
+                  {(() => {
+                    const s = inviteState[String(client.id)];
+                    if (s?.url) {
+                      return (
+                        <div className="flex items-center gap-2 text-sm text-green-700">
+                          <span>Email sent</span>
+                          <button
+                            onClick={() => navigator.clipboard.writeText(s.url!)}
+                            className="px-2 py-1 bg-green-100 hover:bg-green-200 rounded text-xs font-medium"
+                          >
+                            Copy link
+                          </button>
+                        </div>
+                      );
+                    }
+                    if (s?.error) {
+                      return <span className="text-sm text-red-600">{s.error}</span>;
+                    }
+                    return (
+                      <button
+                        onClick={() => handleSendInvite(String(client.id))}
+                        disabled={!client.email || !!s?.loading}
+                        title={!client.email ? 'Add an email to this client first' : 'Send invite email'}
+                        className="px-3 py-1 text-sm bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        {s?.loading ? 'Sending...' : 'Send Invite'}
+                      </button>
+                    );
+                  })()}
+                </div>
               </TableCell>
             </TableRow>
           );
