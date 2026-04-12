@@ -62,7 +62,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { requires2FA: true };
     }
 
-    const { accessToken, refreshToken: refresh, user: userData } = data;
+    // Auth service wraps tokens under data.tokens; fall back to flat format
+    const accessToken = data.tokens?.accessToken ?? data.accessToken;
+    const refresh = data.tokens?.refreshToken ?? data.refreshToken;
+    const userData = data.user;
     localStorage.setItem('cvh_admin_token', accessToken);
     localStorage.setItem('cvh_admin_refresh', refresh);
     document.cookie = `cvh_admin_token=${accessToken}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
@@ -81,7 +84,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error(err.message || '2FA verification failed');
     }
     const data = await res.json();
-    const { accessToken, refreshToken: refresh, user: userData } = data;
+    const accessToken = data.tokens?.accessToken ?? data.accessToken;
+    const refresh = data.tokens?.refreshToken ?? data.refreshToken;
+    const userData = data.user;
     localStorage.setItem('cvh_admin_token', accessToken);
     localStorage.setItem('cvh_admin_refresh', refresh);
     document.cookie = `cvh_admin_token=${accessToken}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;

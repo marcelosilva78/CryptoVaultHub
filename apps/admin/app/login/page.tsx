@@ -79,11 +79,6 @@ export default function AdminLoginPage() {
       if (result.requires2FA) {
         setShow2FA(true);
       } else {
-        if (rememberMe) {
-          document.cookie = 'cvh_admin_token=mock-jwt-token; path=/; max-age=2592000';
-        } else {
-          document.cookie = 'cvh_admin_token=mock-jwt-token; path=/';
-        }
         router.push('/');
       }
     } catch {
@@ -100,7 +95,6 @@ export default function AdminLoginPage() {
 
     try {
       await verify2FA(totpCode);
-      document.cookie = 'cvh_admin_token=mock-jwt-token; path=/';
       router.push('/');
     } catch {
       setError('Invalid 2FA code. Please try again.');
