@@ -21,19 +21,20 @@ interface Client {
   id: number | string;
   name: string;
   slug?: string;
+  email?: string;
   status: string;
   tier?: string | { name: string };
   createdAt?: string;
-  custodyMode?: string;
+  custodyPolicy?: string;
 }
 
 /* ─── CreateClientModal ────────────────────────────────────────────────────── */
 function CreateClientModal({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: () => void }) {
-  const [form, setForm] = useState({ name: "", slug: "", custodyMode: "full_custody", kytEnabled: false, kytLevel: "basic" });
+  const [form, setForm] = useState({ name: "", slug: "", email: "", custodyPolicy: "full_custody", kytEnabled: false, kytLevel: "basic" });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => { if (open) { setForm({ name: "", slug: "", custodyMode: "full_custody", kytEnabled: false, kytLevel: "basic" }); setError(null); } }, [open]);
+  useEffect(() => { if (open) { setForm({ name: "", slug: "", email: "", custodyPolicy: "full_custody", kytEnabled: false, kytLevel: "basic" }); setError(null); } }, [open]);
   useEffect(() => {
     if (!open) return;
     const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -45,7 +46,7 @@ function CreateClientModal({ open, onClose, onCreated }: { open: boolean; onClos
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault(); setLoading(true); setError(null);
     try {
-      await adminFetch("/clients", { method: "POST", body: JSON.stringify(form) });
+      await adminFetch("/clients", { method: "POST", body: JSON.stringify({ name: form.name, slug: form.slug, email: form.email || undefined, custodyPolicy: form.custodyPolicy, kytEnabled: form.kytEnabled, kytLevel: form.kytLevel }) });
       onCreated(); onClose();
     } catch (err: any) { setError(err.message); }
     finally { setLoading(false); }
@@ -68,10 +69,21 @@ function CreateClientModal({ open, onClose, onCreated }: { open: boolean; onClos
             <input value={form.slug} onChange={(e) => setForm(f => ({ ...f, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-") }))} required className="w-full px-3 py-2 bg-surface-input border border-border-default rounded-input text-body text-text-primary outline-none focus:border-border-focus transition-colors duration-fast font-mono placeholder:text-text-muted" placeholder="acme-exchange" />
           </div>
           <div>
-            <label className="block text-caption text-text-muted mb-1 font-display">Custody Mode</label>
-            <select value={form.custodyMode} onChange={(e) => setForm(f => ({ ...f, custodyMode: e.target.value }))} className="w-full px-3 py-2 bg-surface-input border border-border-default rounded-input text-body text-text-primary outline-none focus:border-border-focus transition-colors duration-fast font-display">
+            <label className="block text-caption text-text-muted mb-1 font-display">Email <span className="text-text-muted text-caption">(optional — for invite)</span></label>
+            <input
+              type="email"
+              value={form.email}
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
+              placeholder="client@example.com"
+              className="w-full px-3 py-2 bg-surface-input border border-border-default rounded-input text-body text-text-primary outline-none focus:border-border-focus transition-colors duration-fast font-mono placeholder:text-text-muted"
+            />
+          </div>
+          <div>
+            <label className="block text-caption text-text-muted mb-1 font-display">Custody Policy</label>
+            <select value={form.custodyPolicy} onChange={(e) => setForm(f => ({ ...f, custodyPolicy: e.target.value }))} className="w-full px-3 py-2 bg-surface-input border border-border-default rounded-input text-body text-text-primary outline-none focus:border-border-focus transition-colors duration-fast font-display">
               <option value="full_custody">Full Custody</option>
               <option value="co_sign">Co-Sign</option>
+              <option value="self_managed">Self Managed</option>
             </select>
           </div>
           <div className="grid grid-cols-2 gap-4">
@@ -111,6 +123,22 @@ export default function ClientsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
+  const [inviteState, setInviteState] = useState<Record<string, { loading?: boolean; url?: string; error?: string }>>({});
+
+  async function handleSendInvite(clientId: string) {
+    setInviteState((prev) => ({ ...prev, [clientId]: { loading: true } }));
+    try {
+      const res = await fetch(`${ADMIN_API}/clients/${clientId}/invite`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` } });
+      const data = await res.json();
+      if (!res.ok) {
+        setInviteState((prev) => ({ ...prev, [clientId]: { error: data.message ?? 'Failed to send invite.' } }));
+        return;
+      }
+      setInviteState((prev) => ({ ...prev, [clientId]: { url: data.inviteUrl } }));
+    } catch {
+      setInviteState((prev) => ({ ...prev, [clientId]: { error: 'Network error. Please try again.' } }));
+    }
+  }
 
   useEffect(() => {
     setLoading(true);
@@ -228,12 +256,44 @@ export default function ClientsPage() {
                 </Badge>
               </TableCell>
               <TableCell>
-                <Link
-                  href={`/clients/${client.id}`}
-                  className="bg-transparent text-text-secondary border border-border-default rounded-button px-3 py-1 text-caption font-semibold hover:border-accent-primary hover:text-text-primary transition-all duration-fast inline-block font-display"
-                >
-                  View
-                </Link>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Link
+                    href={`/clients/${client.id}`}
+                    className="bg-transparent text-text-secondary border border-border-default rounded-button px-3 py-1 text-caption font-semibold hover:border-accent-primary hover:text-text-primary transition-all duration-fast inline-block font-display"
+                  >
+                    View
+                  </Link>
+                  {/* Send Invite */}
+                  {(() => {
+                    const s = inviteState[String(client.id)];
+                    if (s?.url) {
+                      return (
+                        <div className="flex items-center gap-2 text-sm text-green-700">
+                          <span>Email sent</span>
+                          <button
+                            onClick={() => navigator.clipboard.writeText(s.url!)}
+                            className="px-2 py-1 bg-green-100 hover:bg-green-200 rounded text-xs font-medium"
+                          >
+                            Copy link
+                          </button>
+                        </div>
+                      );
+                    }
+                    if (s?.error) {
+                      return <span className="text-sm text-red-600">{s.error}</span>;
+                    }
+                    return (
+                      <button
+                        onClick={() => handleSendInvite(String(client.id))}
+                        disabled={!client.email || !!s?.loading}
+                        title={!client.email ? 'Add an email to this client first' : 'Send invite email'}
+                        className="px-3 py-1 text-sm bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        {s?.loading ? 'Sending...' : 'Send Invite'}
+                      </button>
+                    );
+                  })()}
+                </div>
               </TableCell>
             </TableRow>
           );

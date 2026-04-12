@@ -3,6 +3,7 @@ import {
   IsString,
   IsPositive,
   IsEmail,
+  IsUrl,
 } from 'class-validator';
 
 export class SendEmailDto {
@@ -18,4 +19,19 @@ export class SendEmailDto {
 
   @IsString()
   body: string;
+}
+
+export class SendInviteEmailDto {
+  @IsEmail()
+  to!: string;
+
+  @IsInt()
+  @IsPositive()
+  clientId!: number;
+
+  @IsUrl({ require_protocol: true })
+  inviteUrl!: string;
+
+  @IsString()
+  orgName!: string;
 }

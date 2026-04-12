@@ -3,16 +3,20 @@ import {
   Logger,
   NotFoundException,
   ConflictException,
+  BadRequestException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../common/audit-log.service';
+import { CustodyPolicy, KytLevel } from '../generated/prisma-client';
 
 @Injectable()
 export class ClientManagementService {
   private readonly logger = new Logger(ClientManagementService.name);
   private readonly keyVaultUrl: string;
+  private readonly authServiceUrl: string;
+  private readonly notificationServiceUrl: string;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -23,14 +27,23 @@ export class ClientManagementService {
       'KEY_VAULT_SERVICE_URL',
       'http://localhost:3005',
     );
+    this.authServiceUrl = this.configService.get<string>(
+      'AUTH_SERVICE_URL',
+      'http://localhost:8000',
+    );
+    this.notificationServiceUrl = this.configService.get<string>(
+      'NOTIFICATION_SERVICE_URL',
+      'http://localhost:3007',
+    );
   }
 
   async createClient(
     data: {
       name: string;
       slug: string;
+      email?: string;
       tierId?: number;
-      custodyMode?: string;
+      custodyPolicy?: string;
       kytEnabled?: boolean;
       kytLevel?: string;
     },
@@ -49,10 +62,11 @@ export class ClientManagementService {
       data: {
         name: data.name,
         slug: data.slug,
+        email: data.email ?? null,
         tierId: data.tierId ? BigInt(data.tierId) : null,
-        custodyMode: (data.custodyMode as any) ?? 'full_custody',
+        custodyPolicy: (data.custodyPolicy ?? CustodyPolicy.full_custody) as CustodyPolicy,
         kytEnabled: data.kytEnabled ?? false,
-        kytLevel: (data.kytLevel as any) ?? 'basic',
+        kytLevel: (data.kytLevel ?? KytLevel.basic) as KytLevel,
       },
       include: { tier: true },
     });
@@ -124,9 +138,10 @@ export class ClientManagementService {
     id: number,
     data: {
       name?: string;
+      email?: string;
       status?: string;
       tierId?: number;
-      custodyMode?: string;
+      custodyPolicy?: string;
       kytEnabled?: boolean;
       kytLevel?: string;
     },
@@ -142,9 +157,10 @@ export class ClientManagementService {
 
     const updateData: any = {};
     if (data.name !== undefined) updateData.name = data.name;
+    if (data.email !== undefined) updateData.email = data.email;
     if (data.status !== undefined) updateData.status = data.status;
     if (data.tierId !== undefined) updateData.tierId = BigInt(data.tierId);
-    if (data.custodyMode !== undefined) updateData.custodyMode = data.custodyMode;
+    if (data.custodyPolicy !== undefined) updateData.custodyPolicy = data.custodyPolicy;
     if (data.kytEnabled !== undefined) updateData.kytEnabled = data.kytEnabled;
     if (data.kytLevel !== undefined) updateData.kytLevel = data.kytLevel;
 
@@ -219,14 +235,72 @@ export class ClientManagementService {
     }
   }
 
+  async inviteClient(id: number, adminUserId: string, ipAddress?: string) {
+    const client = await this.prisma.client.findUnique({
+      where: { id: BigInt(id) },
+    });
+    if (!client) {
+      throw new NotFoundException(`Client ${id} not found`);
+    }
+    if (!client.email) {
+      throw new BadRequestException(
+        'Client has no email address. Add an email before sending an invite.',
+      );
+    }
+
+    const internalKey = this.configService.get<string>('INTERNAL_SERVICE_KEY', '');
+
+    // 1. Generate invite token via auth-service
+    const authRes = await axios.post(
+      `${this.authServiceUrl}/auth/invite/generate`,
+      { email: client.email, clientId: id },
+      {
+        timeout: 10000,
+        headers: { 'X-Internal-Service-Key': internalKey },
+      },
+    );
+    const { inviteUrl } = authRes.data as { token: string; inviteUrl: string };
+
+    // 2. Queue invite email via notification-service (fire and forget)
+    axios
+      .post(
+        `${this.notificationServiceUrl}/email/invite`,
+        {
+          to: client.email,
+          clientId: id,
+          inviteUrl,
+          orgName: client.name,
+        },
+        {
+          timeout: 10000,
+          headers: { 'X-Internal-Service-Key': internalKey },
+        },
+      )
+      .catch((err: Error) =>
+        this.logger.warn(`Invite email queue failed for client ${id}: ${err.message}`),
+      );
+
+    await this.auditLog.log({
+      adminUserId,
+      action: 'client.invite_queued',
+      entityType: 'client',
+      entityId: id.toString(),
+      details: { email: client.email },
+      ipAddress,
+    });
+
+    return { inviteUrl };
+  }
+
   private serializeClient(client: any) {
     return {
       id: client.id.toString(),
       name: client.name,
       slug: client.slug,
+      email: client.email ?? null,
       status: client.status,
       tierId: client.tierId?.toString() ?? null,
-      custodyMode: client.custodyMode,
+      custodyPolicy: client.custodyPolicy,
       kytEnabled: client.kytEnabled,
       kytLevel: client.kytLevel,
       createdAt: client.createdAt,

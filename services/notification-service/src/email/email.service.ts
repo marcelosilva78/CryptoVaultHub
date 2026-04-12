@@ -157,4 +157,37 @@ export class EmailService {
 
     return this.queueEmail({ clientId, to, subject, body });
   }
+
+  /**
+   * Queue an invite email for a new client user.
+   */
+  async sendInviteEmail(params: {
+    to: string;
+    clientId: number;
+    inviteUrl: string;
+    orgName: string;
+  }) {
+    const { to, clientId, inviteUrl, orgName } = params;
+
+    const escHtml = (s: string) =>
+      s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+    const subject = `You've been invited to ${orgName} on VaultHub`;
+    const body = `
+      <h2>Welcome to VaultHub</h2>
+      <p>You have been invited to join <strong>${escHtml(orgName)}</strong> on VaultHub.</p>
+      <p>Click the button below to set up your account. This link expires in 48 hours.</p>
+      <p>
+        <a href="${escHtml(inviteUrl)}"
+           style="display:inline-block;padding:12px 24px;background:#4f46e5;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;">
+          Accept Invitation
+        </a>
+      </p>
+      <p>Or copy this link: <code>${escHtml(inviteUrl)}</code></p>
+      <hr>
+      <p><em>If you did not expect this invitation, you can safely ignore this email.</em></p>
+    `.trim();
+
+    return this.queueEmail({ clientId, to, subject, body });
+  }
 }

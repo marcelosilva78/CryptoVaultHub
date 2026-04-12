@@ -51,7 +51,7 @@ function EditClientModal({ open, onClose, onSaved, clientId, initialData }: {
   onClose: () => void;
   onSaved: () => void;
   clientId: string;
-  initialData: { name: string; status: string; custodyMode: string; kytEnabled: boolean; kytLevel: string };
+  initialData: { name: string; status: string; custodyPolicy: string; email: string; kytEnabled: boolean; kytLevel: string };
 }) {
   const [form, setForm] = useState(initialData);
   const [loading, setLoading] = useState(false);
@@ -96,10 +96,21 @@ function EditClientModal({ open, onClose, onSaved, clientId, initialData }: {
             </select>
           </div>
           <div>
-            <label className="block text-caption text-text-muted mb-1 font-display">Custody Mode</label>
-            <select value={form.custodyMode} onChange={(e) => setForm(f => ({ ...f, custodyMode: e.target.value }))} className="w-full px-3 py-2 bg-surface-input border border-border-default rounded-input text-body text-text-primary outline-none focus:border-border-focus transition-colors duration-fast font-display">
+            <label className="block text-caption text-text-muted mb-1 font-display">Email <span className="text-text-muted text-caption">(optional — for invite)</span></label>
+            <input
+              type="email"
+              value={form.email}
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
+              placeholder="client@example.com"
+              className="w-full px-3 py-2 bg-surface-input border border-border-default rounded-input text-body text-text-primary outline-none focus:border-border-focus transition-colors duration-fast font-mono placeholder:text-text-muted"
+            />
+          </div>
+          <div>
+            <label className="block text-caption text-text-muted mb-1 font-display">Custody Policy</label>
+            <select value={form.custodyPolicy} onChange={(e) => setForm(f => ({ ...f, custodyPolicy: e.target.value }))} className="w-full px-3 py-2 bg-surface-input border border-border-default rounded-input text-body text-text-primary outline-none focus:border-border-focus transition-colors duration-fast font-display">
               <option value="full_custody">Full Custody</option>
               <option value="co_sign">Co-Sign</option>
+              <option value="self_managed">Self Managed</option>
             </select>
           </div>
           <div className="grid grid-cols-2 gap-4">
@@ -228,6 +239,22 @@ export default function ClientDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
+  const [inviteState, setInviteState] = useState<{ loading?: boolean; url?: string; error?: string }>({});
+
+  async function handleSendInvite() {
+    setInviteState({ loading: true });
+    try {
+      const res = await fetch(`${ADMIN_API}/clients/${clientId}/invite`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` } });
+      const data = await res.json();
+      if (!res.ok) {
+        setInviteState({ error: data.message ?? 'Failed to send invite.' });
+        return;
+      }
+      setInviteState({ url: data.inviteUrl });
+    } catch {
+      setInviteState({ error: 'Network error. Please try again.' });
+    }
+  }
 
   useEffect(() => {
     if (!clientId) return;
@@ -242,7 +269,8 @@ export default function ClientDetailPage() {
   const editInitialData = {
     name: client?.name ?? "",
     status: client?.status ?? "active",
-    custodyMode: client?.custodyMode ?? "full_custody",
+    custodyPolicy: client?.custodyPolicy ?? client?.custodyMode ?? "full_custody",
+    email: client?.email ?? "",
     kytEnabled: client?.kytEnabled ?? false,
     kytLevel: client?.kytLevel ?? "basic",
   };
@@ -330,13 +358,35 @@ export default function ClientDetailPage() {
             {"\u00B7"} Since {client.createdAt?.slice(0, 7) ?? "—"}
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap items-center">
           <button
             onClick={() => setEditModal(true)}
             className="bg-transparent text-text-secondary border border-border-default rounded-button px-3.5 py-1.5 text-caption font-semibold hover:border-accent-primary hover:text-text-primary transition-all duration-fast font-display"
           >
             Edit Client
           </button>
+          {inviteState.url ? (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-green-700">Email sent</span>
+              <button
+                onClick={() => navigator.clipboard.writeText(inviteState.url!)}
+                className="px-3 py-1.5 text-sm bg-green-100 hover:bg-green-200 text-green-800 rounded-lg font-medium"
+              >
+                Copy invite link
+              </button>
+            </div>
+          ) : inviteState.error ? (
+            <span className="text-sm text-red-600">{inviteState.error}</span>
+          ) : (
+            <button
+              onClick={handleSendInvite}
+              disabled={!client?.email || !!inviteState.loading}
+              title={!client?.email ? 'Add an email to this client first' : undefined}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {inviteState.loading ? 'Sending...' : 'Send Invite'}
+            </button>
+          )}
           <button
             onClick={() => setTierModal(true)}
             className="bg-transparent text-text-secondary border border-border-default rounded-button px-3.5 py-1.5 text-caption font-semibold hover:border-accent-primary hover:text-text-primary transition-all duration-fast font-display"
@@ -360,8 +410,8 @@ export default function ClientDetailPage() {
           color={statusVariant as any}
         />
         <StatCard
-          label="Custody Mode"
-          value={client.custodyMode ?? "—"}
+          label="Custody Policy"
+          value={client.custodyPolicy ?? client.custodyMode ?? "—"}
         />
         <StatCard
           label="KYT"
@@ -403,7 +453,7 @@ export default function ClientDetailPage() {
               { label: "Client ID", value: String(client.id ?? clientId), mono: true },
               { label: "Slug", value: client.slug ?? "—", mono: true },
               { label: "Status", value: client.status ?? "—", mono: false },
-              { label: "Custody Mode", value: client.custodyMode ?? "—", mono: false },
+              { label: "Custody Policy", value: client.custodyPolicy ?? client.custodyMode ?? "—", mono: false },
               { label: "KYT Enabled", value: client.kytEnabled ? "Yes" : "No", mono: false },
               { label: "KYT Level", value: client.kytLevel ?? "—", mono: false },
               { label: "Created At", value: client.createdAt ? new Date(client.createdAt).toLocaleDateString() : "—", mono: false },

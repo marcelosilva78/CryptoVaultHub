@@ -341,4 +341,21 @@ export class JwtAuthService {
 
     return { accessToken, refreshToken, expiresIn };
   }
+
+  /**
+   * Public wrapper for issueTokens — used by RegistrationService.
+   */
+  async issueTokenPair(
+    user: {
+      id: bigint;
+      email: string;
+      role: string;
+      clientId?: bigint | null;
+      clientRole?: string | null;
+    },
+    ipAddress?: string,
+    userAgent?: string,
+  ): Promise<TokenPair> {
+    return this.issueTokens(user, ipAddress, userAgent);
+  }
 }

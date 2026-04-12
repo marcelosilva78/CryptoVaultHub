@@ -143,6 +143,7 @@ export class ProjectManagementService {
       description?: string;
       status?: string;
       settings?: Record<string, unknown>;
+      custodyMode?: string | null;
     },
     adminUserId: string,
     ipAddress?: string,
@@ -154,11 +155,29 @@ export class ProjectManagementService {
       throw new NotFoundException(`Project ${id} not found`);
     }
 
+    // Validate custodyMode: only allowed when client policy is self_managed
+    if (data.custodyMode !== undefined) {
+      const client = await this.prisma.client.findUnique({
+        where: { id: existing.clientId },
+      });
+      if (!client) {
+        throw new NotFoundException(
+          `Client ${existing.clientId} not found for project ${id}`,
+        );
+      }
+      if (client.custodyPolicy !== 'self_managed') {
+        throw new BadRequestException(
+          'custodyMode can only be set on projects whose client has custodyPolicy = self_managed',
+        );
+      }
+    }
+
     const updateData: any = {};
     if (data.name !== undefined) updateData.name = data.name;
     if (data.description !== undefined) updateData.description = data.description;
     if (data.status !== undefined) updateData.status = data.status;
     if (data.settings !== undefined) updateData.settings = data.settings;
+    if (data.custodyMode !== undefined) updateData.custodyMode = data.custodyMode ?? null;
 
     const project = await this.prisma.project.update({
       where: { id: BigInt(id) },
@@ -275,6 +294,7 @@ export class ProjectManagementService {
       isDefault: project.isDefault,
       status: project.status,
       settings: project.settings,
+      custodyMode: project.custodyMode ?? null,
       createdAt: project.createdAt,
       updatedAt: project.updatedAt,
       client: project.client
