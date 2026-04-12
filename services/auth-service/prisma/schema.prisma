@@ -131,7 +131,7 @@ enum ImpersonationMode {
 }
 
 model InviteToken {
-  id        Int       @id @default(autoincrement())
+  id        BigInt    @id @default(autoincrement())
   email     String    @db.VarChar(255)
   clientId  BigInt    @map("client_id")
   token     String    @unique @db.VarChar(64)
@@ -139,7 +139,6 @@ model InviteToken {
   usedAt    DateTime? @map("used_at")
   createdAt DateTime  @default(now()) @map("created_at")
 
-  @@index([token], name: "idx_token")
   @@index([email], name: "idx_email")
   @@map("invite_tokens")
 }
