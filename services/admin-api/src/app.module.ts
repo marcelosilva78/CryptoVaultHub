@@ -12,6 +12,7 @@ import { ProjectManagementModule } from './project-management/project-management
 import { JobManagementModule } from './job-management/job-management.module';
 import { SyncManagementModule } from './sync-management/sync-management.module';
 import { ExportManagementModule } from './export-management/export-management.module';
+import { TransactionsModule } from './transactions/transactions.module';
 import { PostHogInterceptor } from './common/interceptors/posthog.interceptor';
 import { HealthController } from './common/health.controller';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
@@ -35,6 +36,7 @@ import { ImpersonationGuard } from './common/guards/impersonation.guard';
     JobManagementModule,
     SyncManagementModule,
     ExportManagementModule,
+    TransactionsModule,
   ],
   controllers: [HealthController],
   providers: [
