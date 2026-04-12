@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import { Search, ChevronDown, ArrowDownLeft, ArrowUpRight, RefreshCw, Shuffle, Copy, Check, ChevronRight } from "lucide-react";
 import { StatCard } from "@/components/stat-card";
 import { Badge } from "@/components/badge";
@@ -602,6 +603,14 @@ export default function TraceabilityPage() {
 
   const [clients, setClients] = useState<ClientItem[]>([]);
 
+  const searchParams = useSearchParams();
+  const [txHashBanner, setTxHashBanner] = useState<string | null>(null);
+
+  useEffect(() => {
+    const hash = searchParams.get("txHash");
+    if (hash) setTxHashBanner(hash);
+  }, [searchParams]);
+
   useEffect(() => {
     adminFetch("/clients")
       .then((data: any) => setClients(Array.isArray(data) ? data : data?.clients ?? data?.data ?? []))
@@ -677,6 +686,18 @@ export default function TraceabilityPage() {
 
   return (
     <>
+      {txHashBanner && (
+        <div className="mb-4 flex items-center gap-3 bg-accent-subtle border border-accent-primary/20 rounded-input px-4 py-3">
+          <span className="font-display text-caption text-accent-primary font-semibold">Directed from dashboard</span>
+          <span className="font-mono text-[10px] text-text-secondary">{txHashBanner}</span>
+          <button
+            onClick={() => setTxHashBanner(null)}
+            className="ml-auto text-text-muted hover:text-text-primary font-display text-caption"
+          >
+            ✕
+          </button>
+        </div>
+      )}
       {/* ─── Page Title ──────────────────────────── */}
       <div className="flex items-center justify-between mb-section-gap">
         <div>
