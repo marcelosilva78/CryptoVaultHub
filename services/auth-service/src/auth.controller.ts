@@ -152,6 +152,46 @@ export class AuthController {
     };
   }
 
+  @Get('validate')
+  async validate(@Req() req: Request) {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      throw new UnauthorizedException('Missing Bearer token');
+    }
+    const token = authHeader.slice(7);
+    try {
+      const payload = jwt.verify(token, this.jwtSecret) as any;
+      const userId = BigInt(payload.userId ?? payload.sub);
+      const user = await this.prisma.getClient().users.findUnique({
+        where: { id: userId },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          role: true,
+          clientId: true,
+          clientRole: true,
+        },
+      });
+      if (!user) {
+        throw new UnauthorizedException('User not found');
+      }
+      return {
+        user: {
+          id: Number(user.id),
+          email: user.email,
+          name: user.name ?? user.email,
+          role: user.role,
+          clientId: user.clientId ? Number(user.clientId) : null,
+          clientRole: user.clientRole ?? payload.clientRole ?? null,
+        },
+      };
+    } catch (err) {
+      if (err instanceof UnauthorizedException) throw err;
+      throw new UnauthorizedException('Invalid or expired token');
+    }
+  }
+
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   async refresh(@Body() dto: RefreshDto) {
