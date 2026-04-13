@@ -2,85 +2,137 @@ import { RateLimiterService } from './rate-limiter.service';
 
 describe('RateLimiterService', () => {
   let service: RateLimiterService;
+  let mockRedis: any;
 
   beforeEach(() => {
     service = new RateLimiterService();
+    mockRedis = {
+      eval: jest.fn().mockResolvedValue(1),
+      get: jest.fn().mockResolvedValue(null),
+      multi: jest.fn().mockReturnValue({
+        incr: jest.fn().mockReturnThis(),
+        expire: jest.fn().mockReturnThis(),
+        exec: jest.fn().mockResolvedValue([]),
+      }),
+    };
+    service.setRedis(mockRedis);
   });
 
-  it('should allow requests under the limit', () => {
-    service.setConfig('node-1', { perSecond: 5, perMinute: 100 });
-
-    // Record 3 requests (below limit of 5 per second)
-    service.recordUsage('node-1');
-    service.recordUsage('node-1');
-    service.recordUsage('node-1');
-
-    expect(service.isAllowed('node-1')).toBe(true);
+  it('should register node limits', () => {
+    service.registerNode('node-1', {
+      maxRequestsPerSecond: 5,
+      maxRequestsPerMinute: 100,
+    });
+    // After registration, checkAndRecord should attempt the Lua script
+    expect(service).toBeDefined();
   });
 
-  it('should block requests over per-second limit', () => {
-    service.setConfig('node-1', { perSecond: 3, perMinute: 100 });
+  it('should allow requests when Lua script returns 1', async () => {
+    service.registerNode(1, {
+      maxRequestsPerSecond: 5,
+      maxRequestsPerMinute: 100,
+    });
+    mockRedis.eval.mockResolvedValue(1);
 
-    service.recordUsage('node-1');
-    service.recordUsage('node-1');
-    service.recordUsage('node-1');
-
-    // 3 requests used, at per-second limit of 3
-    expect(service.isAllowed('node-1')).toBe(false);
+    const result = await service.checkAndRecord(1);
+    expect(result).toBe(true);
+    expect(mockRedis.eval).toHaveBeenCalledTimes(2); // per-second + per-minute
   });
 
-  it('should block requests over per-minute limit', () => {
-    service.setConfig('node-1', { perSecond: 1000, perMinute: 5 });
+  it('should block requests when per-second limit exceeded', async () => {
+    service.registerNode(1, {
+      maxRequestsPerSecond: 5,
+      maxRequestsPerMinute: 100,
+    });
+    mockRedis.eval.mockResolvedValueOnce(0); // per-second blocked
 
-    // Record 5 requests (at per-minute limit)
-    for (let i = 0; i < 5; i++) {
-      service.recordUsage('node-1');
-    }
-
-    expect(service.isAllowed('node-1')).toBe(false);
+    const result = await service.checkAndRecord(1);
+    expect(result).toBe(false);
+    expect(mockRedis.eval).toHaveBeenCalledTimes(1); // stops after first check
   });
 
-  it('should record usage correctly', () => {
-    service.setConfig('node-1', { perSecond: 100, perMinute: 1000 });
+  it('should block requests when per-minute limit exceeded', async () => {
+    service.registerNode(1, {
+      maxRequestsPerSecond: 5,
+      maxRequestsPerMinute: 100,
+    });
+    mockRedis.eval
+      .mockResolvedValueOnce(1) // per-second OK
+      .mockResolvedValueOnce(0); // per-minute blocked
 
-    service.recordUsage('node-1');
-    service.recordUsage('node-1');
-    service.recordUsage('node-1');
-
-    const usage = service.getUsage('node-1');
-    expect(usage.secondCount).toBe(3);
-    expect(usage.minuteCount).toBe(3);
+    const result = await service.checkAndRecord(1);
+    expect(result).toBe(false);
   });
 
-  it('should use default limits when no config is set', () => {
-    // Default: 25 per second, 1000 per minute
-    for (let i = 0; i < 24; i++) {
-      service.recordUsage('node-default');
-    }
-
-    expect(service.isAllowed('node-default')).toBe(true);
-
-    service.recordUsage('node-default');
-    // Now at 25 — should be blocked
-    expect(service.isAllowed('node-default')).toBe(false);
+  it('should allow requests when no limits configured (with warning)', async () => {
+    const result = await service.checkAndRecord(999);
+    expect(result).toBe(true);
   });
 
-  it('should track independent limits for different nodes', () => {
-    service.setConfig('node-1', { perSecond: 2, perMinute: 100 });
-    service.setConfig('node-2', { perSecond: 2, perMinute: 100 });
+  it('should record daily and monthly quota usage', async () => {
+    const multiMock = {
+      incr: jest.fn().mockReturnThis(),
+      expire: jest.fn().mockReturnThis(),
+      exec: jest.fn().mockResolvedValue([]),
+    };
+    mockRedis.multi.mockReturnValue(multiMock);
 
-    service.recordUsage('node-1');
-    service.recordUsage('node-1');
+    await service.recordUsage(1);
 
-    // node-1 is at limit
-    expect(service.isAllowed('node-1')).toBe(false);
-    // node-2 is still available
-    expect(service.isAllowed('node-2')).toBe(true);
+    expect(mockRedis.multi).toHaveBeenCalled();
+    expect(multiMock.incr).toHaveBeenCalledTimes(2); // day + month
+    expect(multiMock.expire).toHaveBeenCalledTimes(2);
   });
 
-  it('should initialize empty usage for new nodes', () => {
-    const usage = service.getUsage('brand-new-node');
-    expect(usage.secondCount).toBe(0);
-    expect(usage.minuteCount).toBe(0);
+  it('should detect daily quota exhaustion', async () => {
+    service.registerNode(1, {
+      maxRequestsPerSecond: 10,
+      maxRequestsPerMinute: 100,
+      maxRequestsPerDay: 1000,
+    });
+    mockRedis.get.mockResolvedValueOnce('1000'); // daily count at limit
+
+    const result = await service.isQuotaExhausted(1);
+    expect(result).toBe(true);
+  });
+
+  it('should detect monthly quota exhaustion', async () => {
+    service.registerNode(1, {
+      maxRequestsPerSecond: 10,
+      maxRequestsPerMinute: 100,
+      maxRequestsPerMonth: 100000,
+    });
+    mockRedis.get.mockResolvedValueOnce('100000'); // monthly count at limit
+
+    const result = await service.isQuotaExhausted(1);
+    expect(result).toBe(true);
+  });
+
+  it('should return false for quota when no limits set', async () => {
+    const result = await service.isQuotaExhausted(999);
+    expect(result).toBe(false);
+  });
+
+  it('should return quota usage counts', async () => {
+    mockRedis.get
+      .mockResolvedValueOnce('500')
+      .mockResolvedValueOnce('15000');
+
+    const usage = await service.getQuotaUsage(1);
+    expect(usage.daily).toBe(500);
+    expect(usage.monthly).toBe(15000);
+  });
+
+  it('should track independent limits for different nodes', async () => {
+    service.registerNode(1, { maxRequestsPerSecond: 2, maxRequestsPerMinute: 100 });
+    service.registerNode(2, { maxRequestsPerSecond: 2, maxRequestsPerMinute: 100 });
+
+    mockRedis.eval.mockResolvedValueOnce(0); // node 1 blocked
+    const result1 = await service.checkAndRecord(1);
+    expect(result1).toBe(false);
+
+    mockRedis.eval.mockResolvedValue(1); // node 2 allowed
+    const result2 = await service.checkAndRecord(2);
+    expect(result2).toBe(true);
   });
 });

@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { HealthService } from './health.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { RateLimiterService } from '../rate-limiter/rate-limiter.service';
 
 // Mock ethers JsonRpcProvider
 jest.mock('ethers', () => ({
@@ -29,6 +30,7 @@ describe('HealthService', () => {
       providers: [
         HealthService,
         { provide: PrismaService, useValue: prisma },
+        { provide: RateLimiterService, useValue: { registerNode: jest.fn(), getQuotaUsage: jest.fn().mockResolvedValue({ daily: 0, monthly: 0 }) } },
       ],
     }).compile();
 
