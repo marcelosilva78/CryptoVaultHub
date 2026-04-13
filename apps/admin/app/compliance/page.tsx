@@ -82,7 +82,7 @@ function AlertReviewModal({ open, alert, onClose, onSave }: AlertReviewModalProp
   };
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center pt-14 bg-black/60 backdrop-blur-sm" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className="fixed inset-0 z-[200] flex items-start justify-center pt-16 pb-4 overflow-y-auto bg-black/60 backdrop-blur-sm" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="bg-surface-card border border-border-subtle rounded-modal shadow-float w-full max-w-[480px] mx-4">
         <div className="flex items-center justify-between p-5 border-b border-border-subtle">
           <h3 className="font-display text-subheading text-text-primary">Review Alert</h3>

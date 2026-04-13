@@ -9,6 +9,7 @@ import { PollingDetectorModule } from './polling-detector/polling-detector.modul
 import { ConfirmationTrackerModule } from './confirmation-tracker/confirmation-tracker.module';
 import { ReconciliationModule } from './reconciliation/reconciliation.module';
 import { HealthController } from './common/health.controller';
+import { SyncHealthModule } from './sync-health/sync-health.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { HealthController } from './common/health.controller';
     PollingDetectorModule,
     ConfirmationTrackerModule,
     ReconciliationModule,
+    SyncHealthModule,
   ],
   controllers: [HealthController],
 })
