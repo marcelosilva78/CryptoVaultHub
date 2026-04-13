@@ -1,19 +1,28 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { KpiCard } from "@/components/analytics/kpi-card";
 import { AreaChartCard } from "@/components/analytics/area-chart-card";
 import { AnalyticsDataTable } from "@/components/analytics/analytics-data-table";
 import { AnalyticsFilterBar } from "@/components/analytics/filter-bar";
 import { StatusBadge } from "@/components/status-badge";
-import {
-  analyticsSweepPerformance,
-  analyticsWebhookDelivery,
-  analyticsFailedTransactions,
-  analyticsGasPricesTrend,
-  analyticsGasTankBalances,
-  analyticsQueueDepths,
-  analyticsRpcHealth,
-} from "@/lib/mock-data";
+
+const ADMIN_API =
+  process.env.NEXT_PUBLIC_ADMIN_API_URL || "http://localhost:3001/admin";
+
+function getToken() {
+  return typeof window !== "undefined"
+    ? (localStorage.getItem("cvh_admin_token") ?? "")
+    : "";
+}
+
+async function adminFetch(path: string) {
+  const res = await fetch(`${ADMIN_API}${path}`, {
+    headers: { Authorization: `Bearer ${getToken()}` },
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
 
 function MiniSparkline({ data, color }: { data: number[]; color: string }) {
   const max = Math.max(...data);
@@ -36,6 +45,41 @@ function MiniSparkline({ data, color }: { data: number[]; color: string }) {
 }
 
 export default function OperationsAnalyticsPage() {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    adminFetch("/analytics/operations")
+      .then(setData)
+      .catch((e) => console.error("Analytics operations failed:", e))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const sweepPerformance = data?.sweepPerformance ?? {
+    avgDetectToSweep: 0,
+    avgDetectToSweepChange: 0,
+    successRate: 0,
+    successRateChange: 0,
+    avgGasUsed: 0,
+    totalSwept24h: 0,
+  };
+  const webhookDelivery = data?.webhookDelivery ?? [];
+  const failedTransactions = data?.failedTransactions ?? [];
+  const rpcHealth = data?.rpcHealth ?? [];
+  const gasPricesTrend = data?.gasPricesTrend ?? [];
+  const gasTankBalances = data?.gasTankBalances ?? [];
+  const queueDepths = data?.queueDepths ?? [];
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-12">
+        <span className="font-display text-text-muted">
+          Loading operations analytics…
+        </span>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-section-gap">
       <AnalyticsFilterBar />
@@ -44,27 +88,27 @@ export default function OperationsAnalyticsPage() {
       <div className="grid grid-cols-2 gap-stat-grid-gap lg:grid-cols-4">
         <KpiCard
           title="Avg Detect to Sweep"
-          value={analyticsSweepPerformance.avgDetectToSweep}
-          change={analyticsSweepPerformance.avgDetectToSweepChange}
+          value={sweepPerformance.avgDetectToSweep}
+          change={sweepPerformance.avgDetectToSweepChange}
           format="number"
           subtitle="minutes"
         />
         <KpiCard
           title="Success Rate"
-          value={analyticsSweepPerformance.successRate}
-          change={analyticsSweepPerformance.successRateChange}
+          value={sweepPerformance.successRate}
+          change={sweepPerformance.successRateChange}
           format="percent"
         />
         <KpiCard
           title="Avg Gas Used"
-          value={analyticsSweepPerformance.avgGasUsed}
+          value={sweepPerformance.avgGasUsed}
           change={-3.1}
           format="number"
           subtitle="ETH per sweep"
         />
         <KpiCard
           title="Swept (24h)"
-          value={analyticsSweepPerformance.totalSwept24h}
+          value={sweepPerformance.totalSwept24h}
           change={4.5}
           format="number"
           subtitle="transactions"
@@ -74,7 +118,7 @@ export default function OperationsAnalyticsPage() {
       {/* Webhook Delivery — gold monochromatic */}
       <AreaChartCard
         title="Webhook Delivery Success Rate (30 Days)"
-        data={analyticsWebhookDelivery}
+        data={webhookDelivery}
         xKey="date"
         yKeys={[
           {
@@ -90,7 +134,7 @@ export default function OperationsAnalyticsPage() {
       <div className="grid grid-cols-1 gap-section-gap lg:grid-cols-2">
         <AreaChartCard
           title="Webhooks Sent per Day"
-          data={analyticsWebhookDelivery}
+          data={webhookDelivery}
           xKey="date"
           yKeys={[
             {
@@ -117,7 +161,7 @@ export default function OperationsAnalyticsPage() {
             { header: "Error", accessor: "error" },
             { header: "Amount", accessor: "amount", align: "right", mono: true },
           ]}
-          data={analyticsFailedTransactions}
+          data={failedTransactions}
         />
       </div>
 
@@ -127,38 +171,47 @@ export default function OperationsAnalyticsPage() {
           RPC Health per Chain
         </h3>
         <div className="grid gap-3">
-          {analyticsRpcHealth.map((rpc) => (
-            <div
-              key={rpc.chain}
-              className="flex items-center gap-4 rounded-card border border-border-subtle bg-surface-elevated p-3 transition-colors duration-fast hover:bg-surface-hover"
-            >
-              <span className="w-24 font-display text-body font-medium text-text-primary">
-                {rpc.chain}
-              </span>
-              <StatusBadge status={rpc.status === "down" ? "error" : rpc.status} label={rpc.status} />
-              <MiniSparkline
-                data={rpc.latency}
-                color={
-                  rpc.status === "degraded"
-                    ? "var(--status-warning)"
-                    : "var(--status-success)"
-                }
-              />
-              <span className="font-mono text-xs text-text-muted">
-                Avg: {rpc.avgLatency}ms
-              </span>
-              <span className="ml-auto font-mono text-xs text-text-muted">
-                {rpc.uptime}% uptime
-              </span>
-            </div>
-          ))}
+          {rpcHealth.length === 0 ? (
+            <p className="font-display text-sm text-text-muted">No active RPC nodes found.</p>
+          ) : (
+            rpcHealth.map((rpc: any) => (
+              <div
+                key={rpc.chain}
+                className="flex items-center gap-4 rounded-card border border-border-subtle bg-surface-elevated p-3 transition-colors duration-fast hover:bg-surface-hover"
+              >
+                <span className="w-24 font-display text-body font-medium text-text-primary">
+                  {rpc.chain}
+                </span>
+                <StatusBadge status={rpc.status === "down" ? "error" : rpc.status} label={rpc.status} />
+                {rpc.latency?.length > 0 ? (
+                  <MiniSparkline
+                    data={rpc.latency}
+                    color={
+                      rpc.status === "degraded"
+                        ? "var(--status-warning)"
+                        : "var(--status-success)"
+                    }
+                  />
+                ) : null}
+                <span className="font-mono text-xs text-text-muted">
+                  Avg: {rpc.avgLatency}ms
+                </span>
+                <span className="font-mono text-xs text-text-muted">
+                  {rpc.provider}
+                </span>
+                <span className="ml-auto font-mono text-xs text-text-muted">
+                  {rpc.uptime}% uptime
+                </span>
+              </div>
+            ))
+          )}
         </div>
       </div>
 
       {/* Gas Prices Trend — gold tones for multiple chains */}
       <AreaChartCard
         title="Gas Prices Trend (30 Days)"
-        data={analyticsGasPricesTrend}
+        data={gasPricesTrend}
         xKey="date"
         yKeys={[
           {
@@ -183,44 +236,54 @@ export default function OperationsAnalyticsPage() {
             Gas Tank Balances
           </h3>
           <div className="space-y-3">
-            {analyticsGasTankBalances.map((tank) => {
-              const pct = Math.min(
-                (tank.balance / (tank.threshold * 3)) * 100,
-                100
-              );
-              return (
-                <div key={tank.chain} className="space-y-1">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-display text-text-secondary">
-                      {tank.chain}
-                    </span>
-                    <div className="flex items-center gap-2">
-                      {tank.status === "warning" && (
-                        <span className="font-display text-micro font-semibold text-status-warning">
-                          LOW
-                        </span>
-                      )}
-                      <span className="font-mono font-medium text-text-primary">
-                        {tank.balance.toLocaleString()} ($
-                        {tank.usdValue.toLocaleString()})
+            {gasTankBalances.length === 0 ? (
+              <p className="font-display text-sm text-text-muted">No gas tank data available.</p>
+            ) : (
+              gasTankBalances.map((tank: any) => {
+                const balance = parseFloat(tank.balance ?? 0);
+                const target = parseFloat(tank.targetBalance ?? 1);
+                const pct = Math.min((balance / (target * 1.5)) * 100, 100);
+                return (
+                  <div key={tank.chainId ?? tank.chainName} className="space-y-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-display text-text-secondary">
+                        {tank.chainName ?? `Chain ${tank.chainId}`}
                       </span>
+                      <div className="flex items-center gap-2">
+                        {tank.status === "warning" && (
+                          <span className="font-display text-micro font-semibold text-status-warning">
+                            LOW
+                          </span>
+                        )}
+                        {tank.status === "critical" && (
+                          <span className="font-display text-micro font-semibold text-status-error">
+                            CRITICAL
+                          </span>
+                        )}
+                        <span className="font-mono font-medium text-text-primary">
+                          {balance.toLocaleString()} ($
+                          {(tank.balanceUsd ?? 0).toLocaleString()})
+                        </span>
+                      </div>
+                    </div>
+                    <div className="h-1.5 rounded-pill bg-surface-elevated">
+                      <div
+                        className="h-full rounded-pill transition-all duration-normal"
+                        style={{
+                          width: `${pct}%`,
+                          backgroundColor:
+                            tank.status === "critical"
+                              ? "var(--status-error)"
+                              : tank.status === "warning"
+                                ? "var(--status-warning)"
+                                : "var(--status-success)",
+                        }}
+                      />
                     </div>
                   </div>
-                  <div className="h-1.5 rounded-pill bg-surface-elevated">
-                    <div
-                      className="h-full rounded-pill transition-all duration-normal"
-                      style={{
-                        width: `${pct}%`,
-                        backgroundColor:
-                          tank.status === "warning"
-                            ? "var(--status-warning)"
-                            : "var(--status-success)",
-                      }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })
+            )}
           </div>
         </div>
 
@@ -230,39 +293,46 @@ export default function OperationsAnalyticsPage() {
             Queue Depths
           </h3>
           <div className="space-y-3">
-            {analyticsQueueDepths.map((q) => {
-              const pct = (q.depth / q.maxDepth) * 100;
-              const color =
-                pct > 50
-                  ? "var(--status-error)"
-                  : pct > 20
-                    ? "var(--status-warning)"
-                    : "var(--status-success)";
-              return (
-                <div key={q.queue} className="space-y-1">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-mono text-text-secondary">
-                      {q.queue}
-                    </span>
-                    <span className="font-mono font-medium text-text-primary">
-                      {q.depth.toLocaleString()}{" "}
-                      <span className="text-text-muted">
-                        / {q.maxDepth.toLocaleString()}
+            {queueDepths.length === 0 ? (
+              <p className="font-display text-sm text-text-muted">No queue data available.</p>
+            ) : (
+              queueDepths.map((q: any) => {
+                const depth = q.waiting ?? q.depth ?? 0;
+                // Use 1000 as a reference max if maxDepth not available
+                const maxDepth = q.maxDepth ?? 1000;
+                const pct = Math.min((depth / maxDepth) * 100, 100);
+                const color =
+                  pct > 50
+                    ? "var(--status-error)"
+                    : pct > 20
+                      ? "var(--status-warning)"
+                      : "var(--status-success)";
+                return (
+                  <div key={q.name ?? q.queue} className="space-y-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-mono text-text-secondary">
+                        {q.name ?? q.queue}
                       </span>
+                      <span className="font-mono font-medium text-text-primary">
+                        {depth.toLocaleString()}{" "}
+                        <span className="text-text-muted">
+                          waiting
+                        </span>
+                      </span>
+                    </div>
+                    <div className="h-1.5 rounded-pill bg-surface-elevated">
+                      <div
+                        className="h-full rounded-pill transition-all duration-normal"
+                        style={{ width: `${Math.max(pct, 1)}%`, backgroundColor: color }}
+                      />
+                    </div>
+                    <span className="font-mono text-[10px] text-text-muted">
+                      Avg processing: {q.avgProcessingTime ?? q.avgProcessingMs ?? 0}ms
                     </span>
                   </div>
-                  <div className="h-1.5 rounded-pill bg-surface-elevated">
-                    <div
-                      className="h-full rounded-pill transition-all duration-normal"
-                      style={{ width: `${pct}%`, backgroundColor: color }}
-                    />
-                  </div>
-                  <span className="font-mono text-[10px] text-text-muted">
-                    Avg processing: {q.avgProcessingMs}ms
-                  </span>
-                </div>
-              );
-            })}
+                );
+              })
+            )}
           </div>
         </div>
       </div>

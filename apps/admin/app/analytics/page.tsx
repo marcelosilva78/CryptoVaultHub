@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { KpiCard } from "@/components/analytics/kpi-card";
 import { AreaChartCard } from "@/components/analytics/area-chart-card";
 import { BarChartCard } from "@/components/analytics/bar-chart-card";
@@ -7,24 +8,60 @@ import { DonutChartCard } from "@/components/analytics/donut-chart-card";
 import { HeatmapCard } from "@/components/analytics/heatmap-card";
 import { AnalyticsDataTable } from "@/components/analytics/analytics-data-table";
 import { AnalyticsFilterBar } from "@/components/analytics/filter-bar";
-import {
-  analyticsKpi,
-  analyticsDailyVolumes,
-  analyticsVolumeByChain,
-  analyticsTokenDistribution,
-  analyticsVolumeByToken,
-  analyticsHeatmap,
-  analyticsRevenueTrend,
-  analyticsRevenueByClient,
-  analyticsRevenueByChain,
-  analyticsClientGrowth,
-  analyticsTierDistribution,
-  analyticsApiUsageByClient,
-  analyticsForwarders,
-} from "@/lib/mock-data";
 import { formatCurrency, formatCompactNumber } from "@/lib/utils";
 
+const ADMIN_API =
+  process.env.NEXT_PUBLIC_ADMIN_API_URL || "http://localhost:3001/admin";
+
+function getToken() {
+  return typeof window !== "undefined"
+    ? (localStorage.getItem("cvh_admin_token") ?? "")
+    : "";
+}
+
+async function adminFetch(path: string) {
+  const res = await fetch(`${ADMIN_API}${path}`, {
+    headers: { Authorization: `Bearer ${getToken()}` },
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
 export default function AnalyticsOverviewPage() {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    adminFetch("/analytics/overview")
+      .then(setData)
+      .catch((e) => console.error("Analytics overview failed:", e))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const kpis = data?.kpis ?? {};
+  const clientGrowth = data?.clientGrowth ?? [];
+  const tierDistribution = data?.tierDistribution ?? [];
+  const dailyVolumes = data?.dailyVolumes ?? [];
+  const volumeByChain = data?.volumeByChain ?? [];
+  const tokenDistribution = data?.tokenDistribution ?? [];
+  const volumeByToken = data?.volumeByToken ?? [];
+  const revenueTrend = data?.revenueTrend ?? [];
+  const revenueByClient = data?.revenueByClient ?? [];
+  const revenueByChain = data?.revenueByChain ?? [];
+  const heatmap = data?.heatmap ?? [];
+  const forwarders = data?.forwarders ?? [];
+  const apiUsageByClient = data?.apiUsageByClient ?? [];
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-12">
+        <span className="font-display text-text-muted">
+          Loading analytics…
+        </span>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-section-gap">
       <AnalyticsFilterBar />
@@ -33,35 +70,35 @@ export default function AnalyticsOverviewPage() {
       <div className="grid grid-cols-2 gap-stat-grid-gap lg:grid-cols-3 xl:grid-cols-6">
         <KpiCard
           title="Total AUM"
-          value={analyticsKpi.totalAUM}
-          change={analyticsKpi.aumChange}
+          value={kpis.totalAUM ?? 0}
+          change={kpis.aumChange ?? 0}
           subtitle="Assets under management"
         />
         <KpiCard
           title="Volume 24h"
-          value={analyticsKpi.volume24h}
-          change={analyticsKpi.volume24hChange}
+          value={kpis.volume24h ?? 0}
+          change={kpis.volume24hChange ?? 0}
         />
         <KpiCard
           title="Volume 7d"
-          value={analyticsKpi.volume7d}
-          change={analyticsKpi.volume7dChange}
+          value={kpis.volume7d ?? 0}
+          change={kpis.volume7dChange ?? 0}
         />
         <KpiCard
           title="Volume 30d"
-          value={analyticsKpi.volume30d}
-          change={analyticsKpi.volume30dChange}
+          value={kpis.volume30d ?? 0}
+          change={kpis.volume30dChange ?? 0}
         />
         <KpiCard
           title="Active Clients"
-          value={analyticsKpi.activeClients}
-          change={analyticsKpi.activeClientsChange}
+          value={kpis.activeClients ?? 0}
+          change={kpis.activeClientsChange ?? 0}
           format="number"
         />
         <KpiCard
           title="Tx Count 24h"
-          value={analyticsKpi.txCount24h}
-          change={analyticsKpi.txCountChange}
+          value={kpis.txCount24h ?? 0}
+          change={kpis.txCountChange ?? 0}
           format="number"
         />
       </div>
@@ -69,7 +106,7 @@ export default function AnalyticsOverviewPage() {
       {/* Daily Volume — monochromatic gold */}
       <AreaChartCard
         title="Daily Volume (Last 90 Days)"
-        data={analyticsDailyVolumes}
+        data={dailyVolumes}
         xKey="date"
         yKeys={[
           { key: "volume", color: "var(--chart-primary)", name: "Volume" },
@@ -82,7 +119,7 @@ export default function AnalyticsOverviewPage() {
       <div className="grid grid-cols-1 gap-section-gap lg:grid-cols-2">
         <BarChartCard
           title="Volume by Chain"
-          data={analyticsVolumeByChain}
+          data={volumeByChain}
           xKey="chain"
           bars={[{ key: "volume", color: "var(--chart-primary)", name: "Volume" }]}
           height={300}
@@ -90,14 +127,14 @@ export default function AnalyticsOverviewPage() {
         />
         <DonutChartCard
           title="Distribution by Token"
-          data={analyticsTokenDistribution}
+          data={tokenDistribution}
         />
       </div>
 
       {/* Deposits vs Withdrawals — financial up/down exception */}
       <BarChartCard
         title="Deposits vs Withdrawals (Last 90 Days)"
-        data={analyticsDailyVolumes.filter((_, i) => i % 3 === 0)}
+        data={dailyVolumes.filter((_: any, i: number) => i % 3 === 0)}
         xKey="date"
         bars={[
           { key: "deposits", color: "var(--chart-up)", name: "Deposits", stackId: "vol" },
@@ -111,7 +148,7 @@ export default function AnalyticsOverviewPage() {
       <div className="grid grid-cols-1 gap-section-gap lg:grid-cols-2">
         <BarChartCard
           title="Volume by Token (Deposits & Withdrawals)"
-          data={analyticsVolumeByToken}
+          data={volumeByToken}
           xKey="name"
           bars={[
             { key: "deposits", color: "var(--chart-up)", name: "Deposits" },
@@ -122,14 +159,14 @@ export default function AnalyticsOverviewPage() {
         />
         <DonutChartCard
           title="Volume Distribution by Token"
-          data={analyticsTokenDistribution}
+          data={tokenDistribution}
         />
       </div>
 
       {/* Revenue Section — financial: up for revenue, down for gas cost */}
       <AreaChartCard
         title="Revenue Trend (90 Days)"
-        data={analyticsRevenueTrend}
+        data={revenueTrend}
         xKey="date"
         yKeys={[
           { key: "revenue", color: "var(--chart-up)", name: "Revenue" },
@@ -156,11 +193,11 @@ export default function AnalyticsOverviewPage() {
               align: "right",
             },
           ]}
-          data={analyticsRevenueByClient}
+          data={revenueByClient}
         />
         <BarChartCard
           title="Revenue by Chain"
-          data={analyticsRevenueByChain}
+          data={revenueByChain}
           xKey="chain"
           bars={[
             { key: "revenue", color: "var(--chart-up)", name: "Revenue" },
@@ -174,7 +211,7 @@ export default function AnalyticsOverviewPage() {
       {/* Margin — monochromatic gold */}
       <AreaChartCard
         title="Margin (Revenue - Gas Cost)"
-        data={analyticsRevenueTrend}
+        data={revenueTrend}
         xKey="date"
         yKeys={[
           { key: "margin", color: "var(--chart-primary)", name: "Margin" },
@@ -186,7 +223,7 @@ export default function AnalyticsOverviewPage() {
       {/* Client Analytics — gold tones for series */}
       <AreaChartCard
         title="Client Growth (90 Days)"
-        data={analyticsClientGrowth}
+        data={clientGrowth}
         xKey="date"
         yKeys={[
           { key: "totalClients", color: "var(--chart-primary)", name: "Total Clients" },
@@ -198,11 +235,11 @@ export default function AnalyticsOverviewPage() {
       <div className="grid grid-cols-1 gap-section-gap lg:grid-cols-2">
         <DonutChartCard
           title="Client Tier Distribution"
-          data={analyticsTierDistribution}
+          data={tierDistribution}
         />
         <BarChartCard
           title="API Usage per Client (Top 8)"
-          data={analyticsApiUsageByClient}
+          data={apiUsageByClient}
           xKey="client"
           bars={[{ key: "calls", color: "var(--chart-primary)", name: "API Calls" }]}
           height={280}
@@ -214,7 +251,7 @@ export default function AnalyticsOverviewPage() {
       {/* Forwarders — gold tones for created/utilized */}
       <BarChartCard
         title="Forwarders: Created vs Utilized"
-        data={analyticsForwarders}
+        data={forwarders}
         xKey="chain"
         bars={[
           { key: "created", color: "var(--chart-tertiary)", name: "Created" },
@@ -227,7 +264,7 @@ export default function AnalyticsOverviewPage() {
       {/* Heatmap */}
       <HeatmapCard
         title="Activity Heatmap (Hour of Day x Day of Week)"
-        data={analyticsHeatmap}
+        data={heatmap}
       />
     </div>
   );

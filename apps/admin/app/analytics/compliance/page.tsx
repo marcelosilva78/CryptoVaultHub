@@ -1,20 +1,69 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { KpiCard } from "@/components/analytics/kpi-card";
 import { BarChartCard } from "@/components/analytics/bar-chart-card";
 import { AreaChartCard } from "@/components/analytics/area-chart-card";
 import { AnalyticsDataTable } from "@/components/analytics/analytics-data-table";
 import { AnalyticsFilterBar } from "@/components/analytics/filter-bar";
-import {
-  analyticsScreeningsPerDay,
-  analyticsHitRateTrend,
-  analyticsAlertsBySeverity,
-  analyticsResolutionTime,
-  complianceAlerts,
-  sanctionsLists,
-} from "@/lib/mock-data";
+
+const ADMIN_API =
+  process.env.NEXT_PUBLIC_ADMIN_API_URL || "http://localhost:3001/admin";
+
+function getToken() {
+  return typeof window !== "undefined"
+    ? (localStorage.getItem("cvh_admin_token") ?? "")
+    : "";
+}
+
+async function adminFetch(path: string) {
+  const res = await fetch(`${ADMIN_API}${path}`, {
+    headers: { Authorization: `Bearer ${getToken()}` },
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
 
 export default function ComplianceAnalyticsPage() {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    adminFetch("/analytics/compliance")
+      .then(setData)
+      .catch((e) => console.error("Analytics compliance failed:", e))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const resolution = data?.resolution ?? {
+    avgResolution: 0,
+    avgResolutionChange: 0,
+    pendingAlerts: 0,
+    resolvedToday: 0,
+    escalated: 0,
+  };
+  const screeningsPerDay = data?.screeningsPerDay ?? [];
+  const hitRateTrend = data?.hitRateTrend ?? [];
+  const alertsBySeverity = data?.alertsBySeverity ?? [];
+  const activeAlerts = data?.activeAlerts ?? [];
+  const sanctionsLists = data?.sanctionsLists ?? [];
+  const blockedSummary = data?.blockedSummary ?? {
+    total: 0,
+    ofac: 0,
+    eu: 0,
+    mixer: 0,
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-12">
+        <span className="font-display text-text-muted">
+          Loading compliance analytics…
+        </span>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-section-gap">
       <AnalyticsFilterBar />
@@ -23,26 +72,26 @@ export default function ComplianceAnalyticsPage() {
       <div className="grid grid-cols-2 gap-stat-grid-gap lg:grid-cols-4">
         <KpiCard
           title="Avg Resolution Time"
-          value={analyticsResolutionTime.avgResolution}
-          change={analyticsResolutionTime.avgResolutionChange}
+          value={resolution.avgResolution}
+          change={resolution.avgResolutionChange}
           format="number"
           subtitle="hours"
         />
         <KpiCard
           title="Pending Alerts"
-          value={analyticsResolutionTime.pendingAlerts}
+          value={resolution.pendingAlerts}
           change={-8.0}
           format="number"
         />
         <KpiCard
           title="Resolved Today"
-          value={analyticsResolutionTime.resolvedToday}
+          value={resolution.resolvedToday}
           change={15.2}
           format="number"
         />
         <KpiCard
           title="Escalated"
-          value={analyticsResolutionTime.escalated}
+          value={resolution.escalated}
           change={-25.0}
           format="number"
         />
@@ -51,7 +100,7 @@ export default function ComplianceAnalyticsPage() {
       {/* Screenings per Day — gold for screenings, red for hits (flagged = negative) */}
       <BarChartCard
         title="Screenings per Day (Last 30 Days)"
-        data={analyticsScreeningsPerDay}
+        data={screeningsPerDay}
         xKey="date"
         bars={[
           { key: "screenings", color: "var(--chart-primary)", name: "Screenings" },
@@ -64,7 +113,7 @@ export default function ComplianceAnalyticsPage() {
         {/* Hit Rate Trend — gold monochromatic */}
         <AreaChartCard
           title="Hit Rate Trend (%)"
-          data={analyticsHitRateTrend}
+          data={hitRateTrend}
           xKey="date"
           yKeys={[
             { key: "hitRate", color: "var(--chart-primary)", name: "Hit Rate %" },
@@ -76,7 +125,7 @@ export default function ComplianceAnalyticsPage() {
         {/* Alerts by Severity — gold tones for stacked severity levels */}
         <BarChartCard
           title="Alerts by Severity"
-          data={analyticsAlertsBySeverity.filter((_, i) => i % 2 === 0)}
+          data={alertsBySeverity.filter((_: any, i: number) => i % 2 === 0)}
           xKey="date"
           bars={[
             { key: "critical", color: "var(--chart-down)", name: "Critical", stackId: "sev" },
@@ -94,37 +143,44 @@ export default function ComplianceAnalyticsPage() {
           Active KYT Alerts
         </h3>
         <div className="space-y-2">
-          {complianceAlerts.map((alert, idx) => {
-            const severityStyles: Record<string, string> = {
-              Critical: "bg-status-error-subtle text-status-error",
-              High: "bg-status-warning-subtle text-status-warning",
-              Medium: "bg-accent-subtle text-accent-primary",
-            };
-            return (
-              <div
-                key={idx}
-                className="flex items-center gap-4 rounded-card border border-border-subtle bg-surface-elevated p-3 transition-colors duration-fast hover:bg-surface-hover"
-              >
-                <span
-                  className={`inline-flex items-center rounded-badge px-2 py-0.5 font-display text-micro font-semibold ${
-                    severityStyles[alert.severity] ??
-                    "bg-surface-elevated text-text-muted"
-                  }`}
+          {activeAlerts.length === 0 ? (
+            <p className="font-display text-sm text-text-muted">No active alerts.</p>
+          ) : (
+            activeAlerts.map((alert: any, idx: number) => {
+              const severityStyles: Record<string, string> = {
+                critical: "bg-status-error-subtle text-status-error",
+                Critical: "bg-status-error-subtle text-status-error",
+                high: "bg-status-warning-subtle text-status-warning",
+                High: "bg-status-warning-subtle text-status-warning",
+                medium: "bg-accent-subtle text-accent-primary",
+                Medium: "bg-accent-subtle text-accent-primary",
+              };
+              return (
+                <div
+                  key={idx}
+                  className="flex items-center gap-4 rounded-card border border-border-subtle bg-surface-elevated p-3 transition-colors duration-fast hover:bg-surface-hover"
                 >
-                  {alert.severity}
-                </span>
-                <span className="font-mono text-xs text-text-primary">
-                  {alert.address}
-                </span>
-                <span className="flex-1 font-display text-xs text-text-secondary">
-                  {alert.match}
-                </span>
-                <span className="font-display text-xs text-text-muted">
-                  {alert.client}
-                </span>
-              </div>
-            );
-          })}
+                  <span
+                    className={`inline-flex items-center rounded-badge px-2 py-0.5 font-display text-micro font-semibold ${
+                      severityStyles[alert.severity] ??
+                      "bg-surface-elevated text-text-muted"
+                    }`}
+                  >
+                    {alert.severity}
+                  </span>
+                  <span className="font-mono text-xs text-text-primary">
+                    {alert.address}
+                  </span>
+                  <span className="flex-1 font-display text-xs text-text-secondary">
+                    {alert.match}
+                  </span>
+                  <span className="font-display text-xs text-text-muted">
+                    {alert.client}
+                  </span>
+                </div>
+              );
+            })
+          )}
         </div>
       </div>
 
@@ -152,7 +208,7 @@ export default function ComplianceAnalyticsPage() {
               Total Blocked
             </div>
             <div className="font-display text-[24px] font-bold tracking-tight text-status-error">
-              18
+              {blockedSummary.total}
             </div>
           </div>
           <div className="rounded-card border border-border-subtle bg-surface-elevated p-4">
@@ -160,7 +216,7 @@ export default function ComplianceAnalyticsPage() {
               OFAC Matches
             </div>
             <div className="font-display text-[24px] font-bold tracking-tight text-status-warning">
-              7
+              {blockedSummary.ofac}
             </div>
           </div>
           <div className="rounded-card border border-border-subtle bg-surface-elevated p-4">
@@ -168,7 +224,7 @@ export default function ComplianceAnalyticsPage() {
               EU Sanctions
             </div>
             <div className="font-display text-[24px] font-bold tracking-tight text-accent-primary">
-              5
+              {blockedSummary.eu}
             </div>
           </div>
           <div className="rounded-card border border-border-subtle bg-surface-elevated p-4">
@@ -176,7 +232,7 @@ export default function ComplianceAnalyticsPage() {
               Mixer/Tornado
             </div>
             <div className="font-display text-[24px] font-bold tracking-tight text-accent-hover">
-              6
+              {blockedSummary.mixer}
             </div>
           </div>
         </div>
