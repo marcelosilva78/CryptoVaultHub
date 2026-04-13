@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { EvmProviderService } from '../blockchain/evm-provider.service';
 import { RedisService } from '../redis/redis.service';
@@ -43,6 +44,7 @@ export class SyncHealthService {
    * Check sync health every 30 seconds.
    * Called by a scheduler (setInterval or @nestjs/schedule) in the module.
    */
+  @Cron(CronExpression.EVERY_30_SECONDS)
   async checkHealth(): Promise<void> {
     const chains = await this.prisma.chain.findMany({
       where: { isActive: true },

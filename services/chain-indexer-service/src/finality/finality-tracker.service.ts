@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { EvmProviderService } from '../blockchain/evm-provider.service';
 import { BalanceMaterializerService } from '../balance/balance-materializer.service';
@@ -45,6 +46,7 @@ export class FinalityTrackerService {
    * Check finality for all active chains every 30 seconds.
    * Called by a scheduler (setInterval or @nestjs/schedule) in the module.
    */
+  @Cron(CronExpression.EVERY_30_SECONDS)
   async checkFinality(): Promise<void> {
     const chains = await this.prisma.chain.findMany({
       where: { isActive: true },

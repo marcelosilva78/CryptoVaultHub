@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { BullModule } from '@nestjs/bullmq';
+import { ScheduleModule } from '@nestjs/schedule';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
 import { BlockchainModule } from './blockchain/blockchain.module';
@@ -10,6 +11,8 @@ import { ConfirmationTrackerModule } from './confirmation-tracker/confirmation-t
 import { ReconciliationModule } from './reconciliation/reconciliation.module';
 import { HealthController } from './common/health.controller';
 import { SyncHealthModule } from './sync-health/sync-health.module';
+import { GapDetectorModule } from './gap-detector/gap-detector.module';
+import { FinalityTrackerModule } from './finality/finality-tracker.module';
 
 @Module({
   imports: [
@@ -30,6 +33,7 @@ import { SyncHealthModule } from './sync-health/sync-health.module';
       }),
       inject: [ConfigService],
     }),
+    ScheduleModule.forRoot(),
     PrismaModule,
     RedisModule,
     BlockchainModule,
@@ -38,6 +42,8 @@ import { SyncHealthModule } from './sync-health/sync-health.module';
     ConfirmationTrackerModule,
     ReconciliationModule,
     SyncHealthModule,
+    GapDetectorModule,
+    FinalityTrackerModule,
   ],
   controllers: [HealthController],
 })

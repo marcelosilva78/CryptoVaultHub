@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 
 /**
@@ -11,6 +12,27 @@ export class GapDetectorService {
   private readonly logger = new Logger(GapDetectorService.name);
 
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * Detect gaps for all active chains every 5 minutes.
+   */
+  @Cron('0 */5 * * * *')
+  async detectAllGaps(): Promise<void> {
+    const chains = await this.prisma.chain.findMany({
+      where: { isActive: true },
+    });
+
+    await Promise.all(
+      chains.map((chain) =>
+        this.detectGaps(chain.id).catch((err: any) => {
+          const msg = err instanceof Error ? err.message : String(err);
+          this.logger.error(
+            `Gap detection failed for chain ${chain.id}: ${msg}`,
+          );
+        }),
+      ),
+    );
+  }
 
   /**
    * Detect gaps in the indexed block sequence for a given chain.
