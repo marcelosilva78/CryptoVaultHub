@@ -161,10 +161,10 @@ export default function ExportsPage() {
     <>
       {/* Stats */}
       <div className="grid grid-cols-4 gap-4 mb-6">
-        <StatCard label="Total Exports" value={String(exports.length)} sub="all time" />
-        <StatCard label="Completed" value={String(completed)} sub="ready to download" valueColor="text-status-success" />
-        <StatCard label="Processing" value={String(processing)} sub="in progress" valueColor="text-status-warning" />
-        <StatCard label="Failed" value={String(failed)} sub="with errors" valueColor="text-status-error" />
+        <StatCard label="Total Exports" value={String(exports.length)} subtitle="all time" />
+        <StatCard label="Completed" value={String(completed)} subtitle="ready to download" color="success" />
+        <StatCard label="Processing" value={String(processing)} subtitle="in progress" color="warning" />
+        <StatCard label="Failed" value={String(failed)} subtitle="with errors" color="error" />
       </div>
 
       {error && (
