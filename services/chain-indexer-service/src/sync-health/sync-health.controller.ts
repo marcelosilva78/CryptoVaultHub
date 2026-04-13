@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, Query, Body } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Query, Body, ParseIntPipe, ConflictException } from '@nestjs/common';
 import { SyncHealthService } from './sync-health.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { InjectQueue } from '@nestjs/bullmq';
@@ -123,48 +123,120 @@ export class SyncHealthController {
   }
 
   /* ── Chain CRUD ── */
-  @Get('chains')
+  @Get('/chains')
   async listChains() {
-    const chains = await this.prisma.chain.findMany({ orderBy: { id: 'asc' } });
+    const chains = await this.prisma.chain.findMany();
     return {
-      chains: chains.map((c: any) => ({
+      chains: chains.map(c => ({
         id: c.id,
         chainId: c.id,
         name: c.name,
+        shortName: c.shortName,
         symbol: c.nativeCurrencySymbol,
-        rpcUrl: Array.isArray(c.rpcEndpoints) ? c.rpcEndpoints[0] : (c.rpcEndpoints as any)?.[0] ?? '',
-        explorerUrl: c.explorerUrl ?? null,
+        rpcUrl: Array.isArray(c.rpcEndpoints) ? (c.rpcEndpoints as any[])[0] : c.rpcEndpoints,
+        explorerUrl: c.explorerUrl,
         confirmationsRequired: c.confirmationsDefault,
+        blockTimeSeconds: Number(c.blockTimeSeconds),
+        finalityThreshold: c.finalityThreshold,
+        gasPriceStrategy: c.gasPriceStrategy,
+        status: c.status,
+        statusReason: c.statusReason,
+        statusChangedAt: c.statusChangedAt,
         isActive: c.isActive,
+        isTestnet: c.isTestnet,
         createdAt: c.createdAt,
+        updatedAt: c.updatedAt,
       })),
     };
   }
 
-  @Post('chains')
-  async addChain(@Body() body: {
-    name: string;
-    symbol: string;
-    chainId: number;
-    rpcUrl: string;
-    explorerUrl?: string;
-    confirmationsRequired?: number;
-    isActive?: boolean;
-  }) {
-    const chain = await this.prisma.chain.create({
-      data: {
-        id: body.chainId,
-        name: body.name,
-        shortName: body.symbol,
-        nativeCurrencySymbol: body.symbol,
-        rpcEndpoints: [body.rpcUrl] as any,
-        blockTimeSeconds: 12,
-        confirmationsDefault: body.confirmationsRequired ?? 12,
-        explorerUrl: body.explorerUrl ?? null,
-        isActive: body.isActive ?? true,
-      },
+  @Post('/chains')
+  async addChain(@Body() body: any) {
+    try {
+      const chain = await this.prisma.chain.create({
+        data: {
+          id: body.chainId,
+          name: body.name,
+          shortName: body.symbol || body.shortName,
+          nativeCurrencySymbol: body.symbol,
+          rpcEndpoints: body.rpcUrl ? [body.rpcUrl] : body.rpcEndpoints || [],
+          blockTimeSeconds: body.blockTimeSeconds || 12,
+          confirmationsDefault: body.confirmationsRequired || 12,
+          finalityThreshold: body.finalityThreshold || 32,
+          explorerUrl: body.explorerUrl || null,
+          isActive: body.isActive ?? true,
+          status: body.status || 'active',
+          isTestnet: body.isTestnet || false,
+        },
+      });
+      return { success: true, chain };
+    } catch (err: any) {
+      if (err.code === 'P2002') {
+        throw new ConflictException(`Chain with ID ${body.chainId} already exists`);
+      }
+      throw err;
+    }
+  }
+
+  @Patch('/chains/:id')
+  async updateChain(@Param('id', ParseIntPipe) id: number, @Body() body: any) {
+    const updateData: any = {};
+    if (body.name !== undefined) updateData.name = body.name;
+    if (body.shortName !== undefined) updateData.shortName = body.shortName;
+    if (body.explorerUrl !== undefined) updateData.explorerUrl = body.explorerUrl;
+    if (body.confirmationsRequired !== undefined) updateData.confirmationsDefault = body.confirmationsRequired;
+    if (body.blockTimeSeconds !== undefined) updateData.blockTimeSeconds = body.blockTimeSeconds;
+    if (body.finalityThreshold !== undefined) updateData.finalityThreshold = body.finalityThreshold;
+    if (body.gasPriceStrategy !== undefined) updateData.gasPriceStrategy = body.gasPriceStrategy;
+    if (body.status !== undefined) updateData.status = body.status;
+    if (body.statusReason !== undefined) updateData.statusReason = body.statusReason;
+    if (body.statusChangedAt !== undefined) updateData.statusChangedAt = new Date(body.statusChangedAt);
+    if (body.isActive !== undefined) updateData.isActive = body.isActive;
+
+    const chain = await this.prisma.chain.update({
+      where: { id },
+      data: updateData,
     });
-    return { chain: { ...chain, chainId: chain.id, symbol: chain.nativeCurrencySymbol, confirmationsRequired: chain.confirmationsDefault } };
+
+    return { success: true, chain };
+  }
+
+  @Get('/chains/:id/dependencies')
+  async getChainDependencies(@Param('id', ParseIntPipe) id: number) {
+    const [
+      tokens, wallets, depositAddresses, deployedAddresses,
+      deposits, pendingDeposits,
+      withdrawals, pendingWithdrawals,
+      flushOps, pendingFlushOps,
+      gasTanks,
+    ] = await Promise.all([
+      this.prisma.token.count({ where: { chainId: id } }),
+      this.prisma.wallet.count({ where: { chainId: id } }),
+      this.prisma.depositAddress.count({ where: { chainId: id } }),
+      this.prisma.depositAddress.count({ where: { chainId: id, isDeployed: true } }),
+      this.prisma.deposit.count({ where: { chainId: id } }),
+      this.prisma.deposit.count({ where: { chainId: id, status: { in: ['detected', 'confirming'] } } }),
+      this.prisma.withdrawal.count({ where: { chainId: id } }),
+      this.prisma.withdrawal.count({ where: { chainId: id, status: { in: ['pending', 'submitted'] } } }),
+      this.prisma.flushOperation.count({ where: { chainId: id } }),
+      this.prisma.flushOperation.count({ where: { chainId: id, status: { in: ['pending', 'executing'] } } }),
+      this.prisma.wallet.count({ where: { chainId: id, walletType: 'gas_tank' } }),
+    ]);
+
+    return {
+      tokens, wallets,
+      depositAddresses: { total: depositAddresses, deployed: deployedAddresses },
+      deposits: { total: deposits, pending: pendingDeposits },
+      withdrawals: { total: withdrawals, pending: pendingWithdrawals },
+      flushOperations: { total: flushOps, pending: pendingFlushOps },
+      gasTanks,
+    };
+  }
+
+  @Delete('/chains/:id')
+  async deleteChain(@Param('id', ParseIntPipe) id: number) {
+    await this.prisma.chain.delete({ where: { id } });
+    return { success: true, deleted: id };
   }
 
   /* ── Token CRUD ── */
