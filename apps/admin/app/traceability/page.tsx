@@ -615,7 +615,7 @@ export default function TraceabilityPage() {
 
   useEffect(() => {
     adminFetch("/clients")
-      .then((data: any) => setClients(Array.isArray(data) ? data : data?.clients ?? data?.data ?? []))
+      .then((data: any) => setClients(Array.isArray(data) ? data : data?.items ?? data?.clients ?? data?.data ?? []))
       .catch(() => setClients([]));
   }, []);
 
