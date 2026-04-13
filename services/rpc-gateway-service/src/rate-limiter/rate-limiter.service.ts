@@ -4,6 +4,8 @@ import Redis from 'ioredis';
 interface RpcNodeLimits {
   maxRequestsPerSecond: number;
   maxRequestsPerMinute: number;
+  maxRequestsPerDay?: number;
+  maxRequestsPerMonth?: number;
 }
 
 /**
@@ -46,8 +48,8 @@ export class RateLimiterService {
   /**
    * Register rate limits for an RPC node.
    */
-  registerNode(nodeId: string, limits: RpcNodeLimits): void {
-    this.nodeLimits.set(nodeId, limits);
+  registerNode(nodeId: string | number, limits: RpcNodeLimits): void {
+    this.nodeLimits.set(nodeId.toString(), limits);
   }
 
   /**
@@ -84,5 +86,60 @@ export class RateLimiterService {
     );
 
     return !!perMinuteAllowed;
+  }
+
+  /**
+   * Record quota usage (daily and monthly counters) for a node.
+   */
+  async recordUsage(nodeId: number): Promise<void> {
+    const now = new Date();
+    const dayKey = `rpc:quota:${nodeId}:day:${now.toISOString().slice(0, 10)}`;
+    const monthKey = `rpc:quota:${nodeId}:month:${now.toISOString().slice(0, 7)}`;
+
+    await this.redis.multi()
+      .incr(dayKey)
+      .expire(dayKey, 86400 * 2)
+      .incr(monthKey)
+      .expire(monthKey, 86400 * 35)
+      .exec();
+  }
+
+  /**
+   * Check whether a node has exhausted its daily or monthly quota.
+   * Returns true if the quota is exceeded (request should be skipped).
+   */
+  async isQuotaExhausted(nodeId: number): Promise<boolean> {
+    const limits = this.nodeLimits.get(nodeId.toString());
+    if (!limits) return false;
+
+    const now = new Date();
+    const dayKey = `rpc:quota:${nodeId}:day:${now.toISOString().slice(0, 10)}`;
+    const monthKey = `rpc:quota:${nodeId}:month:${now.toISOString().slice(0, 7)}`;
+
+    if (limits.maxRequestsPerDay) {
+      const used = await this.redis.get(dayKey);
+      if (Number(used || 0) >= limits.maxRequestsPerDay) return true;
+    }
+    if (limits.maxRequestsPerMonth) {
+      const used = await this.redis.get(monthKey);
+      if (Number(used || 0) >= limits.maxRequestsPerMonth) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Get current daily and monthly quota usage for a node.
+   */
+  async getQuotaUsage(nodeId: number): Promise<{ daily: number; monthly: number }> {
+    const now = new Date();
+    const dayKey = `rpc:quota:${nodeId}:day:${now.toISOString().slice(0, 10)}`;
+    const monthKey = `rpc:quota:${nodeId}:month:${now.toISOString().slice(0, 7)}`;
+
+    const [daily, monthly] = await Promise.all([
+      this.redis.get(dayKey),
+      this.redis.get(monthKey),
+    ]);
+
+    return { daily: Number(daily || 0), monthly: Number(monthly || 0) };
   }
 }

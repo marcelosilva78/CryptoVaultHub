@@ -1,7 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { JsonRpcProvider } from 'ethers';
 import { PrismaService } from '../prisma/prisma.service';
+import { RateLimiterService } from '../rate-limiter/rate-limiter.service';
 import { Decimal } from '../generated/prisma-client/runtime/library';
 
 /**
@@ -10,10 +11,32 @@ import { Decimal } from '../generated/prisma-client/runtime/library';
  * measures latency, and updates health_score in the database.
  */
 @Injectable()
-export class HealthService {
+export class HealthService implements OnModuleInit {
   private readonly logger = new Logger(HealthService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly rateLimiter: RateLimiterService,
+  ) {}
+
+  async onModuleInit() {
+    await this.seedRateLimits();
+  }
+
+  private async seedRateLimits() {
+    const nodes = await this.prisma.rpcNode.findMany({
+      where: { status: { in: ['active', 'standby', 'draining'] } },
+    });
+    for (const node of nodes) {
+      this.rateLimiter.registerNode(Number(node.id), {
+        maxRequestsPerSecond: node.maxRequestsPerSecond,
+        maxRequestsPerMinute: node.maxRequestsPerMinute,
+        maxRequestsPerDay: (node as any).maxRequestsPerDay,
+        maxRequestsPerMonth: (node as any).maxRequestsPerMonth,
+      });
+    }
+    this.logger.log(`Seeded rate limits for ${nodes.length} RPC nodes`);
+  }
 
   /**
    * Cron job: check all active/standby nodes every 30 seconds.

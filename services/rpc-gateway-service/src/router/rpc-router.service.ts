@@ -70,6 +70,12 @@ export class RpcRouterService {
         continue;
       }
 
+      // Check daily/monthly quota
+      if (await this.rateLimiter.isQuotaExhausted(Number(node.id))) {
+        this.logger.debug(`Node ${node.id} quota exhausted, skipping`);
+        continue;
+      }
+
       return node;
     }
 
@@ -112,6 +118,11 @@ export class RpcRouterService {
         const withinLimits = await this.rateLimiter.checkAndRecord(node.id);
         if (!withinLimits) continue;
 
+        if (await this.rateLimiter.isQuotaExhausted(Number(node.id))) {
+          this.logger.debug(`Node ${node.id} quota exhausted, skipping`);
+          continue;
+        }
+
         selectedNode = node;
         break;
       }
@@ -126,6 +137,8 @@ export class RpcRouterService {
         const result = await this.callNode(selectedNode, method, params);
         // Record success in circuit breaker (rate usage already recorded by checkAndRecord)
         this.circuitBreaker.recordSuccess(selectedNode.id.toString());
+        // Record quota usage (daily/monthly counters)
+        await this.rateLimiter.recordUsage(Number(selectedNode.id));
         return result;
       } catch (err) {
         lastError = err as Error;
