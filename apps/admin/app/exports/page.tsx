@@ -186,22 +186,22 @@ export default function ExportsPage() {
         }
       >
         {loading ? (
-          <TableRow>
-            <TableCell colSpan={9}>
+          <tr>
+            <td colSpan={9}>
               <div className="flex items-center justify-center py-8 gap-2 text-text-muted font-display text-caption">
                 <Loader2 className="w-4 h-4 animate-spin" />
                 Loading exports...
               </div>
-            </TableCell>
-          </TableRow>
+            </td>
+          </tr>
         ) : exports.length === 0 ? (
-          <TableRow>
-            <TableCell colSpan={9}>
+          <tr>
+            <td colSpan={9}>
               <div className="py-8 text-center text-text-muted font-display text-caption">
                 No export requests yet. Click &quot;New Export&quot; to create one.
               </div>
-            </TableCell>
-          </TableRow>
+            </td>
+          </tr>
         ) : (
           exports.map((exp) => {
             const FormatIcon = formatIcon[exp.format] ?? FileText;
