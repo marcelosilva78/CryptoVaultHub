@@ -2,6 +2,7 @@ import {
   IsString,
   IsOptional,
   IsInt,
+  IsNumber,
   IsBoolean,
   MinLength,
   MaxLength,
@@ -86,6 +87,23 @@ export class AddChainDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @ApiPropertyOptional({ description: 'Block time in seconds', example: 12.1 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0.1)
+  blockTimeSeconds?: number;
+
+  @ApiPropertyOptional({ description: 'Finality threshold in blocks', example: 64 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  finalityThreshold?: number;
+
+  @ApiPropertyOptional({ description: 'Is testnet chain', example: false })
+  @IsOptional()
+  @IsBoolean()
+  isTestnet?: boolean;
 }
 
 export class AddTokenDto {
