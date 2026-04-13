@@ -29,7 +29,7 @@ async function adminFetch(path: string, options: RequestInit = {}) {
 interface ClientItem {
   id: number | string;
   name: string;
-  tier?: string;
+  tier?: string | { id: string; name: string } | null;
   tierName?: string;
   status?: string;
   walletCount?: number;
@@ -728,7 +728,7 @@ export default function TraceabilityPage() {
             {selectedClient ? (
               <div className="flex items-center gap-3">
                 <span className="text-body font-display font-semibold text-text-primary">{selectedClient.name}</span>
-                <Badge variant="neutral" className="text-[10px]">{selectedClient.tierName ?? selectedClient.tier ?? ""}</Badge>
+                <Badge variant="neutral" className="text-[10px]">{selectedClient.tierName ?? (typeof selectedClient.tier === "object" ? selectedClient.tier?.name : selectedClient.tier) ?? ""}</Badge>
                 <span className="text-caption text-text-muted font-mono">{selectedClient.id}</span>
               </div>
             ) : (
@@ -767,7 +767,7 @@ export default function TraceabilityPage() {
                     )}
                   >
                     <span className="text-body font-display font-semibold text-text-primary">{client.name}</span>
-                    <Badge variant="neutral" className="text-[10px]">{client.tierName ?? client.tier ?? ""}</Badge>
+                    <Badge variant="neutral" className="text-[10px]">{client.tierName ?? (typeof client.tier === "object" ? client.tier?.name : client.tier) ?? ""}</Badge>
                     <span className="text-[10px] text-text-muted font-mono ml-auto">{client.id}</span>
                   </button>
                 ))}

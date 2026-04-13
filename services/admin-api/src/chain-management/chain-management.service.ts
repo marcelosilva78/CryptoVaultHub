@@ -55,7 +55,9 @@ export class ChainManagementService {
       `${this.chainIndexerUrl}/chains`,
       { timeout: 10000 },
     );
-    return response.data;
+    // chain-indexer returns { chains: [...] } — extract the array so the
+    // controller can wrap it cleanly as { success: true, chains: [...] }
+    return response.data?.chains ?? response.data;
   }
 
   async addToken(
@@ -94,6 +96,8 @@ export class ChainManagementService {
       `${this.chainIndexerUrl}/tokens`,
       { timeout: 10000 },
     );
-    return response.data;
+    // chain-indexer returns { tokens: [...] } — extract the array so the
+    // controller can wrap it cleanly as { success: true, tokens: [...] }
+    return response.data?.tokens ?? response.data;
   }
 }
