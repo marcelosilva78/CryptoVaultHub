@@ -162,7 +162,7 @@ export class AuthController {
     try {
       const payload = jwt.verify(token, this.jwtSecret) as any;
       const userId = BigInt(payload.userId ?? payload.sub);
-      const user = await this.prisma.users.findUnique({
+      const user = await this.prisma.user.findUnique({
         where: { id: userId },
         select: {
           id: true,
