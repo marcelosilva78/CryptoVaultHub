@@ -277,6 +277,7 @@ services:
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD}
       - INTERNAL_SERVICE_KEY=${INTERNAL_SERVICE_KEY}
+      - AUTH_SERVICE_URL=http://auth-service:3003
       - CORE_WALLET_SERVICE_URL=http://core-wallet-service:3004
       - CRON_WORKER_SERVICE_URL=http://cron-worker-service:3008
     depends_on:
