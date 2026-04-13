@@ -20,8 +20,47 @@ import {
   Download,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { navSections } from "@/lib/mock-data";
 import { useAuth } from "@/lib/auth-context";
+
+/* ── Navigation sections ── */
+const navSections: Array<{ title: string; items: Array<{ label: string; href: string; icon: string; badge?: number }> }> = [
+  {
+    title: "Principal",
+    items: [
+      { label: "Dashboard", href: "/", icon: "LayoutDashboard" },
+      { label: "Clients", href: "/clients", icon: "Users" },
+      { label: "Traceability", href: "/traceability", icon: "FileSearch" },
+    ],
+  },
+  {
+    title: "Analytics",
+    items: [
+      { label: "Overview", href: "/analytics", icon: "BarChart3" },
+      { label: "Operations", href: "/analytics/operations", icon: "Cog" },
+      { label: "Compliance", href: "/analytics/compliance", icon: "ShieldCheck" },
+    ],
+  },
+  {
+    title: "Blockchain",
+    items: [
+      { label: "Chains", href: "/chains", icon: "Link" },
+      { label: "Tokens", href: "/tokens", icon: "Coins" },
+      { label: "Gas Tanks", href: "/gas-tanks", icon: "Fuel" },
+      { label: "RPC Providers", href: "/rpc-providers", icon: "Radio" },
+      { label: "Sync Health", href: "/sync-health", icon: "Activity" },
+    ],
+  },
+  {
+    title: "Config",
+    items: [
+      { label: "Tiers & Limits", href: "/tiers", icon: "Layers" },
+      { label: "Compliance", href: "/compliance", icon: "ShieldAlert" },
+      { label: "Monitoring", href: "/monitoring", icon: "Activity" },
+      { label: "Job Queue", href: "/jobs", icon: "Cog" },
+      { label: "Exports", href: "/exports", icon: "Download" },
+    ],
+  },
+];
 
 const iconMap: Record<string, React.ElementType> = {
   LayoutDashboard,

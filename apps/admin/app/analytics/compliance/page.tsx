@@ -7,22 +7,7 @@ import { AreaChartCard } from "@/components/analytics/area-chart-card";
 import { AnalyticsDataTable } from "@/components/analytics/analytics-data-table";
 import { AnalyticsFilterBar } from "@/components/analytics/filter-bar";
 
-const ADMIN_API =
-  process.env.NEXT_PUBLIC_ADMIN_API_URL || "http://localhost:3001/admin";
-
-function getToken() {
-  return typeof window !== "undefined"
-    ? (localStorage.getItem("cvh_admin_token") ?? "")
-    : "";
-}
-
-async function adminFetch(path: string) {
-  const res = await fetch(`${ADMIN_API}${path}`, {
-    headers: { Authorization: `Bearer ${getToken()}` },
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
-}
+import { adminFetch } from "@/lib/api";
 
 export default function ComplianceAnalyticsPage() {
   const [data, setData] = useState<any>(null);

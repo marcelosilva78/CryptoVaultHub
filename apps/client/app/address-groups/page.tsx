@@ -1,79 +1,114 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { StatCard } from "@/components/stat-card";
 import { AddressGroupCard } from "@/components/address-group-card";
-import { useAddressGroups } from "@cvh/api-client/hooks";
+import { clientFetch } from "@/lib/api";
+import { Loader2 } from "lucide-react";
 
-// Mock data for initial UI
-const mockGroups = [
-  {
-    id: 1,
-    groupUid: "ag_a1b2c3d4e5f6g7h8",
-    computedAddress: "0x742d35Cc6634C0532925a3b844Bc9e7595f2bD68",
-    label: "VIP Customer - Joao Silva",
-    externalId: "user-joao-001",
-    status: "active",
-    createdAt: "Apr 9, 14:30",
-    chains: [
-      { chainId: 1, chainName: "Ethereum", address: "0x742d35Cc6634C0532925a3b844Bc9e7595f2bD68", isDeployed: true, provisioned: true },
-      { chainId: 56, chainName: "BSC", address: "0x742d35Cc6634C0532925a3b844Bc9e7595f2bD68", isDeployed: true, provisioned: true },
-      { chainId: 137, chainName: "Polygon", address: "0x742d35Cc6634C0532925a3b844Bc9e7595f2bD68", isDeployed: false, provisioned: true },
-    ],
-  },
-  {
-    id: 2,
-    groupUid: "ag_h8g7f6e5d4c3b2a1",
-    computedAddress: "0x8f3a21Bb7c6d5e4f3a2c1a0b9c8d7e6f5a4b3c2d",
-    label: "Merchant - CryptoShop",
-    externalId: "merchant-cryptoshop-001",
-    status: "active",
-    createdAt: "Apr 8, 10:15",
-    chains: [
-      { chainId: 56, chainName: "BSC", address: "0x8f3a21Bb7c6d5e4f3a2c1a0b9c8d7e6f5a4b3c2d", isDeployed: true, provisioned: true },
-      { chainId: 42161, chainName: "Arbitrum", address: "0x8f3a21Bb7c6d5e4f3a2c1a0b9c8d7e6f5a4b3c2d", isDeployed: false, provisioned: true },
-    ],
-  },
-  {
-    id: 3,
-    groupUid: "ag_x1y2z3w4v5u6t7s8",
-    computedAddress: "0x9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b",
-    label: "Settlement Account - Partner A",
-    externalId: null,
-    status: "active",
-    createdAt: "Apr 7, 08:00",
-    chains: [
-      { chainId: 1, chainName: "Ethereum", address: "0x9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b", isDeployed: true, provisioned: true },
-    ],
-  },
-  {
-    id: 4,
-    groupUid: "ag_disabled001",
-    computedAddress: "0xdead00000000000000000000000000000000beef",
-    label: "Deactivated Group",
-    externalId: "old-user-999",
-    status: "disabled",
-    createdAt: "Mar 15, 12:00",
-    chains: [
-      { chainId: 56, chainName: "BSC", address: "0xdead00000000000000000000000000000000beef", isDeployed: false, provisioned: true },
-    ],
-  },
-];
+/* ── Types (from backend API) ──────────────────────────────────── */
+interface ChainEntry {
+  chainId: number;
+  chainName: string;
+  address: string;
+  isDeployed: boolean;
+  provisioned: boolean;
+}
+
+interface AddressGroup {
+  id: number;
+  groupUid: string;
+  computedAddress: string;
+  label: string;
+  externalId: string | null;
+  status: string;
+  createdAt: string;
+  chains: ChainEntry[];
+}
 
 export default function AddressGroupsPage() {
+  const [groups, setGroups] = useState<AddressGroup[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [creating, setCreating] = useState(false);
 
-  // API hook with mock data fallback
-  const { data: apiGroups } = useAddressGroups();
-  void apiGroups;
+  // Form state
+  const [formLabel, setFormLabel] = useState("");
+  const [formExternalId, setFormExternalId] = useState("");
+  const [formChains, setFormChains] = useState<number[]>([1, 56]);
 
-  const activeGroups = mockGroups.filter((g) => g.status === "active").length;
-  const totalChains = mockGroups.reduce(
-    (sum, g) => sum + g.chains.filter((c) => c.provisioned).length,
+  const fetchGroups = useCallback(async () => {
+    try {
+      const res = await clientFetch<{ groups: AddressGroup[] }>("/v1/address-groups");
+      setGroups(res.groups ?? []);
+    } catch (err: any) {
+      setError(err.message || "Failed to load address groups");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchGroups();
+  }, [fetchGroups]);
+
+  const handleCreateGroup = async () => {
+    if (!formLabel.trim()) return;
+    setCreating(true);
+    try {
+      await clientFetch("/v1/address-groups", {
+        method: "POST",
+        body: JSON.stringify({
+          label: formLabel,
+          externalId: formExternalId || undefined,
+          chainIds: formChains,
+        }),
+      });
+      setShowCreateModal(false);
+      setFormLabel("");
+      setFormExternalId("");
+      setFormChains([1, 56]);
+      // Refresh list
+      const res = await clientFetch<{ groups: AddressGroup[] }>("/v1/address-groups");
+      setGroups(res.groups ?? []);
+    } catch (err: any) {
+      setError(err.message || "Failed to create address group");
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="w-6 h-6 animate-spin text-accent-primary" />
+        <span className="ml-2 text-text-muted font-display">Loading address groups...</span>
+      </div>
+    );
+  }
+
+  if (error && groups.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20">
+        <p className="text-status-error font-display mb-3">{error}</p>
+        <button
+          onClick={() => { setError(null); setLoading(true); fetchGroups(); }}
+          className="px-4 py-2 rounded-button font-display text-caption font-semibold bg-accent-primary text-accent-text hover:bg-accent-hover transition-colors duration-fast"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  const activeGroups = groups.filter((g) => g.status === "active").length;
+  const totalChains = groups.reduce(
+    (sum, g) => sum + (g.chains?.filter((c) => c.provisioned).length ?? 0),
     0,
   );
-  const deployedCount = mockGroups.reduce(
-    (sum, g) => sum + g.chains.filter((c) => c.isDeployed).length,
+  const deployedCount = groups.reduce(
+    (sum, g) => sum + (g.chains?.filter((c) => c.isDeployed).length ?? 0),
     0,
   );
 
@@ -88,6 +123,14 @@ export default function AddressGroupsPage() {
           Multi-chain deposit addresses sharing a single computed address
         </p>
       </div>
+
+      {/* Error banner */}
+      {error && (
+        <div className="bg-status-error-subtle border border-status-error rounded-card p-3 mb-4 text-status-error text-caption font-display">
+          {error}
+          <button onClick={() => setError(null)} className="ml-2 underline text-micro">Dismiss</button>
+        </div>
+      )}
 
       {/* KPIs */}
       <div className="grid grid-cols-4 gap-stat-grid-gap mb-section-gap">
@@ -127,28 +170,36 @@ export default function AddressGroupsPage() {
       </div>
 
       {/* Group Cards Grid */}
-      <div className="grid grid-cols-2 gap-4">
-        {mockGroups.map((group) => (
-          <AddressGroupCard
-            key={group.id}
-            groupUid={group.groupUid}
-            computedAddress={group.computedAddress}
-            label={group.label}
-            externalId={group.externalId}
-            status={group.status}
-            chains={group.chains}
-            createdAt={group.createdAt}
-            onProvision={() => {
-              // Will connect to provision modal
-            }}
-          />
-        ))}
-      </div>
+      {groups.length === 0 ? (
+        <div className="bg-surface-card border border-border-default rounded-card p-card-p shadow-card text-center">
+          <p className="text-text-muted font-display text-body">
+            No address groups yet. Click &quot;+ New Group&quot; to create one.
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-4">
+          {groups.map((group) => (
+            <AddressGroupCard
+              key={group.id}
+              groupUid={group.groupUid}
+              computedAddress={group.computedAddress}
+              label={group.label}
+              externalId={group.externalId}
+              status={group.status}
+              chains={group.chains ?? []}
+              createdAt={group.createdAt}
+              onProvision={() => {
+                // Will connect to provision modal
+              }}
+            />
+          ))}
+        </div>
+      )}
 
-      {/* Create Modal (simplified inline) */}
+      {/* Create Modal */}
       {showCreateModal && (
         <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-[4px] z-[200] flex items-center justify-center"
+          className="fixed inset-0 bg-black/60 backdrop-blur-[4px] z-[200] flex items-start justify-center pt-16 pb-4 overflow-y-auto"
           onClick={(e) => {
             if (e.target === e.currentTarget) setShowCreateModal(false);
           }}
@@ -165,6 +216,8 @@ export default function AddressGroupsPage() {
               <input
                 type="text"
                 placeholder="e.g. VIP Customer - Jane Doe"
+                value={formLabel}
+                onChange={(e) => setFormLabel(e.target.value)}
                 className="w-full bg-surface-input border border-border-default rounded-input px-3 py-2 text-text-primary font-display text-body outline-none focus:border-border-focus transition-colors duration-fast"
               />
             </div>
@@ -176,6 +229,8 @@ export default function AddressGroupsPage() {
               <input
                 type="text"
                 placeholder="e.g. user-12345"
+                value={formExternalId}
+                onChange={(e) => setFormExternalId(e.target.value)}
                 className="w-full bg-surface-input border border-border-default rounded-input px-3 py-2 text-text-primary font-mono text-body outline-none focus:border-border-focus transition-colors duration-fast"
               />
             </div>
@@ -200,7 +255,14 @@ export default function AddressGroupsPage() {
                   >
                     <input
                       type="checkbox"
-                      defaultChecked={[56, 1].includes(chain.id)}
+                      checked={formChains.includes(chain.id)}
+                      onChange={(e) => {
+                        setFormChains((prev) =>
+                          e.target.checked
+                            ? [...prev, chain.id]
+                            : prev.filter((c) => c !== chain.id),
+                        );
+                      }}
                       className="w-3 h-3 accent-[var(--accent-primary)] cursor-pointer"
                     />
                     <span className="text-micro font-semibold font-display">
@@ -225,9 +287,11 @@ export default function AddressGroupsPage() {
                 Cancel
               </button>
               <button
-                onClick={() => setShowCreateModal(false)}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-button font-display text-caption font-semibold cursor-pointer transition-all duration-fast bg-accent-primary text-accent-text hover:bg-accent-hover"
+                onClick={handleCreateGroup}
+                disabled={creating || !formLabel.trim()}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-button font-display text-caption font-semibold cursor-pointer transition-all duration-fast bg-accent-primary text-accent-text hover:bg-accent-hover disabled:opacity-50"
               >
+                {creating && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                 Create Group
               </button>
             </div>

@@ -1,15 +1,67 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
+import { Loader2 } from "lucide-react";
 import { BalanceChart } from "@/components/balance-chart";
 import { GenerateAddressModal } from "@/components/generate-address-modal";
-import { useWallets } from "@cvh/api-client/hooks";
-import {
-  clientInfo,
-  balanceHistory,
-  transactions,
-} from "@/lib/mock-data";
+import { clientFetch } from "@/lib/api";
+import { useClientAuth } from "@/lib/auth-context";
+import { balanceHistory } from "@/lib/mock-data";
+
+/* ─── Chain ID → Name map ───────────────────────────────────── */
+const chainNames: Record<number, string> = {
+  1: "ETH",
+  56: "BSC",
+  137: "Polygon",
+  42161: "Arbitrum",
+  10: "Optimism",
+  43114: "Avalanche",
+  8453: "Base",
+};
+
+/* ─── API response types ────────────────────────────────────── */
+interface ApiWallet {
+  id: number;
+  address: string;
+  chainId: number;
+  chainName: string;
+  walletType: string;
+  isActive: boolean;
+  createdAt: string;
+}
+
+interface ApiBalance {
+  tokenSymbol: string;
+  tokenAddress: string;
+  balance: string;
+  balanceUsd: string;
+  decimals: number;
+}
+
+interface ApiDeposit {
+  id: string;
+  depositAddress: string;
+  chainId: number;
+  tokenSymbol: string;
+  amount: string;
+  amountUsd: string;
+  status: string;
+  txHash: string;
+  confirmations: number;
+  requiredConfirmations: number;
+  detectedAt: string;
+}
+
+interface ApiDepositAddress {
+  id: string;
+  address: string;
+  chainId: number;
+  label: string | null;
+  status: string;
+  totalDeposits: number;
+  createdAt: string;
+}
 
 /* ─── Vault Meter Gauge ──────────────────────────────────────── */
 
@@ -201,6 +253,8 @@ const statusStyles: Record<string, string> = {
     "bg-accent-subtle text-accent-primary",
   failed:
     "bg-status-error-subtle text-status-error",
+  swept:
+    "bg-status-success-subtle text-status-success",
 };
 
 const typeStyles: Record<string, string> = {
@@ -225,16 +279,154 @@ function shortenAddr(addr: string): string {
   return `${addr.slice(0, 8)}...${addr.slice(-6)}`;
 }
 
+function formatUsd(val: number): string {
+  return `$${val.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+/* ─── Recent Transaction type (merged from deposits API) ──── */
+
+interface RecentTx {
+  id: string;
+  timestamp: string;
+  type: "deposit" | "withdrawal" | "sweep";
+  from: string;
+  to: string;
+  amount: string;
+  token: string;
+  status: string;
+}
+
 /* ─── Dashboard ──────────────────────────────────────────────── */
 
 export default function DashboardPage() {
+  const { user } = useClientAuth();
   const [modalOpen, setModalOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // API hook with mock data fallback
-  const { data: apiWallets } = useWallets();
-  void apiWallets;
+  // Data state
+  const [totalBalanceUsd, setTotalBalanceUsd] = useState(0);
+  const [composition, setComposition] = useState<{ label: string; percent: number }[]>([]);
+  const [activeWallets, setActiveWallets] = useState(0);
+  const [totalAddresses, setTotalAddresses] = useState(0);
+  const [pendingDeposits, setPendingDeposits] = useState(0);
+  const [confirmedToday, setConfirmedToday] = useState(0);
+  const [confirmedVolume, setConfirmedVolume] = useState(0);
+  const [recentTxs, setRecentTxs] = useState<RecentTx[]>([]);
 
-  const recentTxs = transactions.slice(0, 8);
+  useEffect(() => {
+    let cancelled = false;
+
+    async function fetchData() {
+      try {
+        setLoading(true);
+        setError(null);
+
+        // Fetch all data in parallel
+        const [walletsRes, depositsRes, depositAddressesRes] = await Promise.all([
+          clientFetch<{ success: boolean; wallets: ApiWallet[] }>('/v1/wallets').catch(() => ({ success: false, wallets: [] as ApiWallet[] })),
+          clientFetch<{ success: boolean; deposits: ApiDeposit[]; meta: { total: number } }>('/v1/deposits?limit=50').catch(() => ({ success: false, deposits: [] as ApiDeposit[], meta: { total: 0 } })),
+          clientFetch<{ success: boolean; addresses: ApiDepositAddress[]; meta: { total: number } }>('/v1/deposit-addresses?limit=1').catch(() => ({ success: false, addresses: [] as ApiDepositAddress[], meta: { total: 0 } })),
+        ]);
+
+        if (cancelled) return;
+
+        // Fetch balances for each wallet chain
+        const uniqueChainIds = [...new Set(walletsRes.wallets.filter(w => w.walletType === 'hot').map(w => w.chainId))];
+        const balanceResults = await Promise.all(
+          uniqueChainIds.map(chainId =>
+            clientFetch<{ success: boolean; balances: ApiBalance[] }>(`/v1/wallets/${chainId}/balances`).catch(() => ({ success: false, balances: [] as ApiBalance[] }))
+          )
+        );
+
+        if (cancelled) return;
+
+        // Compute total balance and composition
+        const balanceByChain: Record<string, number> = {};
+        let totalUsd = 0;
+        balanceResults.forEach((res, idx) => {
+          const chain = chainNames[uniqueChainIds[idx]] || `Chain ${uniqueChainIds[idx]}`;
+          let chainUsd = 0;
+          res.balances.forEach(b => {
+            chainUsd += parseFloat(b.balanceUsd || '0');
+          });
+          balanceByChain[chain] = chainUsd;
+          totalUsd += chainUsd;
+        });
+
+        setTotalBalanceUsd(totalUsd);
+
+        // Build composition
+        if (totalUsd > 0) {
+          const comp = Object.entries(balanceByChain)
+            .filter(([, usd]) => usd > 0)
+            .sort((a, b) => b[1] - a[1])
+            .map(([chain, usd]) => ({
+              label: chain,
+              percent: Math.round((usd / totalUsd) * 100),
+            }));
+          setComposition(comp);
+        } else {
+          setComposition([]);
+        }
+
+        // KPIs
+        setActiveWallets(walletsRes.wallets.filter(w => w.isActive && w.walletType === 'hot').length);
+        setTotalAddresses(depositAddressesRes.meta?.total ?? 0);
+
+        // Deposits KPIs
+        const pendingCount = depositsRes.deposits.filter(d => d.status === 'pending' || d.status === 'confirmed').length;
+        setPendingDeposits(pendingCount);
+
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const confirmedTodayList = depositsRes.deposits.filter(d =>
+          d.status === 'confirmed' || d.status === 'swept'
+        ).filter(d => d.detectedAt?.startsWith(todayStr));
+        setConfirmedToday(confirmedTodayList.length);
+        setConfirmedVolume(confirmedTodayList.reduce((sum, d) => sum + parseFloat(d.amountUsd || '0'), 0));
+
+        // Build recent transactions from deposits (limited to 8)
+        const txs: RecentTx[] = depositsRes.deposits.slice(0, 8).map(d => ({
+          id: d.id,
+          timestamp: d.detectedAt,
+          type: 'deposit' as const,
+          from: d.depositAddress,
+          to: d.depositAddress,
+          amount: `+${d.amount}`,
+          token: d.tokenSymbol,
+          status: d.status === 'swept' ? 'confirmed' : d.status,
+        }));
+        setRecentTxs(txs);
+      } catch (err: any) {
+        if (!cancelled) {
+          setError(err.message || 'Failed to load dashboard data');
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    fetchData();
+    return () => { cancelled = true; };
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="w-8 h-8 animate-spin text-accent-primary" />
+        <span className="ml-3 text-text-muted font-display">Loading dashboard...</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px]">
+        <div className="text-status-error text-body font-display mb-2">Error loading dashboard</div>
+        <div className="text-text-muted text-caption font-display">{error}</div>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -242,14 +434,14 @@ export default function DashboardPage() {
       <div className="flex justify-between items-start mb-section-gap">
         <div>
           <h1 className="text-heading text-text-primary font-display tracking-tight">
-            Welcome back, {clientInfo.name}
+            Welcome back, {user?.clientName ?? "Client"}
           </h1>
           <div className="flex items-center gap-2 mt-1">
             <span className="text-caption text-text-secondary font-display">
-              {clientInfo.name}
+              {user?.clientName ?? "Client"}
             </span>
             <span className="inline-flex items-center px-2 py-0.5 rounded-badge text-micro font-semibold bg-accent-subtle text-accent-primary uppercase tracking-[0.06em]">
-              {clientInfo.tier} Tier
+              {user?.tier ?? "Standard"} Tier
             </span>
           </div>
         </div>
@@ -280,14 +472,10 @@ export default function DashboardPage() {
       {/* Balance Overview: Vault Meter */}
       <div className="mb-section-gap">
         <VaultMeter
-          totalBalance="$2,847,100.00"
-          maxHistorical={3_000_000}
-          currentValue={2_847_100}
-          composition={[
-            { label: "BSC", percent: 58 },
-            { label: "ETH", percent: 28 },
-            { label: "Polygon", percent: 14 },
-          ]}
+          totalBalance={formatUsd(totalBalanceUsd)}
+          maxHistorical={Math.max(totalBalanceUsd * 1.2, 1)}
+          currentValue={totalBalanceUsd}
+          composition={composition.length > 0 ? composition : [{ label: "No data", percent: 100 }]}
         />
       </div>
 
@@ -295,25 +483,25 @@ export default function DashboardPage() {
       <div className="grid grid-cols-4 gap-stat-grid-gap mb-section-gap">
         <StatCard
           label="Active Wallets"
-          value="2,340"
-          sub="of 12,430 total"
+          value={activeWallets.toLocaleString()}
+          sub={`of ${totalAddresses.toLocaleString()} total addresses`}
           accent
         />
         <StatCard
           label="Pending Deposits"
-          value="12"
+          value={pendingDeposits.toString()}
           sub="Awaiting confirmations"
           warning
         />
         <StatCard
           label="Confirmed Today"
-          value="247"
-          sub="$123,400 volume"
+          value={confirmedToday.toString()}
+          sub={`${formatUsd(confirmedVolume)} volume`}
         />
         <StatCard
           label="Total Forwarders"
-          value="12,430"
-          sub="Across 3 chains"
+          value={totalAddresses.toLocaleString()}
+          sub={`Across ${composition.length} chains`}
         />
       </div>
 
@@ -362,52 +550,58 @@ export default function DashboardPage() {
 
         {/* Table Rows */}
         <div className="max-h-[380px] overflow-y-auto">
-          {recentTxs.map((tx) => (
-            <div
-              key={tx.id}
-              className="grid grid-cols-[90px_65px_95px_24px_95px_1fr_80px] gap-2 items-center px-card-p py-2.5 border-b border-border-subtle last:border-b-0 hover:bg-surface-hover transition-colors duration-fast"
-            >
-              <span className="font-mono text-text-muted text-code">
-                {formatTimestamp(tx.timestamp)}
-              </span>
-              <span
-                className={`inline-flex items-center justify-center px-1.5 py-0.5 rounded-badge text-micro font-semibold capitalize ${typeStyles[tx.type] ?? ""}`}
-              >
-                {tx.type}
-              </span>
-              <span
-                className="font-mono text-code text-text-secondary truncate"
-                title={tx.from}
-              >
-                {shortenAddr(tx.from)}
-              </span>
-              <span className="text-text-muted text-micro text-center">
-                &rarr;
-              </span>
-              <span
-                className="font-mono text-code text-text-primary truncate"
-                title={tx.to}
-              >
-                {shortenAddr(tx.to)}
-              </span>
-              <span
-                className={`text-right font-mono text-caption font-semibold ${
-                  tx.type === "withdrawal"
-                    ? "text-status-error"
-                    : tx.type === "sweep"
-                      ? "text-accent-primary"
-                      : "text-status-success"
-                }`}
-              >
-                {tx.amount} {tx.token}
-              </span>
-              <span
-                className={`inline-flex items-center justify-center px-1.5 py-0.5 rounded-badge text-micro font-semibold capitalize ${statusStyles[tx.status] ?? ""}`}
-              >
-                {tx.status}
-              </span>
+          {recentTxs.length === 0 ? (
+            <div className="px-card-p py-8 text-center text-text-muted font-display text-caption">
+              No recent transactions
             </div>
-          ))}
+          ) : (
+            recentTxs.map((tx) => (
+              <div
+                key={tx.id}
+                className="grid grid-cols-[90px_65px_95px_24px_95px_1fr_80px] gap-2 items-center px-card-p py-2.5 border-b border-border-subtle last:border-b-0 hover:bg-surface-hover transition-colors duration-fast"
+              >
+                <span className="font-mono text-text-muted text-code">
+                  {formatTimestamp(tx.timestamp)}
+                </span>
+                <span
+                  className={`inline-flex items-center justify-center px-1.5 py-0.5 rounded-badge text-micro font-semibold capitalize ${typeStyles[tx.type] ?? ""}`}
+                >
+                  {tx.type}
+                </span>
+                <span
+                  className="font-mono text-code text-text-secondary truncate"
+                  title={tx.from}
+                >
+                  {shortenAddr(tx.from)}
+                </span>
+                <span className="text-text-muted text-micro text-center">
+                  &rarr;
+                </span>
+                <span
+                  className="font-mono text-code text-text-primary truncate"
+                  title={tx.to}
+                >
+                  {shortenAddr(tx.to)}
+                </span>
+                <span
+                  className={`text-right font-mono text-caption font-semibold ${
+                    tx.type === "withdrawal"
+                      ? "text-status-error"
+                      : tx.type === "sweep"
+                        ? "text-accent-primary"
+                        : "text-status-success"
+                  }`}
+                >
+                  {tx.amount} {tx.token}
+                </span>
+                <span
+                  className={`inline-flex items-center justify-center px-1.5 py-0.5 rounded-badge text-micro font-semibold capitalize ${statusStyles[tx.status] ?? ""}`}
+                >
+                  {tx.status}
+                </span>
+              </div>
+            ))
+          )}
         </div>
       </div>
 

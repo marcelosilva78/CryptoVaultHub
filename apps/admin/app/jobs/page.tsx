@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Clock,
   RefreshCw,
@@ -15,200 +15,83 @@ import {
 import { StatCard } from "@/components/stat-card";
 import { DataTable, TableCell, TableRow } from "@/components/data-table";
 import { Badge } from "@/components/badge";
+import { adminFetch } from "@/lib/api";
 import type { ComponentProps } from "react";
-
-// ── API helpers ───────────────────────────────────────────────────────────
-
-const ADMIN_API = process.env.NEXT_PUBLIC_ADMIN_API_URL || "http://localhost:3001";
-function getToken() { return typeof window !== "undefined" ? localStorage.getItem("cvh_admin_token") ?? "" : ""; }
-async function adminFetch(path: string, options: RequestInit = {}) {
-  const res = await fetch(`${ADMIN_API}${path}`, { ...options, headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}`, ...options.headers } });
-  if (!res.ok) { const e = await res.json().catch(() => ({ message: "Request failed" })); throw new Error(e.message || `HTTP ${res.status}`); }
-  return res.json();
-}
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
+// These interfaces match the backend service types from job-management.service.ts
+
 interface JobRow {
   id: string;
+  jobUid: string;
   jobType: string;
   queueName: string;
   status: string;
   priority: string;
   clientId: string | null;
+  projectId: string | null;
   chainId: number | null;
   attemptCount: number;
   maxAttempts: number;
   createdAt: string;
   startedAt: string | null;
   completedAt: string | null;
-  durationMs: number | null;
+  failedAt: string | null;
+  correlationId: string | null;
+  payload?: Record<string, unknown>;
+  result?: Record<string, unknown> | null;
 }
 
 interface DeadLetterRow {
   id: string;
+  originalJobId: string;
   jobUid: string;
   jobType: string;
   queueName: string;
   clientId: string | null;
+  projectId: string | null;
   lastError: string | null;
   totalAttempts: number;
   deadLetteredAt: string;
+  reprocessedAt: string | null;
+  reprocessedJobId: string | null;
   status: string;
+  reviewedBy: string | null;
+  reviewNotes: string | null;
 }
 
 interface QueueStats {
   totalJobs: number;
+  pendingCount: number;
+  queuedCount: number;
   processingCount: number;
+  completedCount: number;
   failedCount: number;
   deadLetterCount: number;
-  completedCount: number;
-  pendingCount: number;
+  canceledCount: number;
   avgDurationMs: number | null;
   stuckCount: number;
+  jobsByType: Array<{ jobType: string; count: number }>;
+  jobsByQueue: Array<{ queueName: string; count: number }>;
 }
 
-// ── Mock data ──────────────────────────────────────────────────────────────
+// ── Fallback data (used only when API is unreachable) ─────────────────────
 
-const mockStats: QueueStats = {
-  totalJobs: 12847,
-  processingCount: 8,
-  failedCount: 23,
-  deadLetterCount: 5,
-  completedCount: 12780,
-  pendingCount: 31,
-  avgDurationMs: 2340,
-  stuckCount: 1,
+const fallbackStats: QueueStats = {
+  totalJobs: 0,
+  pendingCount: 0,
+  queuedCount: 0,
+  processingCount: 0,
+  completedCount: 0,
+  failedCount: 0,
+  deadLetterCount: 0,
+  canceledCount: 0,
+  avgDurationMs: null,
+  stuckCount: 0,
+  jobsByType: [],
+  jobsByQueue: [],
 };
-
-const mockJobs: JobRow[] = [
-  {
-    id: "1001",
-    jobType: "wallet.create",
-    queueName: "wallet-operations",
-    status: "completed",
-    priority: "standard",
-    clientId: "3",
-    chainId: 1,
-    attemptCount: 1,
-    maxAttempts: 3,
-    createdAt: "2026-04-09T14:02:15.000Z",
-    startedAt: "2026-04-09T14:02:16.000Z",
-    completedAt: "2026-04-09T14:02:18.340Z",
-    durationMs: 2340,
-  },
-  {
-    id: "1002",
-    jobType: "tx.broadcast",
-    queueName: "transaction-queue",
-    status: "processing",
-    priority: "critical",
-    clientId: "1",
-    chainId: 56,
-    attemptCount: 1,
-    maxAttempts: 3,
-    createdAt: "2026-04-09T14:05:30.000Z",
-    startedAt: "2026-04-09T14:05:31.000Z",
-    completedAt: null,
-    durationMs: null,
-  },
-  {
-    id: "1003",
-    jobType: "webhook.deliver",
-    queueName: "notifications",
-    status: "failed",
-    priority: "standard",
-    clientId: "5",
-    chainId: null,
-    attemptCount: 3,
-    maxAttempts: 3,
-    createdAt: "2026-04-09T13:45:00.000Z",
-    startedAt: "2026-04-09T13:45:01.000Z",
-    completedAt: null,
-    durationMs: null,
-  },
-  {
-    id: "1004",
-    jobType: "kyt.screen",
-    queueName: "compliance",
-    status: "pending",
-    priority: "standard",
-    clientId: "2",
-    chainId: 137,
-    attemptCount: 0,
-    maxAttempts: 3,
-    createdAt: "2026-04-09T14:10:00.000Z",
-    startedAt: null,
-    completedAt: null,
-    durationMs: null,
-  },
-  {
-    id: "1005",
-    jobType: "gas.refill",
-    queueName: "wallet-operations",
-    status: "completed",
-    priority: "bulk",
-    clientId: "1",
-    chainId: 1,
-    attemptCount: 1,
-    maxAttempts: 3,
-    createdAt: "2026-04-09T13:30:00.000Z",
-    startedAt: "2026-04-09T13:30:01.000Z",
-    completedAt: "2026-04-09T13:30:04.120Z",
-    durationMs: 3120,
-  },
-  {
-    id: "1006",
-    jobType: "tx.confirm",
-    queueName: "transaction-queue",
-    status: "failed",
-    priority: "critical",
-    clientId: "4",
-    chainId: 42161,
-    attemptCount: 3,
-    maxAttempts: 3,
-    createdAt: "2026-04-09T12:00:00.000Z",
-    startedAt: "2026-04-09T12:00:01.000Z",
-    completedAt: null,
-    durationMs: null,
-  },
-];
-
-const mockDeadLetterJobs: DeadLetterRow[] = [
-  {
-    id: "1",
-    jobUid: "dl-abc-001",
-    jobType: "webhook.deliver",
-    queueName: "notifications",
-    clientId: "5",
-    lastError: "Connection refused: https://pay.gw/callbacks returned 502",
-    totalAttempts: 3,
-    deadLetteredAt: "2026-04-09T11:30:00.000Z",
-    status: "pending_review",
-  },
-  {
-    id: "2",
-    jobUid: "dl-abc-002",
-    jobType: "tx.broadcast",
-    queueName: "transaction-queue",
-    clientId: "2",
-    lastError: "Nonce already used: nonce=142 on chain 56",
-    totalAttempts: 3,
-    deadLetteredAt: "2026-04-08T22:15:00.000Z",
-    status: "pending_review",
-  },
-  {
-    id: "3",
-    jobUid: "dl-abc-003",
-    jobType: "gas.refill",
-    queueName: "wallet-operations",
-    clientId: "1",
-    lastError: "Insufficient funds in gas tank",
-    totalAttempts: 3,
-    deadLetteredAt: "2026-04-08T18:45:00.000Z",
-    status: "pending_review",
-  },
-];
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -270,17 +153,64 @@ const chainNames: Record<number, string> = {
 export default function JobsPage() {
   const [activeTab, setActiveTab] = useState<Tab>("active");
   const [batchRetrying, setBatchRetrying] = useState(false);
-  const stats = mockStats;
+  const [stats, setStats] = useState<QueueStats>(fallbackStats);
+  const [activeJobs, setActiveJobs] = useState<JobRow[]>([]);
+  const [failedJobs, setFailedJobs] = useState<JobRow[]>([]);
+  const [deadLetterJobs, setDeadLetterJobs] = useState<DeadLetterRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const activeJobs = mockJobs.filter(
-    (j) => j.status === "pending" || j.status === "queued" || j.status === "processing" || j.status === "completed"
-  );
-  const failedJobs = mockJobs.filter(
-    (j) => j.status === "failed" || j.status === "dead_letter"
-  );
+  const fetchData = useCallback(async () => {
+    try {
+      setError(null);
+      const [statsRes, activeRes, failedRes, dlRes] = await Promise.all([
+        adminFetch<{ success: boolean; stats: QueueStats }>("/job-management/stats"),
+        adminFetch<{ success: boolean; items: JobRow[]; total: number }>("/job-management/jobs?status=processing,queued&limit=50"),
+        adminFetch<{ success: boolean; items: JobRow[]; total: number }>("/job-management/jobs?status=failed&limit=50"),
+        adminFetch<{ success: boolean; items: DeadLetterRow[]; total: number }>("/job-management/dead-letter?limit=50"),
+      ]);
+      setStats(statsRes.stats);
+      setActiveJobs(activeRes.items ?? []);
+      setFailedJobs(failedRes.items ?? []);
+      setDeadLetterJobs(dlRes.items ?? []);
+    } catch (err: any) {
+      console.error("Failed to load job data:", err);
+      setError(err.message ?? "Failed to load job data");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="w-6 h-6 animate-spin text-accent-primary" />
+        <span className="ml-2 text-text-secondary font-display">Loading job data...</span>
+      </div>
+    );
+  }
 
   return (
     <>
+      {/* ── Error Banner ── */}
+      {error && (
+        <div className="flex items-center gap-2 bg-status-error/10 border border-status-error/30 text-status-error rounded-card px-4 py-2.5 mb-4 text-caption font-display">
+          <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+          <span>{error}</span>
+          <button
+            onClick={fetchData}
+            className="ml-auto flex items-center gap-1 text-caption font-semibold hover:underline"
+          >
+            <RefreshCw className="w-3 h-3" />
+            Retry
+          </button>
+        </div>
+      )}
+
       {/* ── Stats Cards ── */}
       <div className="grid grid-cols-4 gap-stat-grid-gap mb-section-gap">
         <StatCard
@@ -391,7 +321,13 @@ export default function JobsPage() {
                   {formatTime(job.createdAt)}
                 </div>
               </TableCell>
-              <TableCell mono>{formatDuration(job.durationMs)}</TableCell>
+              <TableCell mono>
+                {formatDuration(
+                  job.startedAt && job.completedAt
+                    ? new Date(job.completedAt).getTime() - new Date(job.startedAt).getTime()
+                    : null
+                )}
+              </TableCell>
             </TableRow>
           ))}
         </DataTable>
@@ -420,6 +356,7 @@ export default function JobsPage() {
                 try {
                   const ids = failedJobs.map((j: any) => j.id);
                   await adminFetch("/job-management/jobs/batch-retry", { method: "POST", body: JSON.stringify({ jobIds: ids }) });
+                  await fetchData();
                 } catch (err: any) { alert(err.message); }
                 finally { setBatchRetrying(false); }
               }}
@@ -466,7 +403,7 @@ export default function JobsPage() {
                     title="Retry"
                     onClick={async () => {
                       if (!confirm(`Retry job ${job.id}?`)) return;
-                      try { await adminFetch(`/job-management/jobs/${job.id}/retry`, { method: "POST" }); }
+                      try { await adminFetch(`/job-management/jobs/${job.id}/retry`, { method: "POST" }); await fetchData(); }
                       catch (err: any) { alert(err.message); }
                     }}
                   >
@@ -495,7 +432,7 @@ export default function JobsPage() {
             "Actions",
           ]}
         >
-          {mockDeadLetterJobs.map((dl) => (
+          {deadLetterJobs.map((dl) => (
             <TableRow key={dl.id} highlight>
               <TableCell mono>
                 <span className="text-text-muted">{dl.jobUid}</span>
@@ -532,7 +469,7 @@ export default function JobsPage() {
                     title="Reprocess"
                     onClick={async () => {
                       if (!confirm(`Reprocess job ${dl.id}?`)) return;
-                      try { await adminFetch(`/job-management/dead-letter/${dl.id}/reprocess`, { method: "POST" }); }
+                      try { await adminFetch(`/job-management/dead-letter/${dl.id}/reprocess`, { method: "POST" }); await fetchData(); }
                       catch (err: any) { alert(err.message); }
                     }}
                   >
@@ -544,7 +481,7 @@ export default function JobsPage() {
                     title="Discard"
                     onClick={async () => {
                       if (!confirm(`Permanently discard job ${dl.id}? This cannot be undone.`)) return;
-                      try { await adminFetch(`/job-management/dead-letter/${dl.id}/discard`, { method: "POST" }); }
+                      try { await adminFetch(`/job-management/dead-letter/${dl.id}/discard`, { method: "POST" }); await fetchData(); }
                       catch (err: any) { alert(err.message); }
                     }}
                   >

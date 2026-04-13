@@ -3,23 +3,36 @@
 import { useState, useRef, useEffect } from "react";
 import { Eye, ChevronDown, Search } from "lucide-react";
 import { useImpersonation } from "@/lib/impersonation-context";
+import { adminFetch } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
-/** Mock client list for dropdown — will be replaced by API call */
-const mockClients = [
-  { clientUid: "cli_001", clientName: "Corretora XYZ" },
-  { clientUid: "cli_002", clientName: "GatewayABC" },
-  { clientUid: "cli_003", clientName: "PayDEF Corp" },
-  { clientUid: "cli_004", clientName: "ExchGHI Ltd" },
-  { clientUid: "cli_005", clientName: "WalletJKL" },
-];
+interface ClientOption {
+  clientUid: string;
+  clientName: string;
+}
 
 export function ImpersonationDropdown() {
   const { isImpersonating, target, startImpersonation, stopImpersonation } =
     useImpersonation();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [clients, setClients] = useState<ClientOption[]>([]);
   const ref = useRef<HTMLDivElement>(null);
+
+  /* Fetch clients list */
+  useEffect(() => {
+    adminFetch<any>("/clients")
+      .then((data) => {
+        const list = Array.isArray(data) ? data : data?.clients ?? data?.data ?? [];
+        setClients(
+          list.map((c: any) => ({
+            clientUid: c.slug || `cli_${c.id}`,
+            clientName: c.name || `Client ${c.id}`,
+          })),
+        );
+      })
+      .catch(() => {});
+  }, []);
 
   /* Close on outside click */
   useEffect(() => {
@@ -32,7 +45,7 @@ export function ImpersonationDropdown() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const filtered = mockClients.filter((c) =>
+  const filtered = clients.filter((c) =>
     c.clientName.toLowerCase().includes(search.toLowerCase()),
   );
 

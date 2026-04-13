@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/badge";
 import { ConfirmationBar } from "@/components/confirmation-bar";
@@ -12,14 +13,67 @@ import {
 import type { TransactionFilters } from "@/components/transaction-filters";
 import { StatCard } from "@/components/stat-card";
 import { JsonViewerV2 } from "@/components/json-viewer-v2";
-import { transactions, transactionSummary } from "@/lib/mock-data";
+import { clientFetch } from "@/lib/api";
 import type { Transaction } from "@/lib/mock-data";
+
+/* ─── Chain ID → Name map ───────────────────────────────────── */
+const chainNames: Record<number, string> = {
+  1: "ETH",
+  56: "BSC",
+  137: "Polygon",
+  42161: "Arbitrum",
+  10: "Optimism",
+  43114: "Avalanche",
+  8453: "Base",
+};
+
+/* ─── API response types ────────────────────────────────────── */
+interface ApiDeposit {
+  id: string;
+  depositAddress: string;
+  chainId: number;
+  tokenSymbol: string;
+  tokenAddress?: string;
+  amount: string;
+  amountUsd: string;
+  status: string;
+  txHash: string;
+  blockNumber: number;
+  confirmations: number;
+  requiredConfirmations: number;
+  sweepTxHash?: string | null;
+  detectedAt: string;
+  confirmedAt?: string | null;
+  sweptAt?: string | null;
+}
+
+interface ApiWithdrawal {
+  id: string;
+  chainId: number;
+  chainName?: string;
+  tokenSymbol: string;
+  toAddress: string;
+  amount: string;
+  amountUsd: string;
+  status: string;
+  txHash?: string | null;
+  memo?: string | null;
+  createdAt: string;
+  confirmedAt?: string | null;
+}
 
 const statusBadge: Record<string, "success" | "warning" | "error" | "accent"> = {
   confirmed: "success",
   confirming: "warning",
   pending: "accent",
   failed: "error",
+  swept: "success",
+  pending_approval: "accent",
+  pending_kyt: "accent",
+  pending_signing: "accent",
+  pending_broadcast: "accent",
+  broadcasted: "warning",
+  rejected: "error",
 };
 
 const typeBadge: Record<string, "success" | "warning" | "accent"> = {
@@ -29,12 +83,12 @@ const typeBadge: Record<string, "success" | "warning" | "accent"> = {
 };
 
 function shortenHash(hash: string): string {
-  if (hash.length <= 16) return hash;
+  if (!hash || hash.length <= 16) return hash || "";
   return `${hash.slice(0, 10)}...${hash.slice(-8)}`;
 }
 
 function shortenAddr(addr: string): string {
-  if (addr.length <= 14) return addr;
+  if (!addr || addr.length <= 14) return addr || "";
   return `${addr.slice(0, 8)}...${addr.slice(-6)}`;
 }
 
@@ -48,13 +102,171 @@ function formatTimestamp(iso: string): string {
   return `${month} ${day}, ${h}:${m}:${s}`;
 }
 
+/** Map API status to our display status */
+function normalizeStatus(status: string): string {
+  const map: Record<string, string> = {
+    pending: "pending",
+    confirmed: "confirmed",
+    swept: "confirmed",
+    failed: "failed",
+    pending_approval: "pending",
+    pending_kyt: "pending",
+    pending_signing: "pending",
+    pending_broadcast: "pending",
+    broadcasted: "confirming",
+    confirming: "confirming",
+    rejected: "failed",
+  };
+  return map[status] || status;
+}
+
 export default function TransactionsPage() {
   const [filters, setFilters] = useState<TransactionFilters>(defaultFilters);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [modalTx, setModalTx] = useState<Transaction | null>(null);
 
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [allTransactions, setAllTransactions] = useState<Transaction[]>([]);
+  const [totalVolumeIn, setTotalVolumeIn] = useState(0);
+  const [totalVolumeOut, setTotalVolumeOut] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function fetchData() {
+      try {
+        setLoading(true);
+        setError(null);
+
+        // Fetch deposits and withdrawals in parallel
+        const [depositsRes, withdrawalsRes] = await Promise.all([
+          clientFetch<{ success: boolean; deposits: ApiDeposit[]; meta: { total: number } }>('/v1/deposits?limit=100'),
+          clientFetch<{ success: boolean; withdrawals: ApiWithdrawal[]; meta: { total: number } }>('/v1/withdrawals?limit=100'),
+        ]);
+
+        if (cancelled) return;
+
+        let volIn = 0;
+        let volOut = 0;
+
+        // Transform deposits to Transaction shape
+        const depositTxs: Transaction[] = depositsRes.deposits.map((d, idx) => {
+          const amountNum = parseFloat(d.amount || '0');
+          volIn += amountNum;
+          const chain = chainNames[d.chainId] || `Chain ${d.chainId}`;
+          const displayStatus = normalizeStatus(d.status);
+
+          return {
+            id: d.id || `dep-${idx}`,
+            timestamp: d.detectedAt,
+            type: "deposit" as const,
+            from: d.depositAddress,
+            to: d.depositAddress,
+            amount: `+${d.amount}`,
+            amountRaw: amountNum,
+            token: d.tokenSymbol,
+            chain,
+            status: displayStatus as any,
+            confirmations: d.confirmations ?? 0,
+            confirmationsRequired: d.requiredConfirmations ?? 12,
+            txHash: d.txHash || "",
+            blockNumber: d.blockNumber ?? 0,
+            blockHash: "",
+            gasUsed: "N/A",
+            gasPrice: "N/A",
+            gasCostUsd: "N/A",
+            nonce: 0,
+            contractAddress: d.tokenAddress || null,
+            eventLogs: [],
+            rawJson: {
+              id: d.id,
+              depositAddress: d.depositAddress,
+              chainId: d.chainId,
+              tokenSymbol: d.tokenSymbol,
+              amount: d.amount,
+              amountUsd: d.amountUsd,
+              status: d.status,
+              txHash: d.txHash,
+              blockNumber: d.blockNumber,
+              confirmations: d.confirmations,
+              requiredConfirmations: d.requiredConfirmations,
+              sweepTxHash: d.sweepTxHash,
+              detectedAt: d.detectedAt,
+              confirmedAt: d.confirmedAt,
+              sweptAt: d.sweptAt,
+            },
+          };
+        });
+
+        // Transform withdrawals to Transaction shape
+        const withdrawalTxs: Transaction[] = withdrawalsRes.withdrawals.map((w, idx) => {
+          const amountNum = parseFloat(w.amount || '0');
+          volOut += amountNum;
+          const chain = w.chainName || chainNames[w.chainId] || `Chain ${w.chainId}`;
+          const displayStatus = normalizeStatus(w.status);
+
+          return {
+            id: w.id || `wd-${idx}`,
+            timestamp: w.createdAt,
+            type: "withdrawal" as const,
+            from: "Hot Wallet",
+            to: w.toAddress,
+            amount: `-${w.amount}`,
+            amountRaw: amountNum,
+            token: w.tokenSymbol,
+            chain,
+            status: displayStatus as any,
+            confirmations: displayStatus === 'confirmed' ? 15 : displayStatus === 'confirming' ? 6 : 0,
+            confirmationsRequired: 15,
+            txHash: w.txHash || "",
+            blockNumber: 0,
+            blockHash: "",
+            gasUsed: "N/A",
+            gasPrice: "N/A",
+            gasCostUsd: "N/A",
+            nonce: 0,
+            contractAddress: null,
+            eventLogs: [],
+            rawJson: {
+              id: w.id,
+              chainId: w.chainId,
+              tokenSymbol: w.tokenSymbol,
+              toAddress: w.toAddress,
+              amount: w.amount,
+              amountUsd: w.amountUsd,
+              status: w.status,
+              txHash: w.txHash,
+              memo: w.memo,
+              createdAt: w.createdAt,
+              confirmedAt: w.confirmedAt,
+            },
+          };
+        });
+
+        // Merge and sort by timestamp (newest first)
+        const merged = [...depositTxs, ...withdrawalTxs].sort(
+          (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        );
+
+        setAllTransactions(merged);
+        setTotalVolumeIn(volIn);
+        setTotalVolumeOut(volOut);
+      } catch (err: any) {
+        if (!cancelled) {
+          setError(err.message || 'Failed to load transactions');
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    fetchData();
+    return () => { cancelled = true; };
+  }, []);
+
   const filtered = useMemo(() => {
-    return transactions.filter((tx) => {
+    return allTransactions.filter((tx) => {
       if (filters.token !== "all" && tx.token !== filters.token) return false;
       if (filters.type !== "all" && tx.type !== filters.type) return false;
       if (filters.status !== "all" && tx.status !== filters.status) return false;
@@ -86,7 +298,7 @@ export default function TransactionsPage() {
       }
       return true;
     });
-  }, [filters]);
+  }, [filters, allTransactions]);
 
   const filteredSummary = useMemo(() => {
     let volIn = 0;
@@ -101,6 +313,24 @@ export default function TransactionsPage() {
       count: filtered.length,
     };
   }, [filtered]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="w-8 h-8 animate-spin text-accent-primary" />
+        <span className="ml-3 text-text-muted font-display">Loading transactions...</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px]">
+        <div className="text-status-error text-body font-display mb-2">Error loading transactions</div>
+        <div className="text-text-muted text-caption font-display">{error}</div>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -128,24 +358,24 @@ export default function TransactionsPage() {
       <div className="grid grid-cols-4 gap-stat-grid-gap mb-section-gap">
         <StatCard
           label="Volume In"
-          value={transactionSummary.totalVolumeIn}
+          value={`$${totalVolumeIn.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
           valueColor="text-status-success"
           sub={`${filteredSummary.count > 0 ? `$${filteredSummary.volumeIn.toLocaleString()} filtered` : "No matches"}`}
         />
         <StatCard
           label="Volume Out"
-          value={transactionSummary.totalVolumeOut}
+          value={`$${totalVolumeOut.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
           valueColor="text-status-warning"
           sub={`$${filteredSummary.volumeOut.toLocaleString()} filtered`}
         />
         <StatCard
           label="Transaction Count"
-          value={transactionSummary.transactionCount}
+          value={allTransactions.length.toString()}
           sub={`${filteredSummary.count} shown`}
         />
         <StatCard
           label="Avg Confirmation"
-          value={transactionSummary.avgConfirmationTime}
+          value="--"
           sub="Across all chains"
         />
       </div>
@@ -320,7 +550,7 @@ function TransactionRow({
           </span>
         </td>
         <td className="px-3 py-2.5 border-b border-border-subtle">
-          <Badge variant={statusBadge[tx.status]} className="text-[9px] capitalize" dot>
+          <Badge variant={statusBadge[tx.status] || "accent"} className="text-[9px] capitalize" dot>
             {tx.status}
           </Badge>
         </td>
@@ -331,16 +561,20 @@ function TransactionRow({
           />
         </td>
         <td className="px-3 py-2.5 border-b border-border-subtle">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onViewDetail();
-            }}
-            className="font-mono text-[10px] text-accent-primary cursor-pointer hover:underline bg-transparent border-none"
-            title={tx.txHash}
-          >
-            {shortenHash(tx.txHash)}
-          </button>
+          {tx.txHash ? (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onViewDetail();
+              }}
+              className="font-mono text-[10px] text-accent-primary cursor-pointer hover:underline bg-transparent border-none"
+              title={tx.txHash}
+            >
+              {shortenHash(tx.txHash)}
+            </button>
+          ) : (
+            <span className="text-text-muted text-[10px]">--</span>
+          )}
         </td>
       </tr>
 
@@ -353,7 +587,7 @@ function TransactionRow({
                 className="grid grid-cols-4 gap-4 mb-3"
                 style={{ animation: "stagger-in 0.3s ease-out forwards" }}
               >
-                <ExpandedField label="Block Number" value={`#${tx.blockNumber.toLocaleString()}`} />
+                <ExpandedField label="Block Number" value={tx.blockNumber ? `#${tx.blockNumber.toLocaleString()}` : "N/A"} />
                 <ExpandedField label="Gas Used" value={tx.gasUsed} />
                 <ExpandedField label="Gas Price" value={tx.gasPrice} />
                 <ExpandedField label="Gas Cost" value={tx.gasCostUsd} />
@@ -405,12 +639,14 @@ function TransactionRow({
                 >
                   View Full Details
                 </button>
-                <button
-                  onClick={() => navigator.clipboard.writeText(tx.txHash)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-button font-display text-caption font-semibold cursor-pointer transition-all duration-fast bg-transparent text-text-secondary border border-border-default hover:border-accent-primary hover:text-text-primary"
-                >
-                  Copy TX Hash
-                </button>
+                {tx.txHash && (
+                  <button
+                    onClick={() => navigator.clipboard.writeText(tx.txHash)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-button font-display text-caption font-semibold cursor-pointer transition-all duration-fast bg-transparent text-text-secondary border border-border-default hover:border-accent-primary hover:text-text-primary"
+                  >
+                    Copy TX Hash
+                  </button>
+                )}
               </div>
             </div>
           </td>

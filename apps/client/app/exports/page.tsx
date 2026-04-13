@@ -1,92 +1,65 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { DataTable } from "@/components/data-table";
 import { Badge } from "@/components/badge";
 import { StatCard } from "@/components/stat-card";
-import { Download, Plus, FileSpreadsheet, FileJson, FileText } from "lucide-react";
+import { Download, Plus, FileSpreadsheet, FileJson, FileText, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { clientFetch } from "@/lib/api";
 
-/* ── Mock data ───────────────────────────────────────────────── */
-type ExportStatus = "completed" | "processing" | "pending" | "failed";
+/* ── Types (from backend API) ──────────────────────────────────── */
+type ExportStatus = "completed" | "processing" | "pending" | "failed" | "expired";
 
 interface ExportRow {
-  request_uid: string;
-  export_type: string;
-  format: "CSV" | "XLSX" | "JSON";
+  id: number;
+  requestUid: string;
+  exportType: string;
+  format: string;
   status: ExportStatus;
-  total_rows: number;
-  file_size: string;
-  created_at: string;
+  totalRows: number;
+  fileSize: string | null;
+  createdAt: string;
 }
 
-const mockExports: ExportRow[] = [
-  {
-    request_uid: "exp_a1b2c3d4",
-    export_type: "Deposits",
-    format: "CSV",
-    status: "completed",
-    total_rows: 12450,
-    file_size: "2.3 MB",
-    created_at: "2026-04-09 14:32",
-  },
-  {
-    request_uid: "exp_e5f6g7h8",
-    export_type: "Transactions",
-    format: "XLSX",
-    status: "completed",
-    total_rows: 34200,
-    file_size: "8.7 MB",
-    created_at: "2026-04-09 13:15",
-  },
-  {
-    request_uid: "exp_i9j0k1l2",
-    export_type: "Withdrawals",
-    format: "JSON",
-    status: "processing",
-    total_rows: 0,
-    file_size: "--",
-    created_at: "2026-04-09 14:48",
-  },
-  {
-    request_uid: "exp_m3n4o5p6",
-    export_type: "Deposits",
-    format: "CSV",
-    status: "pending",
-    total_rows: 0,
-    file_size: "--",
-    created_at: "2026-04-09 14:50",
-  },
-  {
-    request_uid: "exp_q7r8s9t0",
-    export_type: "Transactions",
-    format: "XLSX",
-    status: "failed",
-    total_rows: 0,
-    file_size: "--",
-    created_at: "2026-04-09 10:22",
-  },
-];
-
-const statusVariant: Record<ExportStatus, "success" | "warning" | "neutral" | "error"> = {
+const statusVariant: Record<string, "success" | "warning" | "neutral" | "error"> = {
   completed: "success",
   processing: "warning",
   pending: "neutral",
   failed: "error",
+  expired: "error",
 };
 
 const formatIcon: Record<string, React.ElementType> = {
+  csv: FileText,
   CSV: FileText,
+  xlsx: FileSpreadsheet,
   XLSX: FileSpreadsheet,
+  json: FileJson,
   JSON: FileJson,
 };
 
 /* ── Export Dialog ────────────────────────────────────────────── */
-function ExportDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+function ExportDialog({
+  open,
+  onClose,
+  onSubmit,
+  submitting,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSubmit: (data: { exportType: string; format: string; fromDate?: string; toDate?: string }) => void;
+  submitting: boolean;
+}) {
+  const [exportType, setExportType] = useState("deposits");
+  const [format, setFormat] = useState("csv");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center">
+    <div className="fixed inset-0 z-[200] flex items-start justify-center pt-16 pb-4 overflow-y-auto">
       <div
         className="absolute inset-0 bg-black/60 backdrop-blur-sm"
         onClick={onClose}
@@ -106,10 +79,14 @@ function ExportDialog({ open, onClose }: { open: boolean; onClose: () => void })
             <label className="block text-caption font-semibold text-text-secondary mb-1.5 font-display">
               Data Type
             </label>
-            <select className="w-full bg-surface-elevated border border-border-default rounded-button px-3 py-2 text-body text-text-primary font-display focus:outline-none focus:border-accent-primary">
-              <option>Deposits</option>
-              <option>Withdrawals</option>
-              <option>Transactions</option>
+            <select
+              value={exportType}
+              onChange={(e) => setExportType(e.target.value)}
+              className="w-full bg-surface-elevated border border-border-default rounded-button px-3 py-2 text-body text-text-primary font-display focus:outline-none focus:border-accent-primary"
+            >
+              <option value="deposits">Deposits</option>
+              <option value="withdrawals">Withdrawals</option>
+              <option value="transactions">Transactions</option>
             </select>
           </div>
 
@@ -118,15 +95,21 @@ function ExportDialog({ open, onClose }: { open: boolean; onClose: () => void })
               Format
             </label>
             <div className="flex gap-2">
-              {(["CSV", "XLSX", "JSON"] as const).map((fmt) => {
+              {(["csv", "xlsx", "json"] as const).map((fmt) => {
                 const Icon = formatIcon[fmt];
+                const isSelected = format === fmt;
                 return (
                   <button
                     key={fmt}
-                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 border border-border-default rounded-button text-caption font-semibold text-text-secondary hover:border-accent-primary hover:text-accent-primary transition-all duration-fast font-display"
+                    onClick={() => setFormat(fmt)}
+                    className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 border rounded-button text-caption font-semibold transition-all duration-fast font-display ${
+                      isSelected
+                        ? "border-accent-primary text-accent-primary bg-accent-subtle"
+                        : "border-border-default text-text-secondary hover:border-accent-primary hover:text-accent-primary"
+                    }`}
                   >
                     <Icon className="w-3.5 h-3.5" />
-                    {fmt}
+                    {fmt.toUpperCase()}
                   </button>
                 );
               })}
@@ -140,6 +123,8 @@ function ExportDialog({ open, onClose }: { open: boolean; onClose: () => void })
               </label>
               <input
                 type="date"
+                value={fromDate}
+                onChange={(e) => setFromDate(e.target.value)}
                 className="w-full bg-surface-elevated border border-border-default rounded-button px-3 py-2 text-body text-text-primary font-display focus:outline-none focus:border-accent-primary"
               />
             </div>
@@ -149,6 +134,8 @@ function ExportDialog({ open, onClose }: { open: boolean; onClose: () => void })
               </label>
               <input
                 type="date"
+                value={toDate}
+                onChange={(e) => setToDate(e.target.value)}
                 className="w-full bg-surface-elevated border border-border-default rounded-button px-3 py-2 text-body text-text-primary font-display focus:outline-none focus:border-accent-primary"
               />
             </div>
@@ -163,9 +150,11 @@ function ExportDialog({ open, onClose }: { open: boolean; onClose: () => void })
             Cancel
           </button>
           <button
-            onClick={onClose}
-            className="px-4 py-2 text-caption font-semibold text-accent-text bg-accent-primary rounded-button hover:bg-accent-hover transition-colors duration-fast font-display"
+            onClick={() => onSubmit({ exportType, format, fromDate: fromDate || undefined, toDate: toDate || undefined })}
+            disabled={submitting}
+            className="px-4 py-2 text-caption font-semibold text-accent-text bg-accent-primary rounded-button hover:bg-accent-hover transition-colors duration-fast font-display disabled:opacity-50 flex items-center gap-1.5"
           >
+            {submitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
             Request Export
           </button>
         </div>
@@ -176,18 +165,100 @@ function ExportDialog({ open, onClose }: { open: boolean; onClose: () => void })
 
 /* ── Page ─────────────────────────────────────────────────────── */
 export default function ClientExportsPage() {
+  const [exports, setExports] = useState<ExportRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
-  const completed = mockExports.filter((e) => e.status === "completed").length;
-  const pending = mockExports.filter(
+  const fetchExports = useCallback(async () => {
+    try {
+      const res = await clientFetch<{ requests: ExportRow[] }>("/v1/exports");
+      setExports(res.requests ?? []);
+    } catch (err: any) {
+      setError(err.message || "Failed to load exports");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchExports();
+  }, [fetchExports]);
+
+  const handleCreateExport = async (data: { exportType: string; format: string; fromDate?: string; toDate?: string }) => {
+    setSubmitting(true);
+    try {
+      const filters: Record<string, string> = {};
+      if (data.fromDate) filters.fromDate = data.fromDate;
+      if (data.toDate) filters.toDate = data.toDate;
+
+      await clientFetch("/v1/exports", {
+        method: "POST",
+        body: JSON.stringify({
+          exportType: data.exportType,
+          format: data.format,
+          filters: Object.keys(filters).length > 0 ? filters : undefined,
+        }),
+      });
+      setDialogOpen(false);
+      // Refresh list
+      const res = await clientFetch<{ requests: ExportRow[] }>("/v1/exports");
+      setExports(res.requests ?? []);
+    } catch (err: any) {
+      setError(err.message || "Failed to create export");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDownload = (requestUid: string) => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("cvh_client_token") ?? "" : "";
+    const baseUrl = process.env.NEXT_PUBLIC_CLIENT_API_URL || "http://localhost:3002/client";
+    window.open(`${baseUrl}/v1/exports/${requestUid}/download?token=${token}`, "_blank");
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="w-6 h-6 animate-spin text-accent-primary" />
+        <span className="ml-2 text-text-muted font-display">Loading exports...</span>
+      </div>
+    );
+  }
+
+  if (error && exports.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20">
+        <p className="text-status-error font-display mb-3">{error}</p>
+        <button
+          onClick={() => { setError(null); setLoading(true); fetchExports(); }}
+          className="px-4 py-2 rounded-button font-display text-caption font-semibold bg-accent-primary text-accent-text hover:bg-accent-hover transition-colors duration-fast"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  const completed = exports.filter((e) => e.status === "completed").length;
+  const pending = exports.filter(
     (e) => e.status === "pending" || e.status === "processing",
   ).length;
 
   return (
     <>
+      {/* Error banner */}
+      {error && (
+        <div className="bg-status-error-subtle border border-status-error rounded-card p-3 mb-4 text-status-error text-caption font-display">
+          {error}
+          <button onClick={() => setError(null)} className="ml-2 underline text-micro">Dismiss</button>
+        </div>
+      )}
+
       {/* Stats */}
       <div className="grid grid-cols-3 gap-4 mb-6">
-        <StatCard label="Total Exports" value={String(mockExports.length)} sub="All time" />
+        <StatCard label="Total Exports" value={String(exports.length)} sub="All time" />
         <StatCard label="Completed" value={String(completed)} valueColor="text-status-success" />
         <StatCard label="Pending" value={String(pending)} valueColor="text-status-warning" />
       </div>
@@ -206,60 +277,75 @@ export default function ClientExportsPage() {
           </button>
         }
       >
-        {mockExports.map((exp) => {
-          const FormatIcon = formatIcon[exp.format];
-          return (
-            <tr
-              key={exp.request_uid}
-              className="transition-colors duration-fast hover:bg-surface-hover"
-            >
-              <td className="px-[14px] py-3 text-[11px] font-mono border-b border-border-subtle text-text-primary">
-                {exp.request_uid}
-              </td>
-              <td className="px-[14px] py-3 text-body border-b border-border-subtle text-text-primary font-display">
-                {exp.export_type}
-              </td>
-              <td className="px-[14px] py-3 border-b border-border-subtle">
-                <div className="flex items-center gap-1.5">
-                  <FormatIcon className="w-3.5 h-3.5 text-text-muted" />
-                  <span className="font-mono text-[11px] text-text-primary">
-                    {exp.format}
-                  </span>
-                </div>
-              </td>
-              <td className="px-[14px] py-3 border-b border-border-subtle">
-                <Badge variant={statusVariant[exp.status]} dot>
-                  {exp.status.charAt(0).toUpperCase() + exp.status.slice(1)}
-                </Badge>
-              </td>
-              <td className="px-[14px] py-3 font-mono text-body border-b border-border-subtle text-text-primary">
-                {exp.total_rows > 0 ? exp.total_rows.toLocaleString() : "--"}
-              </td>
-              <td className="px-[14px] py-3 font-mono text-[11px] border-b border-border-subtle text-text-muted">
-                {exp.file_size}
-              </td>
-              <td className="px-[14px] py-3 text-[11px] border-b border-border-subtle text-text-muted font-display">
-                {exp.created_at}
-              </td>
-              <td className="px-[14px] py-3 border-b border-border-subtle">
-                {exp.status === "completed" && (
-                  <button
-                    className={cn(
-                      "flex items-center gap-1 px-2.5 py-1 rounded-button text-[10px] font-semibold transition-all duration-fast font-display",
-                      "text-accent-primary border border-accent-primary/30 hover:bg-accent-subtle",
-                    )}
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    Download
-                  </button>
-                )}
-              </td>
-            </tr>
-          );
-        })}
+        {exports.length === 0 ? (
+          <tr>
+            <td colSpan={8} className="px-[14px] py-6 text-center text-text-muted font-display">
+              No exports yet. Click &quot;New Export&quot; to create one.
+            </td>
+          </tr>
+        ) : (
+          exports.map((exp) => {
+            const fmtUpper = (exp.format || "").toUpperCase();
+            const FormatIcon = formatIcon[fmtUpper] || FileText;
+            return (
+              <tr
+                key={exp.requestUid}
+                className="transition-colors duration-fast hover:bg-surface-hover"
+              >
+                <td className="px-[14px] py-3 text-[11px] font-mono border-b border-border-subtle text-text-primary">
+                  {exp.requestUid}
+                </td>
+                <td className="px-[14px] py-3 text-body border-b border-border-subtle text-text-primary font-display capitalize">
+                  {exp.exportType}
+                </td>
+                <td className="px-[14px] py-3 border-b border-border-subtle">
+                  <div className="flex items-center gap-1.5">
+                    <FormatIcon className="w-3.5 h-3.5 text-text-muted" />
+                    <span className="font-mono text-[11px] text-text-primary">
+                      {fmtUpper}
+                    </span>
+                  </div>
+                </td>
+                <td className="px-[14px] py-3 border-b border-border-subtle">
+                  <Badge variant={statusVariant[exp.status] ?? "neutral"} dot>
+                    {exp.status.charAt(0).toUpperCase() + exp.status.slice(1)}
+                  </Badge>
+                </td>
+                <td className="px-[14px] py-3 font-mono text-body border-b border-border-subtle text-text-primary">
+                  {exp.totalRows > 0 ? exp.totalRows.toLocaleString() : "--"}
+                </td>
+                <td className="px-[14px] py-3 font-mono text-[11px] border-b border-border-subtle text-text-muted">
+                  {exp.fileSize || "--"}
+                </td>
+                <td className="px-[14px] py-3 text-[11px] border-b border-border-subtle text-text-muted font-display">
+                  {new Date(exp.createdAt).toLocaleString()}
+                </td>
+                <td className="px-[14px] py-3 border-b border-border-subtle">
+                  {exp.status === "completed" && (
+                    <button
+                      onClick={() => handleDownload(exp.requestUid)}
+                      className={cn(
+                        "flex items-center gap-1 px-2.5 py-1 rounded-button text-[10px] font-semibold transition-all duration-fast font-display",
+                        "text-accent-primary border border-accent-primary/30 hover:bg-accent-subtle",
+                      )}
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      Download
+                    </button>
+                  )}
+                </td>
+              </tr>
+            );
+          })
+        )}
       </DataTable>
 
-      <ExportDialog open={dialogOpen} onClose={() => setDialogOpen(false)} />
+      <ExportDialog
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        onSubmit={handleCreateExport}
+        submitting={submitting}
+      />
     </>
   );
 }

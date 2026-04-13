@@ -1,129 +1,93 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { StatCard } from "@/components/stat-card";
 import { StatusBadge } from "@/components/status-badge";
 import { DataTable } from "@/components/data-table";
 import { FlushModal } from "@/components/flush-modal";
-import { useFlushOperations } from "@cvh/api-client/hooks";
+import { clientFetch } from "@/lib/api";
+import { Loader2 } from "lucide-react";
 
-// Mock data for initial UI
-const mockOperations = [
-  {
-    id: 1,
-    operationUid: "flush_a1b2c3d4e5f6",
-    chainId: 56,
-    chainName: "BSC",
-    operationType: "flush_tokens",
-    tokenSymbol: "USDT",
-    status: "succeeded",
-    totalAddresses: 25,
-    succeededCount: 25,
-    failedCount: 0,
-    totalAmount: "125,000.00",
-    gasCostTotal: "0.0125",
-    createdAt: "Apr 9, 14:30",
-    completedAt: "Apr 9, 14:32",
-  },
-  {
-    id: 2,
-    operationUid: "flush_f6e5d4c3b2a1",
-    chainId: 1,
-    chainName: "Ethereum",
-    operationType: "sweep_native",
-    tokenSymbol: "ETH",
-    status: "processing",
-    totalAddresses: 10,
-    succeededCount: 6,
-    failedCount: 0,
-    totalAmount: "3.45",
-    gasCostTotal: "0.0089",
-    createdAt: "Apr 9, 15:00",
-    completedAt: null,
-  },
-  {
-    id: 3,
-    operationUid: "flush_1a2b3c4d5e6f",
-    chainId: 137,
-    chainName: "Polygon",
-    operationType: "flush_tokens",
-    tokenSymbol: "USDC",
-    status: "partially_succeeded",
-    totalAddresses: 15,
-    succeededCount: 12,
-    failedCount: 3,
-    totalAmount: "45,200.00",
-    gasCostTotal: "0.005",
-    createdAt: "Apr 8, 22:15",
-    completedAt: "Apr 8, 22:18",
-  },
-  {
-    id: 4,
-    operationUid: "flush_6f5e4d3c2b1a",
-    chainId: 56,
-    chainName: "BSC",
-    operationType: "flush_tokens",
-    tokenSymbol: "USDT",
-    status: "failed",
-    totalAddresses: 5,
-    succeededCount: 0,
-    failedCount: 5,
-    totalAmount: "0.00",
-    gasCostTotal: "0.003",
-    createdAt: "Apr 8, 18:00",
-    completedAt: "Apr 8, 18:01",
-  },
-  {
-    id: 5,
-    operationUid: "flush_abcdef123456",
-    chainId: 1,
-    chainName: "Ethereum",
-    operationType: "flush_tokens",
-    tokenSymbol: "USDT",
-    status: "pending",
-    totalAddresses: 30,
-    succeededCount: 0,
-    failedCount: 0,
-    totalAmount: "0.00",
-    gasCostTotal: "0.00",
-    createdAt: "Apr 9, 15:10",
-    completedAt: null,
-  },
-  {
-    id: 6,
-    operationUid: "flush_cancel001",
-    chainId: 56,
-    chainName: "BSC",
-    operationType: "sweep_native",
-    tokenSymbol: "BNB",
-    status: "canceled",
-    totalAddresses: 8,
-    succeededCount: 0,
-    failedCount: 0,
-    totalAmount: "0.00",
-    gasCostTotal: "0.00",
-    createdAt: "Apr 7, 10:00",
-    completedAt: "Apr 7, 10:01",
-  },
-];
-
+/* ── Types (from backend API) ──────────────────────────────────── */
+interface FlushOperation {
+  id: number;
+  operationUid: string;
+  chainId: number;
+  chainName: string;
+  operationType: string;
+  tokenSymbol: string;
+  status: string;
+  totalAddresses: number;
+  succeededCount: number;
+  failedCount: number;
+  totalAmount: string;
+  gasCostTotal: string;
+  createdAt: string;
+  completedAt: string | null;
+}
 
 export default function FlushPage() {
+  const [operations, setOperations] = useState<FlushOperation[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
 
-  // API hook with mock data fallback
-  const { data: apiOperations } = useFlushOperations();
-  void apiOperations;
+  const fetchOperations = useCallback(async () => {
+    try {
+      const res = await clientFetch<{ operations: FlushOperation[] }>("/v1/flush");
+      setOperations(res.operations ?? []);
+    } catch (err: any) {
+      setError(err.message || "Failed to load flush operations");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  const succeededToday = mockOperations.filter(
-    (o) => o.status === "succeeded" && o.createdAt.startsWith("Apr 9"),
+  useEffect(() => {
+    fetchOperations();
+  }, [fetchOperations]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="w-6 h-6 animate-spin text-accent-primary" />
+        <span className="ml-2 text-text-muted font-display">Loading flush operations...</span>
+      </div>
+    );
+  }
+
+  if (error && operations.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20">
+        <p className="text-status-error font-display mb-3">{error}</p>
+        <button
+          onClick={() => { setError(null); setLoading(true); fetchOperations(); }}
+          className="px-4 py-2 rounded-button font-display text-caption font-semibold bg-accent-primary text-accent-text hover:bg-accent-hover transition-colors duration-fast"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  const today = new Date().toISOString().split("T")[0];
+  const succeededToday = operations.filter(
+    (o) => o.status === "succeeded" && o.createdAt?.startsWith(today),
   ).length;
-  const processingCount = mockOperations.filter(
+  const processingCount = operations.filter(
     (o) => o.status === "processing" || o.status === "pending",
   ).length;
-  const failedCount = mockOperations.filter(
+  const failedCount = operations.filter(
     (o) => o.status === "failed" || o.status === "partially_succeeded",
   ).length;
+
+  // Calculate total flushed from completed operations
+  const totalFlushed = operations
+    .filter((o) => o.status === "succeeded" || o.status === "partially_succeeded")
+    .reduce((sum, o) => {
+      const amt = parseFloat((o.totalAmount || "0").replace(/,/g, ""));
+      return sum + (isNaN(amt) ? 0 : amt);
+    }, 0);
 
   return (
     <div>
@@ -137,6 +101,14 @@ export default function FlushPage() {
           wallet
         </p>
       </div>
+
+      {/* Error banner */}
+      {error && (
+        <div className="bg-status-error-subtle border border-status-error rounded-card p-3 mb-4 text-status-error text-caption font-display">
+          {error}
+          <button onClick={() => setError(null)} className="ml-2 underline text-micro">Dismiss</button>
+        </div>
+      )}
 
       {/* KPIs */}
       <div className="grid grid-cols-4 gap-stat-grid-gap mb-section-gap">
@@ -160,8 +132,8 @@ export default function FlushPage() {
         />
         <StatCard
           label="Total Flushed"
-          value="$170.2K"
-          sub="Last 24 hours"
+          value={totalFlushed > 0 ? `$${totalFlushed.toLocaleString()}` : "$0"}
+          sub="All time"
         />
       </div>
 
@@ -187,50 +159,58 @@ export default function FlushPage() {
           "Status",
         ]}
       >
-        {mockOperations.map((op) => (
-          <tr
-            key={op.id}
-            className="hover:bg-surface-hover transition-colors duration-fast cursor-pointer"
-          >
-            <td className="px-[14px] py-2.5 border-b border-border-subtle font-mono text-code whitespace-nowrap">
-              {op.createdAt}
-            </td>
-            <td className="px-[14px] py-2.5 border-b border-border-subtle text-body font-display">
-              {op.operationType === "flush_tokens"
-                ? "Token Flush"
-                : "Native Sweep"}
-            </td>
-            <td className="px-[14px] py-2.5 border-b border-border-subtle text-body font-display">
-              {op.chainName}
-            </td>
-            <td className="px-[14px] py-2.5 border-b border-border-subtle text-body font-display font-semibold">
-              {op.tokenSymbol}
-            </td>
-            <td className="px-[14px] py-2.5 border-b border-border-subtle font-mono text-code">
-              <span className="text-status-success">
-                {op.succeededCount}
-              </span>
-              {op.failedCount > 0 && (
-                <span className="text-status-error">
-                  /{op.failedCount}
-                </span>
-              )}
-              <span className="text-text-muted">
-                {" "}
-                of {op.totalAddresses}
-              </span>
-            </td>
-            <td className="px-[14px] py-2.5 border-b border-border-subtle font-mono text-code">
-              {op.totalAmount}
-            </td>
-            <td className="px-[14px] py-2.5 border-b border-border-subtle font-mono text-code text-text-muted">
-              {op.gasCostTotal}
-            </td>
-            <td className="px-[14px] py-2.5 border-b border-border-subtle">
-              <StatusBadge status={op.status} />
+        {operations.length === 0 ? (
+          <tr>
+            <td colSpan={8} className="px-[14px] py-6 text-center text-text-muted font-display">
+              No flush operations yet
             </td>
           </tr>
-        ))}
+        ) : (
+          operations.map((op) => (
+            <tr
+              key={op.id}
+              className="hover:bg-surface-hover transition-colors duration-fast cursor-pointer"
+            >
+              <td className="px-[14px] py-2.5 border-b border-border-subtle font-mono text-code whitespace-nowrap">
+                {op.createdAt ? new Date(op.createdAt).toLocaleString() : "--"}
+              </td>
+              <td className="px-[14px] py-2.5 border-b border-border-subtle text-body font-display">
+                {op.operationType === "flush_tokens"
+                  ? "Token Flush"
+                  : "Native Sweep"}
+              </td>
+              <td className="px-[14px] py-2.5 border-b border-border-subtle text-body font-display">
+                {op.chainName || `Chain ${op.chainId}`}
+              </td>
+              <td className="px-[14px] py-2.5 border-b border-border-subtle text-body font-display font-semibold">
+                {op.tokenSymbol}
+              </td>
+              <td className="px-[14px] py-2.5 border-b border-border-subtle font-mono text-code">
+                <span className="text-status-success">
+                  {op.succeededCount}
+                </span>
+                {op.failedCount > 0 && (
+                  <span className="text-status-error">
+                    /{op.failedCount}
+                  </span>
+                )}
+                <span className="text-text-muted">
+                  {" "}
+                  of {op.totalAddresses}
+                </span>
+              </td>
+              <td className="px-[14px] py-2.5 border-b border-border-subtle font-mono text-code">
+                {op.totalAmount}
+              </td>
+              <td className="px-[14px] py-2.5 border-b border-border-subtle font-mono text-code text-text-muted">
+                {op.gasCostTotal}
+              </td>
+              <td className="px-[14px] py-2.5 border-b border-border-subtle">
+                <StatusBadge status={op.status} />
+              </td>
+            </tr>
+          ))
+        )}
       </DataTable>
 
       {/* Flush Modal */}

@@ -20,13 +20,7 @@ interface Chain {
 }
 
 /* ─── API helpers ─────────────────────────────────────────────────── */
-const ADMIN_API = process.env.NEXT_PUBLIC_ADMIN_API_URL || "http://localhost:3001";
-function getToken() { return typeof window !== "undefined" ? localStorage.getItem("cvh_admin_token") ?? "" : ""; }
-async function adminFetch(path: string, options: RequestInit = {}) {
-  const res = await fetch(`${ADMIN_API}${path}`, { ...options, headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}`, ...options.headers } });
-  if (!res.ok) { const e = await res.json().catch(() => ({ message: "Request failed" })); throw new Error(e.message || `HTTP ${res.status}`); }
-  return res.json();
-}
+import { adminFetch } from "@/lib/api";
 
 /* ─── Hexagonal chain avatar ──────────────────────────────────────── */
 function ChainHexAvatar({ name }: { name: string }) {

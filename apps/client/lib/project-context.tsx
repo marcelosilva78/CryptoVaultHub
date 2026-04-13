@@ -9,6 +9,7 @@ import {
   ReactNode,
 } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { clientFetch } from '@/lib/api';
 
 // ── Types ───────────────────────────────────────────────
 
@@ -32,41 +33,6 @@ interface ProjectContextType {
 
 const STORAGE_KEY = 'cvh_active_project';
 
-// ── Mock data (until API is wired) ─────────────────────
-
-const MOCK_PROJECTS: Project[] = [
-  {
-    id: 'proj_01',
-    name: 'Corretora XYZ',
-    slug: 'corretora-xyz',
-    status: 'active',
-    isDefault: true,
-    chainIds: [1, 137, 56],
-    createdAt: '2026-01-15T10:00:00Z',
-    updatedAt: '2026-04-01T14:30:00Z',
-  },
-  {
-    id: 'proj_02',
-    name: 'Staging Environment',
-    slug: 'staging-env',
-    status: 'active',
-    isDefault: false,
-    chainIds: [1, 137],
-    createdAt: '2026-02-20T08:00:00Z',
-    updatedAt: '2026-03-28T09:15:00Z',
-  },
-  {
-    id: 'proj_03',
-    name: 'Legacy Integration',
-    slug: 'legacy-integration',
-    status: 'suspended',
-    isDefault: false,
-    chainIds: [1],
-    createdAt: '2025-11-01T12:00:00Z',
-    updatedAt: '2026-03-10T16:45:00Z',
-  },
-];
-
 // ── Context ─────────────────────────────────────────────
 
 const ProjectContext = createContext<ProjectContextType | null>(null);
@@ -79,10 +45,10 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
 
   // Fetch projects on mount
   useEffect(() => {
-    // TODO: Replace with real API call: api().getProjects()
     const fetchProjects = async () => {
       try {
-        const data = MOCK_PROJECTS;
+        const res = await clientFetch<{ projects?: Project[]; data?: Project[] }>('/v1/projects');
+        const data: Project[] = res.projects ?? res.data ?? (Array.isArray(res) ? res : []);
         setProjects(data);
 
         // Restore from localStorage or pick default
@@ -90,6 +56,9 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
         const restored = storedId ? data.find((p) => p.id === storedId) : null;
         const defaultProject = data.find((p) => p.isDefault) ?? data[0] ?? null;
         setActiveProjectState(restored ?? defaultProject);
+      } catch {
+        // If projects endpoint fails, continue with empty list
+        setProjects([]);
       } finally {
         setIsLoading(false);
       }

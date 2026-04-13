@@ -1,19 +1,106 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { DataTable } from "@/components/data-table";
 import { Badge } from "@/components/badge";
-import { apiKeys } from "@/lib/mock-data";
+import { AUTH_API, getToken } from "@/lib/api";
+import { Loader2 } from "lucide-react";
+
+/* ── Types (from auth-service API) ─────────────────────────────── */
+interface ApiKeyItem {
+  id: number;
+  keyPrefix: string;
+  label: string | null;
+  scopes: string[];
+  ipAllowlist: string[] | null;
+  lastUsedAt: string | null;
+  requestCount24h?: number;
+  createdAt: string;
+}
+
+async function authFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const res = await fetch(`${AUTH_API}${path}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${getToken()}`,
+      ...options.headers,
+    },
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({ message: "Request failed" }));
+    throw new Error(e.message || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
 
 export default function ApiKeysPage() {
+  const [keys, setKeys] = useState<ApiKeyItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [createdKey, setCreatedKey] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState(false);
+  const [creating, setCreating] = useState(false);
 
-  const handleGenerateKey = () => {
-    // Simulated key generation
-    setCreatedKey("cvh_sk_live_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0");
-    setShowCreateForm(false);
+  // Form state
+  const [formLabel, setFormLabel] = useState("");
+  const [formIpAllowlist, setFormIpAllowlist] = useState("");
+  const [formScopes, setFormScopes] = useState<Record<string, boolean>>({
+    read: true,
+    write: true,
+    withdraw: false,
+  });
+
+  const fetchKeys = useCallback(async () => {
+    try {
+      const res = await authFetch<{ keys: ApiKeyItem[] }>("/api-keys");
+      setKeys(res.keys ?? []);
+    } catch (err: any) {
+      setError(err.message || "Failed to load API keys");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchKeys();
+  }, [fetchKeys]);
+
+  const handleGenerateKey = async () => {
+    setCreating(true);
+    try {
+      const selectedScopes = Object.entries(formScopes)
+        .filter(([, v]) => v)
+        .map(([k]) => k);
+
+      const res = await authFetch<{ apiKey: { rawKey: string } }>("/api-keys", {
+        method: "POST",
+        body: JSON.stringify({
+          scopes: selectedScopes,
+          label: formLabel || undefined,
+          ipAllowlist: formIpAllowlist ? formIpAllowlist.split(",").map((s) => s.trim()) : undefined,
+        }),
+      });
+      setCreatedKey(res.apiKey?.rawKey || "Key created (check listing)");
+      setShowCreateForm(false);
+      // Refresh the list
+      const listRes = await authFetch<{ keys: ApiKeyItem[] }>("/api-keys");
+      setKeys(listRes.keys ?? []);
+    } catch (err: any) {
+      setError(err.message || "Failed to create API key");
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleRevokeKey = async (id: number) => {
+    try {
+      await authFetch(`/api-keys/${id}`, { method: "DELETE" });
+      setKeys((prev) => prev.filter((k) => k.id !== id));
+    } catch (err: any) {
+      setError(err.message || "Failed to revoke API key");
+    }
   };
 
   const handleCopyKey = async () => {
@@ -23,6 +110,29 @@ export default function ApiKeysPage() {
       setTimeout(() => setCopiedKey(false), 2000);
     }
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="w-6 h-6 animate-spin text-accent-primary" />
+        <span className="ml-2 text-text-muted font-display">Loading API keys...</span>
+      </div>
+    );
+  }
+
+  if (error && keys.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20">
+        <p className="text-status-error font-display mb-3">{error}</p>
+        <button
+          onClick={() => { setError(null); setLoading(true); fetchKeys(); }}
+          className="px-4 py-2 rounded-button font-display text-caption font-semibold bg-accent-primary text-accent-text hover:bg-accent-hover transition-colors duration-fast"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -35,12 +145,20 @@ export default function ApiKeysPage() {
           </p>
         </div>
         <button
-          onClick={() => { setShowCreateForm(!showCreateForm); setCreatedKey(null); }}
+          onClick={() => { setShowCreateForm(!showCreateForm); setCreatedKey(null); setFormLabel(""); setFormIpAllowlist(""); setFormScopes({ read: true, write: true, withdraw: false }); }}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-button font-display text-caption font-semibold cursor-pointer transition-colors duration-fast bg-accent-primary text-accent-text border-none hover:bg-accent-hover"
         >
           + Create Key
         </button>
       </div>
+
+      {/* Error banner */}
+      {error && (
+        <div className="bg-status-error-subtle border border-status-error rounded-card p-3 mb-section-gap text-status-error text-caption font-display">
+          {error}
+          <button onClick={() => setError(null)} className="ml-2 underline text-micro">Dismiss</button>
+        </div>
+      )}
 
       {/* Created Key Modal - Show full key ONCE */}
       {createdKey && (
@@ -91,6 +209,8 @@ export default function ApiKeysPage() {
               <input
                 type="text"
                 placeholder="e.g. Production, Staging"
+                value={formLabel}
+                onChange={(e) => setFormLabel(e.target.value)}
                 className="w-full bg-surface-input border border-border-default rounded-input px-3 py-2 text-text-primary font-display text-body outline-none focus:border-border-focus transition-colors duration-fast"
               />
             </div>
@@ -101,6 +221,8 @@ export default function ApiKeysPage() {
               <input
                 type="text"
                 placeholder="e.g. 203.0.113.0/24 or leave blank for any"
+                value={formIpAllowlist}
+                onChange={(e) => setFormIpAllowlist(e.target.value)}
                 className="w-full bg-surface-input border border-border-default rounded-input px-3 py-2 text-text-primary font-mono text-body outline-none focus:border-border-focus transition-colors duration-fast"
               />
             </div>
@@ -122,7 +244,13 @@ export default function ApiKeysPage() {
                   <input
                     type="checkbox"
                     style={{ accentColor: "var(--accent-primary)" }}
-                    defaultChecked={scope.name !== "withdraw"}
+                    checked={formScopes[scope.name] ?? false}
+                    onChange={(e) =>
+                      setFormScopes((prev) => ({
+                        ...prev,
+                        [scope.name]: e.target.checked,
+                      }))
+                    }
                   />
                   <div>
                     <span className="font-semibold capitalize">{scope.name}</span>
@@ -143,8 +271,10 @@ export default function ApiKeysPage() {
             </button>
             <button
               onClick={handleGenerateKey}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-button font-display text-caption font-semibold cursor-pointer transition-colors duration-fast bg-accent-primary text-accent-text border-none hover:bg-accent-hover"
+              disabled={creating}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-button font-display text-caption font-semibold cursor-pointer transition-colors duration-fast bg-accent-primary text-accent-text border-none hover:bg-accent-hover disabled:opacity-50"
             >
+              {creating && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
               Generate Key
             </button>
           </div>
@@ -163,53 +293,64 @@ export default function ApiKeysPage() {
           "Actions",
         ]}
       >
-        {apiKeys.map((k) => (
-          <tr key={k.key} className="hover:bg-surface-hover transition-colors duration-fast">
-            {/* Masked key in font-mono */}
-            <td className="px-[14px] py-2.5 border-b border-border-subtle font-mono text-code">
-              {k.key}
-            </td>
-            <td className="px-[14px] py-2.5 border-b border-border-subtle text-body font-semibold font-display">
-              {k.label}
-            </td>
-            <td className="px-[14px] py-2.5 border-b border-border-subtle">
-              <div className="flex gap-1">
-                {k.scopes.map((s) => (
-                  <Badge
-                    key={s.name}
-                    variant="accent"
-                    className="text-[9px]"
-                  >
-                    {s.name}
-                  </Badge>
-                ))}
-              </div>
-            </td>
-            <td
-              className={`px-[14px] py-2.5 border-b border-border-subtle font-mono text-micro ${
-                k.ipAllowlist === "Any" ? "text-text-muted" : "text-text-primary"
-              }`}
-            >
-              {k.ipAllowlist}
-            </td>
-            <td className="px-[14px] py-2.5 border-b border-border-subtle font-mono text-code">
-              {k.lastUsed}
-            </td>
-            <td className="px-[14px] py-2.5 border-b border-border-subtle font-mono text-code">
-              {k.requests24h}
-            </td>
-            <td className="px-[14px] py-2.5 border-b border-border-subtle">
-              <div className="flex gap-1.5">
-                <button className="inline-flex items-center px-2 py-[3px] rounded-button font-display text-micro font-semibold cursor-pointer transition-colors duration-fast bg-transparent text-text-secondary border border-border-default hover:border-accent-primary hover:text-text-primary">
-                  Edit
-                </button>
-                <button className="inline-flex items-center px-2 py-[3px] rounded-button font-display text-micro font-semibold cursor-pointer transition-colors duration-fast bg-status-error-subtle text-status-error border border-status-error-subtle hover:border-status-error">
-                  Revoke
-                </button>
-              </div>
+        {keys.length === 0 ? (
+          <tr>
+            <td colSpan={7} className="px-[14px] py-6 text-center text-text-muted font-display">
+              No API keys created yet
             </td>
           </tr>
-        ))}
+        ) : (
+          keys.map((k) => (
+            <tr key={k.id} className="hover:bg-surface-hover transition-colors duration-fast">
+              {/* Masked key in font-mono */}
+              <td className="px-[14px] py-2.5 border-b border-border-subtle font-mono text-code">
+                {k.keyPrefix}...
+              </td>
+              <td className="px-[14px] py-2.5 border-b border-border-subtle text-body font-semibold font-display">
+                {k.label || "--"}
+              </td>
+              <td className="px-[14px] py-2.5 border-b border-border-subtle">
+                <div className="flex gap-1">
+                  {(k.scopes ?? []).map((s) => (
+                    <Badge
+                      key={s}
+                      variant="accent"
+                      className="text-[9px]"
+                    >
+                      {s}
+                    </Badge>
+                  ))}
+                </div>
+              </td>
+              <td
+                className={`px-[14px] py-2.5 border-b border-border-subtle font-mono text-micro ${
+                  !k.ipAllowlist || k.ipAllowlist.length === 0 ? "text-text-muted" : "text-text-primary"
+                }`}
+              >
+                {k.ipAllowlist && k.ipAllowlist.length > 0 ? k.ipAllowlist.join(", ") : "Any"}
+              </td>
+              <td className="px-[14px] py-2.5 border-b border-border-subtle font-mono text-code">
+                {k.lastUsedAt || "Never"}
+              </td>
+              <td className="px-[14px] py-2.5 border-b border-border-subtle font-mono text-code">
+                {k.requestCount24h ?? "--"}
+              </td>
+              <td className="px-[14px] py-2.5 border-b border-border-subtle">
+                <div className="flex gap-1.5">
+                  <button className="inline-flex items-center px-2 py-[3px] rounded-button font-display text-micro font-semibold cursor-pointer transition-colors duration-fast bg-transparent text-text-secondary border border-border-default hover:border-accent-primary hover:text-text-primary">
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => handleRevokeKey(k.id)}
+                    className="inline-flex items-center px-2 py-[3px] rounded-button font-display text-micro font-semibold cursor-pointer transition-colors duration-fast bg-status-error-subtle text-status-error border border-status-error-subtle hover:border-status-error"
+                  >
+                    Revoke
+                  </button>
+                </div>
+              </td>
+            </tr>
+          ))
+        )}
       </DataTable>
 
       {/* Security Note */}

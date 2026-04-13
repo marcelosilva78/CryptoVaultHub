@@ -2,11 +2,38 @@
 
 import { useState } from "react";
 import { Badge } from "@/components/badge";
-import { custodyModes, shamirShares, clientInfo } from "@/lib/mock-data";
-import type { CustodyMode } from "@/lib/mock-data";
+import { useClientAuth } from "@/lib/auth-context";
+import { Loader2 } from "lucide-react";
+
+/* ── Static data (no backend endpoints available for these) ────── */
+type CustodyMode = "full" | "cosign" | "client-init";
+
+const custodyModes = [
+  { id: "full" as CustodyMode, label: "Full Custody", desc: "CVH manages both keys" },
+  { id: "cosign" as CustodyMode, label: "Co-Sign", desc: "Both parties sign" },
+  { id: "client-init" as CustodyMode, label: "Client-Init", desc: "You initiate, CVH approves" },
+];
+
+const shamirShares = [
+  { name: "Share 1 -- Client Primary", status: "Downloaded", color: "green" as const },
+  { name: "Share 2 -- CVH Admin", status: "Stored", color: "green" as const },
+  { name: "Share 3 -- Cold Storage", status: "Exported", color: "green" as const },
+  { name: "Share 4 -- Client Secondary", status: "Pending Download", color: "orange" as const },
+  { name: "Share 5 -- Physical Vault", status: "Stored", color: "green" as const },
+];
 
 export default function SecurityPage() {
+  const { user, isLoading } = useClientAuth();
   const [selectedMode, setSelectedMode] = useState<CustodyMode>("full");
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="w-6 h-6 animate-spin text-accent-primary" />
+        <span className="ml-2 text-text-muted font-display">Loading security settings...</span>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -26,22 +53,24 @@ export default function SecurityPage() {
             <div className="text-micro font-semibold uppercase tracking-[0.08em] text-text-muted mb-1 font-display">
               Organization
             </div>
-            <div className="text-body font-semibold font-display text-text-primary">{clientInfo.name}</div>
+            <div className="text-body font-semibold font-display text-text-primary">
+              {user?.clientName || "--"}
+            </div>
           </div>
           <div>
             <div className="text-micro font-semibold uppercase tracking-[0.08em] text-text-muted mb-1 font-display">
               Plan Tier
             </div>
             {/* Tier badge using accent-subtle */}
-            <Badge variant="accent">{clientInfo.tier} Tier</Badge>
+            <Badge variant="accent">{user?.tier || "Standard"} Tier</Badge>
           </div>
           <div>
             <div className="text-micro font-semibold uppercase tracking-[0.08em] text-text-muted mb-1 font-display">
               Operator
             </div>
             <div className="text-body font-display">
-              <span className="text-text-primary">{clientInfo.user.name}</span>{" "}
-              <span className="text-text-muted">({clientInfo.user.role})</span>
+              <span className="text-text-primary">{user?.name || "--"}</span>{" "}
+              <span className="text-text-muted">({user?.role || "--"})</span>
             </div>
           </div>
         </div>

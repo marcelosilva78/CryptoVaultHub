@@ -42,6 +42,10 @@ const pageMeta: Record<string, { title: string; crumbs: string[] }> = {
     title: "Exports",
     crumbs: ["Admin", "Data", "Exports"],
   },
+  "/jobs": {
+    title: "Job Queue",
+    crumbs: ["Admin", "System", "Job Queue"],
+  },
 };
 
 /* ── Hexagonal clip for mini avatar ── */
