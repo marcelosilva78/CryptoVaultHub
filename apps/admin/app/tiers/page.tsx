@@ -88,7 +88,7 @@ function CreateTierModal({ onClose, onSaved }: CreateTierModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[200] flex items-center justify-center pt-14 bg-black/60 backdrop-blur-sm">
       <div className="bg-surface-card border border-border-subtle rounded-modal shadow-float w-full max-w-[480px] mx-4">
         <div className="flex items-center justify-between p-5 border-b border-border-subtle">
           <span className="font-display text-subheading text-text-primary">Create Custom Tier</span>
@@ -259,7 +259,7 @@ function EditTierModal({ tier, onClose, onSaved }: EditTierModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[200] flex items-center justify-center pt-14 bg-black/60 backdrop-blur-sm">
       <div className="bg-surface-card border border-border-subtle rounded-modal shadow-float w-full max-w-[480px] mx-4">
         <div className="flex items-center justify-between p-5 border-b border-border-subtle">
           <span className="font-display text-subheading text-text-primary">Edit Tier</span>

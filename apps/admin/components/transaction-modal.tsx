@@ -190,7 +190,7 @@ export function TransactionModal({ transaction, onClose }: TransactionModalProps
   return (
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-[200] flex items-center justify-center"
+      className="fixed inset-0 z-[200] flex items-center justify-center pt-14"
       onClick={(e) => {
         if (e.target === overlayRef.current) onClose();
       }}
