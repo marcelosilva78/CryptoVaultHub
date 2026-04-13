@@ -4,6 +4,10 @@ import {
   Post,
   Body,
   Req,
+  Patch,
+  Delete,
+  Param,
+  ParseIntPipe,
 } from '@nestjs/common';
 import { Request } from 'express';
 import {
@@ -16,11 +20,17 @@ import {
 import { AdminAuth } from '../common/decorators';
 import { ChainManagementService } from './chain-management.service';
 import { AddChainDto, AddTokenDto } from '../common/dto/chain.dto';
+import { UpdateChainDto } from '../common/dto/chain-update.dto';
+import { ChainLifecycleDto } from '../common/dto/chain-lifecycle.dto';
+import { ChainLifecycleService } from './chain-lifecycle.service';
 
 @ApiBearerAuth('JWT')
 @Controller('admin')
 export class ChainManagementController {
-  constructor(private readonly chainService: ChainManagementService) {}
+  constructor(
+    private readonly chainService: ChainManagementService,
+    private readonly lifecycleService: ChainLifecycleService,
+  ) {}
 
   @Post('chains')
   @AdminAuth('super_admin', 'admin')
@@ -157,6 +167,64 @@ Each chain entry includes its RPC endpoint, explorer URL, confirmation requireme
   async listChains() {
     const chains = await this.chainService.listChains();
     return { success: true, chains };
+  }
+
+  @Get('/chains/health')
+  @AdminAuth()
+  @ApiTags('Chains')
+  @ApiOperation({ summary: 'Get aggregated chain health for dashboard polling' })
+  @ApiResponse({ status: 200, description: 'Chain health data' })
+  async getChainHealth() {
+    return this.chainService.getChainHealth();
+  }
+
+  @Get('/chains/:chainId')
+  @AdminAuth()
+  @ApiTags('Chains')
+  @ApiOperation({ summary: 'Get chain details with dependency counts' })
+  @ApiResponse({ status: 200, description: 'Chain detail with dependencies' })
+  async getChainDetail(@Param('chainId', ParseIntPipe) chainId: number) {
+    return this.chainService.getChainDetail(chainId);
+  }
+
+  @Patch('/chains/:chainId')
+  @AdminAuth('super_admin', 'admin')
+  @ApiTags('Chains')
+  @ApiOperation({ summary: 'Update mutable chain fields' })
+  @ApiResponse({ status: 200, description: 'Chain updated' })
+  async updateChain(
+    @Param('chainId', ParseIntPipe) chainId: number,
+    @Body() dto: UpdateChainDto,
+    @Req() req: any,
+  ) {
+    return this.chainService.updateChain(chainId, dto, req.user?.userId || req.user?.id);
+  }
+
+  @Post('/chains/:chainId/lifecycle')
+  @AdminAuth('super_admin')
+  @ApiTags('Chains')
+  @ApiOperation({ summary: 'Perform lifecycle state transition' })
+  @ApiResponse({ status: 200, description: 'Transition executed' })
+  @ApiResponse({ status: 409, description: 'Transition blocked by pending operations' })
+  async lifecycleTransition(
+    @Param('chainId', ParseIntPipe) chainId: number,
+    @Body() dto: ChainLifecycleDto,
+    @Req() req: any,
+  ) {
+    return this.lifecycleService.transition(chainId, dto.action, dto.reason, req.user?.userId || req.user?.id);
+  }
+
+  @Delete('/chains/:chainId')
+  @AdminAuth('super_admin')
+  @ApiTags('Chains')
+  @ApiOperation({ summary: 'Physically delete a chain (zero-dependency only)' })
+  @ApiResponse({ status: 200, description: 'Chain deleted' })
+  @ApiResponse({ status: 409, description: 'Cannot delete chain with dependencies' })
+  async deleteChain(
+    @Param('chainId', ParseIntPipe) chainId: number,
+    @Req() req: any,
+  ) {
+    return this.chainService.deleteChain(chainId, req.user?.userId || req.user?.id);
   }
 
   @Post('tokens')
