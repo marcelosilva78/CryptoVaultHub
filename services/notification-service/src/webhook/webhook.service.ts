@@ -160,6 +160,48 @@ export class WebhookService {
     });
   }
 
+  /**
+   * Aggregate webhook delivery stats for the last 30 days.
+   */
+  async getDeliveryStats() {
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+    const deliveries = await this.prisma.webhookDelivery.findMany({
+      where: { createdAt: { gte: thirtyDaysAgo } },
+      select: { status: true, createdAt: true },
+    });
+
+    // Group by date (YYYY-MM-DD)
+    const byDate: Record<string, { totalSent: number; failed: number; succeeded: number }> = {};
+    for (const d of deliveries) {
+      const date = d.createdAt.toISOString().slice(0, 10);
+      if (!byDate[date]) byDate[date] = { totalSent: 0, failed: 0, succeeded: 0 };
+      byDate[date].totalSent++;
+      if (d.status === 'failed' || d.status === 'dead_lettered') byDate[date].failed++;
+      else if (d.status === 'delivered' || d.status === 'success') byDate[date].succeeded++;
+    }
+
+    const total = deliveries.length;
+    const failed = deliveries.filter(
+      (d) => d.status === 'failed' || d.status === 'dead_lettered',
+    ).length;
+    const successRate = total > 0 ? ((total - failed) / total) * 100 : 100;
+
+    const dailyStats = Object.entries(byDate)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, s]) => ({
+        date,
+        totalSent: s.totalSent,
+        failed: s.failed,
+        successRate:
+          s.totalSent > 0
+            ? ((s.totalSent - s.failed) / s.totalSent) * 100
+            : 100,
+      }));
+
+    return { total, failed, successRate, dailyStats };
+  }
+
   private formatWebhook(w: any, includeSecret: boolean) {
     return {
       id: Number(w.id),

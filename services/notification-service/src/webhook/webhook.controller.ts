@@ -121,6 +121,11 @@ export class WebhookController {
     return { success: true, ...result };
   }
 
+  @Get('stats')
+  async getDeliveryStats() {
+    return this.webhookService.getDeliveryStats();
+  }
+
   @Get('dead-letters')
   async listDeadLetters(
     @Query('clientId') clientId: string,
