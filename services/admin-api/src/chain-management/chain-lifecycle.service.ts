@@ -10,7 +10,7 @@ const ALLOWED_TRANSITIONS: Record<string, Record<string, string>> = {
   archived: { reactivate: 'inactive' },
 };
 
-interface TransitionResult {
+export interface TransitionResult {
   previousStatus: string;
   newStatus: string;
   reason: string;
