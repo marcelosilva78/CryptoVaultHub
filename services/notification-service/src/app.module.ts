@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { BullModule } from '@nestjs/bullmq';
+import { EventBusModule } from '@cvh/event-bus';
 import { PrismaModule } from './prisma/prisma.module';
 import { WebhookModule } from './webhook/webhook.module';
 import { EmailModule } from './email/email.module';
@@ -27,6 +28,10 @@ import { HealthController } from './common/health.controller';
           enableReadyCheck: false,
         },
       }),
+    }),
+    EventBusModule.forRoot({
+      clientId: 'notification-service',
+      groupId: 'notification-service',
     }),
     PrismaModule,
     WebhookModule,
