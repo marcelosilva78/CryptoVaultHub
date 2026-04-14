@@ -38,12 +38,12 @@ interface ChainDetail {
     rpcNodes: { total: number; active: number };
     clients: { total: number };
     tokens: { total: number };
-    wallets: { total: number };
+    wallets: number | { total: number };
     depositAddresses: { total: number; deployed: number };
     deposits: { total: number; pending: number };
     withdrawals: { total: number; pending: number };
     flushOperations: { total: number; pending: number };
-    gasTanks: { total: number };
+    gasTanks: number | { total: number };
   };
   canTransitionTo: string[];
 }
@@ -176,7 +176,7 @@ function ChainDetailPanel({ chainId, onAction }: { chainId: number; onAction: (a
               <div className="text-caption text-text-muted uppercase tracking-wide mb-2 font-display">Operations</div>
               <div className="space-y-1.5 text-body">
                 <div className="flex justify-between"><span className="text-text-secondary">Clients</span><span className="text-text-primary font-semibold">{d.clients.total}</span></div>
-                <div className="flex justify-between"><span className="text-text-secondary">Wallets</span><span className="text-text-primary font-semibold">{d.wallets}</span></div>
+                <div className="flex justify-between"><span className="text-text-secondary">Wallets</span><span className="text-text-primary font-semibold">{typeof d.wallets === 'object' ? d.wallets.total || 0 : d.wallets}</span></div>
                 <div className="flex justify-between"><span className="text-text-secondary">Addresses</span><span className="text-text-primary font-semibold">{d.depositAddresses.total.toLocaleString()}</span></div>
                 <div className="flex justify-between"><span className="text-text-secondary">Deployed</span><span className="text-status-success font-semibold">{d.depositAddresses.deployed.toLocaleString()}</span></div>
               </div>
@@ -200,7 +200,7 @@ function ChainDetailPanel({ chainId, onAction }: { chainId: number; onAction: (a
                 <div className="flex justify-between"><span className="text-text-secondary">Total</span><span className="text-text-primary font-semibold">{d.rpcNodes.total}</span></div>
                 <div className="flex justify-between"><span className="text-text-secondary">Active</span><span className="text-status-success font-semibold">{d.rpcNodes.active}</span></div>
                 <div className="flex justify-between"><span className="text-text-secondary">Tokens</span><span className="text-text-primary font-semibold">{d.tokens.total}</span></div>
-                <div className="flex justify-between"><span className="text-text-secondary">Gas Tanks</span><span className="text-text-primary font-semibold">{d.gasTanks.total}</span></div>
+                <div className="flex justify-between"><span className="text-text-secondary">Gas Tanks</span><span className="text-text-primary font-semibold">{typeof d.gasTanks === 'object' ? d.gasTanks.total || 0 : d.gasTanks}</span></div>
               </div>
             </div>
 
