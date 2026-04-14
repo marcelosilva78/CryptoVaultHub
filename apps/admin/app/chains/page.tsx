@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { X, Loader2, ChevronDown, ChevronRight, MoreHorizontal, Pencil, Pause, Square, Archive, Play, ExternalLink, RefreshCw } from "lucide-react";
 import { DataTable, TableCell, TableRow } from "@/components/data-table";
 import { Badge } from "@/components/badge";
@@ -501,9 +501,8 @@ export default function ChainsPage() {
           </TableRow>
         ) : (
           chains.map((chain) => (
-            <>
+            <React.Fragment key={chain.chainId}>
               <TableRow
-                key={chain.chainId}
                 className="cursor-pointer"
                 onClick={() => setExpandedChain(expandedChain === chain.chainId ? null : chain.chainId)}
               >
@@ -546,7 +545,7 @@ export default function ChainsPage() {
                   onAction={(action) => handleRowAction(chain, action)}
                 />
               )}
-            </>
+            </React.Fragment>
           ))
         )}
       </DataTable>

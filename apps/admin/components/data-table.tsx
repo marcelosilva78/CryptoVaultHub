@@ -80,16 +80,20 @@ export function TableRow({
   children,
   highlight,
   className,
+  onClick,
 }: {
   children: React.ReactNode;
   highlight?: boolean;
   className?: string;
+  onClick?: () => void;
 }) {
   return (
     <tr
+      onClick={onClick}
       className={cn(
         "transition-colors duration-fast hover:[&>td]:bg-surface-hover",
         highlight && "bg-status-error-subtle",
+        onClick && "cursor-pointer",
         className
       )}
     >
