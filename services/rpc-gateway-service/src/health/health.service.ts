@@ -1,6 +1,8 @@
 import { Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { JsonRpcProvider } from 'ethers';
+import { JsonRpcProvider, FetchRequest } from 'ethers';
+import { createDecipheriv } from 'crypto';
 import { EventBusService, TOPICS } from '@cvh/event-bus';
 import { PrismaService } from '../prisma/prisma.service';
 import { RateLimiterService } from '../rate-limiter/rate-limiter.service';
@@ -15,11 +17,32 @@ import { Decimal } from '../generated/prisma-client/runtime/library';
 export class HealthService implements OnModuleInit {
   private readonly logger = new Logger(HealthService.name);
 
+  private encryptionKey: Buffer | null = null;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly rateLimiter: RateLimiterService,
+    private readonly configService: ConfigService,
     @Optional() private readonly eventBus?: EventBusService,
-  ) {}
+  ) {
+    const keyHex = this.configService.get<string>('INTERNAL_SERVICE_KEY', '');
+    if (keyHex.length >= 64) {
+      this.encryptionKey = Buffer.from(keyHex.slice(0, 64), 'hex');
+    }
+  }
+
+  private decryptSecret(ciphertext: string): string | null {
+    if (!this.encryptionKey) return null;
+    try {
+      const [ivHex, tagHex, encHex] = ciphertext.split(':');
+      const decipher = createDecipheriv('aes-256-gcm', this.encryptionKey, Buffer.from(ivHex, 'hex'));
+      decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
+      return decipher.update(Buffer.from(encHex, 'hex')).toString('utf8') + decipher.final('utf8');
+    } catch {
+      this.logger.warn('Failed to decrypt API key');
+      return null;
+    }
+  }
 
   async onModuleInit() {
     await this.seedRateLimits();
@@ -99,6 +122,26 @@ export class HealthService implements OnModuleInit {
   }
 
   /**
+   * Create a JsonRpcProvider with appropriate auth headers for the node's provider.
+   */
+  private createAuthProvider(
+    url: string,
+    provider?: { authMethod: string; authHeaderName: string | null; apiKeyEncrypted: string | null },
+  ): JsonRpcProvider {
+    // If provider needs auth via header, use FetchRequest
+    if (provider?.apiKeyEncrypted && (provider.authMethod === 'api_key' || provider.authMethod === 'header')) {
+      const apiKey = this.decryptSecret(provider.apiKeyEncrypted);
+      if (apiKey) {
+        const headerName = provider.authHeaderName || 'x-api-key';
+        const fetchReq = new FetchRequest(url);
+        fetchReq.setHeader(headerName, apiKey);
+        return new JsonRpcProvider(fetchReq, undefined, { staticNetwork: true, batchMaxCount: 1 });
+      }
+    }
+    return new JsonRpcProvider(url, undefined, { staticNetwork: true, batchMaxCount: 1 });
+  }
+
+  /**
    * Check a single node: call eth_blockNumber, measure latency.
    */
   async checkNode(node: {
@@ -107,6 +150,7 @@ export class HealthService implements OnModuleInit {
     timeoutMs: number;
     consecutiveFailures: number;
     healthScore: Decimal | number;
+    provider?: { authMethod: string; authHeaderName: string | null; apiKeyEncrypted: string | null };
   }): Promise<void> {
     const start = Date.now();
     let latencyMs: number;
@@ -114,9 +158,7 @@ export class HealthService implements OnModuleInit {
     let success = false;
 
     try {
-      const provider = new JsonRpcProvider(node.endpointUrl, undefined, {
-        staticNetwork: true,
-        batchMaxCount: 1,
+      const provider = this.createAuthProvider(node.endpointUrl, node.provider);
       });
 
       const block = await Promise.race([
