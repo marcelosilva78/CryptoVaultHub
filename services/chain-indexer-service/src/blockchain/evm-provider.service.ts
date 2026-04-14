@@ -106,15 +106,22 @@ export class EvmProviderService implements OnModuleDestroy {
         `Chain ${chainId} not found or not active`,
       );
     }
-    return {
-      chain,
-      endpoints: chain.rpcEndpoints as Array<{
-        url: string;
-        apiKey?: string;
-        type?: string;
-        priority?: number;
-      }>,
-    };
+    // rpcEndpoints can be either:
+    // - Array of strings: ["https://rpc.example.com"]
+    // - Array of objects: [{ url: "https://rpc.example.com", apiKey: "...", type: "http" }]
+    const raw = chain.rpcEndpoints as unknown;
+    let endpoints: Array<{ url: string; apiKey?: string; type?: string; priority?: number }> = [];
+
+    if (Array.isArray(raw)) {
+      endpoints = raw.map((ep: any) => {
+        if (typeof ep === 'string') {
+          return { url: ep, type: 'http', priority: 50 };
+        }
+        return ep;
+      });
+    }
+
+    return { chain, endpoints };
   }
 
   private async createProvider(
