@@ -7,13 +7,6 @@ export interface EventBusEvent {
   timestamp?: number;
 }
 
-export interface EventBusModuleOptions {
-  kafkaBrokers: string[];
-  kafkaClientId: string;
-  kafkaGroupId?: string;
-  enableKafka: boolean;
-  enableRedisStreams: boolean;
-}
 
 export interface EventHandler {
   (event: EventBusEvent): Promise<void>;

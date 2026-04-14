@@ -7,4 +7,4 @@ export { KafkaProducerService } from './kafka-producer.service';
 export { KafkaConsumerService } from './kafka-consumer.service';
 export { TOPICS, STREAM_TO_TOPIC } from './topics';
 export type { TopicName } from './topics';
-export type { EventBusEvent, EventHandler, EventBusModuleOptions } from './types';
+export type { EventBusEvent, EventHandler } from './types';

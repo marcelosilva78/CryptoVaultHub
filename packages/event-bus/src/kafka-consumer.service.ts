@@ -1,14 +1,16 @@
 // packages/event-bus/src/kafka-consumer.service.ts
 
 import {
-  Injectable,
   Logger,
   OnModuleDestroy,
 } from '@nestjs/common';
 import { Kafka, Consumer, EachMessagePayload } from 'kafkajs';
 import { EventHandler, EventBusEvent } from './types';
 
-@Injectable()
+/**
+ * Kafka consumer service. NOT @Injectable() — always constructed
+ * via useFactory in EventBusModule.forRoot() to pass groupId.
+ */
 export class KafkaConsumerService implements OnModuleDestroy {
   private readonly logger = new Logger(KafkaConsumerService.name);
   private consumer: Consumer;
