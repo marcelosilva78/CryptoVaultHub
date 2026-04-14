@@ -231,4 +231,16 @@ export class JobManagementController {
     const stats = await this.jobService.getStats();
     return { success: true, stats };
   }
+
+  @Get('bullmq-stats')
+  @AdminAuth()
+  @ApiOperation({
+    summary: 'Get live BullMQ queue statistics from Redis',
+    description:
+      'Returns real-time counts for all BullMQ queues (sweep, forwarder-deploy, gas-tank, etc.) directly from Redis.',
+  })
+  async getBullMQStats() {
+    const stats = await this.jobService.getBullMQStats();
+    return { success: true, ...stats };
+  }
 }

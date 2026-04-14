@@ -76,6 +76,22 @@ interface QueueStats {
   jobsByQueue: Array<{ queueName: string; count: number }>;
 }
 
+interface BullMQQueue {
+  name: string;
+  waiting: number;
+  active: number;
+  completed: number;
+  failed: number;
+  delayed: number;
+  paused: number;
+  repeatableCount: number;
+}
+
+interface BullMQStats {
+  queues: BullMQQueue[];
+  totals: { waiting: number; active: number; completed: number; failed: number; delayed: number };
+}
+
 // ── Fallback data (used only when API is unreachable) ─────────────────────
 
 const fallbackStats: QueueStats = {
@@ -154,6 +170,7 @@ export default function JobsPage() {
   const [activeTab, setActiveTab] = useState<Tab>("active");
   const [batchRetrying, setBatchRetrying] = useState(false);
   const [stats, setStats] = useState<QueueStats>(fallbackStats);
+  const [bullmqStats, setBullmqStats] = useState<BullMQStats | null>(null);
   const [activeJobs, setActiveJobs] = useState<JobRow[]>([]);
   const [failedJobs, setFailedJobs] = useState<JobRow[]>([]);
   const [deadLetterJobs, setDeadLetterJobs] = useState<DeadLetterRow[]>([]);
@@ -163,16 +180,18 @@ export default function JobsPage() {
   const fetchData = useCallback(async () => {
     try {
       setError(null);
-      const [statsRes, activeRes, failedRes, dlRes] = await Promise.all([
+      const [statsRes, activeRes, failedRes, dlRes, bullmqRes] = await Promise.all([
         adminFetch<{ success: boolean; stats: QueueStats }>("/job-management/stats"),
         adminFetch<{ success: boolean; items: JobRow[]; total: number }>("/job-management/jobs?status=processing,queued&limit=50"),
         adminFetch<{ success: boolean; items: JobRow[]; total: number }>("/job-management/jobs?status=failed&limit=50"),
         adminFetch<{ success: boolean; items: DeadLetterRow[]; total: number }>("/job-management/dead-letter?limit=50"),
+        adminFetch<{ success: boolean; queues: BullMQQueue[]; totals: BullMQStats["totals"] }>("/job-management/bullmq-stats").catch(() => null),
       ]);
       setStats(statsRes.stats);
       setActiveJobs(activeRes.items ?? []);
       setFailedJobs(failedRes.items ?? []);
       setDeadLetterJobs(dlRes.items ?? []);
+      if (bullmqRes) setBullmqStats({ queues: bullmqRes.queues, totals: bullmqRes.totals });
     } catch (err: any) {
       console.error("Failed to load job data:", err);
       setError(err.message ?? "Failed to load job data");
@@ -211,22 +230,22 @@ export default function JobsPage() {
         </div>
       )}
 
-      {/* ── Stats Cards ── */}
+      {/* ── Stats Cards (prefer BullMQ live data, fallback to MySQL) ── */}
       <div className="grid grid-cols-4 gap-stat-grid-gap mb-section-gap">
         <StatCard
           label="Total Jobs"
-          value={stats.totalJobs.toLocaleString()}
-          subtitle={`Avg ${formatDuration(stats.avgDurationMs)}`}
+          value={bullmqStats ? (bullmqStats.totals.waiting + bullmqStats.totals.active + bullmqStats.totals.completed + bullmqStats.totals.failed + bullmqStats.totals.delayed).toLocaleString() : stats.totalJobs.toLocaleString()}
+          subtitle={bullmqStats ? `${bullmqStats.totals.delayed} delayed` : `Avg ${formatDuration(stats.avgDurationMs)}`}
         />
         <StatCard
           label="Processing"
-          value={stats.processingCount.toString()}
+          value={bullmqStats ? (bullmqStats.totals.active).toString() : stats.processingCount.toString()}
           color="accent"
-          subtitle={`${stats.pendingCount} pending`}
+          subtitle={bullmqStats ? `${bullmqStats.totals.waiting} waiting` : `${stats.pendingCount} pending`}
         />
         <StatCard
           label="Failed"
-          value={stats.failedCount.toString()}
+          value={bullmqStats ? bullmqStats.totals.failed.toString() : stats.failedCount.toString()}
           color="error"
           subtitle={`${stats.stuckCount} stuck`}
         />
@@ -237,6 +256,28 @@ export default function JobsPage() {
           subtitle="Pending review"
         />
       </div>
+
+      {/* ── BullMQ Queues (live Redis data) ── */}
+      {bullmqStats && bullmqStats.queues.length > 0 && (
+        <div className="mb-section-gap">
+          <DataTable
+            title="BullMQ Queues (Live)"
+            headers={["Queue", "Repeatable", "Waiting", "Active", "Delayed", "Completed", "Failed"]}
+          >
+            {bullmqStats.queues.map((q) => (
+              <TableRow key={q.name}>
+                <TableCell mono>{q.name}</TableCell>
+                <TableCell>{q.repeatableCount}</TableCell>
+                <TableCell>{q.waiting}</TableCell>
+                <TableCell><span className={q.active > 0 ? "text-accent-primary font-semibold" : ""}>{q.active}</span></TableCell>
+                <TableCell>{q.delayed}</TableCell>
+                <TableCell><span className="text-status-success">{q.completed.toLocaleString()}</span></TableCell>
+                <TableCell><span className={q.failed > 0 ? "text-status-error font-semibold" : ""}>{q.failed}</span></TableCell>
+              </TableRow>
+            ))}
+          </DataTable>
+        </div>
+      )}
 
       {/* ── Tabs ── */}
       <div className="flex items-center gap-1 mb-4">

@@ -4,6 +4,9 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { Queue } from 'bullmq';
+import Redis from 'ioredis';
 import { JobOrchestratorService, JobMonitorService } from '@cvh/job-client';
 
 // ── Inline type definitions (mirrors @cvh/job-client types) ──────────────────
@@ -137,11 +140,19 @@ export interface QueueStats {
 @Injectable()
 export class JobManagementService {
   private readonly logger = new Logger(JobManagementService.name);
+  private readonly redisConnection: { host: string; port: number; password?: string };
 
   constructor(
     private readonly orchestrator: JobOrchestratorService,
     private readonly monitor: JobMonitorService,
-  ) {}
+    private readonly configService: ConfigService,
+  ) {
+    this.redisConnection = {
+      host: this.configService.get<string>('REDIS_HOST', 'localhost'),
+      port: this.configService.get<number>('REDIS_PORT', 6379),
+      password: this.configService.get<string>('REDIS_PASSWORD') ?? undefined,
+    };
+  }
 
   async listJobs(filters: ListJobsFilter): Promise<PaginatedResult<Job>> {
     return this.monitor.listJobs(filters);
@@ -221,5 +232,84 @@ export class JobManagementService {
     } catch (err) {
       throw new BadRequestException((err as Error).message);
     }
+  }
+
+  /**
+   * Get live BullMQ queue stats directly from Redis.
+   * This shows actual running jobs (sweep, forwarder-deploy, gas-tank, etc.)
+   * independent of the MySQL job tracking tables.
+   */
+  async getBullMQStats(): Promise<{
+    queues: Array<{
+      name: string;
+      waiting: number;
+      active: number;
+      completed: number;
+      failed: number;
+      delayed: number;
+      paused: number;
+      repeatableCount: number;
+    }>;
+    totals: {
+      waiting: number;
+      active: number;
+      completed: number;
+      failed: number;
+      delayed: number;
+    };
+  }> {
+    const queueNames = ['sweep', 'forwarder-deploy', 'gas-tank', 'sanctions-sync', 'polling-detector', 'export'];
+    const connection = { ...this.redisConnection, maxRetriesPerRequest: null };
+    const results: Array<{
+      name: string;
+      waiting: number;
+      active: number;
+      completed: number;
+      failed: number;
+      delayed: number;
+      paused: number;
+      repeatableCount: number;
+    }> = [];
+
+    for (const name of queueNames) {
+      try {
+        const queue = new Queue(name, { connection });
+        const [waiting, active, completed, failed, delayed, paused, repeatable] = await Promise.all([
+          queue.getWaitingCount(),
+          queue.getActiveCount(),
+          queue.getCompletedCount(),
+          queue.getFailedCount(),
+          queue.getDelayedCount(),
+          queue.getPausedCount(),
+          queue.getRepeatableJobs(),
+        ]);
+        results.push({
+          name,
+          waiting,
+          active,
+          completed,
+          failed,
+          delayed,
+          paused,
+          repeatableCount: repeatable.length,
+        });
+        await queue.close();
+      } catch (err) {
+        this.logger.warn(`Failed to get stats for queue ${name}: ${(err as Error).message}`);
+      }
+    }
+
+    const totals = results.reduce(
+      (acc, q) => ({
+        waiting: acc.waiting + q.waiting,
+        active: acc.active + q.active,
+        completed: acc.completed + q.completed,
+        failed: acc.failed + q.failed,
+        delayed: acc.delayed + q.delayed,
+      }),
+      { waiting: 0, active: 0, completed: 0, failed: 0, delayed: 0 },
+    );
+
+    return { queues: results, totals };
   }
 }
