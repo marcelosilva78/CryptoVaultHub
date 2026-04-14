@@ -68,18 +68,38 @@ interface ProviderTemplate {
   nodeTypes?: string[];
 }
 
-// ─── Dynamic chains (fetched from API, fallback to static) ────
+// ─── Health & Quota display components ────────────────────────
 
-const CHAINS_FALLBACK = [
-  { id: 1, name: "Ethereum" },
-  { id: 56, name: "BNB Chain" },
-  { id: 137, name: "Polygon" },
-  { id: 42161, name: "Arbitrum One" },
-  { id: 10, name: "Optimism" },
-  { id: 8453, name: "Base" },
-  { id: 43114, name: "Avalanche" },
-  { id: 250, name: "Fantom" },
-];
+function HealthScoreCell({ score }: { score: number | null | undefined }) {
+  if (score === null || score === undefined) return <span className="text-text-muted">—</span>;
+  const color = score >= 70 ? "text-status-success" : score >= 40 ? "text-status-warning" : "text-status-error";
+  return <span className={cn("font-mono font-semibold", color)}>{score.toFixed(0)}</span>;
+}
+
+function QuotaProgressBar({ used, limit, label }: { used: number; limit: number | null; label: string }) {
+  if (!limit) return null;
+  const pct = Math.min(100, (used / limit) * 100);
+  const color = pct >= 100 ? "bg-status-error" : pct >= 80 ? "bg-status-warning" : "bg-status-success";
+  return (
+    <div className="space-y-0.5">
+      <div className="flex justify-between text-micro text-text-muted">
+        <span>{label}</span>
+        <span>{used.toLocaleString()} / {limit.toLocaleString()}</span>
+      </div>
+      <div className="h-1.5 bg-surface-hover rounded-full overflow-hidden">
+        <div className={cn("h-full rounded-full transition-all duration-fast", color)} style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function QuotaStatusBadge({ status }: { status: string | undefined }) {
+  if (!status || status === "available") return <Badge variant="success" dot>Available</Badge>;
+  if (status === "approaching") return <Badge variant="warning" dot>Approaching</Badge>;
+  if (status === "daily_exhausted") return <Badge variant="error" dot>Daily Exhausted</Badge>;
+  if (status === "monthly_exhausted") return <Badge variant="error" dot>Monthly Exhausted</Badge>;
+  return <Badge variant="neutral" dot>{status}</Badge>;
+}
 
 // ─── ProviderModal ────────────────────────────────────────────
 
@@ -94,7 +114,7 @@ interface ProviderModalProps {
 
 function ProviderModal({ open, mode, initial, onClose, onSave, chains }: ProviderModalProps) {
   const defaultForm: ProviderFormData = {
-    name: "", providerType: "custom", chainId: CHAINS_FALLBACK[0].id,
+    name: "", providerType: "custom", chainId: chains[0]?.id ?? 1,
     rpcHttpUrl: "", rpcWsUrl: "", apiKey: "", priority: 10, isActive: true,
     authMethod: "none", nodeType: "",
     maxRequestsPerSecond: null, maxRequestsPerMinute: null,
@@ -119,7 +139,7 @@ function ProviderModal({ open, mode, initial, onClose, onSave, chains }: Provide
       setForm({
         ...defaultForm,
         name: initial?.name ?? "",
-        chainId: initial?.chainId ?? CHAINS_FALLBACK[0].id,
+        chainId: initial?.chainId ?? chains[0]?.id ?? 1,
         rpcHttpUrl: initial?.rpcHttpUrl ?? "",
         rpcWsUrl: initial?.rpcWsUrl ?? "",
         priority: initial?.priority ?? 10,
@@ -366,7 +386,7 @@ function ProviderModal({ open, mode, initial, onClose, onSave, chains }: Provide
 
 export default function RpcProvidersPage() {
   const [nodes, setNodes] = useState<RpcNode[]>([]);
-  const [chains, setChains] = useState<{ id: number; name: string }[]>(CHAINS_FALLBACK);
+  const [chains, setChains] = useState<{ id: number; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedProvider, setExpandedProvider] = useState<string | null>(null);
@@ -422,10 +442,13 @@ export default function RpcProvidersPage() {
   );
 
   // ── Stats ─────────────────────────────────────────────────────
+  const healthyCount = nodes.filter((n) => (n.healthScore ?? 0) >= 70).length;
+  const quotaWarnings = nodes.filter((n) => n.quotaStatus && n.quotaStatus !== "available").length;
   const stats = {
     active: grouped.filter((p) => p.nodes.some((n) => n.isActive)).length,
     total: nodes.length,
-    healthy: nodes.filter((n) => n.isActive).length,
+    healthy: healthyCount,
+    quotaWarnings,
   };
 
   // ── Save handler ──────────────────────────────────────────────
@@ -516,7 +539,7 @@ export default function RpcProvidersPage() {
         <StatCard label="Active Providers" value={String(stats.active)} color="accent" />
         <StatCard label="Total Nodes" value={String(stats.total)} />
         <StatCard label="Healthy Nodes" value={String(stats.healthy)} color="success" />
-        <StatCard label="Providers" value={String(grouped.length)} />
+        <StatCard label="Quota Warnings" value={String(stats.quotaWarnings)} color={stats.quotaWarnings > 0 ? "warning" : "success"} />
       </div>
 
       {/* Error banner */}
@@ -667,11 +690,13 @@ export default function RpcProvidersPage() {
                         <div className="pl-4 flex items-center gap-2">
                           <Activity className="w-3.5 h-3.5 text-text-muted" />
                           <div>
-                            <div className="text-caption font-display text-text-primary font-medium">
+                            <div className="text-caption font-display text-text-primary font-medium flex items-center gap-2">
                               {node.name}
+                              <HealthScoreCell score={node.healthScore} />
                             </div>
-                            <div className="text-caption text-text-muted font-mono">
-                              ID: {node.id}
+                            <div className="text-caption text-text-muted font-mono flex items-center gap-2">
+                              <span>ID: {node.id}</span>
+                              <QuotaStatusBadge status={node.quotaStatus} />
                             </div>
                           </div>
                         </div>
@@ -688,6 +713,12 @@ export default function RpcProvidersPage() {
                             {node.rpcHttpUrl}
                           </span>
                         </div>
+                        {(node.maxRequestsPerDay || node.maxRequestsPerMonth) && (
+                          <div className="mt-1.5 space-y-1 max-w-[240px]">
+                            <QuotaProgressBar used={0} limit={node.maxRequestsPerDay ?? null} label="Daily" />
+                            <QuotaProgressBar used={0} limit={node.maxRequestsPerMonth ?? null} label="Monthly" />
+                          </div>
+                        )}
                       </TableCell>
                       <TableCell>
                         <span className="text-caption text-text-muted font-mono">
