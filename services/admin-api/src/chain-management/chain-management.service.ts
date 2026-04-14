@@ -205,9 +205,13 @@ export class ChainManagementService {
   }
 
   async getChainHealth() {
-    const [chainsRes, syncHealthRes] = await Promise.all([
+    const [chainsRes, syncHealthRes, rpcNodes] = await Promise.all([
       axios.get(`${this.chainIndexerUrl}/chains`),
-      axios.get(`${this.chainIndexerUrl}/sync-health`).catch(() => ({ data: [] })),
+      axios.get(`${this.chainIndexerUrl}/sync-health`).catch((err) => {
+        this.logger.warn(`Failed to fetch sync-health: ${err.message}`);
+        return { data: [] };
+      }),
+      this.depService.getRpcNodeCounts().catch(() => new Map<number, { total: number; active: number }>()),
     ]);
 
     const chains = chainsRes.data.chains || chainsRes.data.data || chainsRes.data;
@@ -217,19 +221,27 @@ export class ChainManagementService {
       chains: chains.map((chain: any) => {
         const chainId = chain.chainId || chain.id;
         const sync = syncHealth.find((s: any) => s.chainId === chainId);
+        const rpc = rpcNodes instanceof Map ? rpcNodes.get(chainId) : undefined;
 
         return {
           chainId,
           name: chain.name,
           shortName: chain.shortName || chain.symbol,
           symbol: chain.symbol,
-          status: chain.status || (chain.isActive ? 'active' : 'inactive'),
-          blockTimeSeconds: chain.blockTimeSeconds,
+          status: chain.status ?? (chain.isActive ? 'active' : 'inactive'),
+          blockTimeSeconds: chain.blockTimeSeconds ? Number(chain.blockTimeSeconds) : null,
           health: {
-            overall: sync?.status || 'unknown',
-            lastBlock: sync?.lastBlock || null,
-            blocksBehind: sync?.blocksBehind || null,
-            lastCheckedAt: sync?.lastCheckedAt || null,
+            overall: sync?.status ?? 'unknown',
+            lastBlock: sync?.lastBlock ?? null,
+            blocksBehind: sync?.blocksBehind ?? null,
+            lastCheckedAt: sync?.lastUpdated ?? sync?.lastCheckedAt ?? null,
+          },
+          rpc: {
+            totalNodes: rpc?.total ?? 0,
+            activeNodes: rpc?.active ?? 0,
+            healthyNodes: rpc?.active ?? 0,
+            avgLatencyMs: null,
+            quotaStatus: 'available',
           },
         };
       }),

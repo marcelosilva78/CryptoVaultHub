@@ -59,6 +59,20 @@ export class ChainDependencyService {
     };
   }
 
+  async getRpcNodeCounts(): Promise<Map<number, { total: number; active: number }>> {
+    const nodes = await this.prisma.rpcNode.findMany({
+      select: { chainId: true, status: true },
+    });
+    const map = new Map<number, { total: number; active: number }>();
+    for (const node of nodes) {
+      const entry = map.get(node.chainId) || { total: 0, active: 0 };
+      entry.total++;
+      if (node.status === 'active' || node.status === 'standby') entry.active++;
+      map.set(node.chainId, entry);
+    }
+    return map;
+  }
+
   private async fetchIndexerDependencies(chainId: number) {
     try {
       const { data } = await axios.get(`${this.chainIndexerUrl}/chains/${chainId}/dependencies`);
