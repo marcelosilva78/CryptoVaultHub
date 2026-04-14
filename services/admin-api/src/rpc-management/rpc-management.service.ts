@@ -201,6 +201,13 @@ export class RpcManagementService {
       hasApiKey: !!updatedNode.provider.apiKeyEncrypted,
       priority: updatedNode.priority,
       isActive: updatedNode.isActive,
+      providerType: updatedNode.providerType ?? 'custom',
+      authMethod: updatedNode.authMethodType ?? 'none',
+      nodeType: updatedNode.nodeType ?? null,
+      maxRequestsPerSecond: updatedNode.maxRequestsPerSecond,
+      maxRequestsPerMinute: updatedNode.maxRequestsPerMinute,
+      maxRequestsPerDay: updatedNode.maxRequestsPerDay,
+      maxRequestsPerMonth: updatedNode.maxRequestsPerMonth,
     };
   }
 
@@ -220,6 +227,15 @@ export class RpcManagementService {
       priority: node.priority,
       isActive: node.isActive,
       createdAt: node.createdAt,
+      providerType: node.providerType ?? 'custom',
+      authMethod: node.authMethodType ?? 'none',
+      nodeType: node.nodeType ?? null,
+      maxRequestsPerSecond: node.maxRequestsPerSecond,
+      maxRequestsPerMinute: node.maxRequestsPerMinute,
+      maxRequestsPerDay: node.maxRequestsPerDay,
+      maxRequestsPerMonth: node.maxRequestsPerMonth,
+      healthScore: node.healthScore ? Number(node.healthScore) : null,
+      quotaStatus: node.quotaStatus ?? 'available',
     }));
   }
 

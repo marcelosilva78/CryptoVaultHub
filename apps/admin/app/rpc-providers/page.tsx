@@ -24,6 +24,15 @@ interface RpcNode {
   priority: number;
   isActive: boolean;
   createdAt: string;
+  providerType?: string;
+  authMethod?: string;
+  nodeType?: string | null;
+  maxRequestsPerSecond?: number | null;
+  maxRequestsPerMinute?: number | null;
+  maxRequestsPerDay?: number | null;
+  maxRequestsPerMonth?: number | null;
+  healthScore?: number | null;
+  quotaStatus?: string;
 }
 
 interface ProviderFormData {
@@ -115,9 +124,13 @@ function ProviderModal({ open, mode, initial, onClose, onSave, chains }: Provide
         rpcWsUrl: initial?.rpcWsUrl ?? "",
         priority: initial?.priority ?? 10,
         isActive: initial?.isActive ?? true,
-        providerType: (initial as any)?.providerType ?? "custom",
-        authMethod: (initial as any)?.authMethod ?? "none",
-        nodeType: (initial as any)?.nodeType ?? "",
+        providerType: initial?.providerType ?? "custom",
+        authMethod: initial?.authMethod ?? "none",
+        nodeType: initial?.nodeType ?? "",
+        maxRequestsPerSecond: initial?.maxRequestsPerSecond ?? null,
+        maxRequestsPerMinute: initial?.maxRequestsPerMinute ?? null,
+        maxRequestsPerDay: initial?.maxRequestsPerDay ?? null,
+        maxRequestsPerMonth: initial?.maxRequestsPerMonth ?? null,
       });
     }
   }, [open, initial]);
