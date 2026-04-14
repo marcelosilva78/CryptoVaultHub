@@ -203,33 +203,41 @@ export class SyncHealthController {
 
   @Get('/chains/:id/dependencies')
   async getChainDependencies(@Param('id', ParseIntPipe) id: number) {
-    const [
-      tokens, wallets, depositAddresses, deployedAddresses,
-      deposits, pendingDeposits,
-      withdrawals, pendingWithdrawals,
-      flushOps, pendingFlushOps,
-      gasTanks,
-    ] = await Promise.all([
+    // Only count models available in chain-indexer schema (Token, SyncCursor, MonitoredAddress, etc.)
+    // Wallet, Deposit, Withdrawal, FlushOperation are in core-wallet-service DB — use raw SQL via cross-DB views
+    const [tokens, monitoredAddresses, syncCursors, indexedBlocks] = await Promise.all([
       this.prisma.token.count({ where: { chainId: id } }),
-      this.prisma.wallet.count({ where: { chainId: id } }),
-      this.prisma.depositAddress.count({ where: { chainId: id } }),
-      this.prisma.depositAddress.count({ where: { chainId: id, isDeployed: true } }),
-      this.prisma.deposit.count({ where: { chainId: id } }),
-      this.prisma.deposit.count({ where: { chainId: id, status: { in: ['detected', 'confirming'] } } }),
-      this.prisma.withdrawal.count({ where: { chainId: id } }),
-      this.prisma.withdrawal.count({ where: { chainId: id, status: { in: ['pending', 'submitted'] } } }),
-      this.prisma.flushOperation.count({ where: { chainId: id } }),
-      this.prisma.flushOperation.count({ where: { chainId: id, status: { in: ['pending', 'executing'] } } }),
-      this.prisma.wallet.count({ where: { chainId: id, walletType: 'gas_tank' } }),
+      this.prisma.monitoredAddress.count({ where: { chainId: id } }),
+      this.prisma.syncCursor.count({ where: { chainId: id } }),
+      this.prisma.indexedBlock.count({ where: { chainId: id } }),
     ]);
 
+    // Cross-database counts via raw SQL (cvh_wallets tables are accessible)
+    const walletCounts = await this.prisma.$queryRawUnsafe<any[]>(
+      `SELECT
+        (SELECT COUNT(*) FROM cvh_wallets.wallets WHERE chain_id = ?) AS wallets,
+        (SELECT COUNT(*) FROM cvh_wallets.deposit_addresses WHERE chain_id = ?) AS depositAddresses,
+        (SELECT COUNT(*) FROM cvh_wallets.deposit_addresses WHERE chain_id = ? AND is_deployed = 1) AS deployedAddresses,
+        (SELECT COUNT(*) FROM cvh_wallets.deposits WHERE chain_id = ?) AS deposits,
+        (SELECT COUNT(*) FROM cvh_wallets.deposits WHERE chain_id = ? AND status IN ('detected','confirming')) AS pendingDeposits,
+        (SELECT COUNT(*) FROM cvh_wallets.withdrawals WHERE chain_id = ?) AS withdrawals,
+        (SELECT COUNT(*) FROM cvh_wallets.withdrawals WHERE chain_id = ? AND status IN ('pending','submitted')) AS pendingWithdrawals,
+        (SELECT COUNT(*) FROM cvh_wallets.flush_operations WHERE chain_id = ?) AS flushOps,
+        (SELECT COUNT(*) FROM cvh_wallets.flush_operations WHERE chain_id = ? AND status IN ('pending','executing')) AS pendingFlushOps,
+        (SELECT COUNT(*) FROM cvh_wallets.wallets WHERE chain_id = ? AND wallet_type = 'gas_tank') AS gasTanks`,
+      id, id, id, id, id, id, id, id, id, id,
+    );
+
+    const r = walletCounts[0] || {};
+
     return {
-      tokens, wallets,
-      depositAddresses: { total: depositAddresses, deployed: deployedAddresses },
-      deposits: { total: deposits, pending: pendingDeposits },
-      withdrawals: { total: withdrawals, pending: pendingWithdrawals },
-      flushOperations: { total: flushOps, pending: pendingFlushOps },
-      gasTanks,
+      tokens,
+      wallets: Number(r.wallets || 0),
+      depositAddresses: { total: Number(r.depositAddresses || 0), deployed: Number(r.deployedAddresses || 0) },
+      deposits: { total: Number(r.deposits || 0), pending: Number(r.pendingDeposits || 0) },
+      withdrawals: { total: Number(r.withdrawals || 0), pending: Number(r.pendingWithdrawals || 0) },
+      flushOperations: { total: Number(r.flushOps || 0), pending: Number(r.pendingFlushOps || 0) },
+      gasTanks: Number(r.gasTanks || 0),
     };
   }
 
