@@ -159,7 +159,6 @@ export class HealthService implements OnModuleInit {
 
     try {
       const provider = this.createAuthProvider(node.endpointUrl, node.provider);
-      });
 
       const block = await Promise.race([
         provider.getBlockNumber(),
