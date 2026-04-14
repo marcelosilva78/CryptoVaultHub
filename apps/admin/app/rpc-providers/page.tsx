@@ -179,11 +179,11 @@ function ProviderModal({ open, mode, initial, onClose, onSave, chains }: Provide
 
   return (
     <div
-      className="fixed left-0 right-0 bottom-0 z-[200] flex items-start justify-center py-6 px-4 overflow-y-auto bg-black/60 backdrop-blur-sm"
+      className="fixed left-0 right-0 bottom-0 z-[200] flex items-start justify-center py-4 px-4 bg-black/60 backdrop-blur-sm"
       style={{ top: 56 }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="bg-surface-card border border-border-subtle rounded-modal shadow-float w-full max-w-lg flex flex-col shrink-0">
+      <div className="bg-surface-card border border-border-subtle rounded-modal shadow-float w-full max-w-lg flex flex-col" style={{ maxHeight: 'calc(100vh - 56px - 2rem)' }}>
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border-subtle shrink-0">
           <h3 className="font-display text-subheading text-text-primary">
