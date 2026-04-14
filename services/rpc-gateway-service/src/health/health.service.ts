@@ -69,10 +69,14 @@ export class HealthService implements OnModuleInit {
       }
     }
 
-    // Publish aggregated chain health events to Kafka
+    // Publish aggregated chain health events to Kafka (re-query for fresh scores)
     if (this.eventBus) {
+      const freshNodes = await this.prisma.rpcNode.findMany({
+        where: { id: { in: nodes.map((n) => n.id) } },
+        select: { chainId: true, healthScore: true },
+      });
       const chainHealth = new Map<number, { healthy: number; total: number }>();
-      for (const node of nodes) {
+      for (const node of freshNodes) {
         const entry = chainHealth.get(node.chainId) ?? { healthy: 0, total: 0 };
         entry.total++;
         if (Number(node.healthScore) >= 70) entry.healthy++;
