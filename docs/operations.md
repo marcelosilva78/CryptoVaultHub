@@ -448,3 +448,186 @@ All NestJS services use the built-in Logger with levels: `error`, `warn`, `log`,
 - Container logs: Controlled by Docker logging driver (default: json-file with 100MB max)
 - Loki: Configure retention in Loki config (recommended: 30 days)
 - Database audit logs: Retained indefinitely (compliance requirement)
+
+---
+
+## 9. MySQL: Docker vs External Cluster
+
+CryptoVaultHub supports two MySQL deployment modes, selectable during `scripts/setup.sh`:
+
+### Option 1: Docker MySQL (Development / Single-Server)
+
+The setup script starts a MySQL 8.0 container on `internal-net` with data persisted to `/docker/data/mysql`. This is suitable for development, staging, or single-server deployments where simplicity is preferred.
+
+**Pros:** Zero external dependencies, automatic setup, data persisted via Docker volume.
+**Cons:** Single point of failure, no replication, resource competition with app containers.
+
+The Docker MySQL container uses the same `.env` credentials (`MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD`). Init scripts in `scripts/sql/` create all 5 databases and run migrations automatically.
+
+### Option 2: External MySQL Cluster (Production)
+
+Point the platform at an existing MySQL 8.0+ cluster (e.g., Percona XtraDB, MySQL InnoDB Cluster, AWS RDS, Google Cloud SQL). The setup script tests the connection during configuration.
+
+**Requirements:**
+- MySQL 8.0+ with `utf8mb4` character set
+- Network connectivity from the Docker host to the cluster
+- A user with `CREATE DATABASE`, `CREATE TABLE`, `ALTER`, `INSERT`, `UPDATE`, `DELETE` privileges
+- 5 databases will be created: `cvh_admin`, `cvh_core`, `cvh_indexer`, `cvh_keyvault`, `cvh_notifications`
+
+**Configuration (.env):**
+```
+MYSQL_HOST=your-cluster-endpoint
+MYSQL_PORT=3306
+MYSQL_USER=cvh_app
+MYSQL_PASSWORD=<strong-password>
+MYSQL_ROOT_PASSWORD=<root-password>  # Only needed for initial DB creation
+```
+
+### Migrating from Docker MySQL to External Cluster
+
+1. **Dump all databases:**
+   ```bash
+   docker compose exec mysql mysqldump -u root -p --all-databases --single-transaction > cvh_backup.sql
+   ```
+2. **Import into the cluster:**
+   ```bash
+   mysql -h <cluster-host> -u root -p < cvh_backup.sql
+   ```
+3. **Update `.env`** with the cluster connection details
+4. **Restart services:** `docker compose down && docker compose up -d`
+5. **Remove Docker MySQL** (optional): Comment out the `mysql` service in `docker-compose.yml`
+
+### Backing Up Docker MySQL
+
+```bash
+# Full backup
+docker compose exec mysql mysqldump -u root -p"${MYSQL_ROOT_PASSWORD}" --all-databases --single-transaction > backup_$(date +%Y%m%d).sql
+
+# Restore
+docker compose exec -i mysql mysql -u root -p"${MYSQL_ROOT_PASSWORD}" < backup_20260413.sql
+```
+
+Data directory: `/docker/data/mysql` -- include this in your host-level backup strategy.
+
+---
+
+## 10. LVM /docker Persistence
+
+All Docker volumes are stored under `/docker/data/` on a dedicated LVM logical volume. This isolates container data from the root filesystem and allows online expansion.
+
+### Directory Structure
+
+```
+/docker/data/
+├── mysql/          # MySQL data (Docker MySQL mode only)
+├── redis/          # Redis AOF persistence + RDB snapshots
+├── kafka/          # Kafka broker log segments
+├── traefik/
+│   └── letsencrypt/ # ACME certificates and account keys
+├── grafana/        # Dashboards, plugins, alerting state (UID 472)
+├── prometheus/     # Time-series metrics database (UID 65534)
+├── loki/           # Log aggregation index and chunks
+└── posthog/
+    └── clickhouse/ # PostHog analytics events
+```
+
+### Expanding the LVM Volume
+
+```bash
+# Check current usage
+df -h /docker
+
+# Extend the logical volume (add 50GB)
+sudo lvextend -L +50G /dev/<vg-name>/<lv-name>
+
+# Resize the filesystem (ext4)
+sudo resize2fs /dev/<vg-name>/<lv-name>
+
+# Verify
+df -h /docker
+```
+
+### Directory Permissions
+
+Some services run as non-root users inside their containers and require matching ownership on the host:
+
+| Directory | UID:GID | Service |
+|-----------|---------|---------|
+| `/docker/data/grafana` | 472:472 | Grafana |
+| `/docker/data/prometheus` | 65534:65534 | Prometheus |
+
+Set permissions during initial setup:
+```bash
+sudo chown -R 472:472 /docker/data/grafana
+sudo chown -R 65534:65534 /docker/data/prometheus
+```
+
+### Backup Strategy
+
+Include `/docker/data/` in your host-level backup (e.g., LVM snapshots, rsync, Borg). Critical subdirectories:
+- **`redis/`** -- AOF file contains all BullMQ job state
+- **`traefik/letsencrypt/`** -- SSL certificates (avoids re-issuance rate limits)
+- **`mysql/`** -- Only if using Docker MySQL mode
+
+---
+
+## 11. Traefik DNS-01 + Cloudflare SSL
+
+CryptoVaultHub uses Traefik v3 as reverse proxy with Let's Encrypt SSL certificates via the DNS-01 challenge. This allows SSL on servers behind NAT or with private IPs -- no port 80/443 exposure required for certificate issuance.
+
+### How It Works
+
+1. Traefik requests a certificate from Let's Encrypt for `*.vaulthub.live`
+2. Let's Encrypt asks Traefik to prove domain ownership via a DNS TXT record
+3. Traefik uses the Cloudflare API to create the `_acme-challenge.vaulthub.live` TXT record
+4. Let's Encrypt verifies the record and issues the certificate
+5. Traefik stores the certificate in `/docker/data/traefik/letsencrypt/acme.json`
+
+### Cloudflare API Token Setup
+
+1. Go to Cloudflare Dashboard → My Profile → API Tokens
+2. Create a token with these permissions:
+   - **Zone - DNS - Edit** (for the target zone)
+   - **Zone - Zone - Read** (for the target zone)
+3. Copy the token value
+
+### Configuration (.env)
+
+```
+CLOUDFLARE_DNS_API_TOKEN=<your-token>
+ACME_EMAIL=admin@vaulthub.live
+BASE_DOMAIN=vaulthub.live
+```
+
+### Subdomains Covered
+
+| Subdomain | Service | Port |
+|-----------|---------|------|
+| `api.vaulthub.live` | API Gateway | 8000 |
+| `admin.vaulthub.live` | Admin Panel | 3000 |
+| `portal.vaulthub.live` | Client Portal | 3100 |
+| `grafana.vaulthub.live` | Grafana | 3000 |
+| `jaeger.vaulthub.live` | Jaeger UI | 16686 |
+| `traefik.vaulthub.live` | Traefik Dashboard | 8080 |
+
+### Troubleshooting
+
+**Certificate not issued:**
+```bash
+# Check Traefik logs for ACME errors
+docker compose logs traefik | grep -i acme
+
+# Verify the DNS token works
+curl -X GET "https://api.cloudflare.com/client/v4/zones" \
+  -H "Authorization: Bearer ${CLOUDFLARE_DNS_API_TOKEN}" \
+  -H "Content-Type: application/json"
+```
+
+**Certificate expired / not renewed:**
+- Traefik auto-renews 30 days before expiry
+- Check `/docker/data/traefik/letsencrypt/acme.json` for certificate dates
+- If corrupted, delete `acme.json` and restart Traefik: `docker compose restart traefik`
+
+**Rate limits:**
+- Let's Encrypt allows 50 certificates per domain per week
+- Staging endpoint for testing: set `--certificatesresolvers.letsencrypt.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory` in docker-compose.yml
