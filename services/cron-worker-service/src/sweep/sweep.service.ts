@@ -86,6 +86,35 @@ export class SweepService extends WorkerHost implements OnModuleInit {
   }
 
   /**
+   * Register sweep jobs for a single chain. Called by ChainListenerService
+   * when a chain becomes active, or at startup via onModuleInit.
+   */
+  async registerChainSweepJobs(
+    chainId: number,
+    intervalMs: number = 60_000,
+  ): Promise<void> {
+    const wallets = await this.prisma.wallet.findMany({
+      where: { chainId, walletType: 'hot', isActive: true },
+      select: { clientId: true },
+    });
+
+    const clientIds = [...new Set(wallets.map((w) => Number(w.clientId)))];
+    for (const clientId of clientIds) {
+      await this.sweepQueue.add(
+        'execute-sweep',
+        { chainId, clientId },
+        {
+          repeat: { every: intervalMs },
+          jobId: `sweep-${chainId}-${clientId}`,
+        },
+      );
+    }
+    this.logger.log(
+      `Registered ${clientIds.length} sweep jobs for chain ${chainId}`,
+    );
+  }
+
+  /**
    * BullMQ worker: process a sweep job.
    */
   async process(job: Job<SweepJobData>): Promise<SweepResult> {
