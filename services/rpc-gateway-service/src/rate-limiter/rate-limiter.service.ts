@@ -1,5 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import Redis from 'ioredis';
+import { ConfigService } from '@nestjs/config';
 
 interface RpcNodeLimits {
   maxRequestsPerSecond: number;
@@ -13,10 +14,12 @@ interface RpcNodeLimits {
  * Uses atomic Lua scripts to prevent TOCTOU race conditions.
  */
 @Injectable()
-export class RateLimiterService {
+export class RateLimiterService implements OnModuleInit {
   private readonly logger = new Logger(RateLimiterService.name);
   private redis!: Redis;
   private readonly nodeLimits = new Map<string, RpcNodeLimits>();
+
+  constructor(private readonly configService: ConfigService) {}
 
   /**
    * Atomic Lua script: removes expired entries, checks count, and increments in one call.
@@ -40,6 +43,16 @@ export class RateLimiterService {
     redis.call('PEXPIRE', key, window)
     return 1
   `;
+
+  onModuleInit() {
+    this.redis = new Redis({
+      host: this.configService.get<string>('REDIS_HOST', 'localhost'),
+      port: this.configService.get<number>('REDIS_PORT', 6379),
+      password: this.configService.get<string>('REDIS_PASSWORD') ?? undefined,
+      maxRetriesPerRequest: null,
+    });
+    this.logger.log('RateLimiterService Redis client initialized');
+  }
 
   setRedis(redis: Redis): void {
     this.redis = redis;
