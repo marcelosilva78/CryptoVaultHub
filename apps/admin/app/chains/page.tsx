@@ -275,8 +275,8 @@ function AddChainModal({ onClose, onAdded }: AddChainModalProps) {
   const inputClass = "w-full px-3 py-2 bg-surface-input border border-border-default rounded-input text-body text-text-primary outline-none focus:border-border-focus transition-colors duration-fast font-mono placeholder:text-text-muted";
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-start justify-center pt-16 pb-4 overflow-y-auto bg-black/60 backdrop-blur-sm">
-      <div className="bg-surface-card border border-border-subtle rounded-modal shadow-float w-full max-w-[480px] mx-4 max-h-[90vh] flex flex-col">
+    <div className="fixed left-0 right-0 bottom-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" style={{ top: 56 }}>
+      <div className="bg-surface-card border border-border-subtle rounded-modal shadow-float w-full max-w-[480px] mx-4 max-h-[calc(100vh-56px-2rem)] flex flex-col">
         <div className="flex items-center justify-between p-5 border-b border-border-subtle shrink-0">
           <span className="font-display text-subheading text-text-primary">Add Chain</span>
           <button onClick={onClose} className="p-1 rounded-button text-text-muted hover:text-text-primary hover:bg-surface-hover transition-all duration-fast"><X className="w-4 h-4" /></button>
@@ -381,8 +381,8 @@ function EditChainModal({ chain, onClose, onUpdated }: { chain: ChainHealth; onC
   const inputClass = "w-full px-3 py-2 bg-surface-input border border-border-default rounded-input text-body text-text-primary outline-none focus:border-border-focus transition-colors duration-fast font-mono placeholder:text-text-muted";
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-start justify-center pt-16 pb-4 overflow-y-auto bg-black/60 backdrop-blur-sm">
-      <div className="bg-surface-card border border-border-subtle rounded-modal shadow-float w-full max-w-[480px] mx-4 max-h-[90vh] flex flex-col">
+    <div className="fixed left-0 right-0 bottom-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" style={{ top: 56 }}>
+      <div className="bg-surface-card border border-border-subtle rounded-modal shadow-float w-full max-w-[480px] mx-4 max-h-[calc(100vh-56px-2rem)] flex flex-col">
         <div className="flex items-center justify-between p-5 border-b border-border-subtle shrink-0">
           <div>
             <span className="font-display text-subheading text-text-primary">Edit Chain</span>
@@ -471,7 +471,7 @@ function LifecycleModal({ chain, action, onClose, onDone }: { chain: ChainHealth
   const canSubmit = reason.length >= 10 && (!needsTypeConfirm || confirmText === chain.name.toUpperCase());
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-start justify-center pt-16 pb-4 overflow-y-auto bg-black/60 backdrop-blur-sm">
+    <div className="fixed left-0 right-0 bottom-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" style={{ top: 56 }}>
       <div className={cn("bg-surface-card border rounded-modal shadow-float w-full max-w-[480px] mx-4", isDestructive ? "border-status-error/30" : "border-border-subtle")}>
         <div className="p-5 border-b border-border-subtle">
           <h3 className="font-display text-subheading text-text-primary">{l.title}</h3>
