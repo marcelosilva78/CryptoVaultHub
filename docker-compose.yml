@@ -632,13 +632,34 @@ services:
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_LOG_RETENTION_HOURS: "168"
+      KAFKA_LOG_RETENTION_BYTES: "5368709120"
       CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qg"
       KAFKA_LOG_DIRS: /var/lib/kafka/data
     volumes:
       - /docker/data/kafka:/var/lib/kafka/data
     networks:
+      - internal-net
       - monitoring-net
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
     restart: unless-stopped
+
+  kafka-init:
+    image: apache/kafka:3.7.0
+    entrypoint: ["/bin/bash", "/scripts/init-topics.sh"]
+    volumes:
+      - ./docker/kafka/init-topics.sh:/scripts/init-topics.sh:ro
+    networks:
+      - internal-net
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: "no"
 
   posthog-web:
     image: posthog/posthog:latest
