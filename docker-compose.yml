@@ -464,10 +464,15 @@ services:
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD}
       - INTERNAL_SERVICE_KEY=${INTERNAL_SERVICE_KEY}
+      - KAFKA_BROKERS=kafka:9092
+      - EVENTBUS_KAFKA_ENABLED=true
+      - EVENTBUS_REDIS_ENABLED=true
     depends_on:
       mysql:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      kafka:
         condition: service_healthy
     networks:
       - internal-net

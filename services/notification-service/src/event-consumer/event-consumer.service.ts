@@ -3,9 +3,11 @@ import {
   Logger,
   OnModuleInit,
   OnModuleDestroy,
+  Optional,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
+import { KafkaConsumerService, TOPICS, EventBusEvent } from '@cvh/event-bus';
 import { WebhookDeliveryService } from '../webhook/webhook-delivery.service';
 
 /**
@@ -34,6 +36,7 @@ export class EventConsumerService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly config: ConfigService,
     private readonly deliveryService: WebhookDeliveryService,
+    @Optional() private readonly kafkaConsumer?: KafkaConsumerService,
   ) {
     this.redis = new Redis({
       host: this.config.get<string>('REDIS_HOST', 'localhost'),
@@ -47,6 +50,10 @@ export class EventConsumerService implements OnModuleInit, OnModuleDestroy {
     await this.ensureConsumerGroups();
     this.running = true;
     this.consumeLoop();
+
+    if (this.kafkaConsumer) {
+      await this.startKafkaConsumer();
+    }
   }
 
   async onModuleDestroy() {
@@ -192,5 +199,61 @@ export class EventConsumerService implements OnModuleInit, OnModuleDestroy {
     this.logger.debug(
       `Processed stream entry: ${stream}/${entryId} -> ${eventType} for client ${clientId}`,
     );
+  }
+
+  /**
+   * Start Kafka consumer for financial events (runs alongside Redis Streams).
+   */
+  private async startKafkaConsumer() {
+    const topics = [
+      TOPICS.DEPOSITS_DETECTED,
+      TOPICS.DEPOSITS_CONFIRMED,
+      TOPICS.DEPOSITS_SWEPT,
+      TOPICS.WITHDRAWALS_LIFECYCLE,
+    ];
+
+    const KAFKA_TO_EVENT: Record<string, string> = {
+      [TOPICS.DEPOSITS_DETECTED]: 'deposit.detected',
+      [TOPICS.DEPOSITS_CONFIRMED]: 'deposit.confirmed',
+      [TOPICS.DEPOSITS_SWEPT]: 'deposit.swept',
+      [TOPICS.WITHDRAWALS_LIFECYCLE]: 'withdrawal.lifecycle',
+    };
+
+    try {
+      await this.kafkaConsumer!.subscribe(topics, async (event: EventBusEvent) => {
+        const eventType = KAFKA_TO_EVENT[event.topic];
+        if (!eventType) return;
+
+        const data = event.data as Record<string, string>;
+        const clientId = data.clientId || data.client_id;
+        if (!clientId) {
+          this.logger.warn(`Kafka event ${event.topic} missing clientId, skipping`);
+          return;
+        }
+
+        const payload = {
+          event: eventType,
+          timestamp: new Date().toISOString(),
+          data: event.data,
+          source: 'kafka',
+        };
+
+        await this.deliveryService.createDeliveries(
+          BigInt(clientId),
+          eventType,
+          payload,
+        );
+
+        this.logger.debug(
+          `Processed Kafka event: ${event.topic} -> ${eventType} for client ${clientId}`,
+        );
+      });
+
+      this.logger.log('Kafka consumer started for financial events');
+    } catch (err) {
+      this.logger.error(
+        `Failed to start Kafka consumer: ${(err as Error).message}. Falling back to Redis Streams only.`,
+      );
+    }
   }
 }
