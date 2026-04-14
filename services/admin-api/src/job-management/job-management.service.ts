@@ -274,13 +274,12 @@ export class JobManagementService {
     for (const name of queueNames) {
       try {
         const queue = new Queue(name, { connection });
-        const [waiting, active, completed, failed, delayed, paused, repeatable] = await Promise.all([
+        const [waiting, active, completed, failed, delayed, repeatable] = await Promise.all([
           queue.getWaitingCount(),
           queue.getActiveCount(),
           queue.getCompletedCount(),
           queue.getFailedCount(),
           queue.getDelayedCount(),
-          queue.getPausedCount(),
           queue.getRepeatableJobs(),
         ]);
         results.push({
@@ -290,7 +289,7 @@ export class JobManagementService {
           completed,
           failed,
           delayed,
-          paused,
+          paused: 0,
           repeatableCount: repeatable.length,
         });
         await queue.close();
