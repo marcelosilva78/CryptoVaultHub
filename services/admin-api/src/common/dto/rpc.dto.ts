@@ -76,6 +76,49 @@ export class CreateRpcProviderDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @ApiPropertyOptional({ description: 'Provider type', example: 'alchemy' })
+  @IsOptional()
+  @IsString()
+  providerType?: string;
+
+  @ApiPropertyOptional({ description: 'Auth method', example: 'url_path' })
+  @IsOptional()
+  @IsString()
+  authMethod?: string;
+
+  @ApiPropertyOptional({ description: 'Node type (for custom)', example: 'geth' })
+  @IsOptional()
+  @IsString()
+  nodeType?: string;
+
+  @ApiPropertyOptional({ description: 'Max requests per second' })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Type(() => Number)
+  maxRequestsPerSecond?: number;
+
+  @ApiPropertyOptional({ description: 'Max requests per minute' })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Type(() => Number)
+  maxRequestsPerMinute?: number;
+
+  @ApiPropertyOptional({ description: 'Max requests per day' })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Type(() => Number)
+  maxRequestsPerDay?: number;
+
+  @ApiPropertyOptional({ description: 'Max requests per month' })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Type(() => Number)
+  maxRequestsPerMonth?: number;
 }
 
 export class UpdateRpcProviderDto {

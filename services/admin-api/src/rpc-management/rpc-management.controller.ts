@@ -13,10 +13,17 @@ import { Request } from 'express';
 import { AdminAuth } from '../common/decorators';
 import { RpcManagementService } from './rpc-management.service';
 import { CreateRpcProviderDto, UpdateRpcProviderDto } from '../common/dto/rpc.dto';
+import { PROVIDER_TEMPLATES } from './provider-templates';
 
 @Controller('admin/rpc-providers')
 export class RpcManagementController {
   constructor(private readonly rpcManagementService: RpcManagementService) {}
+
+  @Get('templates')
+  @AdminAuth('super_admin', 'admin', 'viewer')
+  getTemplates() {
+    return { success: true, templates: PROVIDER_TEMPLATES };
+  }
 
   @Post()
   @AdminAuth('super_admin', 'admin')

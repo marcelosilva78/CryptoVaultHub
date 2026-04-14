@@ -98,6 +98,13 @@ export class RpcManagementService {
           wsEndpointUrl: data.rpcWsUrl ?? null,
           priority: data.priority ?? 50,
           isActive: data.isActive ?? true,
+          providerType: (data as any).providerType ?? 'custom',
+          authMethodType: (data as any).authMethod ?? 'url_path',
+          nodeType: (data as any).nodeType ?? null,
+          maxRequestsPerSecond: (data as any).maxRequestsPerSecond ?? null,
+          maxRequestsPerMinute: (data as any).maxRequestsPerMinute ?? null,
+          maxRequestsPerDay: (data as any).maxRequestsPerDay ?? null,
+          maxRequestsPerMonth: (data as any).maxRequestsPerMonth ?? null,
         },
         include: { provider: true },
       });
