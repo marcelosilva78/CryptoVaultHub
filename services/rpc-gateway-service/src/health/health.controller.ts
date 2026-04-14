@@ -1,7 +1,9 @@
 import { Controller, Get } from '@nestjs/common';
 import { HealthService } from './health.service';
 import { RateLimiterService } from '../rate-limiter/rate-limiter.service';
+import { Public } from '../common/decorators/public.decorator';
 
+@Public()
 @Controller('rpc')
 export class RpcHealthController {
   constructor(
