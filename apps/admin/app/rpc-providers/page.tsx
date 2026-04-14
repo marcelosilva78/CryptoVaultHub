@@ -36,9 +36,9 @@ interface ProviderFormData {
   isActive: boolean;
 }
 
-// ─── Common chains ────────────────────────────────────────────
+// ─── Dynamic chains (fetched from API, fallback to static) ────
 
-const CHAINS = [
+const CHAINS_FALLBACK = [
   { id: 1, name: "Ethereum" },
   { id: 56, name: "BNB Chain" },
   { id: 137, name: "Polygon" },
@@ -166,7 +166,7 @@ function ProviderModal({ open, mode, initial, onClose, onSave }: ProviderModalPr
                 value={form.chainId}
                 onChange={(e) => setForm((f) => ({ ...f, chainId: Number(e.target.value) }))}
               >
-                {CHAINS.map((c) => (
+                {chains.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name} (Chain ID {c.id})
                   </option>
@@ -292,6 +292,7 @@ function ProviderModal({ open, mode, initial, onClose, onSave }: ProviderModalPr
 
 export default function RpcProvidersPage() {
   const [nodes, setNodes] = useState<RpcNode[]>([]);
+  const [chains, setChains] = useState<{ id: number; name: string }[]>(CHAINS_FALLBACK);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedProvider, setExpandedProvider] = useState<string | null>(null);
@@ -326,6 +327,15 @@ export default function RpcProvidersPage() {
 
   useEffect(() => {
     fetchProviders();
+    // Load chains dynamically from the API
+    adminFetch("/chains")
+      .then((data: any) => {
+        const list = Array.isArray(data) ? data : data?.chains ?? data?.data ?? [];
+        if (list.length > 0) {
+          setChains(list.map((c: any) => ({ id: c.chainId || c.id, name: c.name })));
+        }
+      })
+      .catch(() => {}); // Keep fallback on failure
   }, [fetchProviders]);
 
   // ── Group by provider name ─────────────────────────────────────
@@ -580,7 +590,7 @@ export default function RpcProvidersPage() {
                       </TableCell>
                       <TableCell>
                         <span className="font-mono text-caption text-text-secondary">
-                          {CHAINS.find((c) => c.id === node.chainId)?.name ?? `Chain ${node.chainId}`}
+                          {chains.find((c) => c.id === node.chainId)?.name ?? `Chain ${node.chainId}`}
                           <span className="text-text-muted ml-1">({node.chainId})</span>
                         </span>
                       </TableCell>
