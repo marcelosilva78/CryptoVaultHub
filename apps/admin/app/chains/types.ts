@@ -1,5 +1,4 @@
-// apps/admin/app/chains/types.ts
-
+/* ─── Chain Health (list endpoint) ──────────────────────────────── */
 export interface ChainHealth {
   chainId: number;
   name: string;
@@ -12,24 +11,19 @@ export interface ChainHealth {
     lastBlock: number | null;
     blocksBehind: number | null;
     lastCheckedAt: string | null;
-    staleSince: string | null;
   };
   rpc: {
     totalNodes: number;
     activeNodes: number;
     healthyNodes: number;
     avgLatencyMs: number | null;
-    quotaStatus: "available" | "approaching" | "daily_exhausted" | "monthly_exhausted";
-  };
-  operations: {
-    pendingDeposits: number;
-    pendingWithdrawals: number;
-    pendingFlushes: number;
+    quotaStatus: string;
   };
 }
 
+/* ─── Chain Detail (single endpoint) ───────────────────────────── */
 export interface ChainDetail {
-  chain: Record<string, any>;
+  chain: any;
   dependencies: {
     rpcNodes: { total: number; active: number };
     clients: { total: number };
@@ -44,9 +38,11 @@ export interface ChainDetail {
   canTransitionTo: string[];
 }
 
+/* ─── Chains Health Response ───────────────────────────────────── */
 export interface ChainsHealthResponse {
   chains: ChainHealth[];
-  updatedAt: string;
+  updatedAt?: string;
 }
 
+/* ─── Lifecycle Action ─────────────────────────────────────────── */
 export type LifecycleAction = "drain" | "deactivate" | "archive" | "reactivate";

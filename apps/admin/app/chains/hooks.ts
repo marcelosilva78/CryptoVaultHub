@@ -4,64 +4,117 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { adminFetch } from "@/lib/api";
 import type { ChainsHealthResponse, ChainDetail, LifecycleAction } from "./types";
 
-const CHAIN_KEYS = {
-  health: ["chains", "health"] as const,
-  detail: (chainId: number) => ["chains", "detail", chainId] as const,
-  list: ["chains", "list"] as const,
-};
+/* ─── Query Keys ───────────────────────────────────────────────── */
+const CHAINS_HEALTH_KEY = ["chains", "health"] as const;
+const chainDetailKey = (chainId: number) => ["chains", chainId, "detail"] as const;
 
+/* ─── useChainsHealth ──────────────────────────────────────────── */
 export function useChainsHealth() {
   return useQuery<ChainsHealthResponse>({
-    queryKey: CHAIN_KEYS.health,
-    queryFn: () => adminFetch("/chains/health"),
+    queryKey: CHAINS_HEALTH_KEY,
+    queryFn: async () => {
+      try {
+        const data = await adminFetch("/chains/health");
+        return {
+          chains: data?.chains || [],
+          updatedAt: new Date().toISOString(),
+        };
+      } catch (err) {
+        // Fallback to basic chains list
+        const fallback = await adminFetch("/chains");
+        const list = Array.isArray(fallback)
+          ? fallback
+          : fallback?.chains ?? fallback?.data ?? [];
+        return {
+          chains: list.map((c: any) => ({
+            chainId: c.chainId || c.id,
+            name: c.name,
+            shortName: c.shortName || c.symbol,
+            symbol: c.symbol,
+            status: c.status || (c.isActive ? "active" : "inactive"),
+            blockTimeSeconds: c.blockTimeSeconds || null,
+            health: {
+              overall: "unknown" as const,
+              lastBlock: null,
+              blocksBehind: null,
+              lastCheckedAt: null,
+            },
+            rpc: {
+              totalNodes: 0,
+              activeNodes: 0,
+              healthyNodes: 0,
+              avgLatencyMs: null,
+              quotaStatus: "available",
+            },
+          })),
+          updatedAt: new Date().toISOString(),
+        };
+      }
+    },
     refetchInterval: 30_000,
-    staleTime: 15_000,
   });
 }
 
-export function useChainDetail(chainId: number | null) {
+/* ─── useChainDetail ───────────────────────────────────────────── */
+export function useChainDetail(chainId: number) {
   return useQuery<ChainDetail>({
-    queryKey: CHAIN_KEYS.detail(chainId!),
+    queryKey: chainDetailKey(chainId),
     queryFn: () => adminFetch(`/chains/${chainId}`),
-    enabled: chainId !== null,
+    enabled: !!chainId,
   });
 }
 
+/* ─── useAddChain ──────────────────────────────────────────────── */
 export function useAddChain() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: Record<string, unknown>) =>
-      adminFetch("/chains", { method: "POST", body: JSON.stringify(data) }),
+    mutationFn: (body: Record<string, unknown>) =>
+      adminFetch("/chains", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: CHAIN_KEYS.health });
-      qc.invalidateQueries({ queryKey: CHAIN_KEYS.list });
+      qc.invalidateQueries({ queryKey: CHAINS_HEALTH_KEY });
     },
   });
 }
 
+/* ─── useUpdateChain ───────────────────────────────────────────── */
 export function useUpdateChain() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ chainId, data }: { chainId: number; data: Record<string, unknown> }) =>
-      adminFetch(`/chains/${chainId}`, { method: "PATCH", body: JSON.stringify(data) }),
-    onSuccess: (_r, { chainId }) => {
-      qc.invalidateQueries({ queryKey: CHAIN_KEYS.health });
-      qc.invalidateQueries({ queryKey: CHAIN_KEYS.detail(chainId) });
+    mutationFn: ({ chainId, body }: { chainId: number; body: Record<string, unknown> }) =>
+      adminFetch(`/chains/${chainId}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: CHAINS_HEALTH_KEY });
+      qc.invalidateQueries({ queryKey: chainDetailKey(variables.chainId) });
     },
   });
 }
 
+/* ─── useChainLifecycle ────────────────────────────────────────── */
 export function useChainLifecycle() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ chainId, action, reason }: { chainId: number; action: LifecycleAction; reason: string }) =>
+    mutationFn: ({
+      chainId,
+      action,
+      reason,
+    }: {
+      chainId: number;
+      action: LifecycleAction;
+      reason: string;
+    }) =>
       adminFetch(`/chains/${chainId}/lifecycle`, {
         method: "POST",
         body: JSON.stringify({ action, reason }),
       }),
-    onSuccess: (_r, { chainId }) => {
-      qc.invalidateQueries({ queryKey: CHAIN_KEYS.health });
-      qc.invalidateQueries({ queryKey: CHAIN_KEYS.detail(chainId) });
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: CHAINS_HEALTH_KEY });
+      qc.invalidateQueries({ queryKey: chainDetailKey(variables.chainId) });
     },
   });
 }
