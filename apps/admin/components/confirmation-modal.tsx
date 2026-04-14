@@ -64,7 +64,7 @@ export function ConfirmationModal({
   return (
     <div
       ref={overlayRef}
-      className="fixed left-0 right-0 bottom-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in"
+      className="fixed left-0 right-0 bottom-0 z-[200] flex items-start justify-center py-6 px-4 overflow-y-auto bg-black/60 backdrop-blur-sm animate-fade-in"
       style={{ top: 56 }}
       onClick={handleOverlayClick}
     >
