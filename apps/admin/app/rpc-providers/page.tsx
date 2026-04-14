@@ -706,15 +706,7 @@ export default function RpcProvidersPage() {
                               setProviderModal({
                                 open: true,
                                 mode: "edit",
-                                initial: {
-                                  id: node.id,
-                                  name: node.name,
-                                  chainId: node.chainId,
-                                  rpcHttpUrl: node.rpcHttpUrl,
-                                  rpcWsUrl: node.rpcWsUrl,
-                                  priority: node.priority,
-                                  isActive: node.isActive,
-                                },
+                                initial: node,
                               })
                             }
                             className="bg-transparent text-text-secondary border border-border-default rounded-button px-2.5 py-0.5 text-caption font-semibold hover:border-accent-primary hover:text-text-primary transition-all duration-fast font-display"
