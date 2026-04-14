@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { EventBusModule } from '@cvh/event-bus';
 import { PrismaModule } from './prisma/prisma.module';
 import { ClientManagementModule } from './client-management/client-management.module';
 import { TierManagementModule } from './tier-management/tier-management.module';
@@ -25,6 +26,9 @@ import { ImpersonationGuard } from './common/guards/impersonation.guard';
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: ['.env', '../../.env'],
+    }),
+    EventBusModule.forRoot({
+      clientId: 'admin-api',
     }),
     PrismaModule,
     ClientManagementModule,

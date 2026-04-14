@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { APP_GUARD } from '@nestjs/core';
+import { EventBusModule } from '@cvh/event-bus';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
 import { RpcRouterModule } from './router/rpc-router.module';
@@ -16,6 +17,9 @@ import { HealthController } from './common/health.controller';
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: ['.env', '../../.env'],
+    }),
+    EventBusModule.forRoot({
+      clientId: 'rpc-gateway-service',
     }),
     ScheduleModule.forRoot(),
     PrismaModule,

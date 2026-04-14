@@ -1,6 +1,7 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { JsonRpcProvider } from 'ethers';
+import { EventBusService, TOPICS } from '@cvh/event-bus';
 import { PrismaService } from '../prisma/prisma.service';
 import { RateLimiterService } from '../rate-limiter/rate-limiter.service';
 import { Decimal } from '../generated/prisma-client/runtime/library';
@@ -17,6 +18,7 @@ export class HealthService implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
     private readonly rateLimiter: RateLimiterService,
+    @Optional() private readonly eventBus?: EventBusService,
   ) {}
 
   async onModuleInit() {
@@ -63,6 +65,30 @@ export class HealthService implements OnModuleInit {
       if (results[i].status === 'rejected') {
         this.logger.warn(
           `Health check failed for node ${nodes[i].id}: ${(results[i] as PromiseRejectedResult).reason}`,
+        );
+      }
+    }
+
+    // Publish aggregated chain health events to Kafka
+    if (this.eventBus) {
+      const chainHealth = new Map<number, { healthy: number; total: number }>();
+      for (const node of nodes) {
+        const entry = chainHealth.get(node.chainId) ?? { healthy: 0, total: 0 };
+        entry.total++;
+        if (Number(node.healthScore) >= 70) entry.healthy++;
+        chainHealth.set(node.chainId, entry);
+      }
+
+      for (const [chainId, health] of chainHealth) {
+        await this.eventBus.publishToKafka(
+          TOPICS.CHAIN_HEALTH,
+          chainId.toString(),
+          {
+            chainId,
+            healthyNodes: health.healthy,
+            totalNodes: health.total,
+            timestamp: new Date().toISOString(),
+          },
         );
       }
     }

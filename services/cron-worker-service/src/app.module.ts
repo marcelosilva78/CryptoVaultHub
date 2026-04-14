@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { BullModule } from '@nestjs/bullmq';
+import { EventBusModule } from '@cvh/event-bus';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
 import { BlockchainModule } from './blockchain/blockchain.module';
@@ -15,6 +16,10 @@ import { HealthController } from './common/health.controller';
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: ['.env', '../../.env'],
+    }),
+    EventBusModule.forRoot({
+      clientId: 'cron-worker-service',
+      groupId: 'cron-worker-group',
     }),
     BullModule.forRootAsync({
       imports: [ConfigModule],

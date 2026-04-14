@@ -246,10 +246,15 @@ services:
       - CVH_JOBS_MYSQL_USER=${MYSQL_USER}
       - CVH_JOBS_MYSQL_PASSWORD=${MYSQL_PASSWORD}
       - CVH_JOBS_MYSQL_DATABASE=cvh_jobs
+      - KAFKA_BROKERS=kafka:9092
+      - EVENTBUS_KAFKA_ENABLED=true
+      - EVENTBUS_REDIS_ENABLED=true
     depends_on:
       mysql:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      kafka:
         condition: service_healthy
     networks:
       - internal-net
@@ -421,10 +426,15 @@ services:
       - RPC_BSC_WS=${RPC_BSC_WS}
       - RPC_POLYGON_HTTP=${RPC_POLYGON_HTTP}
       - TATUM_API_KEY=${TATUM_API_KEY}
+      - KAFKA_BROKERS=kafka:9092
+      - EVENTBUS_KAFKA_ENABLED=true
+      - EVENTBUS_REDIS_ENABLED=true
     depends_on:
       mysql:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      kafka:
         condition: service_healthy
     networks:
       - internal-net
@@ -488,12 +498,17 @@ services:
       - REDIS_PASSWORD=${REDIS_PASSWORD}
       - INTERNAL_SERVICE_KEY=${INTERNAL_SERVICE_KEY}
       - EXPORT_STORAGE_PATH=${EXPORT_STORAGE_PATH:-/data/exports}
+      - KAFKA_BROKERS=kafka:9092
+      - EVENTBUS_KAFKA_ENABLED=true
+      - EVENTBUS_REDIS_ENABLED=true
     volumes:
       - /docker/data/exports:${EXPORT_STORAGE_PATH:-/data/exports}
     depends_on:
       mysql:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      kafka:
         condition: service_healthy
     networks:
       - internal-net
@@ -523,10 +538,15 @@ services:
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD}
       - INTERNAL_SERVICE_KEY=${INTERNAL_SERVICE_KEY}
+      - KAFKA_BROKERS=kafka:9092
+      - EVENTBUS_KAFKA_ENABLED=true
+      - EVENTBUS_REDIS_ENABLED=true
     depends_on:
       mysql:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      kafka:
         condition: service_healthy
     networks:
       - internal-net

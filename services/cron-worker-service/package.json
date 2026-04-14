@@ -13,6 +13,7 @@
   "dependencies": {
     "@cvh/types": "*",
     "@cvh/config": "*",
+    "@cvh/event-bus": "file:../../packages/event-bus",
     "@cvh/utils": "*",
     "@nestjs/common": "^10.3.0",
     "@nestjs/core": "^10.3.0",

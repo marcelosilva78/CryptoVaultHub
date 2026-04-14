@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { BullModule } from '@nestjs/bullmq';
 import { ScheduleModule } from '@nestjs/schedule';
+import { EventBusModule } from '@cvh/event-bus';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
 import { BlockchainModule } from './blockchain/blockchain.module';
@@ -19,6 +20,9 @@ import { FinalityTrackerModule } from './finality/finality-tracker.module';
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: ['.env', '../../.env'],
+    }),
+    EventBusModule.forRoot({
+      clientId: 'chain-indexer-service',
     }),
     BullModule.forRootAsync({
       imports: [ConfigModule],

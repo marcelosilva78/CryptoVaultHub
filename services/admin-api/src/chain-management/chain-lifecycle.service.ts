@@ -1,5 +1,6 @@
-import { Injectable, Inject, ConflictException, BadRequestException } from '@nestjs/common';
+import { Injectable, Inject, ConflictException, BadRequestException, Optional } from '@nestjs/common';
 import axios from 'axios';
+import { EventBusService, TOPICS } from '@cvh/event-bus';
 import { ChainDependencyService } from './chain-dependency.service';
 import { AuditLogService } from '../common/audit-log.service';
 
@@ -24,6 +25,7 @@ export class ChainLifecycleService {
     private readonly depService: ChainDependencyService,
     private readonly auditLog: AuditLogService,
     @Inject('CHAIN_INDEXER_URL') private readonly chainIndexerUrl: string,
+    @Optional() private readonly eventBus?: EventBusService,
   ) {}
 
   getAllowedTransitions(currentStatus: string): string[] {
@@ -92,6 +94,21 @@ export class ChainLifecycleService {
       adminUserId: String(adminUserId),
       details: { previousStatus: currentStatus, newStatus, reason, warnings },
     });
+
+    // Publish chain status transition event to Kafka
+    if (this.eventBus) {
+      await this.eventBus.publishToKafka(
+        TOPICS.CHAIN_STATUS,
+        chainId.toString(),
+        {
+          chainId,
+          previousStatus: currentStatus,
+          newStatus,
+          reason,
+          transitionedAt,
+        },
+      );
+    }
 
     return { previousStatus: currentStatus, newStatus, reason, transitionedAt, warnings };
   }

@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@cvh/config": "*",
+    "@cvh/event-bus": "file:../../packages/event-bus",
     "@cvh/types": "*",
     "@cvh/utils": "*",
     "@nestjs/bullmq": "^10.1.0",
