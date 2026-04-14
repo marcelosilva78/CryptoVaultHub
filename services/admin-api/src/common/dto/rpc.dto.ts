@@ -176,4 +176,32 @@ export class UpdateRpcProviderDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @ApiPropertyOptional({ description: 'Max requests per second' })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Type(() => Number)
+  maxRequestsPerSecond?: number;
+
+  @ApiPropertyOptional({ description: 'Max requests per minute' })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Type(() => Number)
+  maxRequestsPerMinute?: number;
+
+  @ApiPropertyOptional({ description: 'Max requests per day' })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Type(() => Number)
+  maxRequestsPerDay?: number;
+
+  @ApiPropertyOptional({ description: 'Max requests per month' })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Type(() => Number)
+  maxRequestsPerMonth?: number;
 }

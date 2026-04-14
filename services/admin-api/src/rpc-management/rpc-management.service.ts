@@ -70,6 +70,13 @@ export class RpcManagementService {
       apiKeyEncrypted?: string;
       priority?: number;
       isActive?: boolean;
+      providerType?: string;
+      authMethod?: string;
+      nodeType?: string;
+      maxRequestsPerSecond?: number;
+      maxRequestsPerMinute?: number;
+      maxRequestsPerDay?: number;
+      maxRequestsPerMonth?: number;
     },
     adminUserId: string,
     ipAddress?: string,
@@ -98,13 +105,13 @@ export class RpcManagementService {
           wsEndpointUrl: data.rpcWsUrl ?? null,
           priority: data.priority ?? 50,
           isActive: data.isActive ?? true,
-          providerType: (data as any).providerType ?? 'custom',
-          authMethodType: (data as any).authMethod ?? 'url_path',
-          nodeType: (data as any).nodeType ?? null,
-          maxRequestsPerSecond: (data as any).maxRequestsPerSecond ?? null,
-          maxRequestsPerMinute: (data as any).maxRequestsPerMinute ?? null,
-          maxRequestsPerDay: (data as any).maxRequestsPerDay ?? null,
-          maxRequestsPerMonth: (data as any).maxRequestsPerMonth ?? null,
+          providerType: data.providerType ?? 'custom',
+          authMethodType: data.authMethod ?? 'url_path',
+          nodeType: data.nodeType ?? null,
+          maxRequestsPerSecond: data.maxRequestsPerSecond ?? null,
+          maxRequestsPerMinute: data.maxRequestsPerMinute ?? null,
+          maxRequestsPerDay: data.maxRequestsPerDay ?? null,
+          maxRequestsPerMonth: data.maxRequestsPerMonth ?? null,
         },
         include: { provider: true },
       });
@@ -143,6 +150,10 @@ export class RpcManagementService {
       apiKeyEncrypted?: string;
       priority?: number;
       isActive?: boolean;
+      maxRequestsPerSecond?: number;
+      maxRequestsPerMinute?: number;
+      maxRequestsPerDay?: number;
+      maxRequestsPerMonth?: number;
     },
     adminUserId: string,
     ipAddress?: string,
@@ -161,6 +172,10 @@ export class RpcManagementService {
     if (data.rpcWsUrl !== undefined) nodeData.wsEndpointUrl = data.rpcWsUrl;
     if (data.priority !== undefined) nodeData.priority = data.priority;
     if (data.isActive !== undefined) nodeData.isActive = data.isActive;
+    if (data.maxRequestsPerSecond !== undefined) nodeData.maxRequestsPerSecond = data.maxRequestsPerSecond;
+    if (data.maxRequestsPerMinute !== undefined) nodeData.maxRequestsPerMinute = data.maxRequestsPerMinute;
+    if (data.maxRequestsPerDay !== undefined) nodeData.maxRequestsPerDay = data.maxRequestsPerDay;
+    if (data.maxRequestsPerMonth !== undefined) nodeData.maxRequestsPerMonth = data.maxRequestsPerMonth;
 
     const updatedNode = await this.prisma.rpcNode.update({
       where: { id: BigInt(id) },
