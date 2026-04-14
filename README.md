@@ -665,6 +665,8 @@ CryptoVaultHub has a comprehensive visual identity system documented in [docs/id
 | MySQL | 8.0+ | External cluster (not in docker-compose) |
 | Git | >= 2.30 | For cloning the repository |
 
+> **MySQL:** CryptoVaultHub supports both a local Docker MySQL instance (for development/staging) and an external MySQL 8.0+ cluster (recommended for production). The `scripts/setup.sh` wizard guides you through the choice -- select Docker MySQL for a quick local setup, or provide your external cluster credentials for production deployments.
+
 ### Automated Setup (Recommended)
 
 ```bash

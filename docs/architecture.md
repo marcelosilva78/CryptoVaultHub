@@ -61,7 +61,7 @@ graph TB
         end
     end
 
-    MySQL["MySQL 8.0+<br/>(10 databases, external)"]
+    MySQL["MySQL 8.0+<br/>(10 databases)"]
 
     Internet --> Traefik
     Traefik --> AdminUI
@@ -94,6 +94,17 @@ graph TB
     RpcGw --> MySQL
     Prometheus --> Traefik
 ```
+
+### MySQL Deployment Options
+
+MySQL is **not** part of the Docker Compose stack by default. The `scripts/setup.sh` wizard offers two modes:
+
+| Mode | Use Case | Details |
+|------|----------|---------|
+| **Docker MySQL** | Development / staging / single-server | A MySQL 8.0 container is added to `docker-compose.yml`. Data is persisted in `/docker/data/mysql`. |
+| **External MySQL Cluster** | Production | You provide the host, port, user, and password of your own MySQL 8.0+ cluster. No MySQL container is started. |
+
+Both modes create the same set of databases (`cvh_admin`, `cvh_auth`, `cvh_keyvault`, `cvh_wallets`, `cvh_transactions`, `cvh_compliance`, `cvh_notifications`, `cvh_indexer`, `cvh_jobs`, `cvh_exports`). The choice is configured during `scripts/setup.sh` and stored in `.env`.
 
 ### Reverse Proxy -- Traefik v3.0
 
