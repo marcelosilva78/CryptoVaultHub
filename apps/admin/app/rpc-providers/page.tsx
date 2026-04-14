@@ -57,9 +57,10 @@ interface ProviderModalProps {
   initial?: Partial<RpcNode> & { id?: string };
   onClose: () => void;
   onSave: (id: string | null, form: ProviderFormData) => Promise<void>;
+  chains: { id: number; name: string }[];
 }
 
-function ProviderModal({ open, mode, initial, onClose, onSave }: ProviderModalProps) {
+function ProviderModal({ open, mode, initial, onClose, onSave, chains }: ProviderModalProps) {
   const [form, setForm] = useState<ProviderFormData>({
     name: "",
     chainId: CHAINS_FALLBACK[0].id,
@@ -411,6 +412,7 @@ export default function RpcProvidersPage() {
         initial={providerModal.initial}
         onClose={() => setProviderModal({ open: false, mode: "new" })}
         onSave={handleSave}
+        chains={chains}
       />
       <ConfirmationModal
         open={deleteModal.open}
