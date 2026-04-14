@@ -29,10 +29,10 @@ export class HealthService implements OnModuleInit {
     });
     for (const node of nodes) {
       this.rateLimiter.registerNode(Number(node.id), {
-        maxRequestsPerSecond: node.maxRequestsPerSecond,
-        maxRequestsPerMinute: node.maxRequestsPerMinute,
-        maxRequestsPerDay: (node as any).maxRequestsPerDay,
-        maxRequestsPerMonth: (node as any).maxRequestsPerMonth,
+        maxRequestsPerSecond: node.maxRequestsPerSecond ?? 50,
+        maxRequestsPerMinute: node.maxRequestsPerMinute ?? 2000,
+        maxRequestsPerDay: (node as any).maxRequestsPerDay ?? undefined,
+        maxRequestsPerMonth: (node as any).maxRequestsPerMonth ?? undefined,
       });
     }
     this.logger.log(`Seeded rate limits for ${nodes.length} RPC nodes`);
