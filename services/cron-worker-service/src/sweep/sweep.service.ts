@@ -99,18 +99,26 @@ export class SweepService extends WorkerHost implements OnModuleInit {
     });
 
     const clientIds = [...new Set(wallets.map((w) => Number(w.clientId)))];
+    const existing = await this.sweepQueue.getRepeatableJobs();
+    const existingIds = new Set(existing.map((j) => j.id));
+
+    let registered = 0;
     for (const clientId of clientIds) {
+      const jobId = `sweep-${chainId}-${clientId}`;
+      if (existingIds.has(jobId)) continue;
+
       await this.sweepQueue.add(
         'execute-sweep',
         { chainId, clientId },
         {
           repeat: { every: intervalMs },
-          jobId: `sweep-${chainId}-${clientId}`,
+          jobId,
         },
       );
+      registered++;
     }
     this.logger.log(
-      `Registered ${clientIds.length} sweep jobs for chain ${chainId}`,
+      `Registered ${registered} sweep jobs for chain ${chainId} (${clientIds.length - registered} already existed)`,
     );
   }
 

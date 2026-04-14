@@ -2,7 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { KafkaConsumerService, TOPICS, EventBusEvent } from '@cvh/event-bus';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import { PrismaService } from '../prisma/prisma.service';
+import { SweepService } from '../sweep/sweep.service';
 
 /**
  * Listens to cvh.chain.status Kafka topic and dynamically registers
@@ -15,7 +15,7 @@ export class ChainListenerService implements OnModuleInit {
 
   constructor(
     private readonly kafkaConsumer: KafkaConsumerService,
-    private readonly prisma: PrismaService,
+    private readonly sweepService: SweepService,
     @InjectQueue('sweep') private readonly sweepQueue: Queue,
     @InjectQueue('forwarder-deploy')
     private readonly forwarderDeployQueue: Queue,
@@ -53,32 +53,14 @@ export class ChainListenerService implements OnModuleInit {
     // 'draining' — jobs continue running, no action needed
   }
 
+  /**
+   * Register BullMQ jobs for a newly activated chain.
+   * Delegates sweep registration to SweepService (single source of truth).
+   */
   private async registerChainJobs(chainId: number): Promise<void> {
-    const wallets = await this.prisma.wallet.findMany({
-      where: { chainId, walletType: 'hot', isActive: true },
-      select: { clientId: true },
-    });
+    await this.sweepService.registerChainSweepJobs(chainId);
 
-    const clientIds = [
-      ...new Set(wallets.map((w) => Number(w.clientId))),
-    ];
-
-    for (const clientId of clientIds) {
-      const jobId = `sweep-${chainId}-${clientId}`;
-      const existing = await this.sweepQueue.getRepeatableJobs();
-      if (existing.some((j) => j.id === jobId)) continue;
-
-      await this.sweepQueue.add(
-        'execute-sweep',
-        { chainId, clientId },
-        {
-          repeat: { every: 60_000 },
-          jobId,
-        },
-      );
-      this.logger.log(`Registered sweep job: ${jobId}`);
-    }
-
+    // Register forwarder-deploy job for the chain
     const fwdJobId = `forwarder-deploy-${chainId}`;
     const existingFwd = await this.forwarderDeployQueue.getRepeatableJobs();
     if (!existingFwd.some((j) => j.id === fwdJobId)) {
@@ -94,6 +76,9 @@ export class ChainListenerService implements OnModuleInit {
     }
   }
 
+  /**
+   * Remove BullMQ jobs for a deactivated/archived chain.
+   */
   private async removeChainJobs(chainId: number): Promise<void> {
     const sweepJobs = await this.sweepQueue.getRepeatableJobs();
     for (const job of sweepJobs) {
