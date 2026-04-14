@@ -71,7 +71,7 @@ export class HealthService implements OnModuleInit {
     const nodes = await this.prisma.rpcNode.findMany({
       where: {
         isActive: true,
-        status: { in: ['active', 'standby', 'draining'] },
+        status: { in: ['active', 'standby', 'draining', 'unhealthy'] },
       },
       include: { provider: true },
     });
