@@ -62,7 +62,7 @@ interface ProviderModalProps {
 function ProviderModal({ open, mode, initial, onClose, onSave }: ProviderModalProps) {
   const [form, setForm] = useState<ProviderFormData>({
     name: "",
-    chainId: CHAINS[0].id,
+    chainId: CHAINS_FALLBACK[0].id,
     rpcHttpUrl: "",
     rpcWsUrl: "",
     apiKey: "",
@@ -78,7 +78,7 @@ function ProviderModal({ open, mode, initial, onClose, onSave }: ProviderModalPr
       setError(null);
       setForm({
         name: initial?.name ?? "",
-        chainId: initial?.chainId ?? CHAINS[0].id,
+        chainId: initial?.chainId ?? CHAINS_FALLBACK[0].id,
         rpcHttpUrl: initial?.rpcHttpUrl ?? "",
         rpcWsUrl: initial?.rpcWsUrl ?? "",
         apiKey: "",
