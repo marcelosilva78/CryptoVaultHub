@@ -1,6 +1,7 @@
-import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
+import Redis from 'ioredis';
 import { AuditLogService } from '../common/audit-log.service';
 import { ChainDependencyService } from './chain-dependency.service';
 import { ChainLifecycleService } from './chain-lifecycle.service';
@@ -9,17 +10,32 @@ import { ChainLifecycleService } from './chain-lifecycle.service';
 export class ChainManagementService {
   private readonly logger = new Logger(ChainManagementService.name);
   private readonly chainIndexerUrl: string;
+  private readonly rpcGatewayUrl: string;
+  private readonly redis: Redis;
 
   constructor(
     private readonly auditLog: AuditLogService,
     private readonly configService: ConfigService,
     private readonly depService: ChainDependencyService,
     private readonly lifecycleService: ChainLifecycleService,
+    @Optional() @Inject('RPC_GATEWAY_URL') rpcGatewayUrl?: string,
   ) {
     this.chainIndexerUrl = this.configService.get<string>(
       'CHAIN_INDEXER_URL',
       'http://localhost:3006',
     );
+    this.rpcGatewayUrl = rpcGatewayUrl
+      ?? this.configService.get<string>('RPC_GATEWAY_URL', 'http://rpc-gateway-service:3009');
+    this.redis = new Redis({
+      host: this.configService.get<string>('REDIS_HOST', 'localhost'),
+      port: this.configService.get<number>('REDIS_PORT', 6379),
+      password: this.configService.get<string>('REDIS_PASSWORD') ?? undefined,
+      maxRetriesPerRequest: 3,
+      lazyConnect: true,
+    });
+    this.redis.connect().catch((err) => {
+      this.logger.warn(`Redis connection failed (chain-management cache disabled): ${err.message}`);
+    });
   }
 
   async addChain(
@@ -205,23 +221,88 @@ export class ChainManagementService {
   }
 
   async getChainHealth() {
-    const [chainsRes, syncHealthRes, rpcNodes] = await Promise.all([
+    // Check Redis cache first (15s TTL)
+    const cacheKey = 'admin:chains:health';
+    try {
+      const cached = await this.redis.get(cacheKey);
+      if (cached) {
+        return JSON.parse(cached);
+      }
+    } catch {
+      // Redis unavailable — proceed without cache
+    }
+
+    const [chainsRes, syncHealthRes, rpcHealthRes, rpcNodes] = await Promise.all([
       axios.get(`${this.chainIndexerUrl}/chains`),
       axios.get(`${this.chainIndexerUrl}/sync-health`).catch((err) => {
         this.logger.warn(`Failed to fetch sync-health: ${err.message}`);
         return { data: [] };
       }),
-      this.depService.getRpcNodeCounts().catch(() => new Map<number, { total: number; active: number }>()),
+      axios.get(`${this.rpcGatewayUrl}/rpc/health`).catch((err) => {
+        this.logger.warn(`Failed to fetch rpc-health: ${err.message}`);
+        return { data: { nodes: [] } };
+      }),
+      this.depService.getRpcNodeCounts().catch(
+        () => new Map<number, { total: number; active: number }>(),
+      ),
     ]);
 
     const chains = chainsRes.data.chains || chainsRes.data.data || chainsRes.data;
-    const syncHealth = Array.isArray(syncHealthRes.data) ? syncHealthRes.data : syncHealthRes.data.chains || [];
+    const syncHealth = Array.isArray(syncHealthRes.data)
+      ? syncHealthRes.data
+      : syncHealthRes.data.chains || [];
+    const rpcNodesHealth = rpcHealthRes.data.nodes || [];
 
-    return {
+    // Group RPC nodes by chainId
+    const rpcByChain = new Map<number, any[]>();
+    for (const node of rpcNodesHealth) {
+      const list = rpcByChain.get(node.chainId) ?? [];
+      list.push(node);
+      rpcByChain.set(node.chainId, list);
+    }
+
+    const result = {
       chains: chains.map((chain: any) => {
         const chainId = chain.chainId || chain.id;
         const sync = syncHealth.find((s: any) => s.chainId === chainId);
         const rpc = rpcNodes instanceof Map ? rpcNodes.get(chainId) : undefined;
+        const rpcHealth = rpcByChain.get(chainId) ?? [];
+
+        const healthyNodes = rpcHealth.filter(
+          (n: any) => n.status === 'active' && n.healthScore >= 70,
+        ).length;
+
+        // Derive quota status from worst-case node
+        let quotaStatus: string = 'available';
+        for (const node of rpcHealth) {
+          if (node.quota) {
+            const { dailyUsed, dailyLimit, monthlyUsed, monthlyLimit } = node.quota;
+            if (monthlyLimit && monthlyUsed >= monthlyLimit) {
+              quotaStatus = 'monthly_exhausted';
+              break;
+            }
+            if (dailyLimit && dailyUsed >= dailyLimit) {
+              quotaStatus = 'daily_exhausted';
+              break;
+            }
+            if (
+              (dailyLimit && dailyUsed >= dailyLimit * 0.8) ||
+              (monthlyLimit && monthlyUsed >= monthlyLimit * 0.8)
+            ) {
+              quotaStatus = 'approaching';
+            }
+          }
+        }
+
+        const avgLatencyMs =
+          rpcHealth.length > 0
+            ? Math.round(
+                rpcHealth.reduce(
+                  (sum: number, n: any) => sum + (n.healthScore ?? 0),
+                  0,
+                ) / rpcHealth.length,
+              )
+            : null;
 
         return {
           chainId,
@@ -229,24 +310,41 @@ export class ChainManagementService {
           shortName: chain.shortName || chain.symbol,
           symbol: chain.symbol,
           status: chain.status ?? (chain.isActive ? 'active' : 'inactive'),
-          blockTimeSeconds: chain.blockTimeSeconds ? Number(chain.blockTimeSeconds) : null,
+          blockTimeSeconds: chain.blockTimeSeconds
+            ? Number(chain.blockTimeSeconds)
+            : null,
           health: {
             overall: sync?.status ?? 'unknown',
             lastBlock: sync?.lastBlock ?? null,
             blocksBehind: sync?.blocksBehind ?? null,
             lastCheckedAt: sync?.lastUpdated ?? sync?.lastCheckedAt ?? null,
+            staleSince: sync?.status === 'error' ? sync?.lastUpdated : null,
           },
           rpc: {
-            totalNodes: rpc?.total ?? 0,
-            activeNodes: rpc?.active ?? 0,
-            healthyNodes: rpc?.active ?? 0,
-            avgLatencyMs: null,
-            quotaStatus: 'available',
+            totalNodes: rpc?.total ?? rpcHealth.length,
+            activeNodes: rpc?.active ?? rpcHealth.filter((n: any) => n.status === 'active').length,
+            healthyNodes,
+            avgLatencyMs,
+            quotaStatus,
+          },
+          operations: {
+            pendingDeposits: 0,
+            pendingWithdrawals: 0,
+            pendingFlushes: 0,
           },
         };
       }),
       updatedAt: new Date().toISOString(),
     };
+
+    // Cache for 15 seconds
+    try {
+      await this.redis.set(cacheKey, JSON.stringify(result), 'EX', 15);
+    } catch {
+      // Redis unavailable — skip caching
+    }
+
+    return result;
   }
 
   private async getChainById(chainId: number) {

@@ -19,6 +19,12 @@ import { AuditLogService } from '../common/audit-log.service';
         configService.get<string>('CHAIN_INDEXER_URL', 'http://localhost:3006'),
       inject: [ConfigService],
     },
+    {
+      provide: 'RPC_GATEWAY_URL',
+      useFactory: (config: ConfigService) =>
+        config.get<string>('RPC_GATEWAY_URL', 'http://rpc-gateway-service:3009'),
+      inject: [ConfigService],
+    },
   ],
   exports: [ChainManagementService],
 })

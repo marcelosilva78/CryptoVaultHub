@@ -113,14 +113,34 @@ describe('RateLimiterService', () => {
     expect(result).toBe(false);
   });
 
-  it('should return quota usage counts', async () => {
+  it('should return quota usage counts with limits', async () => {
+    service.registerNode(1, {
+      maxRequestsPerSecond: 10,
+      maxRequestsPerMinute: 100,
+      maxRequestsPerDay: 10000,
+      maxRequestsPerMonth: 100000,
+    });
     mockRedis.get
       .mockResolvedValueOnce('500')
       .mockResolvedValueOnce('15000');
 
     const usage = await service.getQuotaUsage(1);
-    expect(usage.daily).toBe(500);
-    expect(usage.monthly).toBe(15000);
+    expect(usage.dailyUsed).toBe(500);
+    expect(usage.monthlyUsed).toBe(15000);
+    expect(usage.dailyLimit).toBe(10000);
+    expect(usage.monthlyLimit).toBe(100000);
+  });
+
+  it('should return null limits when node has no limits configured', async () => {
+    mockRedis.get
+      .mockResolvedValueOnce('100')
+      .mockResolvedValueOnce('2000');
+
+    const usage = await service.getQuotaUsage(999);
+    expect(usage.dailyUsed).toBe(100);
+    expect(usage.monthlyUsed).toBe(2000);
+    expect(usage.dailyLimit).toBeNull();
+    expect(usage.monthlyLimit).toBeNull();
   });
 
   it('should track independent limits for different nodes', async () => {

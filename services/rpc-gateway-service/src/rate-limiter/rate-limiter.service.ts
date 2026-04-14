@@ -128,18 +128,30 @@ export class RateLimiterService {
   }
 
   /**
-   * Get current daily and monthly quota usage for a node.
+   * Get current daily and monthly quota usage for a node, including configured limits.
    */
-  async getQuotaUsage(nodeId: number): Promise<{ daily: number; monthly: number }> {
+  async getQuotaUsage(nodeId: number): Promise<{
+    dailyUsed: number;
+    monthlyUsed: number;
+    dailyLimit: number | null;
+    monthlyLimit: number | null;
+  }> {
     const now = new Date();
     const dayKey = `rpc:quota:${nodeId}:day:${now.toISOString().slice(0, 10)}`;
     const monthKey = `rpc:quota:${nodeId}:month:${now.toISOString().slice(0, 7)}`;
 
-    const [daily, monthly] = await Promise.all([
+    const [dailyStr, monthlyStr] = await Promise.all([
       this.redis.get(dayKey),
       this.redis.get(monthKey),
     ]);
 
-    return { daily: Number(daily || 0), monthly: Number(monthly || 0) };
+    const limits = this.nodeLimits.get(nodeId.toString());
+
+    return {
+      dailyUsed: parseInt(dailyStr ?? '0', 10),
+      monthlyUsed: parseInt(monthlyStr ?? '0', 10),
+      dailyLimit: limits?.maxRequestsPerDay ?? null,
+      monthlyLimit: limits?.maxRequestsPerMonth ?? null,
+    };
   }
 }
