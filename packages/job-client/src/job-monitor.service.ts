@@ -69,12 +69,12 @@ export class JobMonitorService {
     const countParams = [...params];
     params.push(limit, offset);
 
-    const [rows] = await this.pool.execute<RowDataPacket[]>(
+    const [rows] = await this.pool.query<RowDataPacket[]>(
       `SELECT * FROM jobs ${whereClause} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
       params,
     );
 
-    const [countResult] = await this.pool.execute<RowDataPacket[]>(
+    const [countResult] = await this.pool.query<RowDataPacket[]>(
       `SELECT COUNT(*) as total FROM jobs ${whereClause}`,
       countParams,
     );
@@ -208,13 +208,13 @@ export class JobMonitorService {
     const countParams = [...params];
     params.push(limit, offset);
 
-    const [rows] = await this.pool.execute<RowDataPacket[]>(
+    const [rows] = await this.pool.query<RowDataPacket[]>(
       `SELECT * FROM dead_letter_jobs ${whereClause}
        ORDER BY dead_lettered_at DESC LIMIT ? OFFSET ?`,
       params,
     );
 
-    const [countResult] = await this.pool.execute<RowDataPacket[]>(
+    const [countResult] = await this.pool.query<RowDataPacket[]>(
       `SELECT COUNT(*) as total FROM dead_letter_jobs ${whereClause}`,
       countParams,
     );
