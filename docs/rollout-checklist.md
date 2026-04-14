@@ -102,7 +102,18 @@ dig jaeger.vaulthub.live +short
 
 ---
 
-## 5. Deploy New Services
+## 5. MySQL Deployment Mode
+
+- [ ] Choose MySQL mode in `scripts/setup.sh`:
+  - **Option 1: Docker MySQL** -- Automatic local instance, data in `/docker/data/mysql`. Suitable for dev/staging.
+  - **Option 2: External MySQL Cluster** -- Provide host, port, user, password. Required for production.
+- [ ] If using external cluster: verify network connectivity from Docker host to MySQL endpoint
+- [ ] If using external cluster: ensure MySQL user has CREATE DATABASE privileges for initial setup
+- [ ] Verify all 10 databases are created: `cvh_admin`, `cvh_auth`, `cvh_keyvault`, `cvh_wallets`, `cvh_transactions`, `cvh_compliance`, `cvh_notifications`, `cvh_indexer`, `cvh_jobs`, `cvh_exports`
+
+---
+
+## 6. Deploy New Services
 
 - [ ] Build all Docker images
 
@@ -147,7 +158,7 @@ curl -s -o /dev/null -w "%{http_code}" https://api.vaulthub.live
 
 ---
 
-## 6. Configure RPC Providers
+## 7. Configure RPC Providers
 
 - [ ] Add RPC providers via admin panel or API
 
@@ -171,7 +182,7 @@ curl -X POST "http://localhost:3001/admin/rpc/providers" \
 
 ---
 
-## 7. Verify Health Checks
+## 8. Verify Health Checks
 
 - [ ] Verify Traefik is running: `docker compose ps traefik`
 - [ ] Verify SSL certificates are provisioned: `docker compose logs traefik | grep -i "certificate"`
@@ -190,7 +201,7 @@ curl -X POST "http://localhost:3001/admin/rpc/providers" \
 
 ---
 
-## 8. Verify Core Functionality
+## 9. Verify Core Functionality
 
 ### Test Project System
 
@@ -242,7 +253,7 @@ curl -X POST "http://localhost:3003/auth/impersonate" \
 
 ---
 
-## 9. Monitor
+## 10. Monitor
 
 - [ ] Open Grafana dashboards (https://grafana.vaulthub.live)
 - [ ] Verify Prometheus is scraping all targets (including Traefik)
@@ -254,7 +265,7 @@ curl -X POST "http://localhost:3003/auth/impersonate" \
 
 ---
 
-## 10. Post-Deployment Verification (T+1 hour)
+## 11. Post-Deployment Verification (T+1 hour)
 
 - [ ] Verify deposits are being detected on all active chains
 - [ ] Verify sweeps are executing (check `cvh_transactions.deposits` for recent `swept` status)
@@ -265,7 +276,7 @@ curl -X POST "http://localhost:3003/auth/impersonate" \
 
 ---
 
-## 11. Post-Deployment Verification (T+24 hours)
+## 12. Post-Deployment Verification (T+24 hours)
 
 - [ ] Verify daily reconciliation ran successfully (check chain-indexer-service logs)
 - [ ] Verify sanctions list sync completed (check cron-worker-service logs)
