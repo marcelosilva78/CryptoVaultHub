@@ -239,6 +239,7 @@ services:
       - INTERNAL_SERVICE_KEY=${INTERNAL_SERVICE_KEY}
       - JWT_SECRET=${JWT_SECRET}
       - CHAIN_INDEXER_URL=http://chain-indexer-service:3006
+      - RPC_GATEWAY_URL=http://rpc-gateway-service:3009
       - CRON_WORKER_SERVICE_URL=http://cron-worker-service:3008
       - CVH_JOBS_MYSQL_HOST=${MYSQL_HOST}
       - CVH_JOBS_MYSQL_PORT=${MYSQL_PORT}

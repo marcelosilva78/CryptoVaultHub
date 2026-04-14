@@ -30,7 +30,7 @@ describe('HealthService', () => {
       providers: [
         HealthService,
         { provide: PrismaService, useValue: prisma },
-        { provide: RateLimiterService, useValue: { registerNode: jest.fn(), getQuotaUsage: jest.fn().mockResolvedValue({ daily: 0, monthly: 0 }) } },
+        { provide: RateLimiterService, useValue: { registerNode: jest.fn(), getQuotaUsage: jest.fn().mockResolvedValue({ dailyUsed: 0, monthlyUsed: 0, dailyLimit: null, monthlyLimit: null }) } },
       ],
     }).compile();
 
