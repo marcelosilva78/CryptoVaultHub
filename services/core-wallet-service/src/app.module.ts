@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
+import { PostHogModule } from '@cvh/posthog';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
 import { BlockchainModule } from './blockchain/blockchain.module';
@@ -23,6 +24,7 @@ import { HealthController } from './common/health.controller';
       isGlobal: true,
       envFilePath: ['.env', '../../.env'],
     }),
+    PostHogModule,
     PrismaModule,
     RedisModule,
     BlockchainModule,

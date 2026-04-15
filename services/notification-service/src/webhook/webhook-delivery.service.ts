@@ -1,9 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import * as crypto from 'crypto';
 import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
+import { PostHogService, POSTHOG_SERVICE } from '@cvh/posthog';
 import { PrismaService } from '../prisma/prisma.service';
 import { WebhookService } from './webhook.service';
 import { ConfigurableRetryService } from './configurable-retry.service';
@@ -21,6 +22,8 @@ export class WebhookDeliveryService {
     private readonly attemptRecorder: DeliveryAttemptRecorderService,
     private readonly deadLetterService: DeadLetterService,
     @InjectQueue('webhook-delivery') private readonly deliveryQueue: Queue,
+    @Inject(POSTHOG_SERVICE)
+    private readonly posthog: PostHogService | null,
   ) {}
 
   /**
@@ -218,6 +221,24 @@ export class WebhookDeliveryService {
         this.logger.log(
           `Delivery ${delivery.deliveryCode} sent (HTTP ${response.status}, ${responseTimeMs}ms)`,
         );
+
+        // Track successful webhook delivery in PostHog
+        if (this.posthog) {
+          try {
+            this.posthog.trackWebhookSent({
+              clientId: delivery.clientId.toString(),
+              webhookId: webhookId.toString(),
+              deliveryId: delivery.deliveryCode,
+              eventType: delivery.eventType,
+              httpStatus: response.status,
+              responseTimeMs,
+              result: 'success',
+            });
+          } catch {
+            // PostHog tracking must never break delivery processing
+          }
+        }
+
         return updated;
       }
 
@@ -312,6 +333,23 @@ export class WebhookDeliveryService {
 
       // Move to dead letter queue
       await this.deadLetterService.deadLetter(delivery.id, errorMessage);
+
+      // Track dead-lettered delivery in PostHog
+      if (this.posthog) {
+        try {
+          this.posthog.trackWebhookSent({
+            clientId: delivery.clientId.toString(),
+            webhookId: webhook.id.toString(),
+            deliveryId: delivery.deliveryCode,
+            eventType: delivery.eventType,
+            httpStatus: httpStatus ?? 0,
+            responseTimeMs,
+            result: 'dead_lettered',
+          });
+        } catch {
+          // PostHog tracking must never break delivery processing
+        }
+      }
 
       this.logger.warn(
         `Delivery ${delivery.deliveryCode} dead-lettered after ${attemptNumber} attempts: ${errorMessage}`,

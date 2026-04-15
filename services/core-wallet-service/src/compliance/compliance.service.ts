@@ -1,4 +1,5 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { PostHogService, POSTHOG_SERVICE } from '@cvh/posthog';
 import { PrismaService } from '../prisma/prisma.service';
 
 /**
@@ -7,8 +8,8 @@ import { PrismaService } from '../prisma/prisma.service';
 const KYT_LEVEL_LISTS: Record<string, string[]> = {
   off: [],
   basic: ['OFAC_SDN'],
-  enhanced: ['OFAC_SDN', 'EU', 'UN'],
-  full: ['OFAC_SDN', 'EU', 'UN', 'UK_OFSI'],
+  enhanced: ['OFAC_SDN', 'OFAC_CONSOLIDATED', 'EU', 'UN'],
+  full: ['OFAC_SDN', 'OFAC_CONSOLIDATED', 'EU', 'UN', 'UK_OFSI'],
 };
 
 export interface ScreeningInput {
@@ -37,7 +38,11 @@ export interface MatchDetail {
 export class ComplianceService {
   private readonly logger = new Logger(ComplianceService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(POSTHOG_SERVICE)
+    private readonly posthog: PostHogService | null,
+  ) {}
 
   /**
    * Screen an address against sanctions lists based on the client's KYT level.
@@ -77,6 +82,22 @@ export class ComplianceService {
         matchDetails: null,
         action: 'allowed',
       });
+
+      // Track skipped screening in PostHog
+      if (this.posthog) {
+        try {
+          this.posthog.trackComplianceEvent('compliance.screening_skipped', {
+            clientId: clientId.toString(),
+            address,
+            direction,
+            trigger,
+            kytLevel,
+            reason: 'kyt_disabled',
+          });
+        } catch {
+          // PostHog tracking must never break compliance processing
+        }
+      }
 
       return {
         result: 'clear',
@@ -140,6 +161,28 @@ export class ComplianceService {
       matchDetails: matchDetails.length > 0 ? matchDetails : null,
       action,
     });
+
+    // Track compliance screening in PostHog
+    if (this.posthog) {
+      try {
+        this.posthog.trackComplianceEvent('compliance.screening', {
+          clientId: clientId.toString(),
+          address: normalizedAddress,
+          direction,
+          trigger,
+          txHash: txHash || null,
+          kytLevel,
+          listsChecked: listsToCheck,
+          result,
+          action,
+          matchedList: matchDetails[0]?.listSource || null,
+          matchedEntity: matchDetails[0]?.entityName || null,
+          matchCount: matchDetails.length,
+        });
+      } catch {
+        // PostHog tracking must never break compliance processing
+      }
+    }
 
     return {
       result,

@@ -1,7 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Queue, Job } from 'bullmq';
 import { ethers } from 'ethers';
+import { PostHogService, POSTHOG_SERVICE } from '@cvh/posthog';
 import { RedisService } from '../redis/redis.service';
 import { EvmProviderService } from '../blockchain/evm-provider.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -35,6 +36,8 @@ export class ConfirmationTrackerService extends WorkerHost {
     private readonly redis: RedisService,
     private readonly evmProvider: EvmProviderService,
     private readonly prisma: PrismaService,
+    @Inject(POSTHOG_SERVICE)
+    private readonly posthog: PostHogService | null,
   ) {
     super();
   }
@@ -137,6 +140,24 @@ export class ConfirmationTrackerService extends WorkerHost {
         timestamp: new Date().toISOString(),
       });
 
+      // Track revert in PostHog
+      if (this.posthog) {
+        try {
+          this.posthog.trackBlockchainEvent('deposit.reverted', {
+            clientId: data.clientId,
+            chainId: data.chainId,
+            txHash: data.txHash,
+            walletId: data.walletId,
+            toAddress: data.toAddress,
+            contractAddress: data.contractAddress,
+            amount: data.amount,
+            reason: 'reorg',
+          });
+        } catch {
+          // PostHog tracking must never break confirmation processing
+        }
+      }
+
       return { status: 'reverted', confirmations: 0 };
     }
 
@@ -161,6 +182,27 @@ export class ConfirmationTrackerService extends WorkerHost {
         timestamp: new Date().toISOString(),
       });
 
+      // Track milestone in PostHog
+      if (this.posthog) {
+        try {
+          this.posthog.trackBlockchainEvent('deposit.milestone', {
+            clientId: data.clientId,
+            chainId: data.chainId,
+            txHash: data.txHash,
+            confirmations,
+            milestone: data.milestones[data.currentMilestoneIndex],
+            required: data.required,
+            walletId: data.walletId,
+            toAddress: data.toAddress,
+            contractAddress: data.contractAddress,
+            amount: data.amount,
+            status: confirmations >= data.required ? 'confirmed' : 'confirming',
+          });
+        } catch {
+          // PostHog tracking must never break confirmation processing
+        }
+      }
+
       this.logger.log(
         `Milestone ${data.milestones[data.currentMilestoneIndex]} reached for tx ${data.txHash} (${confirmations}/${data.required})`,
       );
@@ -183,6 +225,25 @@ export class ConfirmationTrackerService extends WorkerHost {
         amount: data.amount,
         timestamp: new Date().toISOString(),
       });
+
+      // Track confirmation in PostHog
+      if (this.posthog) {
+        try {
+          this.posthog.trackBlockchainEvent('deposit.confirmed', {
+            clientId: data.clientId,
+            chainId: data.chainId,
+            txHash: data.txHash,
+            confirmations,
+            required: data.required,
+            walletId: data.walletId,
+            toAddress: data.toAddress,
+            contractAddress: data.contractAddress,
+            amount: data.amount,
+          });
+        } catch {
+          // PostHog tracking must never break confirmation processing
+        }
+      }
 
       this.logger.log(
         `Deposit CONFIRMED: tx ${data.txHash} with ${confirmations} confirmations`,

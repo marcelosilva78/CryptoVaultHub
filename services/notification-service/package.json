@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@cvh/event-bus": "file:../../packages/event-bus",
+    "@cvh/posthog": "*",
     "@cvh/types": "*",
     "@cvh/config": "*",
     "@cvh/utils": "*",

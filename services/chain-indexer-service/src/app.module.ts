@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { BullModule } from '@nestjs/bullmq';
 import { ScheduleModule } from '@nestjs/schedule';
 import { EventBusModule } from '@cvh/event-bus';
+import { PostHogModule } from '@cvh/posthog';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
 import { BlockchainModule } from './blockchain/blockchain.module';
@@ -38,6 +39,7 @@ import { FinalityTrackerModule } from './finality/finality-tracker.module';
       inject: [ConfigService],
     }),
     ScheduleModule.forRoot(),
+    PostHogModule,
     PrismaModule,
     RedisModule,
     BlockchainModule,
