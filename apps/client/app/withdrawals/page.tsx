@@ -105,7 +105,8 @@ export default function WithdrawalsPage() {
   const [formChain, setFormChain] = useState<number>(56);
   const [formToken, setFormToken] = useState("");
   const [formDestination, setFormDestination] = useState("");
-  const [formAmount, setFormAmount] = useState("500.00");
+  const [formAmount, setFormAmount] = useState("");
+  const [amountError, setAmountError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
@@ -279,14 +280,46 @@ export default function WithdrawalsPage() {
     return () => { cancelled = true; };
   }, []);
 
+  // Filter token balances by selected chain (computed early for validation)
+  const chainTokens = tokenBalances.filter(b => b.chainId === formChain);
+  // Filter destinations by selected chain
+  const chainDestinations = destinations.filter(d => d.chainId === formChain);
+
+  // Validate the amount and return an error string (or null if valid)
+  function validateAmount(amount: string): string | null {
+    if (!amount || amount.trim() === '') return 'Amount is required';
+    const num = parseFloat(amount);
+    if (isNaN(num)) return 'Please enter a valid number';
+    if (num <= 0) return 'Amount must be greater than 0';
+    // Check against available balance for the selected token
+    const selectedBalance = chainTokens.find(t => t.symbol === formToken);
+    if (selectedBalance) {
+      const available = parseFloat(selectedBalance.balance);
+      if (!isNaN(available) && num > available) {
+        return `Exceeds available balance (${selectedBalance.balance} ${formToken})`;
+      }
+    }
+    return null;
+  }
+
+  // Determine if the form is valid for submission
+  const formAmountValidationError = validateAmount(formAmount);
+  const isFormValid = !!formToken && !!formDestination && !!formAmount && !formAmountValidationError;
+
   // Handle withdrawal submission
   async function handleSubmitWithdrawal() {
-    if (!formToken || !formDestination || !formAmount) return;
+    const validationError = validateAmount(formAmount);
+    if (validationError) {
+      setAmountError(validationError);
+      return;
+    }
+    if (!formToken || !formDestination) return;
 
     try {
       setSubmitting(true);
       setSubmitError(null);
       setSubmitSuccess(false);
+      setAmountError(null);
 
       await clientFetch('/v1/withdrawals', {
         method: 'POST',
@@ -299,7 +332,7 @@ export default function WithdrawalsPage() {
       });
 
       setSubmitSuccess(true);
-      setFormAmount("500.00");
+      setFormAmount("");
 
       // Refresh withdrawals list
       const withdrawalsRes = await clientFetch<{ success: boolean; withdrawals: ApiWithdrawal[]; meta: { total: number } }>('/v1/withdrawals?limit=100');
@@ -330,11 +363,6 @@ export default function WithdrawalsPage() {
   }
 
   const dailyLimitPercent = dailyLimitMax > 0 ? (dailyLimitUsed / dailyLimitMax) * 100 : 0;
-
-  // Filter token balances by selected chain
-  const chainTokens = tokenBalances.filter(b => b.chainId === formChain);
-  // Filter destinations by selected chain
-  const chainDestinations = destinations.filter(d => d.chainId === formChain);
 
   if (loading) {
     return (
@@ -488,12 +516,29 @@ export default function WithdrawalsPage() {
               Amount
             </label>
             <input
-              type="text"
+              type="number"
+              step="any"
+              min="0"
               value={formAmount}
-              onChange={(e) => setFormAmount(e.target.value)}
+              onChange={(e) => {
+                setFormAmount(e.target.value);
+                setAmountError(null);
+              }}
+              onBlur={() => {
+                if (formAmount) {
+                  setAmountError(validateAmount(formAmount));
+                }
+              }}
               placeholder="0.00"
-              className="w-full bg-surface-input border border-border-default rounded-input px-3 py-2 text-text-primary font-mono text-body outline-none focus:border-border-focus transition-colors duration-fast"
+              className={`w-full bg-surface-input border rounded-input px-3 py-2 text-text-primary font-mono text-body outline-none focus:border-border-focus transition-colors duration-fast ${
+                amountError ? "border-status-error" : "border-border-default"
+              }`}
             />
+            {amountError && (
+              <div className="mt-1 text-micro text-status-error font-display">
+                {amountError}
+              </div>
+            )}
           </div>
 
           <div className="flex justify-between text-caption text-text-muted mb-3.5 px-3 py-2 bg-surface-elevated rounded-input font-display">
@@ -503,7 +548,7 @@ export default function WithdrawalsPage() {
 
           <button
             onClick={handleSubmitWithdrawal}
-            disabled={submitting || !formToken || !formDestination || !formAmount}
+            disabled={submitting || !isFormValid}
             className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-button font-display text-caption font-semibold cursor-pointer transition-colors duration-fast bg-accent-primary text-accent-text border-none hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {submitting ? (

@@ -42,7 +42,7 @@ const navSections: NavSection[] = [
   {
     title: "Operations",
     items: [
-      { label: "Deposits", href: "/deposits", icon: ArrowDownToLine, badge: 12 },
+      { label: "Deposits", href: "/deposits", icon: ArrowDownToLine },
       { label: "Withdrawals", href: "/withdrawals", icon: ArrowUpFromLine },
       { label: "Exports", href: "/exports", icon: Download },
     ],

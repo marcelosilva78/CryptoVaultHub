@@ -18,6 +18,7 @@ import {
   FileSearch,
   Radio,
   Download,
+  RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
@@ -47,7 +48,7 @@ const navSections: Array<{ title: string; items: Array<{ label: string; href: st
       { label: "Tokens", href: "/tokens", icon: "Coins" },
       { label: "Gas Tanks", href: "/gas-tanks", icon: "Fuel" },
       { label: "RPC Providers", href: "/rpc-providers", icon: "Radio" },
-      { label: "Sync Health", href: "/sync-health", icon: "Activity" },
+      { label: "Sync Health", href: "/sync-health", icon: "RefreshCw" },
     ],
   },
   {
@@ -77,6 +78,7 @@ const iconMap: Record<string, React.ElementType> = {
   FileSearch,
   Radio,
   Download,
+  RefreshCw,
 };
 
 /* ── Inline SVG: Hexagon with keyhole cutout ── */

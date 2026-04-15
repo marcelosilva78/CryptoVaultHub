@@ -1,7 +1,10 @@
 'use client';
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import { AdminApiClient } from '@cvh/api-client';
+import { setAdminApiClient } from '@cvh/api-client/hooks';
 
 const AUTH_API_URL = process.env.NEXT_PUBLIC_AUTH_API_URL || 'http://localhost:8000/auth';
+const ADMIN_API_URL = process.env.NEXT_PUBLIC_ADMIN_API_URL || 'http://localhost:3001/admin';
 
 interface User {
   id: number;
@@ -21,6 +24,14 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
+
+/** Initialize the @cvh/api-client SDK singleton so all React Query hooks work. */
+function initSdk() {
+  const token = localStorage.getItem('cvh_admin_token');
+  if (token) {
+    setAdminApiClient(new AdminApiClient(ADMIN_API_URL, token));
+  }
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -52,6 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (cancelled) return;
         if (validateRes.ok) {
           const data = await validateRes.json();
+          initSdk();
           setUser(data.user);
           return;
         }
@@ -88,6 +100,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         document.cookie = `cvh_admin_token=${accessToken}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
 
         if (refreshData.user) {
+          initSdk();
           setUser(refreshData.user);
           return;
         }
@@ -99,6 +112,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (cancelled) return;
         if (revalidateRes.ok) {
           const revalidateData = await revalidateRes.json();
+          initSdk();
           setUser(revalidateData.user);
         } else {
           clearAndRedirect();
@@ -141,6 +155,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('cvh_admin_token', accessToken);
     localStorage.setItem('cvh_admin_refresh', refresh);
     document.cookie = `cvh_admin_token=${accessToken}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
+    initSdk();
     setUser(userData);
     return {};
   };
@@ -162,6 +177,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('cvh_admin_token', accessToken);
     localStorage.setItem('cvh_admin_refresh', refresh);
     document.cookie = `cvh_admin_token=${accessToken}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
+    initSdk();
     setUser(userData);
   };
 
@@ -196,6 +212,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('cvh_admin_token', accessToken);
     if (newRefresh) localStorage.setItem('cvh_admin_refresh', newRefresh);
     document.cookie = `cvh_admin_token=${accessToken}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
+    initSdk();
   }, []);
 
   const logout = () => {

@@ -1,7 +1,10 @@
 'use client';
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import { ClientApiClient } from '@cvh/api-client';
+import { setClientApiClient } from '@cvh/api-client/hooks';
 
 const AUTH_API_URL = process.env.NEXT_PUBLIC_AUTH_API_URL || 'http://localhost:8000/auth';
+const CLIENT_API_URL = process.env.NEXT_PUBLIC_CLIENT_API_URL || 'http://localhost:3002/client';
 
 interface ClientUser {
   id: number;
@@ -24,6 +27,14 @@ interface ClientAuthContextType {
 }
 
 const ClientAuthContext = createContext<ClientAuthContextType | null>(null);
+
+/** Initialize the @cvh/api-client SDK singleton so all React Query hooks work. */
+function initSdk() {
+  const token = localStorage.getItem('cvh_client_token');
+  if (token) {
+    setClientApiClient(new ClientApiClient(CLIENT_API_URL, token));
+  }
+}
 
 export function ClientAuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<ClientUser | null>(null);
@@ -55,6 +66,7 @@ export function ClientAuthProvider({ children }: { children: ReactNode }) {
         if (cancelled) return;
         if (validateRes.ok) {
           const data = await validateRes.json();
+          initSdk();
           setUser(data.user);
           return;
         }
@@ -92,6 +104,7 @@ export function ClientAuthProvider({ children }: { children: ReactNode }) {
         document.cookie = `cvh_client_token=${accessToken}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
 
         if (refreshData.user) {
+          initSdk();
           setUser(refreshData.user);
           return;
         }
@@ -103,6 +116,7 @@ export function ClientAuthProvider({ children }: { children: ReactNode }) {
         if (cancelled) return;
         if (revalidateRes.ok) {
           const revalidateData = await revalidateRes.json();
+          initSdk();
           setUser(revalidateData.user);
         } else {
           clearAndRedirect();
@@ -145,6 +159,7 @@ export function ClientAuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('cvh_client_token', accessToken);
     if (refresh) localStorage.setItem('cvh_client_refresh', refresh);
     document.cookie = `cvh_client_token=${accessToken}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
+    initSdk();
     setUser(userData);
     return {};
   };
@@ -162,6 +177,7 @@ export function ClientAuthProvider({ children }: { children: ReactNode }) {
     const data = await res.json();
     localStorage.setItem('cvh_client_token', data.accessToken);
     document.cookie = `cvh_client_token=${data.accessToken}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
+    initSdk();
     setUser(data.user);
   };
 
@@ -183,6 +199,7 @@ export function ClientAuthProvider({ children }: { children: ReactNode }) {
       localStorage.setItem('cvh_client_refresh', refresh);
     }
     document.cookie = `cvh_client_token=${accessToken}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
+    initSdk();
     setUser(data.user);
   };
 
@@ -217,6 +234,7 @@ export function ClientAuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('cvh_client_token', accessToken);
     if (newRefresh) localStorage.setItem('cvh_client_refresh', newRefresh);
     document.cookie = `cvh_client_token=${accessToken}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
+    initSdk();
   }, []);
 
   const logout = () => {
