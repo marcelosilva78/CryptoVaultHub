@@ -3,29 +3,17 @@
 
 -- ─── Chain Lifecycle ───────────────────────────────────────
 
-ALTER TABLE cvh_indexer.chains
+ALTER TABLE cvh_admin.chains
   ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'active' AFTER gas_price_strategy,
   ADD COLUMN status_reason VARCHAR(255) NULL AFTER status,
   ADD COLUMN status_changed_at DATETIME NULL AFTER status_reason,
   ADD COLUMN finality_threshold INT NOT NULL DEFAULT 32 AFTER confirmations_default,
   ADD COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER created_at;
 
-UPDATE cvh_indexer.chains SET status = 'active' WHERE is_active = 1;
-UPDATE cvh_indexer.chains SET status = 'inactive' WHERE is_active = 0;
+UPDATE cvh_admin.chains SET status = 'active' WHERE is_active = 1;
+UPDATE cvh_admin.chains SET status = 'inactive' WHERE is_active = 0;
 
-ALTER TABLE cvh_indexer.chains ADD INDEX idx_status (status);
-
-ALTER TABLE cvh_wallets.chains
-  ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'active' AFTER gas_price_strategy,
-  ADD COLUMN status_reason VARCHAR(255) NULL AFTER status,
-  ADD COLUMN status_changed_at DATETIME NULL AFTER status_reason,
-  ADD COLUMN finality_threshold INT NOT NULL DEFAULT 32 AFTER confirmations_default,
-  ADD COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER created_at;
-
-UPDATE cvh_wallets.chains SET status = 'active' WHERE is_active = 1;
-UPDATE cvh_wallets.chains SET status = 'inactive' WHERE is_active = 0;
-
-ALTER TABLE cvh_wallets.chains ADD INDEX idx_status (status);
+ALTER TABLE cvh_admin.chains ADD INDEX idx_status (status);
 
 -- ─── RPC Node Quota Tracking ───────────────────────────────
 
