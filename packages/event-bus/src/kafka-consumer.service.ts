@@ -68,7 +68,9 @@ export class KafkaConsumerService implements OnModuleDestroy {
         } catch (err) {
           this.logger.error(
             `Error handling event from ${topic}: ${(err as Error).message}`,
+            (err as Error).stack,
           );
+          throw err; // Let KafkaJS retry/pause the partition
         }
       },
     });

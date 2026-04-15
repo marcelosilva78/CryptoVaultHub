@@ -49,10 +49,15 @@ export class EventConsumerService implements OnModuleInit, OnModuleDestroy {
   async onModuleInit() {
     await this.ensureConsumerGroups();
     this.running = true;
-    this.consumeLoop();
 
+    // If Kafka is available, use it as the primary consumer
     if (this.kafkaConsumer) {
       await this.startKafkaConsumer();
+      this.logger.log('Using Kafka as primary event consumer');
+    } else {
+      // Fallback to Redis Streams only if Kafka is not available
+      this.consumeLoop();
+      this.logger.log('Using Redis Streams as fallback event consumer');
     }
   }
 

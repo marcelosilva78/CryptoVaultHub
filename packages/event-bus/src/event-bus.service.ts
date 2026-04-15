@@ -46,6 +46,8 @@ export class EventBusService {
       const topic = STREAM_TO_TOPIC[stream];
       if (topic) {
         promises.push(this.kafkaProducer.publish(topic, key, data));
+      } else {
+        this.logger.warn(`No Kafka topic mapped for stream "${stream}" — event published to Redis only`);
       }
     }
 

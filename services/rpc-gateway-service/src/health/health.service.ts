@@ -81,7 +81,7 @@ export class HealthService implements OnModuleInit {
     this.logger.debug(`Running health checks for ${nodes.length} nodes`);
 
     const results = await Promise.allSettled(
-      nodes.map((node) => this.checkNode(node)),
+      nodes.map((node: any) => this.checkNode(node)),
     );
 
     for (let i = 0; i < results.length; i++) {
@@ -95,7 +95,7 @@ export class HealthService implements OnModuleInit {
     // Publish aggregated chain health events to Kafka (re-query for fresh scores)
     if (this.eventBus) {
       const freshNodes = await this.prisma.rpcNode.findMany({
-        where: { id: { in: nodes.map((n) => n.id) } },
+        where: { id: { in: nodes.map((n: any) => n.id) } },
         select: { chainId: true, healthScore: true },
       });
       const chainHealth = new Map<number, { healthy: number; total: number }>();
@@ -268,7 +268,7 @@ export class HealthService implements OnModuleInit {
       orderBy: [{ chainId: 'asc' }, { priority: 'asc' }],
     });
 
-    return nodes.map((node) => ({
+    return nodes.map((node: any) => ({
       nodeId: node.id.toString(),
       providerId: node.providerId.toString(),
       providerName: node.provider?.name ?? 'unknown',

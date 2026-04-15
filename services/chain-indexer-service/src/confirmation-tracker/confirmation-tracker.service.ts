@@ -196,6 +196,9 @@ export class ConfirmationTrackerService extends WorkerHost {
     const blockTimeMs = chain ? Number(chain.blockTimeSeconds) * 1000 : 12_000;
     await this.confirmationQueue.add('check-confirmation', data, {
       delay: blockTimeMs,
+      jobId: `confirm:${data.txHash}`,
+      removeOnComplete: true,
+      removeOnFail: 100,
     });
 
     return { status: 'pending', confirmations };
