@@ -20,5 +20,5 @@ USE `cvh_admin`;
 -- This covers both possible column names depending on which migration path
 -- was followed (raw SQL vs Prisma-generated).
 ALTER TABLE `clients`
-  MODIFY COLUMN `custody_mode` ENUM('full_custody','co_sign','self_managed','client_initiated')
+  MODIFY COLUMN `custody_policy` ENUM('full_custody','co_sign','self_managed','client_initiated')
     NOT NULL DEFAULT 'full_custody';
