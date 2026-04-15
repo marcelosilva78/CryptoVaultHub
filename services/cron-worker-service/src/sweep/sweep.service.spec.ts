@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getQueueToken } from '@nestjs/bullmq';
 import { SweepService } from './sweep.service';
+import { TransactionSubmitterService } from './transaction-submitter.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { EvmProviderService } from '../blockchain/evm-provider.service';
@@ -10,6 +11,7 @@ describe('SweepService', () => {
   let mockPrisma: any;
   let mockRedis: Partial<RedisService>;
   let mockEvmProvider: Partial<EvmProviderService>;
+  let mockTxSubmitter: Partial<TransactionSubmitterService>;
   let mockQueue: any;
   let mockProvider: any;
 
@@ -99,6 +101,18 @@ describe('SweepService', () => {
       reportFailure: jest.fn(),
     };
 
+    mockTxSubmitter = {
+      buildFlushCalldata: jest.fn().mockReturnValue('0xflushcalldata'),
+      buildBatchFlushCalldata: jest.fn().mockReturnValue('0xbatchcalldata'),
+      buildFlushNativeCalldata: jest.fn().mockReturnValue('0xflushNative'),
+      estimateBatchGasLimit: jest.fn().mockReturnValue(200000n),
+      signAndSubmit: jest
+        .fn()
+        .mockResolvedValue(
+          '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
+        ),
+    };
+
     mockQueue = {
       add: jest.fn().mockResolvedValue({ id: 'job-1' }),
     };
@@ -109,6 +123,10 @@ describe('SweepService', () => {
         { provide: PrismaService, useValue: mockPrisma },
         { provide: RedisService, useValue: mockRedis },
         { provide: EvmProviderService, useValue: mockEvmProvider },
+        {
+          provide: TransactionSubmitterService,
+          useValue: mockTxSubmitter,
+        },
         { provide: getQueueToken('sweep'), useValue: mockQueue },
       ],
     }).compile();

@@ -5,14 +5,7 @@ import { ethers } from 'ethers';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { EvmProviderService } from '../blockchain/evm-provider.service';
-
-const FORWARDER_ABI = [
-  'function flushTokens(address tokenContractAddress) external',
-];
-
-const FORWARDER_FACTORY_ABI = [
-  'function batchFlushERC20Tokens(address[] calldata forwarders, address tokenAddress) external',
-];
+import { TransactionSubmitterService } from './transaction-submitter.service';
 
 const ERC20_ABI = [
   'function balanceOf(address account) external view returns (uint256)',
@@ -45,6 +38,7 @@ export class SweepService extends WorkerHost implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
     private readonly evmProvider: EvmProviderService,
+    private readonly txSubmitter: TransactionSubmitterService,
   ) {
     super();
   }
@@ -204,90 +198,250 @@ export class SweepService extends WorkerHost implements OnModuleInit {
     const tokens = await this.prisma.token.findMany({
       where: { id: { in: tokenIds } },
     });
+    const tokenMap = new Map(tokens.map((t) => [t.id, t]));
 
-    // 5. Group deposits by token
-    const depositsByToken = new Map<bigint, typeof deposits>();
+    // 5. Group deposits by forwarder address, then by token within each forwarder.
+    //    This lets us use batchFlushERC20Tokens when a forwarder has multiple tokens.
+    const depositsByForwarder = new Map<
+      string,
+      Map<bigint, typeof deposits>
+    >();
     for (const deposit of deposits) {
-      const existing = depositsByToken.get(deposit.tokenId) ?? [];
+      let forwarderMap = depositsByForwarder.get(deposit.forwarderAddress);
+      if (!forwarderMap) {
+        forwarderMap = new Map();
+        depositsByForwarder.set(deposit.forwarderAddress, forwarderMap);
+      }
+      const existing = forwarderMap.get(deposit.tokenId) ?? [];
       existing.push(deposit);
-      depositsByToken.set(deposit.tokenId, existing);
+      forwarderMap.set(deposit.tokenId, existing);
     }
 
-    // 6. For each token, batch flush the forwarders
-    for (const [tokenId, tokenDeposits] of depositsByToken) {
-      const token = tokens.find((t) => t.id === tokenId);
-      if (!token) continue;
-
-      const forwarderAddresses = [
-        ...new Set(tokenDeposits.map((d) => d.forwarderAddress)),
-      ];
-
+    // 6. For each forwarder, verify on-chain balances and submit flush transactions
+    for (const [forwarderAddress, tokenDepositsMap] of depositsByForwarder) {
       try {
-        // Verify forwarders actually have balance
-        const erc20 = new ethers.Contract(
-          token.contractAddress,
-          ERC20_ABI,
-          provider,
-        );
+        // Verify which tokens actually have balance on this forwarder
+        const tokensWithBalance: Array<{
+          token: (typeof tokens)[0];
+          depositIds: bigint[];
+          depositCount: number;
+        }> = [];
 
-        const addressesWithBalance: string[] = [];
-        for (const addr of forwarderAddresses) {
+        for (const [tokenId, tokenDeposits] of tokenDepositsMap) {
+          const token = tokenMap.get(tokenId);
+          if (!token) continue;
+
+          let hasBalance = false;
           if (token.isNative) {
-            const balance = await provider.getBalance(addr);
-            if (balance > 0n) addressesWithBalance.push(addr);
+            const balance = await provider.getBalance(forwarderAddress);
+            hasBalance = balance > 0n;
           } else {
-            const balance = await erc20.balanceOf(addr);
-            if (balance > 0n) addressesWithBalance.push(addr);
+            const erc20 = new ethers.Contract(
+              token.contractAddress,
+              ERC20_ABI,
+              provider,
+            );
+            const balance = await erc20.balanceOf(forwarderAddress);
+            hasBalance = balance > 0n;
+          }
+
+          if (hasBalance) {
+            tokensWithBalance.push({
+              token,
+              depositIds: tokenDeposits.map((d) => d.id),
+              depositCount: tokenDeposits.length,
+            });
           }
         }
 
-        if (addressesWithBalance.length === 0) continue;
+        if (tokensWithBalance.length === 0) continue;
 
-        // Use batch flush via factory if available
-        // Note: In production this would sign via KeyVault.
-        // For now we record the intent and publish event.
-        const sweepTxHash = `sweep:${chainId}:${token.symbol}:${Date.now()}`;
-
-        // Update deposits as swept
-        const depositIds = tokenDeposits
-          .filter((d) =>
-            addressesWithBalance.includes(d.forwarderAddress),
-          )
-          .map((d) => d.id);
-
-        await this.prisma.deposit.updateMany({
-          where: { id: { in: depositIds } },
-          data: {
-            status: 'swept',
-            sweepTxHash,
-            sweptAt: new Date(),
-          },
-        });
-
-        result.swept += depositIds.length;
-        result.txHashes.push(sweepTxHash);
-
-        // Publish sweep event
-        await this.redis.publishToStream('deposits:swept', {
-          chainId: chainId.toString(),
-          clientId: clientId.toString(),
-          tokenSymbol: token.symbol,
-          tokenAddress: token.contractAddress,
-          forwarderCount: addressesWithBalance.length.toString(),
-          depositCount: depositIds.length.toString(),
-          sweepTxHash,
-          timestamp: new Date().toISOString(),
-        });
-
-        this.logger.log(
-          `Swept ${depositIds.length} ${token.symbol} deposits on chain ${chainId} from ${addressesWithBalance.length} forwarders`,
+        // Separate native ETH flushes from ERC-20 flushes
+        const nativeTokens = tokensWithBalance.filter(
+          (t) => t.token.isNative,
         );
+        const erc20Tokens = tokensWithBalance.filter(
+          (t) => !t.token.isNative,
+        );
+
+        // --- Handle native ETH flush ---
+        for (const entry of nativeTokens) {
+          try {
+            const calldata = this.txSubmitter.buildFlushNativeCalldata();
+
+            const sweepTxHash = await this.txSubmitter.signAndSubmit({
+              chainId,
+              clientId,
+              from: gasTank.address,
+              to: forwarderAddress,
+              data: calldata,
+            });
+
+            await this.prisma.deposit.updateMany({
+              where: { id: { in: entry.depositIds } },
+              data: {
+                status: 'sweep_pending',
+                sweepTxHash,
+              },
+            });
+
+            result.swept += entry.depositCount;
+            result.txHashes.push(sweepTxHash);
+
+            await this.redis.publishToStream('deposits:sweep_pending', {
+              chainId: chainId.toString(),
+              clientId: clientId.toString(),
+              tokenSymbol: entry.token.symbol,
+              tokenAddress: entry.token.contractAddress,
+              forwarderAddress,
+              depositCount: entry.depositCount.toString(),
+              sweepTxHash,
+              timestamp: new Date().toISOString(),
+            });
+
+            this.logger.log(
+              `Submitted native flush on chain ${chainId}: forwarder=${forwarderAddress}, tx=${sweepTxHash}`,
+            );
+          } catch (error) {
+            const msg =
+              error instanceof Error ? error.message : String(error);
+            this.logger.error(
+              `Native flush failed for forwarder ${forwarderAddress} on chain ${chainId}: ${msg}`,
+            );
+            result.failed += entry.depositCount;
+          }
+        }
+
+        // --- Handle ERC-20 flushes ---
+        if (erc20Tokens.length === 0) continue;
+
+        if (erc20Tokens.length === 1) {
+          // Single token: use flushTokens(tokenAddress)
+          const entry = erc20Tokens[0];
+          try {
+            const calldata = this.txSubmitter.buildFlushCalldata(
+              entry.token.contractAddress,
+            );
+
+            const sweepTxHash = await this.txSubmitter.signAndSubmit({
+              chainId,
+              clientId,
+              from: gasTank.address,
+              to: forwarderAddress,
+              data: calldata,
+            });
+
+            await this.prisma.deposit.updateMany({
+              where: { id: { in: entry.depositIds } },
+              data: {
+                status: 'sweep_pending',
+                sweepTxHash,
+              },
+            });
+
+            result.swept += entry.depositCount;
+            result.txHashes.push(sweepTxHash);
+
+            await this.redis.publishToStream('deposits:sweep_pending', {
+              chainId: chainId.toString(),
+              clientId: clientId.toString(),
+              tokenSymbol: entry.token.symbol,
+              tokenAddress: entry.token.contractAddress,
+              forwarderAddress,
+              depositCount: entry.depositCount.toString(),
+              sweepTxHash,
+              timestamp: new Date().toISOString(),
+            });
+
+            this.logger.log(
+              `Submitted flushTokens on chain ${chainId}: forwarder=${forwarderAddress}, token=${entry.token.symbol}, tx=${sweepTxHash}`,
+            );
+          } catch (error) {
+            const msg =
+              error instanceof Error ? error.message : String(error);
+            this.logger.error(
+              `flushTokens failed for forwarder ${forwarderAddress}, token ${entry.token.symbol} on chain ${chainId}: ${msg}`,
+            );
+            result.failed += entry.depositCount;
+          }
+        } else {
+          // Multiple tokens on same forwarder: use batchFlushERC20Tokens
+          try {
+            const tokenAddresses = erc20Tokens.map(
+              (e) => e.token.contractAddress,
+            );
+            const calldata =
+              this.txSubmitter.buildBatchFlushCalldata(tokenAddresses);
+            const gasLimit =
+              this.txSubmitter.estimateBatchGasLimit(erc20Tokens.length);
+
+            const sweepTxHash = await this.txSubmitter.signAndSubmit({
+              chainId,
+              clientId,
+              from: gasTank.address,
+              to: forwarderAddress,
+              data: calldata,
+              gasLimit,
+            });
+
+            // All ERC-20 deposits on this forwarder share the same sweep tx
+            const allDepositIds = erc20Tokens.flatMap((e) => e.depositIds);
+            const totalDepositCount = erc20Tokens.reduce(
+              (sum, e) => sum + e.depositCount,
+              0,
+            );
+
+            await this.prisma.deposit.updateMany({
+              where: { id: { in: allDepositIds } },
+              data: {
+                status: 'sweep_pending',
+                sweepTxHash,
+              },
+            });
+
+            result.swept += totalDepositCount;
+            result.txHashes.push(sweepTxHash);
+
+            const tokenSymbols = erc20Tokens
+              .map((e) => e.token.symbol)
+              .join(',');
+
+            await this.redis.publishToStream('deposits:sweep_pending', {
+              chainId: chainId.toString(),
+              clientId: clientId.toString(),
+              tokenSymbols,
+              tokenAddresses: tokenAddresses.join(','),
+              forwarderAddress,
+              depositCount: totalDepositCount.toString(),
+              sweepTxHash,
+              timestamp: new Date().toISOString(),
+            });
+
+            this.logger.log(
+              `Submitted batchFlushERC20Tokens on chain ${chainId}: forwarder=${forwarderAddress}, tokens=[${tokenSymbols}], tx=${sweepTxHash}`,
+            );
+          } catch (error) {
+            const msg =
+              error instanceof Error ? error.message : String(error);
+            this.logger.error(
+              `batchFlushERC20Tokens failed for forwarder ${forwarderAddress} on chain ${chainId}: ${msg}`,
+            );
+            const totalFailed = erc20Tokens.reduce(
+              (sum, e) => sum + e.depositCount,
+              0,
+            );
+            result.failed += totalFailed;
+          }
+        }
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
         this.logger.error(
-          `Sweep failed for token ${token.symbol} on chain ${chainId}: ${msg}`,
+          `Sweep failed for forwarder ${forwarderAddress} on chain ${chainId}: ${msg}`,
         );
-        result.failed += tokenDeposits.length;
+        // Count all deposits for this forwarder as failed
+        for (const tokenDeposits of tokenDepositsMap.values()) {
+          result.failed += tokenDeposits.length;
+        }
       }
     }
 

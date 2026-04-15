@@ -9,7 +9,9 @@ import {
   ArrayMinSize,
   Matches,
   Min,
+  ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class GenerateKeysDto {
   @IsNumber()
@@ -72,6 +74,69 @@ export class SignBatchDto {
     message: 'keyType must be one of: platform, client, backup, gas_tank',
   })
   keyType!: string;
+
+  @IsString()
+  @IsOptional()
+  requestedBy?: string;
+}
+
+export class TxDataDto {
+  @IsString()
+  @Matches(/^0x[0-9a-fA-F]{40}$/, {
+    message: 'to must be a valid Ethereum address',
+  })
+  to!: string;
+
+  @IsString()
+  @Matches(/^0x[0-9a-fA-F]*$/, {
+    message: 'data must be a 0x-prefixed hex string',
+  })
+  data!: string;
+
+  @IsString()
+  @IsOptional()
+  value?: string;
+
+  @IsString()
+  gasLimit!: string;
+
+  @IsString()
+  @IsOptional()
+  gasPrice?: string;
+
+  @IsString()
+  @IsOptional()
+  maxFeePerGas?: string;
+
+  @IsString()
+  @IsOptional()
+  maxPriorityFeePerGas?: string;
+
+  @IsNumber()
+  @Min(0)
+  nonce!: number;
+
+  @IsNumber()
+  chainId!: number;
+}
+
+export class SignTransactionDto {
+  @IsNumber()
+  @IsPositive()
+  clientId!: number;
+
+  @IsNumber()
+  chainId!: number;
+
+  @IsString()
+  @IsIn(['platform', 'client', 'backup', 'gas_tank'], {
+    message: 'keyType must be one of: platform, client, backup, gas_tank',
+  })
+  keyType!: string;
+
+  @ValidateNested()
+  @Type(() => TxDataDto)
+  txData!: TxDataDto;
 
   @IsString()
   @IsOptional()

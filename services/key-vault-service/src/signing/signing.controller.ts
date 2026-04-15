@@ -6,7 +6,11 @@ import {
   ParseIntPipe,
 } from '@nestjs/common';
 import { SigningService } from './signing.service';
-import { SignHashDto, SignBatchDto } from '../common/dto/key-generation.dto';
+import {
+  SignHashDto,
+  SignBatchDto,
+  SignTransactionDto,
+} from '../common/dto/key-generation.dto';
 
 @Controller('keys')
 export class SigningController {
@@ -45,6 +49,25 @@ export class SigningController {
       success: true,
       clientId,
       signatures: results,
+    };
+  }
+
+  @Post(':clientId/sign-transaction')
+  async signTransaction(
+    @Param('clientId', ParseIntPipe) clientId: number,
+    @Body() dto: SignTransactionDto,
+  ) {
+    const result = await this.signingService.signTransaction(
+      clientId,
+      dto.chainId,
+      dto.keyType,
+      dto.txData,
+      dto.requestedBy ?? 'system',
+    );
+    return {
+      success: true,
+      clientId,
+      ...result,
     };
   }
 }
