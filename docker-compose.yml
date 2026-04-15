@@ -91,6 +91,7 @@ services:
       - ./database:/docker-entrypoint-initdb.d:ro
     networks:
       - internal-net
+      - vault-net
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${MYSQL_PASSWORD}"]
