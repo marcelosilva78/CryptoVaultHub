@@ -51,5 +51,15 @@ ALTER TABLE `flush_items`
 
 USE `cvh_jobs`;
 
-ALTER TABLE `jobs`
-  DROP INDEX IF EXISTS `idx_jobs_queue_status`;
+-- DROP INDEX IF EXISTS not supported in MySQL 8.0; use procedure workaround
+DROP PROCEDURE IF EXISTS drop_index_if_exists;
+DELIMITER $$
+CREATE PROCEDURE drop_index_if_exists()
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = 'cvh_jobs' AND TABLE_NAME = 'jobs' AND INDEX_NAME = 'idx_jobs_queue_status') THEN
+    ALTER TABLE `jobs` DROP INDEX `idx_jobs_queue_status`;
+  END IF;
+END$$
+DELIMITER ;
+CALL drop_index_if_exists();
+DROP PROCEDURE IF EXISTS drop_index_if_exists;
