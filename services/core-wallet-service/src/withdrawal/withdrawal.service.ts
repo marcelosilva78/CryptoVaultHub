@@ -4,6 +4,7 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { ethers } from 'ethers';
 import { PrismaService } from '../prisma/prisma.service';
@@ -150,7 +151,11 @@ export class WithdrawalService {
     }
 
     // Convert amount to raw (wei/smallest unit)
-    const amountRaw = ethers.parseUnits(amount, token.decimals).toString();
+    const amountParsed = ethers.parseUnits(amount, token.decimals);
+    if (amountParsed <= 0n) {
+      throw new BadRequestException('Withdrawal amount must be greater than zero');
+    }
+    const amountRaw = amountParsed.toString();
 
     // Check on-chain balance
     let onChainBalance: bigint;
@@ -169,10 +174,11 @@ export class WithdrawalService {
       }
     } catch (error) {
       this.logger.warn(
-        `Could not verify balance for withdrawal (proceeding with creation): ${error}`,
+        `Could not verify on-chain balance for withdrawal: ${error instanceof Error ? error.message : String(error)}`,
       );
-      // Proceed with creation — balance will be re-checked at submission time
-      onChainBalance = BigInt(amountRaw);
+      throw new ServiceUnavailableException(
+        'Unable to verify wallet balance. Please retry when RPC connectivity is restored.',
+      );
     }
 
     if (onChainBalance < BigInt(amountRaw)) {

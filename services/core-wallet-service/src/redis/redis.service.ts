@@ -124,4 +124,11 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   async getCache(key: string): Promise<string | null> {
     return this.client.get(key);
   }
+
+  /**
+   * Delete a cached key.
+   */
+  async deleteCache(key: string): Promise<void> {
+    await this.client.del(key);
+  }
 }

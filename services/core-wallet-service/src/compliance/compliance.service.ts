@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 /**
@@ -51,13 +51,10 @@ export class ComplianceService {
     });
 
     if (!client) {
-      this.logger.warn(`Client ${clientId} not found, skipping screening`);
-      return {
-        result: 'clear',
-        action: 'allowed',
-        listsChecked: [],
-        matchDetails: null,
-      };
+      this.logger.error(`Compliance check failed: client ${clientId} not found`);
+      throw new NotFoundException(
+        `Client ${clientId} not found — cannot perform compliance check`,
+      );
     }
 
     const kytLevel = client.kytLevel || 'off';

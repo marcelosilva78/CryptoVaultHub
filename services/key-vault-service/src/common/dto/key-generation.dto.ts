@@ -100,6 +100,8 @@ export class SplitSharesDto {
 }
 
 export class ReconstructDto {
+  @IsArray()
+  @ArrayMinSize(3, { message: 'At least 3 shares are required for reconstruction' })
   @IsNumber({}, { each: true })
   shareIndices!: number[];
 

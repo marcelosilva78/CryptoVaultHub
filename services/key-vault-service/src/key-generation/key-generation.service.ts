@@ -32,14 +32,18 @@ export class KeyGenerationService {
     // Ensure master seed exists (outside transaction to avoid long locks)
     const masterSeed = await this.getOrCreateMasterSeed();
 
-    // Decrypt master mnemonic
-    let mnemonic: string | null = this.encryption.decryptToString({
-      ciphertext: masterSeed.encryptedSeed,
-      iv: masterSeed.iv,
-      authTag: masterSeed.authTag,
-      salt: masterSeed.salt,
-      encryptedDek: masterSeed.encryptedDek,
-    });
+    // Decrypt master mnemonic (pass stored kdfIterations to handle seeds
+    // encrypted under a different iteration count than the current config)
+    let mnemonic: string | null = this.encryption.decryptToString(
+      {
+        ciphertext: masterSeed.encryptedSeed,
+        iv: masterSeed.iv,
+        authTag: masterSeed.authTag,
+        salt: masterSeed.salt,
+        encryptedDek: masterSeed.encryptedDek,
+      },
+      masterSeed.kdfIterations,
+    );
 
     const mnemonicObj = ethers.Mnemonic.fromPhrase(mnemonic);
     const masterNode = ethers.HDNodeWallet.fromMnemonic(mnemonicObj);
@@ -146,13 +150,16 @@ export class KeyGenerationService {
     requestedBy: string,
   ): Promise<DerivedKeyInfo> {
     const masterSeed = await this.getMasterSeed();
-    let mnemonic: string | null = this.encryption.decryptToString({
-      ciphertext: masterSeed.encryptedSeed,
-      iv: masterSeed.iv,
-      authTag: masterSeed.authTag,
-      salt: masterSeed.salt,
-      encryptedDek: masterSeed.encryptedDek,
-    });
+    let mnemonic: string | null = this.encryption.decryptToString(
+      {
+        ciphertext: masterSeed.encryptedSeed,
+        iv: masterSeed.iv,
+        authTag: masterSeed.authTag,
+        salt: masterSeed.salt,
+        encryptedDek: masterSeed.encryptedDek,
+      },
+      masterSeed.kdfIterations,
+    );
 
     const mnemonicObj = ethers.Mnemonic.fromPhrase(mnemonic);
     const masterNode = ethers.HDNodeWallet.fromMnemonic(mnemonicObj);

@@ -88,12 +88,16 @@ export class EncryptionService {
    * 1. Derive KEK from master password
    * 2. Unwrap DEK using KEK
    * 3. Decrypt ciphertext with DEK
+   *
+   * @param payload - encrypted data components
+   * @param iterations - optional KDF iteration count (use stored value from DB
+   *   to ensure keys encrypted under a different iteration count can be decrypted)
    */
-  decrypt(payload: EncryptedPayload): Buffer {
+  decrypt(payload: EncryptedPayload, iterations?: number): Buffer {
     const { ciphertext, iv, authTag, salt, encryptedDek } = payload;
 
-    // Derive KEK
-    const kek = this.deriveKEK(salt);
+    // Derive KEK (use caller-supplied iterations when available, e.g. from masterSeed.kdfIterations)
+    const kek = this.deriveKEK(salt, iterations);
 
     // Unwrap DEK
     const dekIv = encryptedDek.subarray(0, 16);
@@ -131,9 +135,13 @@ export class EncryptionService {
 
   /**
    * Decrypt and return as string.
+   *
+   * @param payload - encrypted data components
+   * @param iterations - optional KDF iteration count (pass the stored value
+   *   from the DB record to handle keys encrypted under a different iteration count)
    */
-  decryptToString(payload: EncryptedPayload): string {
-    const buf = this.decrypt(payload);
+  decryptToString(payload: EncryptedPayload, iterations?: number): string {
+    const buf = this.decrypt(payload, iterations);
     const str = buf.toString('utf-8');
     buf.fill(0);
     return str;

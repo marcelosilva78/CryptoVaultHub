@@ -38,12 +38,21 @@ export class InternalServiceGuard implements CanActivate {
       );
     }
 
-    if (
-      !serviceKey ||
-      serviceKey.length !== expectedKey.length ||
-      !timingSafeEqual(Buffer.from(serviceKey), Buffer.from(expectedKey))
-    ) {
+    if (!serviceKey) {
       throw new UnauthorizedException('Invalid or missing internal service key');
+    }
+
+    // Normalize both buffers to equal length to avoid leaking key length via timing
+    const a = Buffer.from(serviceKey);
+    const b = Buffer.from(expectedKey);
+    const maxLen = Math.max(a.length, b.length);
+    const aPad = Buffer.alloc(maxLen);
+    const bPad = Buffer.alloc(maxLen);
+    a.copy(aPad);
+    b.copy(bPad);
+    const match = timingSafeEqual(aPad, bPad) && a.length === b.length;
+    if (!match) {
+      throw new UnauthorizedException('Invalid service key');
     }
 
     return true;

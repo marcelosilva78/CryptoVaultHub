@@ -53,7 +53,7 @@ export class FlushOrchestratorService {
           continue;
         }
 
-        const isLocked = await this.isForwarderLocked(item.forwarderAddress);
+        const isLocked = await this.isForwarderLocked(item.chainId, item.forwarderAddress);
         if (isLocked) {
           skippedCount++;
           continue;
@@ -138,9 +138,10 @@ export class FlushOrchestratorService {
 
   /**
    * Check if a forwarder address is currently locked (e.g., pending sweep).
+   * Includes chainId to prevent cross-chain lock contamination.
    */
-  private async isForwarderLocked(address: string): Promise<boolean> {
-    const lockKey = `flush:lock:${address}`;
+  private async isForwarderLocked(chainId: number, address: string): Promise<boolean> {
+    const lockKey = `flush:lock:${chainId}:${address.toLowerCase()}`;
     const locked = await this.redis.getCache(lockKey);
     return locked !== null;
   }
@@ -149,8 +150,8 @@ export class FlushOrchestratorService {
    * Execute flush for a single item.
    */
   private async flushItem(item: FlushItem): Promise<void> {
-    // Lock the forwarder during flush
-    const lockKey = `flush:lock:${item.forwarderAddress}`;
+    // Lock the forwarder during flush (include chainId to prevent cross-chain contamination)
+    const lockKey = `flush:lock:${item.chainId}:${item.forwarderAddress.toLowerCase()}`;
     await this.redis.setCache(lockKey, '1', 300); // 5 minute lock
 
     try {
@@ -163,9 +164,10 @@ export class FlushOrchestratorService {
         timestamp: new Date().toISOString(),
       });
     } catch (error) {
-      // Release lock on failure
-      await this.redis.setCache(lockKey, '', 0);
       throw error;
+    } finally {
+      // Always release lock — whether flush succeeded or failed
+      await this.redis.deleteCache(lockKey);
     }
   }
 }

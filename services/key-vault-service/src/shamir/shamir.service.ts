@@ -3,6 +3,7 @@ import {
   Logger,
   NotFoundException,
   BadRequestException,
+  InternalServerErrorException,
 } from '@nestjs/common';
 import * as secrets from 'secrets.js-grempe';
 import { PrismaService } from '../prisma/prisma.service';
@@ -168,6 +169,13 @@ export class ShamirService {
     shareIndices: number[],
     requestedBy: string = 'system',
   ): Promise<{ address: string; publicKey: string }> {
+    // Enforce minimum share threshold to prevent garbage reconstruction
+    if (shareIndices.length < DEFAULT_THRESHOLD) {
+      throw new BadRequestException(
+        `Minimum ${DEFAULT_THRESHOLD} shares required for reconstruction`,
+      );
+    }
+
     // Fetch the specified shares
     const shares = await this.prisma.shamirShare.findMany({
       where: {
@@ -208,6 +216,26 @@ export class ShamirService {
 
       // Zero sensitive data
       privateKeyBuf.fill(0);
+
+      // Verify reconstructed key matches stored backup address
+      const storedBackupKey = await this.prisma.derivedKey.findFirst({
+        where: {
+          clientId: BigInt(clientId),
+          keyType: 'backup',
+          isActive: true,
+        },
+        select: { address: true },
+      });
+      if (!storedBackupKey) {
+        throw new NotFoundException(
+          `No stored backup key found for client ${clientId}`,
+        );
+      }
+      if (wallet.address.toLowerCase() !== storedBackupKey.address.toLowerCase()) {
+        throw new InternalServerErrorException(
+          'Reconstructed key does not match stored backup address — possible corruption or insufficient shares',
+        );
+      }
 
       await this.audit.log({
         operation: 'shamir_reconstruct',

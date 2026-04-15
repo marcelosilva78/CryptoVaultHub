@@ -3,6 +3,7 @@ import {
   IsString,
   IsPositive,
   Min,
+  Matches,
 } from 'class-validator';
 
 export class CreateWithdrawalDto {
@@ -23,6 +24,7 @@ export class CreateWithdrawalDto {
   toAddressId: number;
 
   @IsString()
+  @Matches(/^\d+(\.\d+)?$/, { message: 'Amount must be a positive decimal number' })
   amount: string;
 
   @IsString()
