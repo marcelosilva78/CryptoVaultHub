@@ -24,6 +24,16 @@ export class KeyGenerationService {
   /**
    * Generate master seed if none exists, then derive 3 keys for the given client:
    * platform, client, backup.
+   *
+   * SECURITY NOTE (V8 string immutability limitation):
+   * The `mnemonic` phrase and `masterNode.privateKey` / `childNode.privateKey` are
+   * ethers.js strings. JavaScript strings are immutable and interned in V8's heap —
+   * they cannot be zeroed or overwritten. The private key Buffers derived from
+   * `childNode.privateKey` ARE zeroable (and we do zero them after encryption).
+   * For the mnemonic and HDNodeWallet objects, we null all references as early as
+   * possible to drop strong refs and allow V8's GC to reclaim the memory sooner.
+   * A future improvement would use a native C++ BIP-32/39 library that operates
+   * entirely on Buffers, avoiding string conversion for mnemonics and derived keys.
    */
   async generateClientKeys(
     clientId: number,
@@ -46,7 +56,13 @@ export class KeyGenerationService {
     );
 
     const mnemonicObj = ethers.Mnemonic.fromPhrase(mnemonic);
-    const masterNode = ethers.HDNodeWallet.fromMnemonic(mnemonicObj);
+    let masterNode: ethers.HDNodeWallet | null =
+      ethers.HDNodeWallet.fromMnemonic(mnemonicObj);
+
+    // Drop mnemonic string reference immediately — no longer needed after
+    // deriving masterNode. This doesn't zero V8's interned copy but removes
+    // the strong reference so GC can collect it sooner.
+    mnemonic = null;
 
     const keyTypes: Array<'platform' | 'client' | 'backup'> = [
       'platform',
@@ -73,7 +89,7 @@ export class KeyGenerationService {
         const pathIndex = clientId * 3 + i;
         const derivationPath = `m/44'/60'/${pathIndex}'/0/0`;
 
-        const childNode = masterNode.derivePath(derivationPath);
+        const childNode = masterNode!.derivePath(derivationPath);
         const privateKeyBuf = Buffer.from(
           childNode.privateKey.slice(2),
           'hex',
@@ -82,7 +98,7 @@ export class KeyGenerationService {
         // Envelope-encrypt the private key
         const encrypted = this.encryption.encrypt(privateKeyBuf);
 
-        // Zero the private key buffer
+        // Zero the private key buffer (this IS effective — Buffer is backed by ArrayBuffer)
         privateKeyBuf.fill(0);
 
         await tx.derivedKey.create({
@@ -112,6 +128,11 @@ export class KeyGenerationService {
       return txResults;
     });
 
+    // Drop masterNode reference — it holds derived keys as V8 strings internally.
+    // Nulling removes the strong reference so GC can collect the entire HDNodeWallet
+    // object graph sooner.
+    masterNode = null;
+
     // Audit logs outside the transaction (non-critical, shouldn't block key creation)
     for (const result of results) {
       await this.audit.log({
@@ -124,16 +145,6 @@ export class KeyGenerationService {
       });
     }
 
-    // NOTE: JS strings are immutable — mnemonic.split('').fill('0') was a no-op.
-    // Buffer.from() copies the bytes, so filling it with zeros overwrites the copy
-    // in the Buffer's backing ArrayBuffer, not the original V8 string. However,
-    // nulling the reference removes the strong ref and allows GC to collect it sooner.
-    {
-      const mnemonicBuf = Buffer.from(mnemonic, 'utf-8');
-      mnemonicBuf.fill(0);
-    }
-    mnemonic = null as any;
-
     this.logger.log(
       `Generated ${keyTypes.length} keys for client ${clientId}`,
     );
@@ -143,6 +154,8 @@ export class KeyGenerationService {
   /**
    * Derive a gas tank key for a specific client and chain.
    * Path: m/44'/60'/1000'/chainId/clientIndex
+   *
+   * See SECURITY NOTE in generateClientKeys regarding V8 string immutability.
    */
   async deriveGasTankKey(
     clientId: number,
@@ -162,23 +175,26 @@ export class KeyGenerationService {
     );
 
     const mnemonicObj = ethers.Mnemonic.fromPhrase(mnemonic);
-    const masterNode = ethers.HDNodeWallet.fromMnemonic(mnemonicObj);
+    let masterNode: ethers.HDNodeWallet | null =
+      ethers.HDNodeWallet.fromMnemonic(mnemonicObj);
 
-    // Zero mnemonic reference (JS strings are immutable; see note in generateClientKeys)
-    {
-      const mnemonicBuf = Buffer.from(mnemonic, 'utf-8');
-      mnemonicBuf.fill(0);
-    }
+    // Drop mnemonic string reference immediately (JS strings are immutable in V8;
+    // we cannot zero them, but nulling removes the strong ref to aid GC)
     mnemonic = null;
 
     const derivationPath = `m/44'/60'/1000'/${chainId}/${clientId}`;
     const childNode = masterNode.derivePath(derivationPath);
+
+    // Drop masterNode reference — no longer needed after deriving childNode
+    masterNode = null;
+
     const privateKeyBuf = Buffer.from(
       childNode.privateKey.slice(2),
       'hex',
     );
 
     const encrypted = this.encryption.encrypt(privateKeyBuf);
+    // Zero the private key buffer (this IS effective — Buffer is backed by ArrayBuffer)
     privateKeyBuf.fill(0);
 
     // Use upsert in case gas_tank key already exists for this client
@@ -272,6 +288,43 @@ export class KeyGenerationService {
     if (!key) {
       throw new NotFoundException(
         `Active ${keyType} key not found for client ${clientId}`,
+      );
+    }
+
+    const privateKey = this.encryption.decrypt({
+      ciphertext: key.encryptedKey,
+      iv: key.iv,
+      authTag: key.authTag,
+      salt: key.salt,
+      encryptedDek: key.encryptedDek,
+    });
+
+    return { privateKey, address: key.address, keyId: key.id };
+  }
+
+  /**
+   * Decrypt a chain-scoped private key (e.g. gas_tank for a specific chain).
+   * CALLER IS RESPONSIBLE FOR ZEROING THE RETURNED BUFFER.
+   */
+  async decryptPrivateKeyForChain(
+    clientId: number,
+    keyType: string,
+    chainId: number,
+  ): Promise<{ privateKey: Buffer; address: string; keyId: bigint }> {
+    const chainScope = `evm:${chainId}`;
+    const key = await this.prisma.derivedKey.findUnique({
+      where: {
+        uq_client_keytype_chain: {
+          clientId: BigInt(clientId),
+          keyType: keyType as any,
+          chainScope,
+        },
+      },
+    });
+
+    if (!key || !key.isActive) {
+      throw new NotFoundException(
+        `Active ${keyType} key not found for client ${clientId}, chain ${chainId}`,
       );
     }
 

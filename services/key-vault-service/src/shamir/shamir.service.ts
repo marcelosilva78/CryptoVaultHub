@@ -79,18 +79,38 @@ export class ShamirService {
       'backup',
     );
 
-    try {
-      // Convert private key to hex for Shamir splitting
-      const hexSecret = privateKey.toString('hex');
+    // SECURITY NOTE (V8 string immutability limitation):
+    // The secrets.js-grempe library requires hex string input. JavaScript strings
+    // are immutable and interned in V8's heap — they cannot be zeroed or overwritten.
+    // This means `hexSecret` will persist in memory until V8's garbage collector
+    // reclaims it. We mitigate this by:
+    // 1. Scoping the hex string to the smallest possible block
+    // 2. Nulling all references immediately after use to enable earlier GC
+    // 3. Zeroing the source Buffer (privateKey) in the `finally` block
+    // A future improvement would be to use a native C++ addon that operates on
+    // Buffers directly for Shamir splitting, avoiding hex string conversion entirely.
+    let hexSecret: string | null = null;
+    let shares: string[] | null = null;
 
-      // Split into shares
-      const shares = secrets.share(hexSecret, totalShares, threshold);
+    try {
+      // Convert private key to hex for Shamir splitting — unfortunately required
+      // by secrets.js-grempe which only accepts hex string input.
+      hexSecret = privateKey.toString('hex');
+
+      // Split into shares (returns hex strings)
+      shares = secrets.share(hexSecret, totalShares, threshold);
+
+      // Drop the hex secret reference as early as possible to aid GC
+      hexSecret = null;
 
       // Encrypt and store each share
       for (let i = 0; i < shares.length; i++) {
         const shareBuf = Buffer.from(shares[i], 'utf-8');
         const encrypted = this.encryption.encrypt(shareBuf);
         shareBuf.fill(0);
+
+        // Drop the plaintext share reference immediately after encryption
+        shares[i] = '';
 
         await this.prisma.shamirShare.create({
           data: {
@@ -106,11 +126,8 @@ export class ShamirService {
         });
       }
 
-      // Zero the shares from memory
-      shares.forEach((s) => {
-        // Strings are immutable in JS, but we do what we can
-        (shares as any)[shares.indexOf(s)] = '';
-      });
+      // Null the shares array reference to aid GC
+      shares = null;
 
       await this.audit.log({
         operation: 'shamir_split',
@@ -204,18 +221,37 @@ export class ShamirService {
       shareBuf.fill(0);
     }
 
+    // SECURITY NOTE (V8 string immutability limitation):
+    // secrets.combine() returns a hex string and decryptedShares are also strings.
+    // These cannot be zeroed in V8. We null all references as early as possible
+    // to enable garbage collection and zero the reconstructed Buffer immediately
+    // after deriving the public key and address.
+    let reconstructedHex: string | null = null;
+
     try {
-      // Reconstruct the secret
-      const reconstructedHex = secrets.combine(decryptedShares);
+      // Reconstruct the secret (returns hex string — V8 limitation, see note above)
+      reconstructedHex = secrets.combine(decryptedShares);
       const privateKeyBuf = Buffer.from(reconstructedHex, 'hex');
 
-      // Verify by deriving the address and comparing with stored backup key
-      const { ethers } = await import('ethers');
-      const privateKeyHex = '0x' + privateKeyBuf.toString('hex');
-      const wallet = new ethers.Wallet(privateKeyHex);
+      // Drop hex string reference immediately
+      reconstructedHex = null;
 
-      // Zero sensitive data
+      // Derive public key and address using native secp256k1 — private key
+      // stays as Buffer and is NEVER converted to a JS string.
+      const secp256k1 = await import('secp256k1');
+      const pubKeyUncompressed = Buffer.from(
+        secp256k1.publicKeyCreate(Uint8Array.from(privateKeyBuf), false),
+      );
+
+      // Zero the private key Buffer as soon as we have the public key
       privateKeyBuf.fill(0);
+
+      // Compute Ethereum address from uncompressed public key:
+      // keccak256(pubkey_without_04_prefix)[12..31]
+      const { ethers } = await import('ethers');
+      const addressHash = ethers.keccak256(pubKeyUncompressed.subarray(1));
+      const address = ethers.getAddress('0x' + addressHash.slice(-40));
+      const publicKey = '0x' + pubKeyUncompressed.toString('hex');
 
       // Verify reconstructed key matches stored backup address
       const storedBackupKey = await this.prisma.derivedKey.findFirst({
@@ -231,7 +267,7 @@ export class ShamirService {
           `No stored backup key found for client ${clientId}`,
         );
       }
-      if (wallet.address.toLowerCase() !== storedBackupKey.address.toLowerCase()) {
+      if (address.toLowerCase() !== storedBackupKey.address.toLowerCase()) {
         throw new InternalServerErrorException(
           'Reconstructed key does not match stored backup address — possible corruption or insufficient shares',
         );
@@ -241,7 +277,7 @@ export class ShamirService {
         operation: 'shamir_reconstruct',
         clientId,
         keyType: 'backup',
-        address: wallet.address,
+        address,
         requestedBy,
         metadata: { shareIndices, shareCount: shares.length },
       });
@@ -252,14 +288,16 @@ export class ShamirService {
 
       // Return only public info — never expose the private key via API
       return {
-        address: wallet.address,
-        publicKey: wallet.signingKey.publicKey,
+        address,
+        publicKey,
       };
     } finally {
-      // Zero decrypted shares
+      // Drop decrypted share references to aid GC (strings are immutable in V8;
+      // we cannot zero them, but nulling the references allows earlier collection)
       decryptedShares.forEach((_, i) => {
         decryptedShares[i] = '';
       });
+      reconstructedHex = null;
     }
   }
 }
