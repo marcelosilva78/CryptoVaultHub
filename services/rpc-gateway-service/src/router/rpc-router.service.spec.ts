@@ -1,166 +1,215 @@
-import { RpcRouterService, RpcNode } from './rpc-router.service';
-import { CircuitBreakerService } from '../circuit-breaker/circuit-breaker.service';
+import { Test, TestingModule } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
+import { BadRequestException } from '@nestjs/common';
+import { RpcRouterService } from './rpc-router.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { RateLimiterService } from '../rate-limiter/rate-limiter.service';
+import { CircuitBreakerService } from '../circuit-breaker/circuit-breaker.service';
+
+// Mock ethers to control JsonRpcProvider behavior
+jest.mock('ethers', () => {
+  const mockSend = jest.fn().mockResolvedValue('0x1234');
+  return {
+    JsonRpcProvider: jest.fn().mockImplementation(() => ({
+      send: mockSend,
+    })),
+    FetchRequest: jest.fn().mockImplementation((url: string) => ({
+      url,
+      setHeader: jest.fn(),
+    })),
+    __mockSend: mockSend, // expose for test access
+  };
+});
 
 describe('RpcRouterService', () => {
   let service: RpcRouterService;
-  let circuitBreaker: jest.Mocked<CircuitBreakerService>;
-  let rateLimiter: jest.Mocked<RateLimiterService>;
+  let mockPrisma: any;
+  let mockRateLimiter: Partial<RateLimiterService>;
+  let mockCircuitBreaker: Partial<CircuitBreakerService>;
+  let mockConfig: Partial<ConfigService>;
+  let mockSend: jest.Mock;
 
-  const testNodes: RpcNode[] = [
-    {
-      key: 'eth-primary',
-      url: 'https://eth-primary.example.com',
-      chainId: 1,
-      priority: 1,
-      isActive: true,
-    },
-    {
-      key: 'eth-fallback',
-      url: 'https://eth-fallback.example.com',
-      chainId: 1,
-      priority: 2,
-      isActive: true,
-    },
-    {
-      key: 'eth-backup',
-      url: 'https://eth-backup.example.com',
-      chainId: 1,
-      priority: 3,
-      isActive: true,
-    },
-    {
-      key: 'polygon-primary',
-      url: 'https://polygon.example.com',
-      chainId: 137,
-      priority: 1,
-      isActive: true,
-    },
-  ];
+  const NODE_A = {
+    id: BigInt(1),
+    providerId: BigInt(10),
+    chainId: 1,
+    endpointUrl: 'https://rpc-a.example.com',
+    priority: 1,
+    weight: 100,
+    status: 'active',
+    maxRequestsPerSecond: 10,
+    maxRequestsPerMinute: 100,
+    timeoutMs: 5000,
+    healthScore: 100,
+    consecutiveFailures: 0,
+    provider: null,
+  };
 
-  beforeEach(() => {
-    circuitBreaker = {
+  const NODE_B = {
+    id: BigInt(2),
+    providerId: BigInt(20),
+    chainId: 1,
+    endpointUrl: 'https://rpc-b.example.com',
+    priority: 2,
+    weight: 80,
+    status: 'active',
+    maxRequestsPerSecond: 10,
+    maxRequestsPerMinute: 100,
+    timeoutMs: 5000,
+    healthScore: 90,
+    consecutiveFailures: 0,
+    provider: null,
+  };
+
+  const AUTHED_NODE = {
+    ...NODE_A,
+    id: BigInt(3),
+    provider: {
+      authMethod: 'api_key',
+      authHeaderName: 'x-api-key',
+      apiKeyEncrypted: 'deadbeef:cafebabe:encrypted_key',
+    },
+  };
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+
+    // Get the mock send from ethers mock
+    mockSend = require('ethers').__mockSend;
+    mockSend.mockReset().mockResolvedValue('0x1234');
+
+    mockPrisma = {
+      rpcNode: {
+        findMany: jest.fn().mockResolvedValue([NODE_A, NODE_B]),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      providerSwitchLog: {
+        create: jest.fn().mockResolvedValue({}),
+      },
+    };
+
+    mockRateLimiter = {
+      checkAndRecord: jest.fn().mockResolvedValue(true),
+      isQuotaExhausted: jest.fn().mockResolvedValue(false),
+      recordUsage: jest.fn().mockResolvedValue(undefined),
+    };
+
+    mockCircuitBreaker = {
       isAllowed: jest.fn().mockReturnValue(true),
       recordSuccess: jest.fn(),
       recordFailure: jest.fn(),
-      getState: jest.fn().mockReturnValue('closed'),
-      reset: jest.fn(),
-    } as any;
+    };
 
-    rateLimiter = {
-      isAllowed: jest.fn().mockReturnValue(true),
-      recordUsage: jest.fn(),
-      setConfig: jest.fn(),
-      getUsage: jest.fn(),
-    } as any;
+    mockConfig = {
+      get: jest.fn().mockReturnValue(''),
+    };
 
-    service = new RpcRouterService(circuitBreaker, rateLimiter);
-    service.registerNodes(testNodes);
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        RpcRouterService,
+        { provide: PrismaService, useValue: mockPrisma },
+        { provide: RateLimiterService, useValue: mockRateLimiter },
+        { provide: CircuitBreakerService, useValue: mockCircuitBreaker },
+        { provide: ConfigService, useValue: mockConfig },
+      ],
+    }).compile();
+
+    service = module.get<RpcRouterService>(RpcRouterService);
   });
 
-  afterEach(() => {
-    jest.clearAllMocks();
-  });
+  describe('selectNode', () => {
+    it('should select node with highest health score', async () => {
+      mockPrisma.rpcNode.findMany.mockResolvedValue([NODE_A, NODE_B]);
 
-  it('should select the highest priority active node', () => {
-    const selected = service.selectNode(1);
+      const selected = await service.selectNode(1);
 
-    expect(selected).toBeDefined();
-    expect(selected!.key).toBe('eth-primary');
-    expect(selected!.priority).toBe(1);
-  });
-
-  it('should fall back to next node on failure during executeWithFallback', async () => {
-    const requestFn = jest
-      .fn()
-      .mockRejectedValueOnce(new Error('Primary failed'))
-      .mockResolvedValueOnce({ result: 'success' });
-
-    const result = await service.executeWithFallback(1, requestFn);
-
-    expect(result.node.key).toBe('eth-fallback');
-    expect(result.response).toEqual({ result: 'success' });
-    expect(circuitBreaker.recordFailure).toHaveBeenCalledWith('eth-primary');
-    expect(circuitBreaker.recordSuccess).toHaveBeenCalledWith('eth-fallback');
-  });
-
-  it('should skip circuit-broken nodes', () => {
-    // Primary is circuit-broken
-    circuitBreaker.isAllowed.mockImplementation((key: string) => {
-      return key !== 'eth-primary';
+      // NODE_A has priority 1 (lower = better), so it should be selected first
+      expect(selected).toBeDefined();
+      expect(selected!.id).toBe(NODE_A.id);
     });
 
-    const selected = service.selectNode(1);
+    it('should skip nodes rejected by circuit breaker', async () => {
+      mockPrisma.rpcNode.findMany.mockResolvedValue([NODE_A, NODE_B]);
+      (mockCircuitBreaker.isAllowed as jest.Mock).mockImplementation(
+        (nodeId: string) => nodeId !== '1', // Reject NODE_A
+      );
 
-    expect(selected).toBeDefined();
-    expect(selected!.key).toBe('eth-fallback');
-  });
+      const selected = await service.selectNode(1);
 
-  it('should skip rate-limited nodes', () => {
-    // Primary is rate-limited
-    rateLimiter.isAllowed.mockImplementation((key: string) => {
-      return key !== 'eth-primary';
+      expect(selected).toBeDefined();
+      expect(selected!.id).toBe(NODE_B.id);
     });
 
-    const selected = service.selectNode(1);
+    it('should skip nodes rejected by rate limiter', async () => {
+      mockPrisma.rpcNode.findMany.mockResolvedValue([NODE_A, NODE_B]);
+      (mockRateLimiter.checkAndRecord as jest.Mock).mockImplementation(
+        async (nodeId: bigint) => nodeId !== BigInt(1), // Reject NODE_A
+      );
 
-    expect(selected).toBeDefined();
-    expect(selected!.key).toBe('eth-fallback');
-  });
+      const selected = await service.selectNode(1);
 
-  it('should return null when no nodes are available for a chain', () => {
-    // All nodes are circuit-broken
-    circuitBreaker.isAllowed.mockReturnValue(false);
-
-    const selected = service.selectNode(1);
-
-    expect(selected).toBeNull();
-  });
-
-  it('should return null for chain with no registered nodes', () => {
-    const selected = service.selectNode(999);
-
-    expect(selected).toBeNull();
-  });
-
-  it('should skip both circuit-broken and rate-limited nodes in executeWithFallback', async () => {
-    // Primary is circuit-broken, fallback is rate-limited
-    circuitBreaker.isAllowed.mockImplementation((key: string) => {
-      return key !== 'eth-primary';
+      expect(selected).toBeDefined();
+      expect(selected!.id).toBe(NODE_B.id);
     });
-    rateLimiter.isAllowed.mockImplementation((key: string) => {
-      return key !== 'eth-fallback';
+  });
+
+  describe('callNode', () => {
+    it('should inject auth headers for authenticated providers', async () => {
+      // Spy on createAuthProvider to verify it receives the provider auth config
+      const spy = jest.spyOn(service as any, 'createAuthProvider');
+
+      await (service as any).callNode(AUTHED_NODE, 'eth_blockNumber', []);
+
+      expect(spy).toHaveBeenCalledWith(
+        AUTHED_NODE.endpointUrl,
+        expect.objectContaining({
+          authMethod: 'api_key',
+          authHeaderName: 'x-api-key',
+          apiKeyEncrypted: expect.any(String),
+        }),
+      );
     });
 
-    const requestFn = jest.fn().mockResolvedValue({ result: 'from-backup' });
+    it('should use plain provider for non-authenticated nodes', async () => {
+      const spy = jest.spyOn(service as any, 'createAuthProvider');
 
-    const result = await service.executeWithFallback(1, requestFn);
+      await (service as any).callNode(NODE_A, 'eth_blockNumber', []);
 
-    expect(result.node.key).toBe('eth-backup');
-    expect(requestFn).toHaveBeenCalledTimes(1);
+      // Should be called with null provider (no auth)
+      expect(spy).toHaveBeenCalledWith(NODE_A.endpointUrl, null);
+    });
   });
 
-  it('should throw when all nodes fail in executeWithFallback', async () => {
-    const requestFn = jest.fn().mockRejectedValue(new Error('fail'));
+  describe('executeRpcCall', () => {
+    it('should retry on failure with next available node', async () => {
+      // First call fails, second succeeds
+      mockSend
+        .mockRejectedValueOnce(new Error('RPC timeout'))
+        .mockResolvedValueOnce('0xblock');
 
-    await expect(service.executeWithFallback(1, requestFn)).rejects.toThrow(
-      'No available RPC node for chain 1',
-    );
-  });
+      const result = await service.executeRpcCall(1, 'eth_blockNumber', []);
 
-  it('should record usage when a node is selected in executeWithFallback', async () => {
-    const requestFn = jest.fn().mockResolvedValue({ ok: true });
+      expect(result.result).toBe('0xblock');
+      // Circuit breaker should have recorded failure for first node
+      expect(mockCircuitBreaker.recordFailure).toHaveBeenCalled();
+      // And success for second node
+      expect(mockCircuitBreaker.recordSuccess).toHaveBeenCalled();
+    });
 
-    await service.executeWithFallback(1, requestFn);
+    it('should report failure to circuit breaker on error', async () => {
+      mockSend.mockRejectedValue(new Error('All nodes down'));
+      // Return NODE_A on first query, then empty on subsequent queries (since NODE_A is excluded)
+      mockPrisma.rpcNode.findMany
+        .mockResolvedValueOnce([NODE_A])
+        .mockResolvedValue([]);
 
-    expect(rateLimiter.recordUsage).toHaveBeenCalledWith('eth-primary');
-  });
+      await expect(
+        service.executeRpcCall(1, 'eth_blockNumber', []),
+      ).rejects.toThrow(BadRequestException);
 
-  it('should select correct chain node', () => {
-    const selected = service.selectNode(137);
-
-    expect(selected).toBeDefined();
-    expect(selected!.key).toBe('polygon-primary');
-    expect(selected!.chainId).toBe(137);
+      expect(mockCircuitBreaker.recordFailure).toHaveBeenCalledWith(
+        NODE_A.id.toString(),
+      );
+    });
   });
 });

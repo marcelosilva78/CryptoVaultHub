@@ -3,13 +3,82 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { UnauthorizedException } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
-import { JwtAuthService } from './jwt-auth.service';
+import {
+  JwtAuthService,
+  TooManyRequestsException,
+} from './jwt-auth.service';
 import { PrismaService } from '../prisma/prisma.service';
+
+/**
+ * In-memory Redis mock that simulates ioredis for rate-limiting tests.
+ */
+class MockRedis {
+  private store = new Map<string, { value: string; ttl?: number }>();
+
+  async connect() {}
+  async quit() {}
+
+  async incr(key: string): Promise<number> {
+    const existing = this.store.get(key);
+    const current = existing ? parseInt(existing.value, 10) : 0;
+    const next = current + 1;
+    this.store.set(key, { value: String(next), ttl: existing?.ttl });
+    return next;
+  }
+
+  async expire(key: string, seconds: number): Promise<number> {
+    const existing = this.store.get(key);
+    if (existing) {
+      existing.ttl = seconds;
+    }
+    return 1;
+  }
+
+  async ttl(key: string): Promise<number> {
+    const existing = this.store.get(key);
+    if (!existing) return -2;
+    return existing.ttl ?? -1;
+  }
+
+  async set(
+    key: string,
+    value: string,
+    _mode?: string,
+    ttl?: number,
+  ): Promise<string> {
+    this.store.set(key, { value, ttl });
+    return 'OK';
+  }
+
+  async del(...keys: string[]): Promise<number> {
+    let count = 0;
+    for (const key of keys) {
+      if (this.store.delete(key)) count++;
+    }
+    return count;
+  }
+
+  async get(key: string): Promise<string | null> {
+    const existing = this.store.get(key);
+    return existing?.value ?? null;
+  }
+
+  /** Test helper: read TTL of a key for assertions. */
+  getTtl(key: string): number | undefined {
+    return this.store.get(key)?.ttl;
+  }
+
+  /** Test helper: reset all data between tests. */
+  clear() {
+    this.store.clear();
+  }
+}
 
 describe('JwtAuthService', () => {
   let service: JwtAuthService;
   let mockPrisma: any;
   let mockJwtService: any;
+  let mockRedis: MockRedis;
 
   const testUser = {
     id: BigInt(1),
@@ -46,6 +115,8 @@ describe('JwtAuthService', () => {
       verify: jest.fn(),
     };
 
+    mockRedis = new MockRedis();
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         JwtAuthService,
@@ -65,11 +136,21 @@ describe('JwtAuthService', () => {
     }).compile();
 
     service = module.get<JwtAuthService>(JwtAuthService);
+
+    // Replace the internally-created Redis instance with our mock
+    (service as any).redis = mockRedis;
+  });
+
+  afterEach(() => {
+    mockRedis.clear();
+    jest.clearAllMocks();
   });
 
   it('should be defined', () => {
     expect(service).toBeDefined();
   });
+
+  // ─── login ──────────────────────────────────────────────
 
   describe('login', () => {
     it('should return tokens for valid credentials', async () => {
@@ -155,15 +236,171 @@ describe('JwtAuthService', () => {
         data: { lastLoginAt: expect.any(Date) },
       });
     });
+
+    it('should record failed login on invalid credentials', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.login('wrong@example.com', 'password123'),
+      ).rejects.toThrow(UnauthorizedException);
+
+      // recordFailedLogin should have incremented the failures key
+      const failCount = await mockRedis.get(
+        'login:failures:wrong@example.com',
+      );
+      expect(failCount).toBe('1');
+    });
+
+    it('should trigger account lockout after 10 failed login attempts', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(null);
+
+      // Pre-populate 9 prior failures
+      for (let i = 0; i < 9; i++) {
+        await mockRedis.incr('login:failures:locked@example.com');
+      }
+
+      await expect(
+        service.login('locked@example.com', 'bad-password'),
+      ).rejects.toThrow(UnauthorizedException);
+
+      // After the 10th failure, lockout key should be set
+      const lockout = await mockRedis.get(
+        'login:lockout:locked@example.com',
+      );
+      expect(lockout).toBe('1');
+    });
   });
+
+  // ─── Rate Limiting ─────────────────────────────────────
+
+  describe('checkAndTrackLoginAttempt', () => {
+    it('should allow first attempt', async () => {
+      await expect(
+        service.checkAndTrackLoginAttempt('user@test.com', '10.0.0.1'),
+      ).resolves.not.toThrow();
+    });
+
+    it('should allow up to 5 attempts per email', async () => {
+      for (let i = 0; i < 5; i++) {
+        await expect(
+          service.checkAndTrackLoginAttempt(
+            'user@test.com',
+            `10.0.0.${i + 1}`,
+          ),
+        ).resolves.not.toThrow();
+      }
+    });
+
+    it('should block after 5 attempts per email', async () => {
+      // Use different IPs to avoid IP limit, same email
+      for (let i = 0; i < 5; i++) {
+        await service.checkAndTrackLoginAttempt(
+          'user@test.com',
+          `10.0.0.${i + 1}`,
+        );
+      }
+
+      await expect(
+        service.checkAndTrackLoginAttempt('user@test.com', '10.0.0.99'),
+      ).rejects.toThrow(TooManyRequestsException);
+    });
+
+    it('should block after 5 attempts per IP', async () => {
+      // Use different emails to avoid email limit, same IP
+      for (let i = 0; i < 5; i++) {
+        await service.checkAndTrackLoginAttempt(
+          `user${i}@test.com`,
+          '10.0.0.1',
+        );
+      }
+
+      await expect(
+        service.checkAndTrackLoginAttempt('user99@test.com', '10.0.0.1'),
+      ).rejects.toThrow(TooManyRequestsException);
+    });
+
+    it('should enforce account lockout after lockout key is set', async () => {
+      // Simulate existing lockout
+      await mockRedis.set(
+        'login:lockout:locked@test.com',
+        '1',
+        'EX',
+        600,
+      );
+
+      await expect(
+        service.checkAndTrackLoginAttempt('locked@test.com', '10.0.0.1'),
+      ).rejects.toThrow(TooManyRequestsException);
+      await expect(
+        service.checkAndTrackLoginAttempt('locked@test.com', '10.0.0.1'),
+      ).rejects.toThrow(/locked/i);
+    });
+
+    it('should set correct TTL (5 minutes) for IP attempt key', async () => {
+      await service.checkAndTrackLoginAttempt('user@test.com', '10.0.0.1');
+      expect(mockRedis.getTtl('login:ip:10.0.0.1')).toBe(300);
+    });
+
+    it('should set correct TTL (5 minutes) for email attempt key', async () => {
+      await service.checkAndTrackLoginAttempt('user@test.com', '10.0.0.1');
+      expect(mockRedis.getTtl('login:email:user@test.com')).toBe(300);
+    });
+  });
+
+  // ─── resetLoginAttempts ─────────────────────────────────
+
+  describe('resetLoginAttempts', () => {
+    it('should clear counters in Redis', async () => {
+      await mockRedis.incr('login:email:user@test.com');
+      await mockRedis.incr('login:ip:10.0.0.1');
+      await mockRedis.set('login:lockout:user@test.com', '1');
+      await mockRedis.incr('login:failures:user@test.com');
+
+      await service.resetLoginAttempts('user@test.com', '10.0.0.1');
+
+      expect(await mockRedis.get('login:email:user@test.com')).toBeNull();
+      expect(await mockRedis.get('login:ip:10.0.0.1')).toBeNull();
+      expect(
+        await mockRedis.get('login:lockout:user@test.com'),
+      ).toBeNull();
+      expect(
+        await mockRedis.get('login:failures:user@test.com'),
+      ).toBeNull();
+    });
+  });
+
+  // ─── checkTotpAttempt ──────────────────────────────────
+
+  describe('checkTotpAttempt', () => {
+    it('should allow first TOTP attempt', async () => {
+      await expect(service.checkTotpAttempt('42')).resolves.not.toThrow();
+    });
+
+    it('should block after 5 TOTP attempts', async () => {
+      for (let i = 0; i < 5; i++) {
+        await service.checkTotpAttempt('42');
+      }
+
+      await expect(service.checkTotpAttempt('42')).rejects.toThrow(
+        TooManyRequestsException,
+      );
+    });
+
+    it('should set correct TTL for TOTP attempt key', async () => {
+      await service.checkTotpAttempt('42');
+      expect(mockRedis.getTtl('totp:42')).toBe(300);
+    });
+  });
+
+  // ─── refresh ────────────────────────────────────────────
 
   describe('refresh', () => {
     it('should throw for invalid refresh token', async () => {
       mockPrisma.session.findFirst.mockResolvedValue(null);
 
-      await expect(
-        service.refresh('invalid-token'),
-      ).rejects.toThrow(UnauthorizedException);
+      await expect(service.refresh('invalid-token')).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
 
     it('should issue new tokens for valid refresh token', async () => {
@@ -181,10 +418,11 @@ describe('JwtAuthService', () => {
 
       expect(result.accessToken).toBe('mock-jwt-token');
       expect(result.refreshToken).toBeDefined();
-      // Old session should be deleted
       expect(mockPrisma.session.delete).toHaveBeenCalled();
     });
   });
+
+  // ─── logout ─────────────────────────────────────────────
 
   describe('logout', () => {
     it('should delete session by refresh token hash', async () => {
@@ -197,6 +435,8 @@ describe('JwtAuthService', () => {
       });
     });
   });
+
+  // ─── verifyAccessToken ──────────────────────────────────
 
   describe('verifyAccessToken', () => {
     it('should return payload for valid token', () => {

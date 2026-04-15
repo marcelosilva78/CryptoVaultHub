@@ -1,6 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { NotFoundException } from '@nestjs/common';
 import { ComplianceService } from './compliance.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { POSTHOG_SERVICE } from '@cvh/posthog';
 
 describe('ComplianceService', () => {
   let service: ComplianceService;
@@ -36,6 +38,14 @@ describe('ComplianceService', () => {
     kytLevel: 'off',
   };
 
+  const ACTIVE_CLIENT_ENHANCED = {
+    ...ACTIVE_CLIENT_FULL,
+    id: BigInt(4),
+    name: 'Enhanced KYT Client',
+    slug: 'enhanced-kyt',
+    kytLevel: 'enhanced',
+  };
+
   const OFAC_SANCTIONS_ENTRY = {
     id: BigInt(1),
     listSource: 'OFAC_SDN',
@@ -61,6 +71,8 @@ describe('ComplianceService', () => {
   };
 
   beforeEach(async () => {
+    jest.clearAllMocks();
+
     mockPrisma = {
       client: {
         findUnique: jest.fn().mockResolvedValue(ACTIVE_CLIENT_FULL),
@@ -103,16 +115,232 @@ describe('ComplianceService', () => {
           }),
         ),
       },
+      $queryRawUnsafe: jest.fn().mockResolvedValue([]),
     };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ComplianceService,
         { provide: PrismaService, useValue: mockPrisma },
+        { provide: POSTHOG_SERVICE, useValue: null },
       ],
     }).compile();
 
     service = module.get<ComplianceService>(ComplianceService);
+  });
+
+  describe('screenWithdrawal', () => {
+    it('should return clear when no sanctions match', async () => {
+      mockPrisma.client.findUnique.mockResolvedValue(ACTIVE_CLIENT_BASIC);
+      mockPrisma.sanctionsEntry.findMany.mockResolvedValue([]);
+
+      const result = await service.screenWithdrawal({
+        clientId: 2,
+        toAddress: '0xCleanAddress',
+      });
+
+      expect(result.result).toBe('clear');
+      expect(result.action).toBe('allowed');
+      expect(result.matchDetails).toBeNull();
+    });
+
+    it('should return hit when address matches sanctions list', async () => {
+      mockPrisma.client.findUnique.mockResolvedValue(ACTIVE_CLIENT_BASIC);
+      mockPrisma.sanctionsEntry.findMany.mockResolvedValue([
+        OFAC_SANCTIONS_ENTRY,
+      ]);
+
+      const result = await service.screenWithdrawal({
+        clientId: 2,
+        toAddress: '0xBADaddress0000000000000000000000000000001',
+      });
+
+      expect(result.result).toBe('hit');
+      expect(result.action).toBe('blocked');
+      expect(result.matchDetails).not.toBeNull();
+      expect(result.matchDetails).toHaveLength(1);
+      expect(result.matchDetails![0].listSource).toBe('OFAC_SDN');
+      expect(result.matchDetails![0].entityName).toBe('Bad Actor LLC');
+    });
+
+    it('should throw NotFoundException when client not found (fail-closed)', async () => {
+      mockPrisma.client.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.screenWithdrawal({
+          clientId: 999,
+          toAddress: '0xAnyAddress',
+        }),
+      ).rejects.toThrow(NotFoundException);
+
+      // Reset mock for second assertion
+      mockPrisma.client.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.screenWithdrawal({
+          clientId: 999,
+          toAddress: '0xAnyAddress',
+        }),
+      ).rejects.toThrow('Client 999 not found');
+    });
+
+    it('should skip screening when KYT level is off', async () => {
+      mockPrisma.client.findUnique.mockResolvedValue(ACTIVE_CLIENT_OFF);
+
+      const result = await service.screenWithdrawal({
+        clientId: 3,
+        toAddress: '0xAnyAddress',
+      });
+
+      expect(result.result).toBe('clear');
+      expect(result.action).toBe('allowed');
+      expect(result.listsChecked).toEqual([]);
+
+      // Should NOT check sanctions entries
+      expect(mockPrisma.sanctionsEntry.findMany).not.toHaveBeenCalled();
+
+      // Should still save the screening result for audit trail
+      expect(mockPrisma.screeningResult.create).toHaveBeenCalled();
+    });
+
+    it('should check only OFAC_SDN for basic level', async () => {
+      mockPrisma.client.findUnique.mockResolvedValue(ACTIVE_CLIENT_BASIC);
+      mockPrisma.sanctionsEntry.findMany.mockResolvedValue([]);
+
+      const result = await service.screenWithdrawal({
+        clientId: 2,
+        toAddress: '0xSomeAddress',
+      });
+
+      expect(result.listsChecked).toEqual(['OFAC_SDN']);
+
+      // Verify sanctions query was scoped to only OFAC_SDN
+      expect(mockPrisma.sanctionsEntry.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            listSource: { in: ['OFAC_SDN'] },
+          }),
+        }),
+      );
+    });
+
+    it('should run N-hop trace for full level', async () => {
+      mockPrisma.client.findUnique.mockResolvedValue(ACTIVE_CLIENT_FULL);
+      mockPrisma.sanctionsEntry.findMany.mockResolvedValue([]);
+      mockPrisma.$queryRawUnsafe.mockResolvedValue([]);
+
+      const result = await service.screenWithdrawal({
+        clientId: 1,
+        toAddress: '0xCleanAddress',
+      });
+
+      expect(result.result).toBe('clear');
+
+      // Verify the full sanctions list was used
+      expect(result.listsChecked).toEqual([
+        'OFAC_SDN',
+        'OFAC_CONSOLIDATED',
+        'EU',
+        'UN',
+        'UK_OFSI',
+      ]);
+
+      // Verify the N-hop tracing raw query was executed
+      expect(mockPrisma.$queryRawUnsafe).toHaveBeenCalled();
+    });
+
+    it('should return possible_match when N-hop trace finds flagged counterparties', async () => {
+      mockPrisma.client.findUnique.mockResolvedValue(ACTIVE_CLIENT_FULL);
+
+      // Base screening: clean (no direct match)
+      // Then hop tracing finds a sanctioned counterparty
+      mockPrisma.sanctionsEntry.findMany
+        .mockResolvedValueOnce([]) // screenAddress: direct check
+        .mockResolvedValueOnce([ // traceAddressHops: counterparty check
+          {
+            listSource: 'OFAC_SDN',
+            entityName: 'Laundering Network',
+            entityId: 'SDN-99999',
+            address: '0xcounterparty',
+            isActive: true,
+          },
+        ]);
+
+      mockPrisma.$queryRawUnsafe.mockResolvedValue([
+        {
+          from_address: '0xcleanaddress',
+          to_address: '0xcounterparty',
+        },
+      ]);
+
+      const result = await service.screenWithdrawal({
+        clientId: 1,
+        toAddress: '0xCleanAddress',
+      });
+
+      expect(result.result).toBe('possible_match');
+      expect(result.action).toBe('review');
+    });
+  });
+
+  describe('screenDeposit', () => {
+    it('should screen source address post-deposit', async () => {
+      mockPrisma.client.findUnique.mockResolvedValue(ACTIVE_CLIENT_BASIC);
+      mockPrisma.sanctionsEntry.findMany.mockResolvedValue([]);
+
+      const result = await service.screenDeposit({
+        clientId: 2,
+        fromAddress: '0xDepositorAddress',
+        txHash: '0xTxHash123',
+      });
+
+      expect(result.result).toBe('clear');
+      expect(result.action).toBe('allowed');
+
+      // Should save screening result with deposit trigger and inbound direction
+      expect(mockPrisma.screeningResult.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            direction: 'inbound',
+            trigger: 'deposit',
+            txHash: '0xTxHash123',
+          }),
+        }),
+      );
+    });
+
+    it('should return possible_match when N-hop trace flags counterparties (full level)', async () => {
+      mockPrisma.client.findUnique.mockResolvedValue(ACTIVE_CLIENT_FULL);
+
+      // Base screening: clean
+      mockPrisma.sanctionsEntry.findMany
+        .mockResolvedValueOnce([]) // screenAddress: direct check
+        .mockResolvedValueOnce([ // traceAddressHops: counterparty flagged
+          {
+            listSource: 'OFAC_SDN',
+            entityName: 'Dark Market',
+            entityId: 'SDN-88888',
+            address: '0xflaggedcounterparty',
+            isActive: true,
+          },
+        ]);
+
+      mockPrisma.$queryRawUnsafe.mockResolvedValue([
+        {
+          from_address: '0xdepositoraddress',
+          to_address: '0xflaggedcounterparty',
+        },
+      ]);
+
+      const result = await service.screenDeposit({
+        clientId: 1,
+        fromAddress: '0xDepositorAddress',
+        txHash: '0xTxHash456',
+      });
+
+      expect(result.result).toBe('possible_match');
+      expect(result.action).toBe('review');
+    });
   });
 
   describe('screenAddress', () => {
@@ -161,7 +389,9 @@ describe('ComplianceService', () => {
       expect(mockPrisma.sanctionsEntry.findMany).toHaveBeenCalledWith({
         where: {
           address: '0xsomeaddress',
-          listSource: { in: ['OFAC_SDN', 'EU', 'UN', 'UK_OFSI'] },
+          listSource: {
+            in: ['OFAC_SDN', 'OFAC_CONSOLIDATED', 'EU', 'UN', 'UK_OFSI'],
+          },
           isActive: true,
         },
       });
@@ -296,55 +526,17 @@ describe('ComplianceService', () => {
       expect(result.matchDetails![1].listSource).toBe('EU');
     });
 
-    it('should handle missing client gracefully', async () => {
+    it('should throw NotFoundException when client not found (fail-closed)', async () => {
       mockPrisma.client.findUnique.mockResolvedValue(null);
 
-      const result = await service.screenAddress({
-        address: '0xsomeaddress',
-        direction: 'inbound',
-        trigger: 'deposit',
-        clientId: 999,
-      });
-
-      expect(result.result).toBe('clear');
-      expect(result.action).toBe('allowed');
-      expect(mockPrisma.sanctionsEntry.findMany).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('screenDeposit', () => {
-    it('should screen the from address as inbound deposit', async () => {
-      const result = await service.screenDeposit({
-        clientId: 1,
-        fromAddress: '0xsender123',
-        txHash: '0xtxhash',
-      });
-
-      expect(result.result).toBe('clear');
-      expect(mockPrisma.sanctionsEntry.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            address: '0xsender123',
-          }),
+      await expect(
+        service.screenAddress({
+          address: '0xsomeaddress',
+          direction: 'inbound',
+          trigger: 'deposit',
+          clientId: 999,
         }),
-      );
-    });
-  });
-
-  describe('screenWithdrawal', () => {
-    it('should screen the to address as outbound withdrawal', async () => {
-      const result = await service.screenWithdrawal({
-        clientId: 1,
-        toAddress: '0xrecipient456',
-      });
-
-      expect(result.result).toBe('clear');
-      expect(mockPrisma.screeningResult.create).toHaveBeenCalledWith({
-        data: expect.objectContaining({
-          direction: 'outbound',
-          trigger: 'withdrawal',
-        }),
-      });
+      ).rejects.toThrow(NotFoundException);
     });
   });
 

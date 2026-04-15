@@ -1,137 +1,159 @@
+import { Test, TestingModule } from '@nestjs/testing';
 import { CircuitBreakerService } from './circuit-breaker.service';
+import { RedisService } from '../redis/redis.service';
 
 describe('CircuitBreakerService', () => {
   let service: CircuitBreakerService;
+  let mockRedisClient: any;
+  let mockRedisService: Partial<RedisService>;
 
-  beforeEach(() => {
-    service = new CircuitBreakerService({
-      failureThreshold: 3,
-      cooldownMs: 5000,
-      halfOpenMaxAttempts: 1,
+  beforeEach(async () => {
+    jest.clearAllMocks();
+
+    mockRedisClient = {
+      mget: jest.fn().mockResolvedValue([null, null, null]),
+      pipeline: jest.fn().mockReturnValue({
+        set: jest.fn().mockReturnThis(),
+        exec: jest.fn().mockResolvedValue([]),
+      }),
+    };
+
+    mockRedisService = {
+      getClient: jest.fn().mockReturnValue(mockRedisClient),
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        CircuitBreakerService,
+        { provide: RedisService, useValue: mockRedisService },
+      ],
+    }).compile();
+
+    service = module.get<CircuitBreakerService>(CircuitBreakerService);
+  });
+
+  describe('isAllowed', () => {
+    it('should allow when circuit is closed', () => {
+      // No cache entry = default closed state
+      const result = service.isAllowed('node-1');
+
+      expect(result).toBe(true);
+    });
+
+    it('should reject when circuit is open', () => {
+      // Pre-populate local cache with open circuit
+      (service as any).localCache.set('node-1', {
+        circuit: {
+          state: 'open',
+          failures: 5,
+          openedAt: Date.now(), // Just opened
+        },
+        cachedAt: Date.now(),
+      });
+
+      const result = service.isAllowed('node-1');
+
+      expect(result).toBe(false);
+    });
+
+    it('should allow one request when half-open (after timeout)', () => {
+      // Pre-populate with open circuit that has expired
+      (service as any).localCache.set('node-1', {
+        circuit: {
+          state: 'open',
+          failures: 5,
+          openedAt: Date.now() - 31_000, // 31 seconds ago (> 30s OPEN_DURATION_MS)
+        },
+        cachedAt: Date.now(),
+      });
+
+      const result = service.isAllowed('node-1');
+
+      expect(result).toBe(true);
+      // Should have transitioned to half-open
+      const cached = (service as any).localCache.get('node-1');
+      expect(cached.circuit.state).toBe('half-open');
     });
   });
 
-  it('should start with circuit in closed state', () => {
-    expect(service.getState('node-1')).toBe('closed');
-    expect(service.isAllowed('node-1')).toBe(true);
-  });
+  describe('recordFailure', () => {
+    it('should open circuit after threshold failures', () => {
+      // Start with 4 failures (threshold is 5)
+      (service as any).localCache.set('node-1', {
+        circuit: {
+          state: 'closed',
+          failures: 4,
+          openedAt: 0,
+        },
+        cachedAt: Date.now(),
+      });
 
-  it('should open the circuit after N consecutive failures', () => {
-    service.recordFailure('node-1');
-    expect(service.getState('node-1')).toBe('closed');
+      service.recordFailure('node-1');
 
-    service.recordFailure('node-1');
-    expect(service.getState('node-1')).toBe('closed');
-
-    service.recordFailure('node-1');
-    expect(service.getState('node-1')).toBe('open');
-  });
-
-  it('should reject requests when circuit is open', () => {
-    // Trip the circuit
-    service.recordFailure('node-1');
-    service.recordFailure('node-1');
-    service.recordFailure('node-1');
-
-    expect(service.getState('node-1')).toBe('open');
-    expect(service.isAllowed('node-1')).toBe(false);
-  });
-
-  it('should transition to half-open after cooldown period', () => {
-    // Trip the circuit
-    service.recordFailure('node-1');
-    service.recordFailure('node-1');
-    service.recordFailure('node-1');
-
-    expect(service.getState('node-1')).toBe('open');
-
-    // Simulate cooldown by manipulating the last failure timestamp
-    // We need to use a shorter cooldown for testing
-    const shortCooldownService = new CircuitBreakerService({
-      failureThreshold: 3,
-      cooldownMs: 0, // Instant cooldown for testing
-      halfOpenMaxAttempts: 1,
+      const cached = (service as any).localCache.get('node-1');
+      expect(cached.circuit.state).toBe('open');
+      expect(cached.circuit.failures).toBe(5);
+      expect(cached.circuit.openedAt).toBeGreaterThan(0);
     });
 
-    shortCooldownService.recordFailure('node-1');
-    shortCooldownService.recordFailure('node-1');
-    shortCooldownService.recordFailure('node-1');
+    it('should re-open circuit on failure during half-open state', () => {
+      (service as any).localCache.set('node-1', {
+        circuit: {
+          state: 'half-open',
+          failures: 5,
+          openedAt: Date.now() - 31_000,
+        },
+        cachedAt: Date.now(),
+      });
 
-    // With 0ms cooldown, getState should transition to half-open
-    expect(shortCooldownService.getState('node-1')).toBe('half-open');
-    expect(shortCooldownService.isAllowed('node-1')).toBe(true);
-  });
+      service.recordFailure('node-1');
 
-  it('should close circuit on successful half-open request', () => {
-    const shortCooldownService = new CircuitBreakerService({
-      failureThreshold: 3,
-      cooldownMs: 0,
-      halfOpenMaxAttempts: 1,
+      const cached = (service as any).localCache.get('node-1');
+      expect(cached.circuit.state).toBe('open');
     });
-
-    // Trip the circuit
-    shortCooldownService.recordFailure('node-1');
-    shortCooldownService.recordFailure('node-1');
-    shortCooldownService.recordFailure('node-1');
-
-    // After cooldown, should be half-open
-    expect(shortCooldownService.getState('node-1')).toBe('half-open');
-
-    // Record a success
-    shortCooldownService.recordSuccess('node-1');
-
-    // Should be closed now
-    expect(shortCooldownService.getState('node-1')).toBe('closed');
-    expect(shortCooldownService.isAllowed('node-1')).toBe(true);
   });
 
-  it('should re-open circuit on half-open failure and block requests until next cooldown', () => {
-    // Use a long cooldown to verify the circuit stays open after half-open failure
-    const svc = new CircuitBreakerService({
-      failureThreshold: 3,
-      cooldownMs: 60_000,
-      halfOpenMaxAttempts: 1,
+  describe('recordSuccess', () => {
+    it('should close circuit from half-open state', () => {
+      (service as any).localCache.set('node-1', {
+        circuit: {
+          state: 'half-open',
+          failures: 5,
+          openedAt: Date.now() - 31_000,
+        },
+        cachedAt: Date.now(),
+      });
+
+      service.recordSuccess('node-1');
+
+      const cached = (service as any).localCache.get('node-1');
+      expect(cached.circuit.state).toBe('closed');
+      expect(cached.circuit.failures).toBe(0);
+      expect(cached.circuit.openedAt).toBe(0);
     });
-
-    // Trip the circuit
-    svc.recordFailure('node-1');
-    svc.recordFailure('node-1');
-    svc.recordFailure('node-1');
-    expect(svc.getState('node-1')).toBe('open');
-    expect(svc.isAllowed('node-1')).toBe(false);
   });
 
-  it('should reset circuit on success before threshold', () => {
-    service.recordFailure('node-1');
-    service.recordFailure('node-1');
-    service.recordSuccess('node-1');
+  describe('reset', () => {
+    it('should clear all state for a node', async () => {
+      // Pre-populate with open circuit
+      (service as any).localCache.set('node-1', {
+        circuit: {
+          state: 'open',
+          failures: 10,
+          openedAt: Date.now(),
+        },
+        cachedAt: Date.now(),
+      });
 
-    // Failure count should be reset; 3 more failures needed
-    service.recordFailure('node-1');
-    service.recordFailure('node-1');
-    expect(service.getState('node-1')).toBe('closed');
-  });
+      await service.reset('node-1');
 
-  it('should track independent circuits for different nodes', () => {
-    service.recordFailure('node-1');
-    service.recordFailure('node-1');
-    service.recordFailure('node-1');
+      const cached = (service as any).localCache.get('node-1');
+      expect(cached.circuit.state).toBe('closed');
+      expect(cached.circuit.failures).toBe(0);
+      expect(cached.circuit.openedAt).toBe(0);
 
-    expect(service.getState('node-1')).toBe('open');
-    expect(service.getState('node-2')).toBe('closed');
-    expect(service.isAllowed('node-2')).toBe(true);
-  });
-
-  it('should reset a circuit completely', () => {
-    service.recordFailure('node-1');
-    service.recordFailure('node-1');
-    service.recordFailure('node-1');
-
-    expect(service.getState('node-1')).toBe('open');
-
-    service.reset('node-1');
-
-    expect(service.getState('node-1')).toBe('closed');
-    expect(service.isAllowed('node-1')).toBe(true);
+      // Should have persisted to Redis
+      expect(mockRedisClient.pipeline).toHaveBeenCalled();
+    });
   });
 });

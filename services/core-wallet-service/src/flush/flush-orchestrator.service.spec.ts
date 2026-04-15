@@ -5,206 +5,213 @@ import { RedisService } from '../redis/redis.service';
 
 describe('FlushOrchestratorService', () => {
   let service: FlushOrchestratorService;
-  let prisma: any;
-  let redis: any;
+  let mockPrisma: any;
+  let mockRedis: any;
+
+  const mockDeposit = {
+    clientId: BigInt(1),
+    chainId: 137,
+    tokenId: BigInt(10),
+    forwarderAddress: '0xForwarder1',
+    amountRaw: '1000000',
+    status: 'confirmed',
+    sweepTxHash: null,
+  };
 
   beforeEach(async () => {
-    prisma = {
+    jest.clearAllMocks();
+
+    mockPrisma = {
       deposit: {
-        findMany: jest.fn().mockResolvedValue([]),
+        findMany: jest.fn().mockResolvedValue([mockDeposit]),
       },
     };
 
-    redis = {
-      getCache: jest.fn().mockResolvedValue(null),
+    mockRedis = {
       setCache: jest.fn().mockResolvedValue(undefined),
+      getCache: jest.fn().mockResolvedValue(null), // Not locked by default
+      deleteCache: jest.fn().mockResolvedValue(undefined),
       publishToStream: jest.fn().mockResolvedValue('stream-id'),
     };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         FlushOrchestratorService,
-        { provide: PrismaService, useValue: prisma },
-        { provide: RedisService, useValue: redis },
+        { provide: PrismaService, useValue: mockPrisma },
+        { provide: RedisService, useValue: mockRedis },
       ],
     }).compile();
 
     service = module.get<FlushOrchestratorService>(FlushOrchestratorService);
   });
 
-  afterEach(() => jest.clearAllMocks());
-
-  it('should flush successfully when lock acquired and balance > 0', async () => {
-    prisma.deposit.findMany.mockResolvedValue([
-      {
-        clientId: 1n,
-        chainId: 1,
-        tokenId: 10n,
-        forwarderAddress: '0xAAA',
-        amountRaw: '500000000000000000',
-        txHash: '0x123',
-        blockNumber: 100n,
-        fromAddress: '0xBBB',
-        amount: '0.5',
-        status: 'confirmed',
-        detectedAt: new Date(),
-      },
-    ]);
-
-    // forwarder not locked
-    redis.getCache.mockResolvedValue(null);
-
-    const result = await service.executeFlush(1, 1);
-
-    expect(result.succeededCount).toBe(1);
-    expect(result.failedCount).toBe(0);
-    expect(result.skippedCount).toBe(0);
-    expect(result.finalStatus).toBe('succeeded');
-    expect(redis.publishToStream).toHaveBeenCalledWith(
-      'flush:execute',
-      expect.objectContaining({ forwarderAddress: '0xAAA' }),
-    );
-    expect(redis.publishToStream).toHaveBeenCalledWith(
-      'flush:completed',
-      expect.objectContaining({ finalStatus: 'succeeded' }),
-    );
+  it('should be defined', () => {
+    expect(service).toBeDefined();
   });
 
-  it('should mark item skipped when forwarder is locked', async () => {
-    prisma.deposit.findMany.mockResolvedValue([
-      {
-        clientId: 1n,
-        chainId: 1,
-        tokenId: 10n,
-        forwarderAddress: '0xLOCKED',
-        amountRaw: '1000000000000000000',
-        txHash: '0x456',
-        blockNumber: 200n,
-        fromAddress: '0xCCC',
-        amount: '1.0',
-        status: 'confirmed',
-        detectedAt: new Date(),
-      },
-    ]);
+  describe('flushItem (via executeFlush)', () => {
+    it('should acquire lock with chainId in key', async () => {
+      await service.executeFlush(1, 137);
 
-    // forwarder IS locked
-    redis.getCache.mockResolvedValue('1');
+      const lockKey = 'flush:lock:137:0xforwarder1';
+      expect(mockRedis.setCache).toHaveBeenCalledWith(lockKey, '1', 300);
+    });
 
-    const result = await service.executeFlush(1, 1);
+    it('should release lock in finally block (on success)', async () => {
+      await service.executeFlush(1, 137);
 
-    expect(result.skippedCount).toBe(1);
-    expect(result.succeededCount).toBe(0);
-    expect(result.finalStatus).toBe('canceled');
+      const lockKey = 'flush:lock:137:0xforwarder1';
+
+      // Lock was set and then deleted
+      expect(mockRedis.setCache).toHaveBeenCalledWith(lockKey, '1', 300);
+      expect(mockRedis.deleteCache).toHaveBeenCalledWith(lockKey);
+    });
+
+    it('should release lock on error', async () => {
+      // Make publishToStream fail for flush:execute to simulate flush error
+      mockRedis.publishToStream
+        .mockRejectedValueOnce(new Error('Redis stream error'))
+        // Allow the completion event to succeed
+        .mockResolvedValue('stream-id');
+
+      const result = await service.executeFlush(1, 137);
+
+      const lockKey = 'flush:lock:137:0xforwarder1';
+
+      // Lock should still be released even though flush failed
+      expect(mockRedis.deleteCache).toHaveBeenCalledWith(lockKey);
+
+      // Should count as failed
+      expect(result.failedCount).toBe(1);
+      expect(result.succeededCount).toBe(0);
+    });
+
+    it('should skip if already locked', async () => {
+      // Simulate forwarder already locked
+      mockRedis.getCache.mockResolvedValue('1');
+
+      const result = await service.executeFlush(1, 137);
+
+      // Should be skipped, not flushed
+      expect(result.skippedCount).toBe(1);
+      expect(result.succeededCount).toBe(0);
+
+      // Lock should NOT have been acquired (setCache not called for flush lock)
+      expect(mockRedis.setCache).not.toHaveBeenCalledWith(
+        expect.stringContaining('flush:lock'),
+        '1',
+        300,
+      );
+    });
   });
 
-  it('should skip item with zero balance and still release', async () => {
-    prisma.deposit.findMany.mockResolvedValue([
-      {
-        clientId: 1n,
-        chainId: 1,
-        tokenId: 10n,
-        forwarderAddress: '0xZERO',
-        amountRaw: '0',
-        txHash: '0x789',
-        blockNumber: 300n,
-        fromAddress: '0xDDD',
-        amount: '0',
-        status: 'confirmed',
-        detectedAt: new Date(),
-      },
-    ]);
+  describe('isForwarderLocked (via executeFlush)', () => {
+    it('should check lock with chainId scope', async () => {
+      await service.executeFlush(1, 137);
 
-    const result = await service.executeFlush(1, 1);
+      // Verify lock check includes chainId in the key
+      expect(mockRedis.getCache).toHaveBeenCalledWith(
+        'flush:lock:137:0xforwarder1',
+      );
+    });
 
-    expect(result.skippedCount).toBe(1);
-    expect(result.succeededCount).toBe(0);
-    expect(result.finalStatus).toBe('canceled');
-    // flush:execute should NOT have been called for zero-balance item
-    expect(redis.publishToStream).not.toHaveBeenCalledWith(
-      'flush:execute',
-      expect.anything(),
-    );
+    it('should use lowercase address in lock key', async () => {
+      mockPrisma.deposit.findMany.mockResolvedValue([
+        {
+          ...mockDeposit,
+          forwarderAddress: '0xAbCdEf1234567890',
+        },
+      ]);
+
+      await service.executeFlush(1, 137);
+
+      expect(mockRedis.getCache).toHaveBeenCalledWith(
+        'flush:lock:137:0xabcdef1234567890',
+      );
+    });
+
+    it('should not cross-contaminate locks between chains', async () => {
+      await service.executeFlush(1, 137);
+
+      // The lock key should be chain-specific
+      expect(mockRedis.getCache).toHaveBeenCalledWith(
+        'flush:lock:137:0xforwarder1',
+      );
+      expect(mockRedis.getCache).not.toHaveBeenCalledWith(
+        expect.stringMatching(/flush:lock:1:/),
+      );
+    });
   });
 
-  it('should report partially_succeeded when 2 succeed and 1 fails', async () => {
-    const deposits = [
-      { clientId: 1n, chainId: 1, tokenId: 10n, forwarderAddress: '0xA1', amountRaw: '100', txHash: '0xa', blockNumber: 1n, fromAddress: '0x1', amount: '100', status: 'confirmed', detectedAt: new Date() },
-      { clientId: 1n, chainId: 1, tokenId: 10n, forwarderAddress: '0xA2', amountRaw: '200', txHash: '0xb', blockNumber: 2n, fromAddress: '0x2', amount: '200', status: 'confirmed', detectedAt: new Date() },
-      { clientId: 1n, chainId: 1, tokenId: 10n, forwarderAddress: '0xA3', amountRaw: '300', txHash: '0xc', blockNumber: 3n, fromAddress: '0x3', amount: '300', status: 'confirmed', detectedAt: new Date() },
-    ];
+  describe('executeFlush result statuses', () => {
+    it('should return succeeded when all items flush successfully', async () => {
+      const result = await service.executeFlush(1, 137);
 
-    prisma.deposit.findMany.mockResolvedValue(deposits);
-    redis.getCache.mockResolvedValue(null);
+      expect(result.finalStatus).toBe('succeeded');
+      expect(result.succeededCount).toBe(1);
+      expect(result.failedCount).toBe(0);
+    });
 
-    // First two calls to publishToStream (flush:execute) succeed, third fails
-    let executeCallCount = 0;
-    redis.publishToStream.mockImplementation(async (stream: string) => {
-      if (stream === 'flush:execute') {
-        executeCallCount++;
-        if (executeCallCount === 3) {
-          throw new Error('Blockchain RPC error');
+    it('should return canceled when all items are skipped', async () => {
+      mockPrisma.deposit.findMany.mockResolvedValue([
+        { ...mockDeposit, amountRaw: '0' },
+      ]);
+
+      const result = await service.executeFlush(1, 137);
+
+      expect(result.finalStatus).toBe('canceled');
+      expect(result.skippedCount).toBe(1);
+    });
+
+    it('should return partially_succeeded when some succeed and some fail', async () => {
+      const deposits = [
+        { ...mockDeposit, forwarderAddress: '0xA1', amountRaw: '100' },
+        { ...mockDeposit, forwarderAddress: '0xA2', amountRaw: '200' },
+        { ...mockDeposit, forwarderAddress: '0xA3', amountRaw: '300' },
+      ];
+
+      mockPrisma.deposit.findMany.mockResolvedValue(deposits);
+
+      let executeCallCount = 0;
+      mockRedis.publishToStream.mockImplementation(async (stream: string) => {
+        if (stream === 'flush:execute') {
+          executeCallCount++;
+          if (executeCallCount === 3) {
+            throw new Error('Blockchain RPC error');
+          }
         }
-      }
-      return 'stream-id';
+        return 'stream-id';
+      });
+
+      const result = await service.executeFlush(1, 137);
+
+      expect(result.succeededCount).toBe(2);
+      expect(result.failedCount).toBe(1);
+      expect(result.finalStatus).toBe('partially_succeeded');
     });
 
-    const result = await service.executeFlush(1, 1);
+    it('should publish completion event to Redis stream', async () => {
+      await service.executeFlush(1, 137);
 
-    expect(result.succeededCount).toBe(2);
-    expect(result.failedCount).toBe(1);
-    expect(result.finalStatus).toBe('partially_succeeded');
-  });
-
-  it('should report canceled when all items are skipped', async () => {
-    prisma.deposit.findMany.mockResolvedValue([
-      { clientId: 1n, chainId: 1, tokenId: 10n, forwarderAddress: '0xS1', amountRaw: '0', txHash: '0x1', blockNumber: 1n, fromAddress: '0x1', amount: '0', status: 'confirmed', detectedAt: new Date() },
-      { clientId: 1n, chainId: 1, tokenId: 10n, forwarderAddress: '0xS2', amountRaw: '0', txHash: '0x2', blockNumber: 2n, fromAddress: '0x2', amount: '0', status: 'confirmed', detectedAt: new Date() },
-    ]);
-
-    const result = await service.executeFlush(1, 1);
-
-    expect(result.succeededCount).toBe(0);
-    expect(result.failedCount).toBe(0);
-    expect(result.skippedCount).toBe(2);
-    expect(result.finalStatus).toBe('canceled');
-  });
-
-  it('should release lock in finally even when flushItem throws', async () => {
-    prisma.deposit.findMany.mockResolvedValue([
-      { clientId: 1n, chainId: 1, tokenId: 10n, forwarderAddress: '0xERR', amountRaw: '999', txHash: '0xe', blockNumber: 1n, fromAddress: '0x1', amount: '999', status: 'confirmed', detectedAt: new Date() },
-    ]);
-
-    redis.getCache.mockResolvedValue(null);
-    // setCache for lock succeeds, but publishToStream (flush:execute) fails
-    redis.publishToStream.mockImplementation(async (stream: string) => {
-      if (stream === 'flush:execute') {
-        throw new Error('Network failure');
-      }
-      return 'stream-id';
+      expect(mockRedis.publishToStream).toHaveBeenCalledWith(
+        'flush:completed',
+        expect.objectContaining({
+          clientId: '1',
+          chainId: '137',
+          finalStatus: 'succeeded',
+        }),
+      );
     });
 
-    const result = await service.executeFlush(1, 1);
+    it('should return correct counts for empty deposit list', async () => {
+      mockPrisma.deposit.findMany.mockResolvedValue([]);
 
-    // The item should have failed
-    expect(result.failedCount).toBe(1);
-    // Lock was set for the item, then released (set to '' with TTL 0) on error
-    expect(redis.setCache).toHaveBeenCalledWith('flush:lock:0xERR', '1', 300);
-    expect(redis.setCache).toHaveBeenCalledWith('flush:lock:0xERR', '', 0);
-  });
+      const result = await service.executeFlush(42, 137);
 
-  it('should publish flush:completed event with correct counts', async () => {
-    prisma.deposit.findMany.mockResolvedValue([]);
-
-    const result = await service.executeFlush(42, 137);
-
-    expect(result.totalItems).toBe(0);
-    expect(redis.publishToStream).toHaveBeenCalledWith(
-      'flush:completed',
-      expect.objectContaining({
-        clientId: '42',
-        chainId: '137',
-        totalItems: '0',
-      }),
-    );
+      expect(result.totalItems).toBe(0);
+      expect(result.succeededCount).toBe(0);
+      expect(result.failedCount).toBe(0);
+      expect(result.skippedCount).toBe(0);
+    });
   });
 });
