@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { X } from "lucide-react";
 import { StatCard } from "@/components/stat-card";
+import { DataTable, TableCell, TableRow } from "@/components/data-table";
 import { Badge } from "@/components/badge";
 import { GasBar } from "@/components/gas-bar";
 import { ConfirmationModal } from "@/components/confirmation-modal";
@@ -11,6 +12,406 @@ import { cn } from "@/lib/utils";
 
 /* ─── API fetch helper ─────────────────────────────────────────────────────── */
 import { adminFetch, ADMIN_API, getToken } from "@/lib/api";
+
+/* ─── Shared loading spinner ──────────────────────────────────────────────── */
+function TabSpinner({ label = "Loading…" }: { label?: string }) {
+  return (
+    <div className="flex items-center justify-center gap-2 py-12 text-text-muted text-body font-display">
+      <span className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+      {label}
+    </div>
+  );
+}
+
+function TabEmpty({ label = "No data available" }: { label?: string }) {
+  return (
+    <div className="py-12 text-center text-text-muted text-body font-display">
+      {label}
+    </div>
+  );
+}
+
+function TabError({ message }: { message: string }) {
+  return (
+    <div className="py-12 text-center text-status-error text-body font-display">
+      {message}
+    </div>
+  );
+}
+
+/* ─── Generic lazy-fetch hook for tabs ────────────────────────────────────── */
+function useLazyTabData<T>(fetchFn: () => Promise<T>, active: boolean) {
+  const [data, setData] = useState<T | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [fetched, setFetched] = useState(false);
+
+  useEffect(() => {
+    if (!active || fetched) return;
+    setLoading(true);
+    fetchFn()
+      .then((res) => { setData(res); setFetched(true); })
+      .catch((err: any) => { setError(err.message ?? "Failed to load"); setFetched(true); })
+      .finally(() => setLoading(false));
+  }, [active, fetched]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const refetch = useCallback(() => { setFetched(false); setError(null); }, []);
+  return { data, loading, error, refetch };
+}
+
+/* ─── Wallets Tab ─────────────────────────────────────────────────────────── */
+function WalletsTab({ clientId, active }: { clientId: string; active: boolean }) {
+  const { data, loading, error } = useLazyTabData(
+    () => adminFetch(`/clients/${clientId}/wallets`).then((r) => {
+      const list = Array.isArray(r) ? r : r?.wallets ?? r?.items ?? r?.data ?? [];
+      return list as any[];
+    }),
+    active,
+  );
+
+  if (loading) return <TabSpinner label="Loading wallets…" />;
+  if (error) return <TabError message={`Failed to load wallets: ${error}`} />;
+  if (!data || data.length === 0) return <TabEmpty label="No wallets found for this client." />;
+
+  return (
+    <DataTable headers={["Chain", "Address", "Type", "Balance"]}>
+      {data.map((w: any, i: number) => (
+        <TableRow key={w.id ?? i}>
+          <TableCell>{w.chainName ?? w.chain ?? w.chainId ?? "—"}</TableCell>
+          <TableCell mono>{w.address ?? "—"}</TableCell>
+          <TableCell>
+            <Badge variant={w.type === "hot" ? "warning" : w.type === "gas_tank" ? "accent" : "default"}>
+              {w.type ?? "—"}
+            </Badge>
+          </TableCell>
+          <TableCell mono>{w.balance ?? "0"}</TableCell>
+        </TableRow>
+      ))}
+    </DataTable>
+  );
+}
+
+/* ─── Forwarders Tab ──────────────────────────────────────────────────────── */
+function ForwardersTab({ clientId, active }: { clientId: string; active: boolean }) {
+  const { data, loading, error } = useLazyTabData(
+    () => adminFetch(`/clients/${clientId}/forwarders`).then((r) => {
+      const list = Array.isArray(r) ? r : r?.forwarders ?? r?.items ?? r?.data ?? [];
+      return list as any[];
+    }),
+    active,
+  );
+
+  if (loading) return <TabSpinner label="Loading forwarders…" />;
+  if (error) return <TabError message={`Failed to load forwarders: ${error}`} />;
+  if (!data || data.length === 0) return <TabEmpty label="No forwarders found for this client." />;
+
+  return (
+    <DataTable headers={["Chain", "Address", "Parent Wallet", "Status", "Created"]}>
+      {data.map((f: any, i: number) => (
+        <TableRow key={f.id ?? i}>
+          <TableCell>{f.chainName ?? f.chain ?? f.chainId ?? "—"}</TableCell>
+          <TableCell mono>{f.address ?? "—"}</TableCell>
+          <TableCell mono>{f.parentWallet ?? f.parentAddress ?? "—"}</TableCell>
+          <TableCell>
+            <Badge variant={f.status === "active" ? "success" : f.status === "error" ? "error" : "warning"}>
+              {f.status ?? "—"}
+            </Badge>
+          </TableCell>
+          <TableCell>{f.createdAt ? new Date(f.createdAt).toLocaleDateString() : "—"}</TableCell>
+        </TableRow>
+      ))}
+    </DataTable>
+  );
+}
+
+/* ─── Transactions Tab ────────────────────────────────────────────────────── */
+function TransactionsTab({ clientId, active }: { clientId: string; active: boolean }) {
+  const { data, loading, error } = useLazyTabData(
+    () => adminFetch(`/clients/${clientId}/transactions`).then((r) => {
+      const list = Array.isArray(r) ? r : r?.transactions ?? r?.items ?? r?.data ?? [];
+      return list as any[];
+    }),
+    active,
+  );
+
+  if (loading) return <TabSpinner label="Loading transactions…" />;
+  if (error) return <TabError message={`Failed to load transactions: ${error}`} />;
+  if (!data || data.length === 0) return <TabEmpty label="No transactions found for this client." />;
+
+  return (
+    <DataTable headers={["Date", "Type", "Amount", "Token", "Status", "Tx Hash"]}>
+      {data.map((tx: any, i: number) => (
+        <TableRow key={tx.id ?? i}>
+          <TableCell>{tx.createdAt ? new Date(tx.createdAt).toLocaleString() : tx.date ?? "—"}</TableCell>
+          <TableCell>
+            <Badge variant={tx.type === "deposit" ? "success" : tx.type === "withdrawal" ? "warning" : "default"}>
+              {tx.type ?? "—"}
+            </Badge>
+          </TableCell>
+          <TableCell mono>{tx.amount ?? "—"}</TableCell>
+          <TableCell>{tx.tokenSymbol ?? tx.token ?? "—"}</TableCell>
+          <TableCell>
+            <Badge
+              variant={
+                tx.status === "confirmed" || tx.status === "completed" ? "success" :
+                tx.status === "failed" ? "error" : "warning"
+              }
+              dot
+            >
+              {tx.status ?? "—"}
+            </Badge>
+          </TableCell>
+          <TableCell mono className="max-w-[180px] truncate">
+            {tx.txHash ?? tx.transactionHash ?? "—"}
+          </TableCell>
+        </TableRow>
+      ))}
+    </DataTable>
+  );
+}
+
+/* ─── Security Tab ────────────────────────────────────────────────────────── */
+function SecurityTab({ clientId, active }: { clientId: string; active: boolean }) {
+  const { data, loading, error } = useLazyTabData(
+    () => adminFetch(`/clients/${clientId}/security`),
+    active,
+  );
+
+  if (loading) return <TabSpinner label="Loading security config…" />;
+  if (error) return <TabError message={`Failed to load security config: ${error}`} />;
+  if (!data) return <TabEmpty label="No security configuration available." />;
+
+  const sec = data as any;
+  const items = [
+    { label: "Custody Mode", value: sec.custodyMode ?? sec.custodyPolicy ?? "—" },
+    { label: "2FA Status", value: sec.twoFactorEnabled ? "Enabled" : "Disabled" },
+    { label: "API Keys", value: String(sec.apiKeysCount ?? sec.apiKeys?.length ?? 0) },
+    { label: "IP Whitelist", value: sec.ipWhitelist?.length ? sec.ipWhitelist.join(", ") : "None" },
+    { label: "Safe Mode", value: sec.safeModeEnabled ? "Enabled" : "Disabled" },
+  ];
+
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      {items.map((item) => (
+        <div key={item.label} className="bg-surface-elevated rounded-card px-4 py-3">
+          <div className="text-micro text-text-muted uppercase tracking-[0.06em] mb-1 font-display">
+            {item.label}
+          </div>
+          <div className="text-body font-semibold text-text-primary font-display">
+            {item.value}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ─── Webhooks Tab ────────────────────────────────────────────────────────── */
+function WebhooksTab({ clientId, active }: { clientId: string; active: boolean }) {
+  const { data, loading, error } = useLazyTabData(
+    () => adminFetch(`/clients/${clientId}/webhooks`).then((r) => {
+      const list = Array.isArray(r) ? r : r?.webhooks ?? r?.items ?? r?.data ?? [];
+      return list as any[];
+    }),
+    active,
+  );
+
+  if (loading) return <TabSpinner label="Loading webhooks…" />;
+  if (error) return <TabError message={`Failed to load webhooks: ${error}`} />;
+  if (!data || data.length === 0) return <TabEmpty label="No webhooks configured for this client." />;
+
+  return (
+    <DataTable headers={["URL", "Events", "Status", "Last Delivery"]}>
+      {data.map((wh: any, i: number) => (
+        <TableRow key={wh.id ?? i}>
+          <TableCell mono className="max-w-[280px] truncate">{wh.url ?? "—"}</TableCell>
+          <TableCell>
+            <div className="flex flex-wrap gap-1">
+              {(wh.events ?? wh.subscribedEvents ?? []).map((ev: string) => (
+                <Badge key={ev} variant="accent" className="text-micro">{ev}</Badge>
+              ))}
+              {(!wh.events || wh.events.length === 0) && !wh.subscribedEvents && "—"}
+            </div>
+          </TableCell>
+          <TableCell>
+            <Badge variant={wh.status === "active" ? "success" : "error"} dot>
+              {wh.status ?? "—"}
+            </Badge>
+          </TableCell>
+          <TableCell>{wh.lastDelivery ? new Date(wh.lastDelivery).toLocaleString() : wh.lastDeliveredAt ? new Date(wh.lastDeliveredAt).toLocaleString() : "Never"}</TableCell>
+        </TableRow>
+      ))}
+    </DataTable>
+  );
+}
+
+/* ─── API Usage Tab ───────────────────────────────────────────────────────── */
+function ApiUsageTab({ clientId, active }: { clientId: string; active: boolean }) {
+  const { data, loading, error } = useLazyTabData(
+    () => adminFetch(`/clients/${clientId}/api-usage`),
+    active,
+  );
+
+  if (loading) return <TabSpinner label="Loading API usage…" />;
+  if (error) return <TabError message={`Failed to load API usage: ${error}`} />;
+  if (!data) return <TabEmpty label="No API usage data available." />;
+
+  const usage = data as any;
+
+  return (
+    <div className="space-y-6">
+      {/* Request counts */}
+      <div>
+        <div className="text-body font-semibold text-text-secondary uppercase tracking-[0.05em] mb-3 font-display">
+          Request Volume
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { label: "Last 24h", value: usage.requests24h ?? usage.totalRequests24h ?? "—" },
+            { label: "Last 7d", value: usage.requests7d ?? usage.totalRequests7d ?? "—" },
+            { label: "Last 30d", value: usage.requests30d ?? usage.totalRequests30d ?? "—" },
+          ].map((item) => (
+            <div key={item.label} className="bg-surface-elevated rounded-card px-4 py-3">
+              <div className="text-micro text-text-muted uppercase tracking-[0.06em] mb-1 font-display">
+                {item.label}
+              </div>
+              <div className="text-body font-semibold text-text-primary font-mono">
+                {typeof item.value === "number" ? item.value.toLocaleString() : item.value}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Rate limit hits */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="bg-surface-elevated rounded-card px-4 py-3">
+          <div className="text-micro text-text-muted uppercase tracking-[0.06em] mb-1 font-display">
+            Rate Limit Hits
+          </div>
+          <div className="text-body font-semibold text-text-primary font-mono">
+            {usage.rateLimitHits ?? 0}
+          </div>
+        </div>
+        <div className="bg-surface-elevated rounded-card px-4 py-3">
+          <div className="text-micro text-text-muted uppercase tracking-[0.06em] mb-1 font-display">
+            Avg Latency
+          </div>
+          <div className="text-body font-semibold text-text-primary font-mono">
+            {usage.avgLatency ?? usage.latencyAvg ?? "—"}{typeof (usage.avgLatency ?? usage.latencyAvg) === "number" ? " ms" : ""}
+          </div>
+        </div>
+      </div>
+
+      {/* Top endpoints */}
+      {(usage.topEndpoints ?? usage.endpoints) && (usage.topEndpoints ?? usage.endpoints).length > 0 && (
+        <div>
+          <div className="text-body font-semibold text-text-secondary uppercase tracking-[0.05em] mb-3 font-display">
+            Top Endpoints
+          </div>
+          <DataTable headers={["Endpoint", "Requests", "Avg Latency"]}>
+            {(usage.topEndpoints ?? usage.endpoints).map((ep: any, i: number) => (
+              <TableRow key={i}>
+                <TableCell mono>{ep.endpoint ?? ep.path ?? "—"}</TableCell>
+                <TableCell mono>{ep.count ?? ep.requests ?? "—"}</TableCell>
+                <TableCell mono>{ep.avgLatency ?? ep.latency ?? "—"}{typeof (ep.avgLatency ?? ep.latency) === "number" ? " ms" : ""}</TableCell>
+              </TableRow>
+            ))}
+          </DataTable>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── Overview: Wallets by Chain section ──────────────────────────────────── */
+function OverviewWalletsByChain({ clientId }: { clientId: string }) {
+  const [wallets, setWallets] = useState<any[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    adminFetch(`/clients/${clientId}/wallets`)
+      .then((r) => {
+        const list = Array.isArray(r) ? r : r?.wallets ?? r?.items ?? r?.data ?? [];
+        setWallets(list);
+      })
+      .catch((err: any) => setError(err.message))
+      .finally(() => setLoading(false));
+  }, [clientId]);
+
+  if (loading) return <TabSpinner label="Loading wallets…" />;
+  if (error || !wallets || wallets.length === 0) {
+    return <TabEmpty label="No wallet data available." />;
+  }
+
+  // Group by chain
+  const byChain: Record<string, any[]> = {};
+  wallets.forEach((w: any) => {
+    const chain = w.chainName ?? w.chain ?? String(w.chainId ?? "Unknown");
+    if (!byChain[chain]) byChain[chain] = [];
+    byChain[chain].push(w);
+  });
+
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      {Object.entries(byChain).map(([chain, ws]) => (
+        <div key={chain} className="bg-surface-elevated rounded-card px-4 py-3">
+          <div className="flex items-center gap-2 mb-2">
+            <ChainHexAvatar name={chain} size={24} />
+            <span className="text-body font-semibold text-text-primary font-display">{chain}</span>
+            <Badge variant="accent" className="text-micro ml-auto">{ws.length} wallet{ws.length !== 1 ? "s" : ""}</Badge>
+          </div>
+          <div className="text-caption text-text-muted font-mono">
+            {ws.map((w: any) => w.balance ?? "0").join(" / ")}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ─── Overview: Gas Tanks section ─────────────────────────────────────────── */
+function OverviewGasTanks({ clientId }: { clientId: string }) {
+  const [wallets, setWallets] = useState<any[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    adminFetch(`/clients/${clientId}/wallets`)
+      .then((r) => {
+        const list = Array.isArray(r) ? r : r?.wallets ?? r?.items ?? r?.data ?? [];
+        setWallets(list.filter((w: any) => w.type === "gas_tank"));
+      })
+      .catch((err: any) => setError(err.message))
+      .finally(() => setLoading(false));
+  }, [clientId]);
+
+  if (loading) return <TabSpinner label="Loading gas tanks…" />;
+  if (error || !wallets || wallets.length === 0) {
+    return <TabEmpty label="No gas tanks configured." />;
+  }
+
+  return (
+    <div className="space-y-3">
+      {wallets.map((tank: any, i: number) => (
+        <div key={tank.id ?? i} className="bg-surface-elevated rounded-card px-4 py-3">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <ChainHexAvatar name={tank.chainName ?? tank.chain ?? "?"} size={24} />
+              <span className="text-body font-semibold text-text-primary font-display">{tank.chainName ?? tank.chain ?? "—"}</span>
+            </div>
+            <span className="text-caption text-text-muted font-mono">{tank.balance ?? "0"}</span>
+          </div>
+          <GasBar
+            balance={Number(tank.balance ?? 0)}
+            threshold={Number(tank.threshold ?? tank.minBalance ?? 0.1)}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
 
 const tabs = [
   "Overview",
@@ -472,54 +873,52 @@ export default function ClientDetailPage() {
             ))}
           </div>
 
-          {/* Wallets by Chain — placeholder until wallet API is wired */}
+          {/* Wallets by Chain */}
           <div className="text-body font-semibold text-text-secondary uppercase tracking-[0.05em] mb-3 font-display">
             Wallets by Chain
           </div>
-          <div className="bg-surface-card border border-border-default rounded-card p-8 text-center text-text-muted text-body font-display shadow-card mb-section-gap">
-            Wallet data — connect wallet API endpoint to load chain balances
+          <div className="mb-section-gap">
+            <OverviewWalletsByChain clientId={clientId} />
           </div>
 
-          {/* Gas Tanks — placeholder until gas API is wired */}
+          {/* Gas Tanks */}
           <div className="text-body font-semibold text-text-secondary uppercase tracking-[0.05em] mb-3 font-display">
             Gas Tanks
           </div>
-          <div className="bg-surface-card border border-border-default rounded-card p-8 text-center text-text-muted text-body font-display shadow-card">
-            Gas tank data — connect gas API endpoint to load tank levels
+          <div>
+            <OverviewGasTanks clientId={clientId} />
           </div>
         </div>
       )}
 
-      {/* Placeholder for other tabs */}
+      {/* Tab: Wallets */}
       {activeTab === "Wallets" && (
-        <div className="bg-surface-card border border-border-default rounded-card p-8 text-center text-text-muted text-body font-display shadow-card">
-          Wallets management view — connect to Admin API to load wallet data
-        </div>
+        <WalletsTab clientId={clientId} active={activeTab === "Wallets"} />
       )}
+
+      {/* Tab: Forwarders */}
       {activeTab === "Forwarders" && (
-        <div className="bg-surface-card border border-border-default rounded-card p-8 text-center text-text-muted text-body font-display shadow-card">
-          Forwarders table — connect to Admin API to load forwarder data
-        </div>
+        <ForwardersTab clientId={clientId} active={activeTab === "Forwarders"} />
       )}
+
+      {/* Tab: Transactions */}
       {activeTab === "Transactions" && (
-        <div className="bg-surface-card border border-border-default rounded-card p-8 text-center text-text-muted text-body font-display shadow-card">
-          Transaction history — connect to Admin API to load transactions
-        </div>
+        <TransactionsTab clientId={clientId} active={activeTab === "Transactions"} />
       )}
+
+      {/* Tab: Security */}
       {activeTab === "Security" && (
-        <div className="bg-surface-card border border-border-default rounded-card p-8 text-center text-text-muted text-body font-display shadow-card">
-          Security settings — API keys, IP whitelist, 2FA configuration
-        </div>
+        <SecurityTab clientId={clientId} active={activeTab === "Security"} />
       )}
+
+      {/* Tab: Webhooks */}
       {activeTab === "Webhooks" && (
-        <div className="bg-surface-card border border-border-default rounded-card p-8 text-center text-text-muted text-body font-display shadow-card">
-          Webhook configuration — endpoints, events, delivery logs
-        </div>
+        <WebhooksTab clientId={clientId} active={activeTab === "Webhooks"} />
       )}
+
+      {/* Tab: API Usage */}
       {activeTab === "API Usage" && (
-        <div className="bg-surface-card border border-border-default rounded-card p-8 text-center text-text-muted text-body font-display shadow-card">
-          API usage metrics — request counts, rate limit hits, latency
-        </div>
+        <ApiUsageTab clientId={clientId} active={activeTab === "API Usage"} />
       )}
     </>
   );
