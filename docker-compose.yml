@@ -522,6 +522,9 @@ services:
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD}
       - INTERNAL_SERVICE_KEY=${INTERNAL_SERVICE_KEY}
+      - KEY_VAULT_URL=http://key-vault-service:3005
+      - RPC_GATEWAY_URL=http://rpc-gateway-service:3009
+      - CORE_WALLET_SERVICE_URL=http://core-wallet-service:3004
       - EXPORT_STORAGE_PATH=${EXPORT_STORAGE_PATH:-/data/exports}
       - KAFKA_BROKERS=kafka:9092
       - EVENTBUS_KAFKA_ENABLED=true
