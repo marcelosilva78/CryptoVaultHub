@@ -1,3 +1,6 @@
+import { initTracing } from '@cvh/config';
+initTracing('key-vault-service');
+
 import * as fs from 'fs';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';

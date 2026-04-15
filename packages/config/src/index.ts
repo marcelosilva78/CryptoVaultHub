@@ -1,2 +1,5 @@
 export { DEFAULT_CHAINS } from './chains';
 export { DEFAULT_TOKENS } from './tokens';
+export { initTracing } from './tracing';
+export { MetricsModule, MetricsInterceptor, httpRequestsTotal, httpRequestDuration } from './metrics';
+export { StructuredLoggerModule } from './logger';

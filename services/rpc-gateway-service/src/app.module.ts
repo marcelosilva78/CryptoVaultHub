@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { APP_GUARD } from '@nestjs/core';
+import { MetricsModule, StructuredLoggerModule } from '@cvh/config';
 import { EventBusModule } from '@cvh/event-bus';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
@@ -22,6 +23,8 @@ import { HealthController } from './common/health.controller';
       clientId: 'rpc-gateway-service',
     }),
     ScheduleModule.forRoot(),
+    MetricsModule,
+    StructuredLoggerModule,
     PrismaModule,
     RedisModule,
     RateLimiterModule,

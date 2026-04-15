@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { BullModule } from '@nestjs/bullmq';
+import { MetricsModule, StructuredLoggerModule } from '@cvh/config';
 import { EventBusModule } from '@cvh/event-bus';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
@@ -36,6 +37,8 @@ import { HealthController } from './common/health.controller';
       }),
       inject: [ConfigService],
     }),
+    MetricsModule,
+    StructuredLoggerModule,
     PrismaModule,
     RedisModule,
     BlockchainModule,

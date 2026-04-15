@@ -1,3 +1,6 @@
+import { initTracing } from '@cvh/config';
+initTracing('client-api');
+
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
@@ -104,6 +107,7 @@ const isValid = signature === request.headers['x-cvh-signature'];
     .addTag('Address Groups', 'Manage logical groupings of deposit addresses')
     .addTag('Exports', 'Request and download data exports (CSV, XLSX, JSON)')
     .addTag('Deploy Traces', 'Query on-chain deployment audit trail for contracts')
+    .addTag('Tokens', 'Query available tokens across supported chains')
     .addTag('Health', 'Service health and token metadata endpoints')
     .addServer('http://localhost:3002', 'Development')
     .addServer('https://api.cryptovaulthub.com', 'Production')

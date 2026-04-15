@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { BullModule } from '@nestjs/bullmq';
+import { MetricsModule, StructuredLoggerModule } from '@cvh/config';
 import { EventBusModule } from '@cvh/event-bus';
 import { PostHogModule } from '@cvh/posthog';
 import { PrismaModule } from './prisma/prisma.module';
@@ -34,6 +35,8 @@ import { HealthController } from './common/health.controller';
       clientId: 'notification-service',
       groupId: 'notification-service',
     }),
+    MetricsModule,
+    StructuredLoggerModule,
     PostHogModule,
     PrismaModule,
     WebhookModule,

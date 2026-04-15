@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { MetricsModule, StructuredLoggerModule } from '@cvh/config';
 import { PrismaModule } from './prisma/prisma.module';
 import { JwtAuthModule } from './jwt/jwt-auth.module';
 import { ApiKeyModule } from './api-key/api-key.module';
@@ -16,6 +17,8 @@ import { HealthController } from './common/health.controller';
       isGlobal: true,
       envFilePath: ['.env', '../../.env'],
     }),
+    MetricsModule,
+    StructuredLoggerModule,
     PrismaModule,
     JwtAuthModule,
     ApiKeyModule,

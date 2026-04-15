@@ -1,3 +1,6 @@
+import { initTracing } from '@cvh/config';
+initTracing('admin-api');
+
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';

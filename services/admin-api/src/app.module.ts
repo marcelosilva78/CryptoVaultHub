@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { MetricsModule, MetricsInterceptor, StructuredLoggerModule } from '@cvh/config';
 import { EventBusModule } from '@cvh/event-bus';
 import { PrismaModule } from './prisma/prisma.module';
 import { ClientManagementModule } from './client-management/client-management.module';
@@ -15,6 +16,8 @@ import { SyncManagementModule } from './sync-management/sync-management.module';
 import { ExportManagementModule } from './export-management/export-management.module';
 import { TransactionsModule } from './transactions/transactions.module';
 import { AnalyticsModule } from './analytics/analytics.module';
+import { TokenManagementModule } from './token-management/token-management.module';
+import { AuditLogModule } from './audit-log/audit-log.module';
 import { PostHogInterceptor } from './common/interceptors/posthog.interceptor';
 import { HealthController } from './common/health.controller';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
@@ -30,6 +33,8 @@ import { ImpersonationGuard } from './common/guards/impersonation.guard';
     EventBusModule.forRoot({
       clientId: 'admin-api',
     }),
+    MetricsModule,
+    StructuredLoggerModule,
     PrismaModule,
     ClientManagementModule,
     TierManagementModule,
@@ -43,12 +48,18 @@ import { ImpersonationGuard } from './common/guards/impersonation.guard';
     ExportManagementModule,
     TransactionsModule,
     AnalyticsModule,
+    TokenManagementModule,
+    AuditLogModule,
   ],
   controllers: [HealthController],
   providers: [
     {
       provide: APP_INTERCEPTOR,
       useClass: PostHogInterceptor,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: MetricsInterceptor,
     },
     /**
      * HIGH-1: Global guards applied in order:

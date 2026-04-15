@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { BullModule } from '@nestjs/bullmq';
 import { ScheduleModule } from '@nestjs/schedule';
+import { MetricsModule, StructuredLoggerModule } from '@cvh/config';
 import { EventBusModule } from '@cvh/event-bus';
 import { PostHogModule } from '@cvh/posthog';
 import { PrismaModule } from './prisma/prisma.module';
@@ -39,6 +40,8 @@ import { FinalityTrackerModule } from './finality/finality-tracker.module';
       inject: [ConfigService],
     }),
     ScheduleModule.forRoot(),
+    MetricsModule,
+    StructuredLoggerModule,
     PostHogModule,
     PrismaModule,
     RedisModule,

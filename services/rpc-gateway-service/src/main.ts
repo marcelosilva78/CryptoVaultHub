@@ -1,3 +1,6 @@
+import { initTracing } from '@cvh/config';
+initTracing('rpc-gateway-service');
+
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { AppModule } from './app.module';

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_INTERCEPTOR } from '@nestjs/core';
+import { MetricsModule, MetricsInterceptor, StructuredLoggerModule } from '@cvh/config';
 import { WalletModule } from './wallet/wallet.module';
 import { DepositModule } from './deposit/deposit.module';
 import { WithdrawalModule } from './withdrawal/withdrawal.module';
@@ -14,6 +15,7 @@ import { FlushModule } from './flush/flush.module';
 import { DeployTraceModule } from './deploy-trace/deploy-trace.module';
 import { AddressGroupModule } from './address-group/address-group.module';
 import { ExportModule } from './export/export.module';
+import { TokenModule } from './token/token.module';
 import { HealthController } from './common/health.controller';
 import { PostHogInterceptor } from './common/interceptors/posthog.interceptor';
 
@@ -23,6 +25,8 @@ import { PostHogInterceptor } from './common/interceptors/posthog.interceptor';
       isGlobal: true,
       envFilePath: ['.env', '../../.env'],
     }),
+    MetricsModule,
+    StructuredLoggerModule,
     AdminDatabaseModule,
     WalletModule,
     DepositModule,
@@ -36,12 +40,17 @@ import { PostHogInterceptor } from './common/interceptors/posthog.interceptor';
     DeployTraceModule,
     AddressGroupModule,
     ExportModule,
+    TokenModule,
   ],
   controllers: [HealthController],
   providers: [
     {
       provide: APP_INTERCEPTOR,
       useClass: PostHogInterceptor,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: MetricsInterceptor,
     },
   ],
 })
