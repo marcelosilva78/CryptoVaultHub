@@ -8,7 +8,7 @@ import { DataTable, TableCell, TableRow } from "@/components/data-table";
 import { Badge } from "@/components/badge";
 
 /* ─── API fetch helper ─────────────────────────────────────────────────────── */
-import { adminFetch, ADMIN_API, getToken } from "@/lib/api";
+import { adminFetch, ADMIN_API } from "@/lib/api";
 
 /* ─── Client interface ─────────────────────────────────────────────────────── */
 interface Client {
@@ -122,7 +122,7 @@ export default function ClientsPage() {
   async function handleSendInvite(clientId: string) {
     setInviteState((prev) => ({ ...prev, [clientId]: { loading: true } }));
     try {
-      const res = await fetch(`${ADMIN_API}/clients/${clientId}/invite`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` } });
+      const res = await fetch(`${ADMIN_API}/clients/${clientId}/invite`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' } });
       const data = await res.json();
       if (!res.ok) {
         setInviteState((prev) => ({ ...prev, [clientId]: { error: data.message ?? 'Failed to send invite.' } }));

@@ -11,7 +11,7 @@ import { ConfirmationModal } from "@/components/confirmation-modal";
 import { cn } from "@/lib/utils";
 
 /* ─── API fetch helper ─────────────────────────────────────────────────────── */
-import { adminFetch, ADMIN_API, getToken } from "@/lib/api";
+import { adminFetch, ADMIN_API } from "@/lib/api";
 
 /* ─── Shared loading spinner ──────────────────────────────────────────────── */
 function TabSpinner({ label = "Loading…" }: { label?: string }) {
@@ -639,7 +639,7 @@ export default function ClientDetailPage() {
   async function handleSendInvite() {
     setInviteState({ loading: true });
     try {
-      const res = await fetch(`${ADMIN_API}/clients/${clientId}/invite`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` } });
+      const res = await fetch(`${ADMIN_API}/clients/${clientId}/invite`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' } });
       const data = await res.json();
       if (!res.ok) {
         setInviteState({ error: data.message ?? 'Failed to send invite.' });

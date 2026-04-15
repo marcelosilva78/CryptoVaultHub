@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { DataTable } from "@/components/data-table";
 import { Badge } from "@/components/badge";
-import { AUTH_API, getToken } from "@/lib/api";
+import { AUTH_API } from "@/lib/api";
 import { Loader2 } from "lucide-react";
 
 /* ── Types (from auth-service API) ─────────────────────────────── */
@@ -21,9 +21,9 @@ interface ApiKeyItem {
 async function authFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(`${AUTH_API}${path}`, {
     ...options,
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${getToken()}`,
       ...options.headers,
     },
   });
