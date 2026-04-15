@@ -165,7 +165,7 @@ export function ProjectSelector() {
             <button
               onClick={() => {
                 setIsOpen(false);
-                // TODO: Navigate to project creation or open modal
+                window.location.href = '/setup?action=new-project';
               }}
               className="w-full flex items-center gap-2 px-3 py-2 rounded-button text-body font-display text-text-secondary hover:text-accent-primary hover:bg-surface-hover transition-all duration-fast"
             >

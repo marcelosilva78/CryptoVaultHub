@@ -168,7 +168,7 @@ export class SecurityService {
     }
 
     // Step 2: Activate safe mode on core-wallet-service
-    // This is a placeholder — the actual on-chain call will be wired later
+    // Calls the wallet service which triggers the on-chain activateSafeMode() via Key Vault signing
     try {
       const { data } = await axios.post(
         `${this.coreWalletUrl}/wallets/${clientId}/safe-mode/activate`,
