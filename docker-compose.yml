@@ -241,9 +241,13 @@ services:
       - REDIS_PASSWORD=${REDIS_PASSWORD}
       - INTERNAL_SERVICE_KEY=${INTERNAL_SERVICE_KEY}
       - JWT_SECRET=${JWT_SECRET}
+      - AUTH_SERVICE_URL=http://auth-service:3003
+      - CORE_WALLET_SERVICE_URL=http://core-wallet-service:3004
+      - KEY_VAULT_URL=http://key-vault-service:3005
       - CHAIN_INDEXER_URL=http://chain-indexer-service:3006
-      - RPC_GATEWAY_URL=http://rpc-gateway-service:3009
+      - NOTIFICATION_SERVICE_URL=http://notification-service:3007
       - CRON_WORKER_SERVICE_URL=http://cron-worker-service:3008
+      - RPC_GATEWAY_URL=http://rpc-gateway-service:3009
       - CVH_JOBS_MYSQL_HOST=${MYSQL_HOST}
       - CVH_JOBS_MYSQL_PORT=${MYSQL_PORT}
       - CVH_JOBS_MYSQL_USER=${MYSQL_USER}

@@ -6,6 +6,7 @@ import {
   NestInterceptor,
   ExecutionContext,
   CallHandler,
+  SetMetadata,
 } from '@nestjs/common';
 import { Observable, tap } from 'rxjs';
 import * as promClient from 'prom-client';
@@ -37,6 +38,7 @@ export const httpRequestDuration = new promClient.Histogram({
 @Controller()
 class MetricsController {
   @Get('metrics')
+  @SetMetadata('isPublic', true)
   getMetrics(): Promise<string> {
     return promClient.register.metrics();
   }
