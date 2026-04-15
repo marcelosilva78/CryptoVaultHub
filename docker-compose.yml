@@ -356,6 +356,16 @@ services:
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD}
       - INTERNAL_SERVICE_KEY=${INTERNAL_SERVICE_KEY}
+      # mTLS for Key Vault communication (opt-in)
+      - VAULT_TLS_ENABLED=${VAULT_TLS_ENABLED:-false}
+      - VAULT_CLIENT_CERT_PATH=/tls/client.crt
+      - VAULT_CLIENT_KEY_PATH=/tls/client.key
+      - VAULT_TLS_CA_PATH=/tls/ca.crt
+      - KEY_VAULT_URL=${KEY_VAULT_URL:-http://key-vault-service:3005}
+    volumes:
+      - ./infra/vault-tls/vault-client.crt:/tls/client.crt:ro
+      - ./infra/vault-tls/vault-client.key:/tls/client.key:ro
+      - ./infra/vault-tls/vault-ca.crt:/tls/ca.crt:ro
     depends_on:
       mysql:
         condition: service_healthy
@@ -388,6 +398,15 @@ services:
       - DATABASE_URL=mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@${MYSQL_HOST}:${MYSQL_PORT}/cvh_keyvault
       - INTERNAL_SERVICE_KEY=${INTERNAL_SERVICE_KEY}
       - VAULT_MASTER_PASSWORD=${VAULT_MASTER_PASSWORD}
+      # mTLS server configuration (opt-in)
+      - VAULT_TLS_ENABLED=${VAULT_TLS_ENABLED:-false}
+      - VAULT_TLS_CERT_PATH=/tls/server.crt
+      - VAULT_TLS_KEY_PATH=/tls/server.key
+      - VAULT_TLS_CA_PATH=/tls/ca.crt
+    volumes:
+      - ./infra/vault-tls/vault-server.crt:/tls/server.crt:ro
+      - ./infra/vault-tls/vault-server.key:/tls/server.key:ro
+      - ./infra/vault-tls/vault-ca.crt:/tls/ca.crt:ro
     depends_on:
       mysql:
         condition: service_healthy
@@ -395,7 +414,7 @@ services:
       - vault-net
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3005/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      test: ["CMD", "node", "-e", "const tls=process.env.VAULT_TLS_ENABLED==='true'; const mod=tls?require('https'):require('http'); const proto=tls?'https':'http'; const opts=tls?{rejectUnauthorized:false}:{}; mod.get(`${proto}://localhost:3005/health`,opts,r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
       interval: 30s
       timeout: 5s
       retries: 3
