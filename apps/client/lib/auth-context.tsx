@@ -43,12 +43,14 @@ export function ClientAuthProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     const controller = new AbortController();
 
-    async function clearAndRedirect() {
-      await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
-      window.location.href = '/login';
-    }
-
     async function init() {
+      // If already on /login or /register, don't attempt validation
+      const path = window.location.pathname;
+      if (path === '/login' || path === '/register') {
+        setIsLoading(false);
+        return;
+      }
+
       try {
         const validateRes = await fetch(`${AUTH_API_URL}/validate`, {
           credentials: 'include',
@@ -70,7 +72,7 @@ export function ClientAuthProvider({ children }: { children: ReactNode }) {
         });
         if (cancelled) return;
         if (!refreshRes.ok) {
-          clearAndRedirect();
+          // No valid session — middleware will redirect if needed
           return;
         }
 
@@ -91,12 +93,10 @@ export function ClientAuthProvider({ children }: { children: ReactNode }) {
           const revalidateData = await revalidateRes.json();
           initSdk();
           setUser(revalidateData.user);
-        } else {
-          clearAndRedirect();
         }
       } catch (e: any) {
         if (e?.name === 'AbortError' || cancelled) return;
-        clearAndRedirect();
+        // Silently fail — middleware handles redirects
       } finally {
         if (!cancelled) setIsLoading(false);
       }

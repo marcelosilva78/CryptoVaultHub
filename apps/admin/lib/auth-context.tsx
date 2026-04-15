@@ -40,12 +40,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     const controller = new AbortController();
 
-    async function clearAndRedirect() {
-      await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
-      window.location.href = '/login';
-    }
-
     async function init() {
+      // If already on /login, don't attempt validation — just mark as not loading.
+      if (window.location.pathname === '/login') {
+        setIsLoading(false);
+        return;
+      }
+
       try {
         // Validate the current session via the auth service.
         // The HttpOnly cookie is sent automatically with credentials: 'include'.
@@ -69,7 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
         if (cancelled) return;
         if (!refreshRes.ok) {
-          clearAndRedirect();
+          // No valid session — user stays on current page; middleware will redirect if needed
           return;
         }
 
@@ -91,12 +92,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const revalidateData = await revalidateRes.json();
           initSdk();
           setUser(revalidateData.user);
-        } else {
-          clearAndRedirect();
         }
       } catch (e: any) {
         if (e?.name === 'AbortError' || cancelled) return;
-        clearAndRedirect();
+        // Silently fail — middleware handles redirects
       } finally {
         if (!cancelled) setIsLoading(false);
       }
