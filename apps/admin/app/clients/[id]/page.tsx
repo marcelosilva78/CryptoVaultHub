@@ -80,7 +80,7 @@ function WalletsTab({ clientId, active }: { clientId: string; active: boolean })
           <TableCell>{w.chainName ?? w.chain ?? w.chainId ?? "—"}</TableCell>
           <TableCell mono>{w.address ?? "—"}</TableCell>
           <TableCell>
-            <Badge variant={w.type === "hot" ? "warning" : w.type === "gas_tank" ? "accent" : "default"}>
+            <Badge variant={w.type === "hot" ? "warning" : w.type === "gas_tank" ? "accent" : "neutral"}>
               {w.type ?? "—"}
             </Badge>
           </TableCell>
@@ -144,7 +144,7 @@ function TransactionsTab({ clientId, active }: { clientId: string; active: boole
         <TableRow key={tx.id ?? i}>
           <TableCell>{tx.createdAt ? new Date(tx.createdAt).toLocaleString() : tx.date ?? "—"}</TableCell>
           <TableCell>
-            <Badge variant={tx.type === "deposit" ? "success" : tx.type === "withdrawal" ? "warning" : "default"}>
+            <Badge variant={tx.type === "deposit" ? "success" : tx.type === "withdrawal" ? "warning" : "neutral"}>
               {tx.type ?? "—"}
             </Badge>
           </TableCell>
