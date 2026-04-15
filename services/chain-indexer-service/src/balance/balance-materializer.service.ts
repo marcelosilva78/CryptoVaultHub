@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../redis/redis.service';
 
 /**
  * Computes materialized balances by summing inbound/outbound events
@@ -8,20 +9,84 @@ import { PrismaService } from '../prisma/prisma.service';
  * NOTE: Uses raw SQL because indexed_events and materialized_balances models
  * are not yet reflected in the generated Prisma client. Run `prisma generate`
  * after schema migrations to re-enable typed ORM access.
+ *
+ * Tracks a per-chain watermark (last_materialized_block) in Redis to avoid
+ * full table scans on every invocation. On first run (no watermark), processes
+ * all events once, then only processes incremental deltas.
  */
 @Injectable()
 export class BalanceMaterializerService {
   private readonly logger = new Logger(BalanceMaterializerService.name);
 
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly redis: RedisService,
+  ) {}
+
+  /**
+   * Redis key for the per-chain materialization watermark.
+   */
+  private watermarkKey(chainId: number): string {
+    return `balance:watermark:${chainId}`;
+  }
+
+  /**
+   * Get the last materialized block for a chain from Redis.
+   * Returns null on first run (no watermark yet), triggering a full initial scan.
+   */
+  private async getWatermark(chainId: number): Promise<number | null> {
+    const cached = await this.redis.getCache(this.watermarkKey(chainId));
+    if (cached !== null) {
+      return parseInt(cached, 10);
+    }
+    return null;
+  }
+
+  /**
+   * Update the watermark after successful materialization.
+   * Stored in Redis without TTL so it persists across restarts (until Redis flush).
+   */
+  private async setWatermark(chainId: number, blockNumber: number): Promise<void> {
+    await this.redis.setCache(this.watermarkKey(chainId), blockNumber.toString());
+  }
+
   /**
    * Materialize balances for a chain up to a given finalized block number.
+   * Only processes events since the last materialized block (watermark).
    */
-  constructor(private readonly prisma: PrismaService) {}
-
   async materializeForChain(
     chainId: number,
     upToBlock: number,
   ): Promise<number> {
+    const watermark = await this.getWatermark(chainId);
+
+    // Build the query with watermark filter when available
+    let query: string;
+    let queryParams: any[];
+
+    if (watermark !== null) {
+      // Incremental: only process events after the watermark
+      query = `SELECT to_address, from_address, token_id, amount, client_id, project_id,
+                      wallet_id, is_inbound, block_number
+               FROM indexed_events
+               WHERE chain_id = ?
+                 AND block_number > ?
+                 AND block_number <= ?
+                 AND processed_at IS NOT NULL
+                 AND event_type IN ('erc20_transfer', 'native_transfer')`;
+      queryParams = [chainId, BigInt(watermark), BigInt(upToBlock)];
+    } else {
+      // First run: process everything up to upToBlock
+      query = `SELECT to_address, from_address, token_id, amount, client_id, project_id,
+                      wallet_id, is_inbound, block_number
+               FROM indexed_events
+               WHERE chain_id = ?
+                 AND block_number <= ?
+                 AND processed_at IS NOT NULL
+                 AND event_type IN ('erc20_transfer', 'native_transfer')`;
+      queryParams = [chainId, BigInt(upToBlock)];
+    }
+
     // Get all finalized events that need balance computation via raw SQL
     const events = await this.prisma.$queryRawUnsafe<
       Array<{
@@ -35,19 +100,15 @@ export class BalanceMaterializerService {
         is_inbound: boolean | null;
         block_number: bigint;
       }>
-    >(
-      `SELECT to_address, from_address, token_id, amount, client_id, project_id,
-              wallet_id, is_inbound, block_number
-       FROM indexed_events
-       WHERE chain_id = ?
-         AND block_number <= ?
-         AND processed_at IS NOT NULL
-         AND event_type IN ('erc20_transfer', 'native_transfer')`,
-      chainId,
-      BigInt(upToBlock),
-    );
+    >(query, ...queryParams);
 
-    if (events.length === 0) return 0;
+    if (events.length === 0) {
+      // Even with no events, advance the watermark to avoid re-scanning empty ranges
+      if (watermark === null || upToBlock > watermark) {
+        await this.setWatermark(chainId, upToBlock);
+      }
+      return 0;
+    }
 
     // Group events by (address, tokenId) to compute net balance changes
     const balanceMap = new Map<
@@ -123,7 +184,7 @@ export class BalanceMaterializerService {
            (chain_id, address, token_id, client_id, project_id, wallet_id, balance, last_updated_block, last_updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
          ON DUPLICATE KEY UPDATE
-           balance = VALUES(balance),
+           balance = balance + VALUES(balance),
            last_updated_block = VALUES(last_updated_block),
            last_updated_at = NOW()`,
         chainId,
@@ -138,8 +199,12 @@ export class BalanceMaterializerService {
       updated++;
     }
 
+    // Advance the watermark after successful materialization
+    await this.setWatermark(chainId, upToBlock);
+
     this.logger.log(
-      `Materialized ${updated} balances for chain ${chainId} up to block ${upToBlock}`,
+      `Materialized ${updated} balances for chain ${chainId} up to block ${upToBlock}` +
+        (watermark !== null ? ` (from block ${watermark + 1})` : ' (initial run)'),
     );
 
     return updated;

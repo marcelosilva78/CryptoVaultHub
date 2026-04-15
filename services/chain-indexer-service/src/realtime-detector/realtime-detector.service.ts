@@ -1,10 +1,12 @@
 import {
+  Inject,
   Injectable,
   Logger,
   OnModuleInit,
   OnModuleDestroy,
 } from '@nestjs/common';
 import { ethers } from 'ethers';
+import { PostHogService, POSTHOG_SERVICE } from '@cvh/posthog';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { EvmProviderService } from '../blockchain/evm-provider.service';
@@ -39,6 +41,8 @@ export class RealtimeDetectorService implements OnModuleInit, OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
     private readonly evmProvider: EvmProviderService,
+    @Inject(POSTHOG_SERVICE)
+    private readonly posthog: PostHogService | null,
   ) {}
 
   async onModuleInit() {
@@ -140,14 +144,43 @@ export class RealtimeDetectorService implements OnModuleInit, OnModuleDestroy {
     );
     deposits.push(...nativeDeposits);
 
-    // 3. Publish detected deposits to Redis Stream (batch)
+    // 3. Cache block hash in Redis for reorg detection
+    const block = await provider.getBlock(blockNumber);
+    if (block?.hash) {
+      const cacheKey = `block:${chainId}:${blockNumber}:hash`;
+      await this.redis.setCache(cacheKey, block.hash, 86_400); // 24h TTL
+    }
+
+    // 4. Publish detected deposits to Redis Stream (batch) + PostHog tracking
     if (deposits.length > 0) {
       await Promise.all(
         deposits.map((deposit) => this.publishDepositDetected(deposit)),
       );
+
+      // Track each detected deposit in PostHog for observability
+      if (this.posthog) {
+        for (const deposit of deposits) {
+          try {
+            this.posthog.trackBlockchainEvent('deposit.detected', {
+              clientId: deposit.clientId,
+              chainId: deposit.chainId,
+              txHash: deposit.txHash,
+              blockNumber: deposit.blockNumber,
+              fromAddress: deposit.fromAddress,
+              toAddress: deposit.toAddress,
+              contractAddress: deposit.contractAddress ?? 'native',
+              amount: deposit.amount,
+              walletId: deposit.walletId,
+              detectedAt: new Date().toISOString(),
+            });
+          } catch {
+            // PostHog tracking must never break deposit processing
+          }
+        }
+      }
     }
 
-    // 4. Update sync cursor
+    // 5. Update sync cursor
     await this.updateSyncCursor(chainId, blockNumber);
 
     if (deposits.length > 0) {

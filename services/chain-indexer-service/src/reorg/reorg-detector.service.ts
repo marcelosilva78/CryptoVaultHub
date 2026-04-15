@@ -98,7 +98,7 @@ export class ReorgDetectorService {
   }
 
   /**
-   * Get stored block hash from Redis cache or DB.
+   * Get stored block hash from Redis cache, falling back to the indexed_blocks table.
    */
   private async getStoredBlockHash(
     chainId: number,
@@ -107,7 +107,35 @@ export class ReorgDetectorService {
     const cacheKey = `block:${chainId}:${blockNumber}:hash`;
     const cached = await this.redis.getCache(cacheKey);
     if (cached) return cached;
+
+    // Fallback: query indexed_blocks table
+    const rows = await this.prisma.$queryRawUnsafe<
+      Array<{ block_hash: string }>
+    >(
+      `SELECT block_hash FROM indexed_blocks WHERE chain_id = ? AND block_number = ? LIMIT 1`,
+      chainId,
+      BigInt(blockNumber),
+    );
+
+    if (rows.length > 0 && rows[0].block_hash) {
+      // Backfill the Redis cache so subsequent lookups are fast
+      await this.cacheBlockHash(chainId, blockNumber, rows[0].block_hash);
+      return rows[0].block_hash;
+    }
+
     return null;
+  }
+
+  /**
+   * Cache a block hash in Redis with a 24-hour TTL.
+   */
+  async cacheBlockHash(
+    chainId: number,
+    blockNumber: number,
+    blockHash: string,
+  ): Promise<void> {
+    const cacheKey = `block:${chainId}:${blockNumber}:hash`;
+    await this.redis.setCache(cacheKey, blockHash, 86_400); // 24 hours
   }
 
   /**

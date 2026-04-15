@@ -1,8 +1,16 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
-import { JsonRpcProvider } from 'ethers';
+import { JsonRpcProvider, FetchRequest } from 'ethers';
+import { ConfigService } from '@nestjs/config';
+import { createDecipheriv } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { RateLimiterService } from '../rate-limiter/rate-limiter.service';
 import { CircuitBreakerService } from '../circuit-breaker/circuit-breaker.service';
+
+interface RpcProviderAuth {
+  authMethod: string;
+  authHeaderName: string | null;
+  apiKeyEncrypted: string | null;
+}
 
 interface RpcNode {
   id: bigint;
@@ -17,6 +25,7 @@ interface RpcNode {
   timeoutMs: number;
   healthScore: any; // Decimal
   consecutiveFailures: number;
+  provider?: RpcProviderAuth;
 }
 
 interface RpcCallResult {
@@ -30,12 +39,51 @@ const MAX_RETRIES = 3;
 @Injectable()
 export class RpcRouterService {
   private readonly logger = new Logger(RpcRouterService.name);
+  private encryptionKey: Buffer | null = null;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly rateLimiter: RateLimiterService,
     private readonly circuitBreaker: CircuitBreakerService,
-  ) {}
+    private readonly configService: ConfigService,
+  ) {
+    const keyHex = this.configService.get<string>('INTERNAL_SERVICE_KEY', '');
+    if (keyHex.length >= 64) {
+      this.encryptionKey = Buffer.from(keyHex.slice(0, 64), 'hex');
+    }
+  }
+
+  private decryptSecret(ciphertext: string): string | null {
+    if (!this.encryptionKey) return null;
+    try {
+      const [ivHex, tagHex, encHex] = ciphertext.split(':');
+      const decipher = createDecipheriv('aes-256-gcm', this.encryptionKey, Buffer.from(ivHex, 'hex'));
+      decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
+      return decipher.update(Buffer.from(encHex, 'hex')).toString('utf8') + decipher.final('utf8');
+    } catch {
+      this.logger.warn('Failed to decrypt API key for RPC routing');
+      return null;
+    }
+  }
+
+  /**
+   * Create a JsonRpcProvider with appropriate auth headers for the node's provider.
+   */
+  private createAuthProvider(
+    url: string,
+    provider?: RpcProviderAuth,
+  ): JsonRpcProvider {
+    if (provider?.apiKeyEncrypted && (provider.authMethod === 'api_key' || provider.authMethod === 'header')) {
+      const apiKey = this.decryptSecret(provider.apiKeyEncrypted);
+      if (apiKey) {
+        const headerName = provider.authHeaderName || 'x-api-key';
+        const fetchReq = new FetchRequest(url);
+        fetchReq.setHeader(headerName, apiKey);
+        return new JsonRpcProvider(fetchReq, undefined, { staticNetwork: true, batchMaxCount: 1 });
+      }
+    }
+    return new JsonRpcProvider(url, undefined, { staticNetwork: true, batchMaxCount: 1 });
+  }
 
   /**
    * Select the best available node for a given chain.
@@ -49,6 +97,7 @@ export class RpcRouterService {
         isActive: true,
         status: { in: ['active', 'standby'] },
       },
+      include: { provider: true },
       orderBy: [
         { priority: 'asc' },
         { healthScore: 'desc' },
@@ -103,6 +152,7 @@ export class RpcRouterService {
           status: { in: ['active', 'standby'] },
           id: { notIn: Array.from(attemptedNodeIds).map(BigInt) },
         },
+        include: { provider: true },
         orderBy: [
           { priority: 'asc' },
           { healthScore: 'desc' },
@@ -190,10 +240,7 @@ export class RpcRouterService {
   ): Promise<RpcCallResult> {
     const start = Date.now();
 
-    const provider = new JsonRpcProvider(node.endpointUrl, undefined, {
-      staticNetwork: true,
-      batchMaxCount: 1,
-    });
+    const provider = this.createAuthProvider(node.endpointUrl, node.provider);
 
     const result = await Promise.race([
       provider.send(method, params),

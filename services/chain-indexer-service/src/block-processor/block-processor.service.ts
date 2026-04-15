@@ -87,12 +87,30 @@ export class BlockProcessorService {
       }
     }
 
-    // 3. Mark block as indexed
+    // 3. Mark block as indexed (include block hash for reorg detection)
+    const blockHash = block?.hash ?? '';
+    const parentHash = block?.parentHash ?? '';
+    const blockTimestamp = block?.timestamp ?? 0;
+    const txCount = block?.prefetchedTransactions?.length ?? 0;
+
     await this.prisma.$executeRawUnsafe(
-      `INSERT IGNORE INTO indexed_blocks (chain_id, block_number, indexed_at) VALUES (?, ?, NOW())`,
+      `INSERT IGNORE INTO indexed_blocks
+         (chain_id, block_number, block_hash, parent_hash, block_timestamp, transaction_count, events_detected, indexed_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
       chainId,
       blockNumber,
+      blockHash,
+      parentHash,
+      BigInt(blockTimestamp),
+      txCount,
+      transfers.length,
     );
+
+    // 4. Cache block hash in Redis for fast reorg detection lookups
+    if (blockHash) {
+      const cacheKey = `block:${chainId}:${blockNumber}:hash`;
+      await this.redis.setCache(cacheKey, blockHash, 86_400); // 24h TTL
+    }
 
     return transfers;
   }
