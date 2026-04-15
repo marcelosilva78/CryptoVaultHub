@@ -147,6 +147,9 @@ export class ChainManagementService {
     adminUserId: string,
     ipAddress?: string,
   ) {
+    // On-chain ERC-20 validation: verify submitted metadata matches the contract
+    await this.validateTokenOnChain(data);
+
     const response = await axios.post(
       `${this.chainIndexerUrl}/tokens`,
       data,
@@ -218,6 +221,135 @@ export class ChainManagementService {
       entityId: String(chainId),
     });
     return data;
+  }
+
+  /**
+   * Validate token metadata on-chain by calling symbol(), decimals(), name()
+   * on the ERC-20 contract. Throws BadRequestException on mismatch or if
+   * the address is not a valid ERC-20 contract.
+   */
+  private async validateTokenOnChain(data: {
+    name: string;
+    symbol: string;
+    chainId: number;
+    contractAddress: string;
+    decimals: number;
+  }): Promise<void> {
+    // Resolve an RPC endpoint for the chain from the chain-indexer
+    let rpcUrl: string;
+    try {
+      const { data: chainsData } = await axios.get(
+        `${this.chainIndexerUrl}/chains`,
+        { timeout: 10000 },
+      );
+      const chains = chainsData?.chains ?? chainsData;
+      const chain = chains.find(
+        (c: any) => (c.chainId || c.id) === data.chainId,
+      );
+      if (!chain) {
+        throw new BadRequestException(
+          `Chain ${data.chainId} not found — register the chain before adding tokens`,
+        );
+      }
+
+      // rpcEndpoints can be string[] or object[]
+      const endpoints = chain.rpcEndpoints ?? [];
+      const firstEndpoint = endpoints[0];
+      if (!firstEndpoint) {
+        this.logger.warn(
+          `No RPC endpoint for chain ${data.chainId}, skipping on-chain token validation`,
+        );
+        return;
+      }
+      rpcUrl = typeof firstEndpoint === 'string' ? firstEndpoint : firstEndpoint.url;
+    } catch (err: any) {
+      if (err instanceof BadRequestException) throw err;
+      this.logger.warn(`Could not fetch chain data for on-chain validation: ${err.message}`);
+      return; // non-blocking: if chain-indexer is unreachable, skip validation
+    }
+
+    const ERC20_METADATA_ABI = [
+      'function symbol() view returns (string)',
+      'function decimals() view returns (uint8)',
+      'function name() view returns (string)',
+    ];
+
+    try {
+      const { JsonRpcProvider, Contract } = await import('ethers');
+      const provider = new JsonRpcProvider(rpcUrl, undefined, {
+        staticNetwork: true,
+        batchMaxCount: 1,
+      });
+
+      const contract = new Contract(
+        data.contractAddress,
+        ERC20_METADATA_ABI,
+        provider,
+      );
+
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('On-chain validation timeout')), 15000),
+      );
+
+      const [onChainSymbol, onChainDecimals, onChainName] = await Promise.race([
+        Promise.all([
+          contract.symbol() as Promise<string>,
+          contract.decimals() as Promise<number>,
+          contract.name() as Promise<string>,
+        ]),
+        timeoutPromise,
+      ]);
+
+      const mismatches: string[] = [];
+
+      if (onChainSymbol !== data.symbol) {
+        mismatches.push(
+          `symbol: submitted "${data.symbol}", on-chain "${onChainSymbol}"`,
+        );
+      }
+
+      if (Number(onChainDecimals) !== data.decimals) {
+        mismatches.push(
+          `decimals: submitted ${data.decimals}, on-chain ${onChainDecimals}`,
+        );
+      }
+
+      if (onChainName !== data.name) {
+        mismatches.push(
+          `name: submitted "${data.name}", on-chain "${onChainName}"`,
+        );
+      }
+
+      if (mismatches.length > 0) {
+        throw new BadRequestException(
+          `Token metadata mismatch with on-chain contract: ${mismatches.join('; ')}`,
+        );
+      }
+
+      provider.destroy();
+      this.logger.log(
+        `On-chain validation passed for ${data.symbol} at ${data.contractAddress}`,
+      );
+    } catch (err: any) {
+      if (err instanceof BadRequestException) throw err;
+
+      // Reverts or call exceptions indicate the address is not a valid ERC-20
+      if (
+        err.code === 'CALL_EXCEPTION' ||
+        err.code === 'BAD_DATA' ||
+        err.message?.includes('revert') ||
+        err.message?.includes('could not decode')
+      ) {
+        throw new BadRequestException(
+          `Address ${data.contractAddress} is not a valid ERC-20 contract on chain ${data.chainId}`,
+        );
+      }
+
+      // Network/timeout errors — log warning but don't block token creation
+      this.logger.warn(
+        `On-chain token validation failed (non-blocking): ${err.message}`,
+      );
+    }
   }
 
   async getChainHealth() {

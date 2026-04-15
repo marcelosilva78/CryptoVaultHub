@@ -85,10 +85,29 @@ export class PollingDetectorService extends WorkerHost implements OnModuleInit {
 
   /**
    * Poll all monitored addresses on a chain via Multicall3 batch balance queries.
+   * Respects per-client monitoring mode: excludes addresses whose
+   * client_chain_config.monitoring_mode is set to 'realtime' (polling not wanted).
    */
   async pollChain(chainId: number): Promise<void> {
-    const addresses = await this.prisma.monitoredAddress.findMany({
+    const allAddresses = await this.prisma.monitoredAddress.findMany({
       where: { chainId, isActive: true },
+    });
+
+    if (allAddresses.length === 0) return;
+
+    // Load client chain configs for this chain to check monitoring mode
+    const clientChainConfigs = await this.prisma.clientChainConfig.findMany({
+      where: { chainId, isActive: true },
+    });
+    const configMap = new Map<string, string>();
+    for (const cfg of clientChainConfigs) {
+      configMap.set(cfg.clientId.toString(), cfg.monitoringMode);
+    }
+
+    // Filter out addresses where the client explicitly wants realtime-only
+    const addresses = allAddresses.filter((addr) => {
+      const mode = configMap.get(addr.clientId.toString()) ?? 'hybrid';
+      return mode !== 'realtime';
     });
 
     if (addresses.length === 0) return;

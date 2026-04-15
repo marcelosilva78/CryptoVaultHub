@@ -14,6 +14,13 @@ services:
           policy: redis
           redis_host: redis
           redis_password: "${REDIS_PASSWORD}"
+      - name: ip-restriction
+        config:
+          allow:
+            - 10.0.0.0/8
+            - 172.16.0.0/12
+            - 192.168.0.0/16
+            - 127.0.0.1
   - name: client-api
     url: http://client-api:3002
     routes:
@@ -27,6 +34,11 @@ services:
           policy: redis
           redis_host: redis
           redis_password: "${REDIS_PASSWORD}"
+      - name: key-auth
+        config:
+          key_names:
+            - X-API-Key
+          hide_credentials: true
   - name: auth-service
     url: http://auth-service:3003
     routes:
@@ -54,3 +66,13 @@ plugins:
   - name: request-size-limiting
     config:
       allowed_payload_size: 1
+  - name: prometheus
+    config:
+      per_consumer: true
+      status_code_metrics: true
+      latency_metrics: true
+  - name: bot-detection
+    config:
+      deny:
+        - hacker
+        - bot

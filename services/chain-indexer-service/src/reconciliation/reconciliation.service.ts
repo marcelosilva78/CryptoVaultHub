@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
 import { ethers } from 'ethers';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
@@ -35,6 +36,23 @@ export class ReconciliationService {
     private readonly redis: RedisService,
     private readonly evmProvider: EvmProviderService,
   ) {}
+
+  /**
+   * Cron trigger: run deep reconciliation daily at 3:00 AM UTC.
+   */
+  @Cron('0 3 * * *')
+  async handleReconciliationCron(): Promise<void> {
+    this.logger.log('Daily reconciliation cron triggered');
+    try {
+      const discrepancies = await this.runReconciliation();
+      this.logger.log(
+        `Daily reconciliation complete: ${discrepancies.length} discrepancies found`,
+      );
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Daily reconciliation cron failed: ${msg}`);
+    }
+  }
 
   /**
    * Run full reconciliation across all active chains and monitored addresses.

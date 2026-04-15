@@ -60,15 +60,33 @@ export class RealtimeDetectorService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Load all active monitored addresses into memory for fast lookup.
+   * Load active monitored addresses into memory for fast lookup.
+   * Respects per-client monitoring mode: excludes addresses whose
+   * client_chain_config.monitoring_mode is set to 'polling' (realtime not wanted).
    */
   async loadMonitoredAddresses(): Promise<void> {
     const addresses = await this.prisma.monitoredAddress.findMany({
       where: { isActive: true },
     });
 
+    // Load client chain configs to determine monitoring mode per client+chain
+    const clientChainConfigs = await this.prisma.clientChainConfig.findMany({
+      where: { isActive: true },
+    });
+    const configMap = new Map<string, string>();
+    for (const cfg of clientChainConfigs) {
+      configMap.set(`${cfg.clientId}:${cfg.chainId}`, cfg.monitoringMode);
+    }
+
     this.monitoredAddresses.clear();
+    let skipped = 0;
     for (const addr of addresses) {
+      const mode = configMap.get(`${addr.clientId}:${addr.chainId}`) ?? 'hybrid';
+      // Skip addresses where the client explicitly wants polling-only
+      if (mode === 'polling') {
+        skipped++;
+        continue;
+      }
       const key = `${addr.chainId}:${addr.address.toLowerCase()}`;
       this.monitoredAddresses.set(key, {
         clientId: addr.clientId,
@@ -76,10 +94,12 @@ export class RealtimeDetectorService implements OnModuleInit, OnModuleDestroy {
       });
     }
 
-    // Collect unique chain IDs
-    this.activeChainIds = [...new Set(addresses.map((a) => a.chainId))];
+    // Collect unique chain IDs from the filtered addresses
+    this.activeChainIds = [...new Set(
+      [...this.monitoredAddresses.keys()].map((k) => parseInt(k.split(':')[0], 10)),
+    )];
     this.logger.log(
-      `Loaded ${addresses.length} monitored addresses across ${this.activeChainIds.length} chains`,
+      `Loaded ${this.monitoredAddresses.size} monitored addresses across ${this.activeChainIds.length} chains (${skipped} skipped due to polling-only mode)`,
     );
   }
 

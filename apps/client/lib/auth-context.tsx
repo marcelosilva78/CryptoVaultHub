@@ -30,10 +30,9 @@ const ClientAuthContext = createContext<ClientAuthContextType | null>(null);
 
 /** Initialize the @cvh/api-client SDK singleton so all React Query hooks work. */
 function initSdk() {
-  const token = localStorage.getItem('cvh_client_token');
-  if (token) {
-    setClientApiClient(new ClientApiClient(CLIENT_API_URL, token));
-  }
+  // With HttpOnly cookies, the SDK uses cookie-based auth (credentials: 'include').
+  // We pass a placeholder token; actual auth is via the HttpOnly cookie.
+  setClientApiClient(new ClientApiClient(CLIENT_API_URL, '__cookie__'));
 }
 
 export function ClientAuthProvider({ children }: { children: ReactNode }) {
@@ -41,26 +40,18 @@ export function ClientAuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const token = localStorage.getItem('cvh_client_token');
-    if (!token) {
-      setIsLoading(false);
-      return;
-    }
-
     let cancelled = false;
     const controller = new AbortController();
 
-    function clearAndRedirect() {
-      localStorage.removeItem('cvh_client_token');
-      localStorage.removeItem('cvh_client_refresh');
-      document.cookie = 'cvh_client_token=; path=/; max-age=0';
+    async function clearAndRedirect() {
+      await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
       window.location.href = '/login';
     }
 
     async function init() {
       try {
         const validateRes = await fetch(`${AUTH_API_URL}/validate`, {
-          headers: { Authorization: `Bearer ${token}` },
+          credentials: 'include',
           signal: controller.signal,
         });
         if (cancelled) return;
@@ -71,17 +62,10 @@ export function ClientAuthProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        // Try refreshing the token
-        const storedRefresh = localStorage.getItem('cvh_client_refresh');
-        if (!storedRefresh) {
-          clearAndRedirect();
-          return;
-        }
-
-        const refreshRes = await fetch(`${AUTH_API_URL}/refresh`, {
+        // Try refreshing the token via our server-side proxy
+        const refreshRes = await fetch('/api/auth/refresh', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ refreshToken: storedRefresh }),
+          credentials: 'include',
           signal: controller.signal,
         });
         if (cancelled) return;
@@ -91,17 +75,6 @@ export function ClientAuthProvider({ children }: { children: ReactNode }) {
         }
 
         const refreshData = await refreshRes.json();
-        const accessToken = refreshData.tokens?.accessToken ?? refreshData.accessToken;
-        const newRefresh = refreshData.tokens?.refreshToken ?? refreshData.refreshToken;
-
-        if (!accessToken) {
-          clearAndRedirect();
-          return;
-        }
-
-        localStorage.setItem('cvh_client_token', accessToken);
-        if (newRefresh) localStorage.setItem('cvh_client_refresh', newRefresh);
-        document.cookie = `cvh_client_token=${accessToken}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
 
         if (refreshData.user) {
           initSdk();
@@ -110,7 +83,7 @@ export function ClientAuthProvider({ children }: { children: ReactNode }) {
         }
 
         const revalidateRes = await fetch(`${AUTH_API_URL}/validate`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
+          credentials: 'include',
           signal: controller.signal,
         });
         if (cancelled) return;
@@ -137,10 +110,11 @@ export function ClientAuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = async (email: string, password: string) => {
-    const res = await fetch(`${AUTH_API_URL}/login`, {
+    const res = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
+      credentials: 'include',
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ message: 'Login failed' }));
@@ -152,15 +126,8 @@ export function ClientAuthProvider({ children }: { children: ReactNode }) {
       return { requires2FA: true };
     }
 
-    // Auth service wraps tokens under data.tokens; fall back to flat format
-    const accessToken = data.tokens?.accessToken ?? data.accessToken;
-    const refresh = data.tokens?.refreshToken ?? data.refreshToken;
-    const userData = data.user;
-    localStorage.setItem('cvh_client_token', accessToken);
-    if (refresh) localStorage.setItem('cvh_client_refresh', refresh);
-    document.cookie = `cvh_client_token=${accessToken}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
     initSdk();
-    setUser(userData);
+    setUser(data.user);
     return {};
   };
 
@@ -175,8 +142,8 @@ export function ClientAuthProvider({ children }: { children: ReactNode }) {
       throw new Error(err.message || 'Invalid API key');
     }
     const data = await res.json();
-    localStorage.setItem('cvh_client_token', data.accessToken);
-    document.cookie = `cvh_client_token=${data.accessToken}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
+    // API key login still uses the token directly for SDK initialization
+    // as API keys bypass cookie-based auth
     initSdk();
     setUser(data.user);
   };
@@ -186,62 +153,36 @@ export function ClientAuthProvider({ children }: { children: ReactNode }) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code }),
+      credentials: 'include',
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ message: '2FA verification failed' }));
       throw new Error(err.message || '2FA verification failed');
     }
     const data = await res.json();
-    const accessToken = data.tokens?.accessToken ?? data.accessToken;
-    const refresh = data.tokens?.refreshToken ?? data.refreshToken;
-    localStorage.setItem('cvh_client_token', accessToken);
-    if (refresh) {
-      localStorage.setItem('cvh_client_refresh', refresh);
-    }
-    document.cookie = `cvh_client_token=${accessToken}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
     initSdk();
     setUser(data.user);
   };
 
   const refreshToken = useCallback(async () => {
-    const refresh = localStorage.getItem('cvh_client_refresh');
-    if (!refresh) throw new Error('No refresh token');
-
-    const res = await fetch(`${AUTH_API_URL}/refresh`, {
+    const res = await fetch('/api/auth/refresh', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refreshToken: refresh }),
+      credentials: 'include',
     });
     if (!res.ok) {
-      localStorage.removeItem('cvh_client_token');
-      localStorage.removeItem('cvh_client_refresh');
-      document.cookie = 'cvh_client_token=; path=/; max-age=0';
       setUser(null);
       throw new Error('Token refresh failed');
     }
     const data = await res.json();
-    const accessToken = data.tokens?.accessToken ?? data.accessToken;
-    const newRefresh = data.tokens?.refreshToken ?? data.refreshToken;
-
-    if (!accessToken) {
-      localStorage.removeItem('cvh_client_token');
-      localStorage.removeItem('cvh_client_refresh');
-      document.cookie = 'cvh_client_token=; path=/; max-age=0';
-      setUser(null);
-      throw new Error('Token refresh failed: malformed response');
+    if (data.user) {
+      setUser(data.user);
     }
-
-    localStorage.setItem('cvh_client_token', accessToken);
-    if (newRefresh) localStorage.setItem('cvh_client_refresh', newRefresh);
-    document.cookie = `cvh_client_token=${accessToken}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
     initSdk();
   }, []);
 
-  const logout = () => {
+  const logout = async () => {
     setUser(null);
-    localStorage.removeItem('cvh_client_token');
-    localStorage.removeItem('cvh_client_refresh');
-    document.cookie = 'cvh_client_token=; path=/; max-age=0';
+    await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
     window.location.href = '/login';
   };
 
