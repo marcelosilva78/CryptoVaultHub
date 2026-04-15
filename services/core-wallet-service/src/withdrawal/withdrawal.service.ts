@@ -215,6 +215,83 @@ export class WithdrawalService {
   }
 
   /**
+   * Approve a pending withdrawal, transitioning it to 'approved' status.
+   * The cron worker will pick it up and execute it on-chain.
+   */
+  async approveWithdrawal(withdrawalId: number) {
+    const withdrawal = await this.prisma.withdrawal.findUnique({
+      where: { id: BigInt(withdrawalId) },
+    });
+
+    if (!withdrawal) {
+      throw new NotFoundException(`Withdrawal ${withdrawalId} not found`);
+    }
+
+    if (withdrawal.status !== 'pending_approval') {
+      throw new BadRequestException(
+        `Withdrawal ${withdrawalId} cannot be approved (current status: ${withdrawal.status})`,
+      );
+    }
+
+    const updated = await this.prisma.withdrawal.update({
+      where: { id: BigInt(withdrawalId) },
+      data: { status: 'approved' },
+    });
+
+    this.logger.log(
+      `Withdrawal ${withdrawalId} approved — will be picked up by the withdrawal worker`,
+    );
+
+    return { withdrawal: this.formatWithdrawal(updated) };
+  }
+
+  /**
+   * Cancel a pending withdrawal.
+   */
+  async cancelWithdrawal(withdrawalId: number) {
+    const withdrawal = await this.prisma.withdrawal.findUnique({
+      where: { id: BigInt(withdrawalId) },
+    });
+
+    if (!withdrawal) {
+      throw new NotFoundException(`Withdrawal ${withdrawalId} not found`);
+    }
+
+    if (
+      withdrawal.status !== 'pending_approval' &&
+      withdrawal.status !== 'approved'
+    ) {
+      throw new BadRequestException(
+        `Withdrawal ${withdrawalId} cannot be cancelled (current status: ${withdrawal.status})`,
+      );
+    }
+
+    const updated = await this.prisma.withdrawal.update({
+      where: { id: BigInt(withdrawalId) },
+      data: { status: 'cancelled' },
+    });
+
+    this.logger.log(`Withdrawal ${withdrawalId} cancelled`);
+
+    return { withdrawal: this.formatWithdrawal(updated) };
+  }
+
+  /**
+   * Get a single withdrawal by ID.
+   */
+  async getWithdrawal(withdrawalId: number) {
+    const withdrawal = await this.prisma.withdrawal.findUnique({
+      where: { id: BigInt(withdrawalId) },
+    });
+
+    if (!withdrawal) {
+      throw new NotFoundException(`Withdrawal ${withdrawalId} not found`);
+    }
+
+    return this.formatWithdrawal(withdrawal);
+  }
+
+  /**
    * List withdrawals for a client.
    */
   async listWithdrawals(clientId: number, status?: string) {

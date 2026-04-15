@@ -31,6 +31,42 @@ export class WithdrawalController {
     };
   }
 
+  @Post(':withdrawalId/approve')
+  async approveWithdrawal(
+    @Param('withdrawalId', ParseIntPipe) withdrawalId: number,
+  ) {
+    const result =
+      await this.withdrawalService.approveWithdrawal(withdrawalId);
+    return {
+      success: true,
+      withdrawal: result.withdrawal,
+    };
+  }
+
+  @Post(':withdrawalId/cancel')
+  async cancelWithdrawal(
+    @Param('withdrawalId', ParseIntPipe) withdrawalId: number,
+  ) {
+    const result =
+      await this.withdrawalService.cancelWithdrawal(withdrawalId);
+    return {
+      success: true,
+      withdrawal: result.withdrawal,
+    };
+  }
+
+  @Get('detail/:withdrawalId')
+  async getWithdrawal(
+    @Param('withdrawalId', ParseIntPipe) withdrawalId: number,
+  ) {
+    const withdrawal =
+      await this.withdrawalService.getWithdrawal(withdrawalId);
+    return {
+      success: true,
+      withdrawal,
+    };
+  }
+
   @Get(':clientId')
   async listWithdrawals(
     @Param('clientId', ParseIntPipe) clientId: number,

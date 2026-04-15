@@ -9,6 +9,7 @@ import { SweepModule } from './sweep/sweep.module';
 import { ForwarderDeployModule } from './forwarder-deploy/forwarder-deploy.module';
 import { GasTankModule } from './gas-tank/gas-tank.module';
 import { SanctionsListSyncModule } from './sanctions-list-sync/sanctions-list-sync.module';
+import { WithdrawalModule } from './withdrawal/withdrawal.module';
 import { ChainListenerModule } from './chain-listener/chain-listener.module';
 import { HealthController } from './common/health.controller';
 
@@ -42,6 +43,7 @@ import { HealthController } from './common/health.controller';
     ForwarderDeployModule,
     GasTankModule,
     SanctionsListSyncModule,
+    WithdrawalModule,
     ChainListenerModule,
   ],
   controllers: [HealthController],

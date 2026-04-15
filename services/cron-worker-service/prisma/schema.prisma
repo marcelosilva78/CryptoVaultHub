@@ -128,6 +128,11 @@ model Deposit {
 }
 
 // ---------------------------------------------------------------------------
+// Withdrawals: accessed via raw SQL ($queryRaw/$executeRaw) against
+// cvh_transactions.withdrawals since that table is in a different database.
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
 // Sanctions entries (OFAC/EU/UN)
 // ---------------------------------------------------------------------------
 

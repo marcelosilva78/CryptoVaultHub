@@ -1,0 +1,543 @@
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
+import { Queue, Job } from 'bullmq';
+import { ConfigService } from '@nestjs/config';
+import { ethers } from 'ethers';
+import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../redis/redis.service';
+import { EvmProviderService } from '../blockchain/evm-provider.service';
+
+/**
+ * Minimal ABI for CvhWalletSimple: only the functions needed for withdrawal execution.
+ */
+const CVH_WALLET_ABI = [
+  'function sendMultiSig(address toAddress, uint256 value, bytes calldata data, uint256 expireTime, uint256 sequenceId, bytes calldata signature) external',
+  'function sendMultiSigToken(address toAddress, uint256 value, address tokenContractAddress, uint256 expireTime, uint256 sequenceId, bytes calldata signature) external',
+  'function getNextSequenceId() public view returns (uint256)',
+];
+
+interface KeyVaultSignResponse {
+  success: boolean;
+  clientId: number;
+  signature: string;
+  v: number;
+  r: string;
+  s: string;
+  address: string;
+}
+
+interface GasTankDecryptResponse {
+  success: boolean;
+  privateKey: string;
+}
+
+export interface WithdrawalJobData {
+  withdrawalId: string;
+}
+
+export interface WithdrawalConfirmJobData {
+  withdrawalId: string;
+  txHash: string;
+  chainId: number;
+}
+
+export interface WithdrawalJobResult {
+  withdrawalId: string;
+  txHash: string;
+  sequenceId: number;
+  status: 'broadcasting' | 'failed';
+}
+
+/**
+ * BullMQ processor that picks up approved withdrawals and executes them on-chain.
+ *
+ * Flow:
+ * 1. Polls for approved withdrawals (via repeatable cron job)
+ * 2. For each approved withdrawal, builds the operationHash, signs via Key Vault,
+ *    and submits the multisig transaction
+ * 3. On success: marks as 'broadcasting' and enqueues confirmation tracking
+ * 4. On failure: marks as 'failed' with error details in logs and events
+ *
+ * The operationHash MUST match exactly what CvhWalletSimple computes:
+ *   - sendMultiSig:      keccak256(abi.encode(getNetworkId(), toAddress, value, data, expireTime, sequenceId))
+ *   - sendMultiSigToken:  keccak256(abi.encode(getTokenNetworkId(), toAddress, value, tokenContractAddress, expireTime, sequenceId))
+ *
+ * Where getNetworkId() = Strings.toString(block.chainid) and getTokenNetworkId() = getNetworkId() + "-ERC20".
+ */
+@Processor('withdrawal', { concurrency: 2 })
+@Injectable()
+export class WithdrawalWorkerService extends WorkerHost implements OnModuleInit {
+  private readonly logger = new Logger(WithdrawalWorkerService.name);
+  private readonly keyVaultUrl: string;
+  private readonly internalServiceKey: string;
+  private readonly expireTimeSeconds: number;
+
+  constructor(
+    @InjectQueue('withdrawal') private readonly withdrawalQueue: Queue,
+    @InjectQueue('withdrawal-confirm')
+    private readonly confirmQueue: Queue,
+    private readonly config: ConfigService,
+    private readonly prisma: PrismaService,
+    private readonly redis: RedisService,
+    private readonly evmProvider: EvmProviderService,
+  ) {
+    super();
+    this.keyVaultUrl = this.config.get<string>(
+      'KEY_VAULT_URL',
+      'http://localhost:3005',
+    );
+    this.internalServiceKey = this.config.get<string>(
+      'INTERNAL_SERVICE_KEY',
+      '',
+    );
+    this.expireTimeSeconds = this.config.get<number>(
+      'WITHDRAWAL_EXPIRE_SECONDS',
+      3600,
+    );
+  }
+
+  async onModuleInit(): Promise<void> {
+    await this.initWithdrawalPollingJob();
+  }
+
+  /**
+   * Initialize the repeatable job that polls for approved withdrawals.
+   */
+  async initWithdrawalPollingJob(
+    intervalMs: number = 30_000,
+  ): Promise<void> {
+    await this.withdrawalQueue.add(
+      'poll-approved',
+      {},
+      {
+        repeat: { every: intervalMs },
+        jobId: 'withdrawal-poll',
+      },
+    );
+    this.logger.log(
+      `Withdrawal polling job initialized (every ${intervalMs}ms)`,
+    );
+  }
+
+  /**
+   * BullMQ worker: process withdrawal jobs.
+   * Handles two job types:
+   * - 'poll-approved': scan DB for approved withdrawals and enqueue each one
+   * - 'execute': execute a single approved withdrawal on-chain
+   */
+  async process(
+    job: Job<WithdrawalJobData | Record<string, never>>,
+  ): Promise<WithdrawalJobResult | number> {
+    if (job.name === 'poll-approved') {
+      return this.pollApprovedWithdrawals();
+    }
+
+    if (job.name === 'execute') {
+      const { withdrawalId } = job.data as WithdrawalJobData;
+      return this.executeWithdrawal(withdrawalId, job);
+    }
+
+    this.logger.warn(`Unknown job name: ${job.name}`);
+    return 0;
+  }
+
+  /**
+   * Poll for approved withdrawals and enqueue individual execution jobs.
+   */
+  private async pollApprovedWithdrawals(): Promise<number> {
+    const approved = await this.prisma.$queryRaw<any[]>`
+      SELECT * FROM cvh_transactions.withdrawals
+      WHERE status = 'approved'
+      ORDER BY created_at ASC
+      LIMIT 50
+    `;
+
+    if (approved.length === 0) return 0;
+
+    this.logger.log(
+      `Found ${approved.length} approved withdrawals to execute`,
+    );
+
+    for (const withdrawal of approved) {
+      const jobId = `execute-withdrawal-${withdrawal.id}`;
+
+      // Deduplicate: don't enqueue if already in the queue
+      const existing = await this.withdrawalQueue.getJob(jobId);
+      if (existing) continue;
+
+      await this.withdrawalQueue.add(
+        'execute',
+        { withdrawalId: withdrawal.id.toString() },
+        {
+          jobId,
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 5000 },
+        },
+      );
+    }
+
+    return approved.length;
+  }
+
+  /**
+   * Execute a single approved withdrawal on-chain.
+   */
+  private async executeWithdrawal(
+    withdrawalId: string,
+    job: Job,
+  ): Promise<WithdrawalJobResult> {
+    const [withdrawal] = await this.prisma.$queryRaw<any[]>`
+      SELECT * FROM cvh_transactions.withdrawals WHERE id = ${BigInt(withdrawalId)}
+    `;
+
+    if (!withdrawal) {
+      throw new Error(`Withdrawal ${withdrawalId} not found`);
+    }
+
+    if (withdrawal.status !== 'approved') {
+      this.logger.warn(
+        `Withdrawal ${withdrawalId} is not 'approved' (current: ${withdrawal.status}), skipping`,
+      );
+      return {
+        withdrawalId,
+        txHash: '',
+        sequenceId: 0,
+        status: 'failed',
+      };
+    }
+
+    const clientId = Number(withdrawal.clientId);
+    const chainId = withdrawal.chainId;
+
+    try {
+      // Load token
+      const token = await this.prisma.token.findUnique({
+        where: { id: withdrawal.tokenId },
+      });
+      if (!token) {
+        throw new Error(
+          `Token ${withdrawal.tokenId} not found`,
+        );
+      }
+
+      // Load hot wallet (CvhWalletSimple contract address)
+      const hotWallet = await this.prisma.wallet.findUnique({
+        where: {
+          uq_client_chain_type: {
+            clientId: BigInt(clientId),
+            chainId,
+            walletType: 'hot',
+          },
+        },
+      });
+      if (!hotWallet) {
+        throw new Error(
+          `Hot wallet not found for client ${clientId} on chain ${chainId}`,
+        );
+      }
+
+      // Load gas tank wallet (msg.sender for the multisig tx)
+      const gasTank = await this.prisma.wallet.findUnique({
+        where: {
+          uq_client_chain_type: {
+            clientId: BigInt(clientId),
+            chainId,
+            walletType: 'gas_tank',
+          },
+        },
+      });
+      if (!gasTank) {
+        throw new Error(
+          `Gas tank wallet not found for client ${clientId} on chain ${chainId}`,
+        );
+      }
+
+      const provider = await this.evmProvider.getProvider(chainId);
+
+      // Get next sequence ID from the contract
+      const walletContract = new ethers.Contract(
+        hotWallet.address,
+        CVH_WALLET_ABI,
+        provider,
+      );
+      const nextSeqId: bigint = await walletContract.getNextSequenceId();
+      const sequenceId = Number(nextSeqId);
+
+      // Calculate expiration
+      const expireTime =
+        Math.floor(Date.now() / 1000) + this.expireTimeSeconds;
+
+      // Build operationHash
+      const value = BigInt(withdrawal.amountRaw);
+      const abiCoder = ethers.AbiCoder.defaultAbiCoder();
+      let operationHash: string;
+
+      if (token.isNative) {
+        // sendMultiSig: abi.encode(getNetworkId(), toAddress, value, data, expireTime, sequenceId)
+        const encoded = abiCoder.encode(
+          ['string', 'address', 'uint256', 'bytes', 'uint256', 'uint256'],
+          [
+            chainId.toString(),
+            withdrawal.toAddress,
+            value,
+            '0x',
+            expireTime,
+            sequenceId,
+          ],
+        );
+        operationHash = ethers.keccak256(encoded);
+      } else {
+        // sendMultiSigToken: abi.encode(getTokenNetworkId(), toAddress, value, tokenContractAddress, expireTime, sequenceId)
+        const encoded = abiCoder.encode(
+          [
+            'string',
+            'address',
+            'uint256',
+            'address',
+            'uint256',
+            'uint256',
+          ],
+          [
+            `${chainId}-ERC20`,
+            withdrawal.toAddress,
+            value,
+            token.contractAddress,
+            expireTime,
+            sequenceId,
+          ],
+        );
+        operationHash = ethers.keccak256(encoded);
+      }
+
+      this.logger.log(
+        `Withdrawal ${withdrawalId}: operationHash=${operationHash}, seqId=${sequenceId}, expire=${expireTime}`,
+      );
+
+      // Sign the operationHash via Key Vault (platform key).
+      // The contract applies "\x19Ethereum Signed Message:\n32" prefix before ecrecover,
+      // so we must sign the prefixed hash (since Key Vault uses raw ECDSA sign).
+      const prefixedHash = ethers.solidityPackedKeccak256(
+        ['string', 'bytes32'],
+        ['\x19Ethereum Signed Message:\n32', operationHash],
+      );
+
+      const signResult = await this.signViaKeyVault(
+        clientId,
+        prefixedHash,
+      );
+
+      this.logger.log(
+        `Withdrawal ${withdrawalId}: signed by platform key ${signResult.address}`,
+      );
+
+      // Build calldata for the contract call
+      let txData: string;
+      if (token.isNative) {
+        txData = walletContract.interface.encodeFunctionData(
+          'sendMultiSig',
+          [
+            withdrawal.toAddress,
+            value,
+            '0x',
+            expireTime,
+            sequenceId,
+            signResult.signature,
+          ],
+        );
+      } else {
+        txData = walletContract.interface.encodeFunctionData(
+          'sendMultiSigToken',
+          [
+            withdrawal.toAddress,
+            value,
+            token.contractAddress,
+            expireTime,
+            sequenceId,
+            signResult.signature,
+          ],
+        );
+      }
+
+      // Get gas tank private key for signing the outer transaction
+      const gasTankKey = await this.getGasTankPrivateKey(
+        clientId,
+        chainId,
+      );
+
+      let txHash: string;
+      const submittedAt = new Date();
+
+      try {
+        const gasTankSigner = new ethers.Wallet(
+          gasTankKey.privateKeyHex,
+          provider,
+        );
+
+        const tx = await gasTankSigner.sendTransaction({
+          to: hotWallet.address,
+          data: txData,
+        });
+
+        txHash = tx.hash;
+      } finally {
+        // Zero private key from memory immediately
+        gasTankKey.zero();
+      }
+
+      this.logger.log(
+        `Withdrawal ${withdrawalId} broadcast: txHash=${txHash}`,
+      );
+
+      // Update withdrawal: approved -> broadcasting
+      await this.prisma.$executeRaw`
+        UPDATE cvh_transactions.withdrawals
+        SET status = 'broadcasting', tx_hash = ${txHash}, sequence_id = ${sequenceId}, submitted_at = ${submittedAt}
+        WHERE id = ${BigInt(withdrawalId)}
+      `;
+
+      // Enqueue confirmation tracking job
+      await this.confirmQueue.add(
+        'track-confirmation',
+        {
+          withdrawalId,
+          txHash,
+          chainId,
+        } as WithdrawalConfirmJobData,
+        {
+          jobId: `confirm-withdrawal-${withdrawalId}`,
+          delay: 15_000, // Wait 15s before first check
+          attempts: 60,
+          backoff: { type: 'fixed', delay: 15_000 },
+        },
+      );
+
+      // Publish broadcasting event
+      await this.redis.publishToStream('withdrawals:broadcasting', {
+        withdrawalId,
+        clientId: clientId.toString(),
+        chainId: chainId.toString(),
+        txHash,
+        toAddress: withdrawal.toAddress,
+        amount: withdrawal.amount,
+        amountRaw: withdrawal.amountRaw,
+        sequenceId: sequenceId.toString(),
+        timestamp: submittedAt.toISOString(),
+      });
+
+      this.evmProvider.reportSuccess(chainId);
+
+      return {
+        withdrawalId,
+        txHash,
+        sequenceId,
+        status: 'broadcasting',
+      };
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      const attemptsMade = job.attemptsMade + 1;
+      const maxAttempts = job.opts?.attempts ?? 3;
+      const isFinalAttempt = attemptsMade >= maxAttempts;
+
+      this.logger.error(
+        `Withdrawal ${withdrawalId} execution failed (attempt ${attemptsMade}/${maxAttempts}): ${msg}`,
+      );
+
+      this.evmProvider.reportFailure(chainId);
+
+      if (isFinalAttempt) {
+        // Final attempt exhausted: mark withdrawal as failed
+        await this.prisma.$executeRaw`
+          UPDATE cvh_transactions.withdrawals SET status = 'failed' WHERE id = ${BigInt(withdrawalId)}
+        `;
+
+        // Publish failure event with rich traceability
+        await this.redis.publishToStream('withdrawals:failed', {
+          withdrawalId,
+          clientId: clientId.toString(),
+          chainId: chainId.toString(),
+          toAddress: withdrawal.toAddress,
+          amount: withdrawal.amount,
+          error: msg,
+          attempts: attemptsMade.toString(),
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      throw error; // Re-throw so BullMQ can retry (if attempts remain)
+    }
+  }
+
+  /**
+   * Call Key Vault to sign operationHash with platform key.
+   */
+  private async signViaKeyVault(
+    clientId: number,
+    operationHash: string,
+  ): Promise<KeyVaultSignResponse> {
+    const url = `${this.keyVaultUrl}/keys/${clientId}/sign`;
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Internal-Service-Key': this.internalServiceKey,
+      },
+      body: JSON.stringify({
+        hash: operationHash,
+        keyType: 'platform',
+        requestedBy: 'withdrawal-worker',
+      }),
+    });
+
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(
+        `Key Vault sign failed (${res.status}): ${body}`,
+      );
+    }
+
+    return (await res.json()) as KeyVaultSignResponse;
+  }
+
+  /**
+   * Retrieve gas tank private key from Key Vault for transaction signing.
+   */
+  private async getGasTankPrivateKey(
+    clientId: number,
+    chainId: number,
+  ): Promise<{ privateKeyHex: string; zero: () => void }> {
+    const url = `${this.keyVaultUrl}/keys/${clientId}/decrypt-gas-tank`;
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Internal-Service-Key': this.internalServiceKey,
+      },
+      body: JSON.stringify({
+        chainId,
+        requestedBy: 'withdrawal-worker',
+      }),
+    });
+
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(
+        `Key Vault decrypt-gas-tank failed (${res.status}): ${body}`,
+      );
+    }
+
+    const data = (await res.json()) as GasTankDecryptResponse;
+
+    const keyBuffer = Buffer.from(
+      data.privateKey.replace(/^0x/, ''),
+      'hex',
+    );
+    const privateKeyHex = '0x' + keyBuffer.toString('hex');
+
+    return {
+      privateKeyHex,
+      zero: () => keyBuffer.fill(0),
+    };
+  }
+}
