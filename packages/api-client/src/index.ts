@@ -1,6 +1,6 @@
 // API client classes
 export { AdminApiClient } from './admin-api';
-export { ClientApiClient } from './client-api';
+export { ClientApiClient, type ClientAuthMode } from './client-api';
 export { AuthApiClient } from './auth-api';
 
 // DTO types

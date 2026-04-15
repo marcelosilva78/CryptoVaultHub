@@ -1,4 +1,4 @@
-import { ClientApiClient } from '@cvh/api-client';
+import { ClientApiClient, type ClientAuthMode } from '@cvh/api-client';
 
 /**
  * Base URL for the Client API.
@@ -49,9 +49,12 @@ export async function clientFetch<T = any>(
 
 /**
  * Create a ClientApiClient instance (for use with @cvh/api-client SDK).
+ *
+ * @param token - JWT token or API key
+ * @param authMode - 'jwt', 'apikey', or 'auto' (default: 'auto' detects based on token format)
  */
-export function getClientApi(apiKey: string) {
-  return new ClientApiClient(CLIENT_API, apiKey);
+export function getClientApi(token: string, authMode: ClientAuthMode = 'auto') {
+  return new ClientApiClient(CLIENT_API, token, authMode);
 }
 
 export { CLIENT_API as API_URL };

@@ -161,6 +161,7 @@ export function ClientAuthProvider({ children }: { children: ReactNode }) {
     }
     const data = await res.json();
     localStorage.setItem('cvh_client_token', data.accessToken);
+    document.cookie = `cvh_client_token=${data.accessToken}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
     setUser(data.user);
   };
 

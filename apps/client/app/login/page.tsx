@@ -127,7 +127,6 @@ export default function ClientLoginPage() {
       if (result.requires2FA) {
         setShow2FA(true);
       } else {
-        document.cookie = "cvh_client_token=mock-jwt-token; path=/";
         router.push("/");
       }
     } catch {
@@ -144,7 +143,6 @@ export default function ClientLoginPage() {
 
     try {
       await loginWithApiKey(apiKey);
-      document.cookie = "cvh_client_token=mock-api-key-token; path=/";
       router.push("/");
     } catch {
       setError("Invalid API key. Please check and try again.");
@@ -160,7 +158,6 @@ export default function ClientLoginPage() {
 
     try {
       await verify2FA(totpCode);
-      document.cookie = "cvh_client_token=mock-jwt-token; path=/";
       router.push("/");
     } catch {
       setError("Invalid 2FA code. Please try again.");

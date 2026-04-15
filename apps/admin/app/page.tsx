@@ -163,9 +163,11 @@ export default function DashboardPage() {
   const router = useRouter();
   const [loadingClients, setLoadingClients] = useState(true);
   const [loadingTxs, setLoadingTxs] = useState(true);
+  const [loadingBalance, setLoadingBalance] = useState(true);
   const [clients, setClients] = useState<ClientRecord[]>([]);
   const [transactions, setTransactions] = useState<RecentTx[]>([]);
   const [expandedTxIds, setExpandedTxIds] = useState<Set<string>>(new Set());
+  const [totalBalance, setTotalBalance] = useState<number>(0);
 
   function toggleExpand(id: string) {
     setExpandedTxIds((prev) => {
@@ -192,6 +194,21 @@ export default function DashboardPage() {
       })
       .catch(() => setTransactions([]))
       .finally(() => setLoadingTxs(false));
+
+    adminFetch("/dashboard/balance")
+      .then((data: any) => {
+        const bal = data?.totalBalance ?? data?.balance ?? data?.totalCustodyBalance;
+        if (typeof bal === "number") {
+          setTotalBalance(bal);
+        } else if (typeof bal === "string") {
+          const parsed = parseFloat(bal.replace(/,/g, ""));
+          setTotalBalance(isNaN(parsed) ? 0 : parsed);
+        }
+      })
+      .catch(() => {
+        /* Balance endpoint may not exist yet -- leave as 0 */
+      })
+      .finally(() => setLoadingBalance(false));
   }, []);
 
   const totalClients = clients.length;
@@ -211,7 +228,7 @@ export default function DashboardPage() {
 
       {/* ── Vault Meter ─────────────────────────────────────────── */}
       <div className="bg-surface-card border border-border-default rounded-card p-card-p pb-6 mb-section-gap">
-        <VaultMeter balance={0} loading={false} />
+        <VaultMeter balance={totalBalance} loading={loadingBalance} />
       </div>
 
       {/* ── Stat Cards ──────────────────────────────────────────── */}

@@ -193,11 +193,19 @@ export default function RegisterPage() {
       const data = await res.json();
 
       /* Store JWT tokens using the same pattern as the login page */
-      localStorage.setItem("cvh_client_token", data.tokens.accessToken);
-      if (data.tokens.refreshToken) {
-        localStorage.setItem("cvh_client_refresh", data.tokens.refreshToken);
+      const accessToken = data?.tokens?.accessToken ?? data?.accessToken;
+      const refreshToken = data?.tokens?.refreshToken ?? data?.refreshToken;
+
+      if (!accessToken) {
+        setFormError("Registration failed: no token received");
+        return;
       }
-      document.cookie = `cvh_client_token=${data.tokens.accessToken}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax${window.location.protocol === 'https:' ? '; Secure' : ''}`;
+
+      localStorage.setItem("cvh_client_token", accessToken);
+      if (refreshToken) {
+        localStorage.setItem("cvh_client_refresh", refreshToken);
+      }
+      document.cookie = `cvh_client_token=${accessToken}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax${window.location.protocol === 'https:' ? '; Secure' : ''}`;
 
       router.push("/setup");
     } catch {

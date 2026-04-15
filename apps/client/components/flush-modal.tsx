@@ -1,26 +1,35 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Badge } from "@/components/badge";
+import { clientFetch } from "@/lib/api";
+
+/* ── Types ───────────────────────────────────────────────────── */
+export interface FlushAddress {
+  id: number;
+  address: string;
+  externalId: string;
+  balance: string;
+}
 
 interface FlushModalProps {
   open: boolean;
   onClose: () => void;
+  /** Pre-supplied addresses. When omitted the modal fetches them from the API. */
+  addresses?: FlushAddress[];
+  /** Called when the user confirms the flush operation. */
+  onConfirm?: (params: {
+    operationType: "flush_tokens" | "sweep_native";
+    chainId: number;
+    tokenId?: string;
+    addresses: string[];
+    isDryRun: boolean;
+  }) => void;
 }
-
-// Mock deposit addresses
-const mockAddresses = [
-  { id: 1, address: "0x1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b", externalId: "user-001", balance: "1,250.00" },
-  { id: 2, address: "0x2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c", externalId: "user-002", balance: "3,400.00" },
-  { id: 3, address: "0x3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d", externalId: "user-003", balance: "890.50" },
-  { id: 4, address: "0x4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e", externalId: "user-004", balance: "0.00" },
-  { id: 5, address: "0x5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f", externalId: "user-005", balance: "12,100.00" },
-  { id: 6, address: "0x6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a", externalId: "user-006", balance: "670.25" },
-];
 
 type Step = 1 | 2 | 3;
 
-export function FlushModal({ open, onClose }: FlushModalProps) {
+export function FlushModal({ open, onClose, addresses: propAddresses, onConfirm }: FlushModalProps) {
   const [step, setStep] = useState<Step>(1);
   const [operationType, setOperationType] = useState<"flush_tokens" | "sweep_native">("flush_tokens");
   const [chainId, setChainId] = useState("56");
@@ -28,12 +37,42 @@ export function FlushModal({ open, onClose }: FlushModalProps) {
   const [selectedAddresses, setSelectedAddresses] = useState<number[]>([]);
   const [isDryRun, setIsDryRun] = useState(false);
 
+  /* ── Loaded addresses (from prop or API) ─────────────────── */
+  const [loadedAddresses, setLoadedAddresses] = useState<FlushAddress[]>([]);
+  const [loadingAddresses, setLoadingAddresses] = useState(false);
+  const [addressError, setAddressError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const addressList = propAddresses ?? loadedAddresses;
+
+  /* Fetch addresses from API when no prop addresses and modal is on step 2 */
+  useEffect(() => {
+    if (!open || propAddresses) return;
+
+    setLoadingAddresses(true);
+    setAddressError(null);
+
+    clientFetch<{ data?: FlushAddress[]; addresses?: FlushAddress[] }>(
+      `/v1/addresses?chainId=${chainId}&limit=200`,
+    )
+      .then((res) => {
+        const list = res.data ?? res.addresses ?? (Array.isArray(res) ? res : []);
+        setLoadedAddresses(list as FlushAddress[]);
+      })
+      .catch((err) => {
+        setAddressError(err.message || "Failed to load addresses");
+      })
+      .finally(() => setLoadingAddresses(false));
+  }, [open, chainId, propAddresses]);
+
   if (!open) return null;
 
   const handleClose = () => {
     setStep(1);
     setSelectedAddresses([]);
     setIsDryRun(false);
+    setSubmitError(null);
     onClose();
   };
 
@@ -44,18 +83,78 @@ export function FlushModal({ open, onClose }: FlushModalProps) {
   };
 
   const selectAll = () => {
-    if (selectedAddresses.length === mockAddresses.length) {
+    if (selectedAddresses.length === addressList.length) {
       setSelectedAddresses([]);
     } else {
-      setSelectedAddresses(mockAddresses.map((a) => a.id));
+      setSelectedAddresses(addressList.map((a) => a.id));
     }
   };
 
-  const selectedTotal = mockAddresses
+  const selectedTotal = addressList
     .filter((a) => selectedAddresses.includes(a.id))
-    .reduce((sum, a) => sum + parseFloat(a.balance.replace(/,/g, "")), 0);
+    .reduce((sum, a) => sum + parseFloat((a.balance || "0").replace(/,/g, "")), 0);
 
   const estimatedGas = selectedAddresses.length * 0.0005;
+
+  const handleConfirm = async () => {
+    const selectedAddrs = addressList
+      .filter((a) => selectedAddresses.includes(a.id))
+      .map((a) => a.address);
+
+    if (onConfirm) {
+      onConfirm({
+        operationType,
+        chainId: Number(chainId),
+        tokenId: operationType === "flush_tokens" ? tokenId : undefined,
+        addresses: selectedAddrs,
+        isDryRun,
+      });
+      handleClose();
+      return;
+    }
+
+    /* Default: call the backend directly */
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      if (isDryRun) {
+        await clientFetch("/v2/flush/dry-run", {
+          method: "POST",
+          body: JSON.stringify({
+            chainId: Number(chainId),
+            addresses: selectedAddrs,
+            tokenId: operationType === "flush_tokens" ? tokenId : undefined,
+            walletId: "default",
+            operationType,
+          }),
+        });
+      } else if (operationType === "flush_tokens") {
+        await clientFetch("/v2/flush/tokens", {
+          method: "POST",
+          body: JSON.stringify({
+            chainId: Number(chainId),
+            addresses: selectedAddrs,
+            tokenId,
+            walletId: "default",
+          }),
+        });
+      } else {
+        await clientFetch("/v2/flush/sweep-native", {
+          method: "POST",
+          body: JSON.stringify({
+            chainId: Number(chainId),
+            addresses: selectedAddrs,
+            walletId: "default",
+          }),
+        });
+      }
+      handleClose();
+    } catch (err: any) {
+      setSubmitError(err.message || "Flush operation failed");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <div
@@ -181,66 +280,103 @@ export function FlushModal({ open, onClose }: FlushModalProps) {
               <label className="text-caption font-semibold text-text-secondary uppercase tracking-[0.06em] font-display">
                 Select Deposit Addresses
               </label>
-              <button
-                onClick={selectAll}
-                className="text-micro font-semibold text-accent-primary cursor-pointer hover:underline font-display"
-              >
-                {selectedAddresses.length === mockAddresses.length
-                  ? "Deselect All"
-                  : "Select All"}
-              </button>
+              {addressList.length > 0 && (
+                <button
+                  onClick={selectAll}
+                  className="text-micro font-semibold text-accent-primary cursor-pointer hover:underline font-display"
+                >
+                  {selectedAddresses.length === addressList.length
+                    ? "Deselect All"
+                    : "Select All"}
+                </button>
+              )}
             </div>
 
-            <div className="border border-border-default rounded-input overflow-hidden max-h-[320px] overflow-y-auto">
-              {mockAddresses.map((addr) => {
-                const isSelected = selectedAddresses.includes(addr.id);
-                const hasBalance =
-                  parseFloat(addr.balance.replace(/,/g, "")) > 0;
-                return (
-                  <label
-                    key={addr.id}
-                    className={`flex items-center gap-3 px-3 py-2.5 border-b border-border-subtle cursor-pointer transition-colors duration-fast ${
-                      isSelected ? "bg-accent-subtle" : "hover:bg-surface-hover"
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={isSelected}
-                      onChange={() => toggleAddress(addr.id)}
-                      className="w-3.5 h-3.5 accent-[var(--accent-primary)] cursor-pointer"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="font-mono text-code text-accent-primary truncate">
-                        {addr.address}
-                      </div>
-                      <div className="text-micro text-text-muted font-display">
-                        {addr.externalId}
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div
-                        className={`font-mono text-code ${
-                          hasBalance
-                            ? "text-text-primary"
-                            : "text-text-muted"
-                        }`}
-                      >
-                        {addr.balance}
-                      </div>
-                      {!hasBalance && (
-                        <div className="text-micro text-text-muted font-display">
-                          empty
+            {loadingAddresses ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="w-5 h-5 border-2 border-accent-primary/30 border-t-accent-primary rounded-full animate-spin" />
+                <span className="ml-2 text-caption text-text-muted font-display">
+                  Loading addresses...
+                </span>
+              </div>
+            ) : addressError ? (
+              <div className="py-6 text-center">
+                <p className="text-caption text-status-error font-display mb-2">
+                  {addressError}
+                </p>
+                <button
+                  onClick={() => {
+                    setAddressError(null);
+                    setLoadingAddresses(true);
+                    clientFetch(`/v1/addresses?chainId=${chainId}&limit=200`)
+                      .then((res: any) => {
+                        const list = res.data ?? res.addresses ?? (Array.isArray(res) ? res : []);
+                        setLoadedAddresses(list);
+                      })
+                      .catch((err: any) => setAddressError(err.message || "Failed to load addresses"))
+                      .finally(() => setLoadingAddresses(false));
+                  }}
+                  className="text-micro font-semibold text-accent-primary hover:underline font-display"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : addressList.length === 0 ? (
+              <div className="py-6 text-center text-caption text-text-muted font-display">
+                No deposit addresses found for this chain.
+              </div>
+            ) : (
+              <div className="border border-border-default rounded-input overflow-hidden max-h-[320px] overflow-y-auto">
+                {addressList.map((addr) => {
+                  const isSelected = selectedAddresses.includes(addr.id);
+                  const hasBalance =
+                    parseFloat((addr.balance || "0").replace(/,/g, "")) > 0;
+                  return (
+                    <label
+                      key={addr.id}
+                      className={`flex items-center gap-3 px-3 py-2.5 border-b border-border-subtle cursor-pointer transition-colors duration-fast ${
+                        isSelected ? "bg-accent-subtle" : "hover:bg-surface-hover"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleAddress(addr.id)}
+                        className="w-3.5 h-3.5 accent-[var(--accent-primary)] cursor-pointer"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="font-mono text-code text-accent-primary truncate">
+                          {addr.address}
                         </div>
-                      )}
-                    </div>
-                  </label>
-                );
-              })}
-            </div>
+                        <div className="text-micro text-text-muted font-display">
+                          {addr.externalId}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div
+                          className={`font-mono text-code ${
+                            hasBalance
+                              ? "text-text-primary"
+                              : "text-text-muted"
+                          }`}
+                        >
+                          {addr.balance}
+                        </div>
+                        {!hasBalance && (
+                          <div className="text-micro text-text-muted font-display">
+                            empty
+                          </div>
+                        )}
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
 
             <div className="flex items-center justify-between mt-3 px-1">
               <span className="text-caption text-text-muted font-display">
-                {selectedAddresses.length} of {mockAddresses.length} selected
+                {selectedAddresses.length} of {addressList.length} selected
               </span>
               <Badge variant="accent">
                 Est. total: {selectedTotal.toLocaleString()}
@@ -268,6 +404,12 @@ export function FlushModal({ open, onClose }: FlushModalProps) {
         {/* Step 3: Preview & Confirm */}
         {step === 3 && (
           <div>
+            {submitError && (
+              <div className="mb-4 px-3 py-2.5 bg-status-error-subtle border border-status-error/25 rounded-card text-status-error text-caption font-display">
+                {submitError}
+              </div>
+            )}
+
             <div className="bg-surface-elevated rounded-input p-4 mb-4">
               <div className="text-caption font-semibold font-display mb-3 text-text-primary">
                 Operation Summary
@@ -347,15 +489,26 @@ export function FlushModal({ open, onClose }: FlushModalProps) {
             <div className="flex justify-between gap-2 mt-5">
               <button
                 onClick={() => setStep(2)}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-button font-display text-caption font-semibold cursor-pointer transition-all duration-fast bg-transparent text-text-secondary border border-border-default hover:border-accent-primary hover:text-text-primary"
+                disabled={submitting}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-button font-display text-caption font-semibold cursor-pointer transition-all duration-fast bg-transparent text-text-secondary border border-border-default hover:border-accent-primary hover:text-text-primary disabled:opacity-50"
               >
                 Back
               </button>
               <button
-                onClick={handleClose}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-button font-display text-caption font-semibold cursor-pointer transition-all duration-fast bg-accent-primary text-accent-text hover:bg-accent-hover"
+                onClick={handleConfirm}
+                disabled={submitting}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-button font-display text-caption font-semibold cursor-pointer transition-all duration-fast bg-accent-primary text-accent-text hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isDryRun ? "Run Simulation" : "Confirm Flush"}
+                {submitting ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-accent-text/30 border-t-accent-text rounded-full animate-spin" />
+                    Submitting...
+                  </>
+                ) : isDryRun ? (
+                  "Run Simulation"
+                ) : (
+                  "Confirm Flush"
+                )}
               </button>
             </div>
           </div>

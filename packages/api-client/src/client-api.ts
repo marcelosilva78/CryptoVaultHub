@@ -38,18 +38,35 @@ import type {
   WebhookDeadLetter,
 } from './types';
 
+export type ClientAuthMode = 'jwt' | 'apikey' | 'auto';
+
 export class ClientApiClient {
   constructor(
     private baseUrl: string,
     private apiKey: string,
+    private authMode: ClientAuthMode = 'auto',
   ) {}
+
+  private getAuthHeader(): Record<string, string> {
+    if (this.authMode === 'jwt') {
+      return { Authorization: `Bearer ${this.apiKey}` };
+    }
+    if (this.authMode === 'apikey') {
+      return { 'X-API-Key': this.apiKey };
+    }
+    // auto: detect based on token format (JWTs contain dots)
+    const isJwt = this.apiKey.includes('.');
+    return isJwt
+      ? { Authorization: `Bearer ${this.apiKey}` }
+      : { 'X-API-Key': this.apiKey };
+  }
 
   private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
     const res = await fetch(`${this.baseUrl}${path}`, {
       method,
       headers: {
         'Content-Type': 'application/json',
-        'X-API-Key': this.apiKey,
+        ...this.getAuthHeader(),
       },
       body: body ? JSON.stringify(body) : undefined,
     });
@@ -276,9 +293,7 @@ export class ClientApiClient {
   async downloadExport(id: string): Promise<Blob> {
     const res = await fetch(`${this.baseUrl}/client/v2/exports/${id}/download`, {
       method: 'GET',
-      headers: {
-        'X-API-Key': this.apiKey,
-      },
+      headers: this.getAuthHeader(),
     });
     if (!res.ok) {
       const text = await res.text().catch(() => '');
