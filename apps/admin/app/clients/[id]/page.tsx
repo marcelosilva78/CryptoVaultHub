@@ -404,8 +404,8 @@ function OverviewGasTanks({ clientId }: { clientId: string }) {
             <span className="text-caption text-text-muted font-mono">{tank.balance ?? "0"}</span>
           </div>
           <GasBar
-            balance={Number(tank.balance ?? 0)}
-            threshold={Number(tank.threshold ?? tank.minBalance ?? 0.1)}
+            percent={Math.min(100, (Number(tank.balance ?? 0) / Math.max(Number(tank.threshold ?? tank.minBalance ?? 0.1), 0.001)) * 100)}
+            status={Number(tank.balance ?? 0) < Number(tank.threshold ?? tank.minBalance ?? 0.1) ? "low" : "ok"}
           />
         </div>
       ))}
