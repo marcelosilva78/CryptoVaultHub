@@ -39,8 +39,9 @@ export async function POST(request: Request) {
 
   const response = NextResponse.json({ user: data.user });
 
+  // Middleware-readable cookie (for Next.js middleware route protection)
   response.cookies.set('cvh_admin_token', accessToken, {
-    httpOnly: true,
+    httpOnly: false,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
     maxAge: 60 * 60 * 24 * 7,
