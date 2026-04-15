@@ -96,9 +96,11 @@ export class PollingDetectorService extends WorkerHost implements OnModuleInit {
     if (allAddresses.length === 0) return;
 
     // Load client chain configs for this chain to check monitoring mode
-    const clientChainConfigs = await this.prisma.clientChainConfig.findMany({
-      where: { chainId, isActive: true },
-    });
+    const clientChainConfigs = await this.prisma.$queryRaw<any[]>`
+      SELECT client_id AS clientId, chain_id AS chainId, monitoring_mode AS monitoringMode
+      FROM cvh_admin.client_chain_config
+      WHERE chain_id = ${chainId} AND is_active = 1
+    `;
     const configMap = new Map<string, string>();
     for (const cfg of clientChainConfigs) {
       configMap.set(cfg.clientId.toString(), cfg.monitoringMode);

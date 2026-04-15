@@ -70,9 +70,12 @@ export class RealtimeDetectorService implements OnModuleInit, OnModuleDestroy {
     });
 
     // Load client chain configs to determine monitoring mode per client+chain
-    const clientChainConfigs = await this.prisma.clientChainConfig.findMany({
-      where: { isActive: true },
-    });
+    // Table is in cvh_admin (different DB), so use raw SQL
+    const clientChainConfigs = await this.prisma.$queryRaw<any[]>`
+      SELECT client_id AS clientId, chain_id AS chainId, monitoring_mode AS monitoringMode
+      FROM cvh_admin.client_chain_config
+      WHERE is_active = 1
+    `;
     const configMap = new Map<string, string>();
     for (const cfg of clientChainConfigs) {
       configMap.set(`${cfg.clientId}:${cfg.chainId}`, cfg.monitoringMode);
