@@ -38,7 +38,7 @@ contract CvhForwarderFactory is CloneFactory {
         bool _autoFlush721,
         bool _autoFlush1155
     ) external returns (address payable forwarder) {
-        bytes32 finalSalt = keccak256(abi.encodePacked(msg.sender, parent, feeAddress, salt));
+        bytes32 finalSalt = keccak256(abi.encode(msg.sender, parent, feeAddress, salt));
         forwarder = createClone(implementationAddress, finalSalt);
         CvhForwarder(payable(forwarder)).init(parent, feeAddress, _autoFlush721, _autoFlush1155);
         emit ForwarderCreated(forwarder, parent, feeAddress);
@@ -58,7 +58,7 @@ contract CvhForwarderFactory is CloneFactory {
         address feeAddress,
         bytes32 salt
     ) external view returns (address) {
-        bytes32 finalSalt = keccak256(abi.encodePacked(deployer, parent, feeAddress, salt));
+        bytes32 finalSalt = keccak256(abi.encode(deployer, parent, feeAddress, salt));
         return computeCloneAddress(implementationAddress, finalSalt);
     }
 }

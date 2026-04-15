@@ -7,6 +7,7 @@ import "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 import "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
 import "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 import "@openzeppelin/contracts/utils/introspection/IERC165.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "./interfaces/IERC20.sol";
 import "./TransferHelper.sol";
 
@@ -14,7 +15,7 @@ import "./TransferHelper.sol";
  * @title CvhForwarder
  * @notice Deposit address contract that auto-forwards ETH to the parent wallet
  */
-contract CvhForwarder is IERC721Receiver, IERC1155Receiver, ERC165 {
+contract CvhForwarder is IERC721Receiver, IERC1155Receiver, ERC165, ReentrancyGuard {
     // --- Custom Errors ---
     error AlreadyInitialized();
     error ZeroParentAddress();
@@ -86,7 +87,7 @@ contract CvhForwarder is IERC721Receiver, IERC1155Receiver, ERC165 {
     /**
      * @notice Flush all ETH to parent (restricted to parent/feeAddress)
      */
-    function flush() external onlyAllowedAddress {
+    function flush() external onlyAllowedAddress nonReentrant {
         _flush();
     }
 
@@ -103,7 +104,7 @@ contract CvhForwarder is IERC721Receiver, IERC1155Receiver, ERC165 {
      * @notice Flush ERC20 tokens to parent
      * @param tokenContractAddress The ERC20 token address
      */
-    function flushTokens(address tokenContractAddress) external onlyAllowedAddress {
+    function flushTokens(address tokenContractAddress) external onlyAllowedAddress nonReentrant {
         ERC20Interface token = ERC20Interface(tokenContractAddress);
         uint256 balance = token.balanceOf(address(this));
         if (balance > 0) {
@@ -115,7 +116,7 @@ contract CvhForwarder is IERC721Receiver, IERC1155Receiver, ERC165 {
      * @notice Batch flush multiple ERC20 tokens to parent
      * @param tokenContractAddresses Array of ERC20 token addresses
      */
-    function batchFlushERC20Tokens(address[] calldata tokenContractAddresses) external onlyAllowedAddress {
+    function batchFlushERC20Tokens(address[] calldata tokenContractAddresses) external onlyAllowedAddress nonReentrant {
         if (tokenContractAddresses.length > 255) revert TooManyTokens();
         for (uint256 i = 0; i < tokenContractAddresses.length;) {
             ERC20Interface token = ERC20Interface(tokenContractAddresses[i]);
@@ -199,7 +200,7 @@ contract CvhForwarder is IERC721Receiver, IERC1155Receiver, ERC165 {
         address,
         uint256 tokenId,
         bytes calldata
-    ) external override returns (bytes4) {
+    ) external override nonReentrant returns (bytes4) {
         if (autoFlush721) {
             // Try to forward to parent. Use try/catch to check if parent supports IERC721Receiver
             try IERC165(parentAddress).supportsInterface(type(IERC721Receiver).interfaceId) returns (bool supported) {
@@ -221,7 +222,7 @@ contract CvhForwarder is IERC721Receiver, IERC1155Receiver, ERC165 {
         uint256 id,
         uint256 value,
         bytes calldata
-    ) external override returns (bytes4) {
+    ) external override nonReentrant returns (bytes4) {
         if (autoFlush1155) {
             IERC1155(msg.sender).safeTransferFrom(address(this), parentAddress, id, value, "");
         }
@@ -234,7 +235,7 @@ contract CvhForwarder is IERC721Receiver, IERC1155Receiver, ERC165 {
         uint256[] calldata ids,
         uint256[] calldata values,
         bytes calldata
-    ) external override returns (bytes4) {
+    ) external override nonReentrant returns (bytes4) {
         if (autoFlush1155) {
             IERC1155(msg.sender).safeBatchTransferFrom(address(this), parentAddress, ids, values, "");
         }

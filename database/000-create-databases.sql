@@ -46,12 +46,13 @@ CREATE DATABASE IF NOT EXISTS `cvh_exports`
 
 -- =============================================================================
 -- MySQL Users for new databases
+-- NOTE: Replace passwords before production deployment. See DEPLOYMENT_REPORT.md
 -- =============================================================================
 
-CREATE USER IF NOT EXISTS 'cvh_jobs'@'%' IDENTIFIED BY 'changeme';
+CREATE USER IF NOT EXISTS 'cvh_jobs'@'%' IDENTIFIED BY 'REPLACE_IN_PRODUCTION';
 GRANT SELECT, INSERT, UPDATE, DELETE ON `cvh_jobs`.* TO 'cvh_jobs'@'%';
 
-CREATE USER IF NOT EXISTS 'cvh_exports'@'%' IDENTIFIED BY 'changeme';
+CREATE USER IF NOT EXISTS 'cvh_exports'@'%' IDENTIFIED BY 'REPLACE_IN_PRODUCTION';
 GRANT SELECT, INSERT, UPDATE, DELETE ON `cvh_exports`.* TO 'cvh_exports'@'%';
 
 FLUSH PRIVILEGES;

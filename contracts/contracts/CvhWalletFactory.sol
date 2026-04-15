@@ -32,7 +32,7 @@ contract CvhWalletFactory is CloneFactory {
         address[] calldata allowedSigners,
         bytes32 salt
     ) external returns (address payable wallet) {
-        bytes32 finalSalt = keccak256(abi.encodePacked(msg.sender, allowedSigners, salt));
+        bytes32 finalSalt = keccak256(abi.encode(msg.sender, allowedSigners, salt));
         wallet = createClone(implementationAddress, finalSalt);
         CvhWalletSimple(wallet).init(allowedSigners);
         emit WalletCreated(wallet, allowedSigners);
@@ -50,7 +50,7 @@ contract CvhWalletFactory is CloneFactory {
         address[] calldata allowedSigners,
         bytes32 salt
     ) external view returns (address) {
-        bytes32 finalSalt = keccak256(abi.encodePacked(deployer, allowedSigners, salt));
+        bytes32 finalSalt = keccak256(abi.encode(deployer, allowedSigners, salt));
         return computeCloneAddress(implementationAddress, finalSalt);
     }
 }

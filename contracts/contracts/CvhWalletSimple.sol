@@ -36,6 +36,7 @@ contract CvhWalletSimple is IERC721Receiver, ERC1155Holder, ReentrancyGuard {
     error InvalidSValue();
     error InvalidSignature();
     error SignersMustBeDifferent();
+    error ZeroAddressRecipient();
 
     // --- Events ---
     event Deposited(address from, uint256 value, bytes data);
@@ -132,6 +133,8 @@ contract CvhWalletSimple is IERC721Receiver, ERC1155Holder, ReentrancyGuard {
         uint256 sequenceId,
         bytes calldata signature
     ) external onlySigner nonReentrant {
+        if (toAddress == address(0)) revert ZeroAddressRecipient();
+
         bytes32 operationHash = keccak256(
             abi.encode(
                 getNetworkId(),
@@ -172,6 +175,8 @@ contract CvhWalletSimple is IERC721Receiver, ERC1155Holder, ReentrancyGuard {
         uint256 sequenceId,
         bytes calldata signature
     ) external onlySigner nonReentrant {
+        if (toAddress == address(0)) revert ZeroAddressRecipient();
+
         bytes32 operationHash = keccak256(
             abi.encode(
                 getTokenNetworkId(),
