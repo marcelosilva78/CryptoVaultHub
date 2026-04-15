@@ -72,7 +72,7 @@ export class ExportManagementService {
       this.logger.error(
         `Failed to list admin exports: ${(err as Error).message}`,
       );
-      throw err;
+      return [];
     }
   }
 

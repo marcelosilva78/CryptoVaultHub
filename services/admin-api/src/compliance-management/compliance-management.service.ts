@@ -25,18 +25,23 @@ export class ComplianceManagementService {
     clientId?: string;
     severity?: string;
   }) {
-    const queryParams = new URLSearchParams();
-    queryParams.set('page', params.page.toString());
-    queryParams.set('limit', params.limit.toString());
-    if (params.status) queryParams.set('status', params.status);
-    if (params.clientId) queryParams.set('clientId', params.clientId);
-    if (params.severity) queryParams.set('severity', params.severity);
+    try {
+      const queryParams = new URLSearchParams();
+      queryParams.set('page', params.page.toString());
+      queryParams.set('limit', params.limit.toString());
+      if (params.status) queryParams.set('status', params.status);
+      if (params.clientId) queryParams.set('clientId', params.clientId);
+      if (params.severity) queryParams.set('severity', params.severity);
 
-    const response = await axios.get(
-      `${this.notificationServiceUrl}/compliance/alerts?${queryParams.toString()}`,
-      { timeout: 10000 },
-    );
-    return response.data;
+      const response = await axios.get(
+        `${this.notificationServiceUrl}/compliance/alerts?${queryParams.toString()}`,
+        { timeout: 10000 },
+      );
+      return response.data;
+    } catch (err) {
+      this.logger.warn(`Failed to load compliance alerts: ${(err as Error).message}`);
+      return { items: [], total: 0, page: params.page, limit: params.limit };
+    }
   }
 
   async forceSanctionsSync(adminUserId: string) {

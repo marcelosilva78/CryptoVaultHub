@@ -181,10 +181,10 @@ export default function JobsPage() {
     try {
       setError(null);
       const [statsRes, activeRes, failedRes, dlRes, bullmqRes] = await Promise.all([
-        adminFetch<{ success: boolean; stats: QueueStats }>("/job-management/stats"),
-        adminFetch<{ success: boolean; items: JobRow[]; total: number }>("/job-management/jobs?status=processing,queued&limit=50"),
-        adminFetch<{ success: boolean; items: JobRow[]; total: number }>("/job-management/jobs?status=failed&limit=50"),
-        adminFetch<{ success: boolean; items: DeadLetterRow[]; total: number }>("/job-management/dead-letter?limit=50"),
+        adminFetch<{ success: boolean; stats: QueueStats }>("/job-management/stats").catch(() => ({ success: false, stats: { totalJobs: 0, processingCount: 0, failedCount: 0, pendingCount: 0, avgDurationMs: 0, deadLetterCount: 0 } as QueueStats })),
+        adminFetch<{ success: boolean; items: JobRow[]; total: number }>("/job-management/jobs?status=processing,queued&limit=50").catch(() => ({ success: false, items: [] as JobRow[], total: 0 })),
+        adminFetch<{ success: boolean; items: JobRow[]; total: number }>("/job-management/jobs?status=failed&limit=50").catch(() => ({ success: false, items: [] as JobRow[], total: 0 })),
+        adminFetch<{ success: boolean; items: DeadLetterRow[]; total: number }>("/job-management/dead-letter?limit=50").catch(() => ({ success: false, items: [] as DeadLetterRow[], total: 0 })),
         adminFetch<{ success: boolean; queues: BullMQQueue[]; totals: BullMQStats["totals"] }>("/job-management/bullmq-stats").catch(() => null),
       ]);
       setStats(statsRes.stats);

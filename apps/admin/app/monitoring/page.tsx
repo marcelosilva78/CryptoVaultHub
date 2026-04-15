@@ -127,8 +127,8 @@ export default function MonitoringPage() {
     try {
       setError(null);
       const [healthData, queuesData] = await Promise.all([
-        adminFetch("/monitoring/health"),
-        adminFetch("/monitoring/queues"),
+        adminFetch("/monitoring/health").catch(() => ({ overall: "unknown", services: [] })),
+        adminFetch("/monitoring/queues").catch(() => ({ queues: [] })),
       ]);
       // health returns { success, overall, services: [...] }
       setOverallStatus(healthData?.overall ?? "--");
