@@ -16,6 +16,7 @@ import {
   ShieldCheck,
   LogOut,
   FileSearch,
+  FileText,
   Radio,
   Download,
   RefreshCw,
@@ -59,6 +60,7 @@ const navSections: Array<{ title: string; items: Array<{ label: string; href: st
       { label: "Monitoring", href: "/monitoring", icon: "Activity" },
       { label: "Job Queue", href: "/jobs", icon: "Cog" },
       { label: "Exports", href: "/exports", icon: "Download" },
+      { label: "Audit Log", href: "/audit-log", icon: "FileText" },
     ],
   },
 ];
@@ -76,6 +78,7 @@ const iconMap: Record<string, React.ElementType> = {
   Cog,
   ShieldCheck,
   FileSearch,
+  FileText,
   Radio,
   Download,
   RefreshCw,

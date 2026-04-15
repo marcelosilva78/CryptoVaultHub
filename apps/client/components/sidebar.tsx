@@ -14,6 +14,7 @@ import {
   Wand2,
   LogOut,
   Download,
+  Bell,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useClientAuth } from "@/lib/auth-context";
@@ -57,6 +58,7 @@ const navSections: NavSection[] = [
   {
     title: "Settings",
     items: [
+      { label: "Notifications", href: "/notifications", icon: Bell },
       { label: "Security", href: "/security", icon: ShieldCheck },
       { label: "Setup Wizard", href: "/setup", icon: Wand2 },
     ],

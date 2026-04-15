@@ -146,6 +146,7 @@ enum CustodyPolicy {
   full_custody
   co_sign
   self_managed
+  client_initiated
 }
 
 enum ProjectCustodyMode {

@@ -16,6 +16,7 @@ export enum CustodyPolicy {
   full_custody = 'full_custody',
   co_sign = 'co_sign',
   self_managed = 'self_managed',
+  client_initiated = 'client_initiated',
 }
 
 export class CreateClientDto {
