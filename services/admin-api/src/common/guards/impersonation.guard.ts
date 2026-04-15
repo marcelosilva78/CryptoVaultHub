@@ -3,6 +3,8 @@ import {
   CanActivate,
   ExecutionContext,
   Logger,
+  ForbiddenException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
@@ -54,11 +56,13 @@ export class ImpersonationGuard implements CanActivate {
         };
         request.impersonatedClientId = data.targetClientId;
       }
-    } catch (err) {
-      this.logger.warn(
-        `Impersonation session validation failed: ${(err as Error).message}`,
-      );
-      // Do not block the request — just don't attach impersonation context
+    } catch (err: any) {
+      const status = err?.response?.status ?? err?.status;
+      if (status && status >= 400 && status < 500) {
+        throw new ForbiddenException('Invalid or expired impersonation session');
+      }
+      this.logger.warn(`Impersonation validation unavailable: ${err.message}`);
+      throw new ServiceUnavailableException('Impersonation validation service unavailable');
     }
 
     return true;

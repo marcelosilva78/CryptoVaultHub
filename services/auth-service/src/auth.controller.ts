@@ -32,6 +32,7 @@ import {
   ValidateApiKeyDto,
 } from './common/dto/auth.dto';
 import { PrismaService } from './prisma/prisma.service';
+import { InternalServiceGuard } from './common/guards/internal-service.guard';
 
 @Controller('auth')
 export class AuthController {
@@ -291,6 +292,7 @@ export class AuthController {
   }
 
   @Post('api-keys/validate')
+  @UseGuards(InternalServiceGuard)
   @HttpCode(HttpStatus.OK)
   async validateApiKey(
     @Body() dto: ValidateApiKeyDto,

@@ -30,19 +30,19 @@ export class ImpersonationService {
     reason: string;
     ipAddress?: string;
   }) {
-    const rows = await this.prisma.$queryRaw<{ id: bigint; started_at: Date }[]>(
+    await this.prisma.$executeRaw(
       Prisma.sql`
         INSERT INTO impersonation_sessions
-          (admin_user_id, target_client_id, ip_address, started_at)
+          (admin_user_id, target_client_id, ip_address, reason, started_at)
         VALUES
-          (${data.adminUserId}, ${data.targetClientId}, ${data.ipAddress ?? null}, NOW())
+          (${data.adminUserId}, ${data.targetClientId}, ${data.ipAddress ?? null}, ${data.reason}, NOW())
       `,
     );
 
-    // MySQL INSERT via queryRaw returns the insert result; fetch the created row.
+    // Atomically fetch the row we just inserted using LAST_INSERT_ID()
     const [created] = await this.prisma.$queryRaw<
       { id: bigint; started_at: Date }[]
-    >(Prisma.sql`SELECT id, started_at FROM impersonation_sessions ORDER BY id DESC LIMIT 1`);
+    >(Prisma.sql`SELECT LAST_INSERT_ID() as id, NOW() as started_at`);
 
     this.logger.log(
       `Impersonation session started: admin=${data.adminUserId} client=${data.targetClientId}`,

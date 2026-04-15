@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
+import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../common/audit-log.service';
 
@@ -21,20 +21,22 @@ import { AuditLogService } from '../common/audit-log.service';
 @Injectable()
 export class RpcManagementService {
   private readonly logger = new Logger(RpcManagementService.name);
+  private readonly encryptionKey: Buffer;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
     private readonly auditLog: AuditLogService,
-  ) {}
+  ) {
+    const rawKey =
+      this.configService.get<string>('RPC_ENCRYPTION_KEY') ||
+      this.configService.get<string>('INTERNAL_SERVICE_KEY', '');
+    this.encryptionKey = scryptSync(rawKey, 'cvh-rpc-encryption-salt', 32);
+  }
 
   private encryptSecret(plaintext: string): string {
-    const key = Buffer.from(
-      this.configService.get<string>('INTERNAL_SERVICE_KEY', '').slice(0, 64),
-      'hex',
-    );
     const iv = randomBytes(16);
-    const cipher = createCipheriv('aes-256-gcm', key, iv);
+    const cipher = createCipheriv('aes-256-gcm', this.encryptionKey, iv);
     const encrypted = Buffer.concat([
       cipher.update(plaintext, 'utf8'),
       cipher.final(),
@@ -45,13 +47,9 @@ export class RpcManagementService {
 
   private decryptSecret(ciphertext: string): string {
     const [ivHex, tagHex, encHex] = ciphertext.split(':');
-    const key = Buffer.from(
-      this.configService.get<string>('INTERNAL_SERVICE_KEY', '').slice(0, 64),
-      'hex',
-    );
     const decipher = createDecipheriv(
       'aes-256-gcm',
-      key,
+      this.encryptionKey,
       Buffer.from(ivHex, 'hex'),
     );
     decipher.setAuthTag(Buffer.from(tagHex, 'hex'));

@@ -3,6 +3,7 @@ import {
   CanActivate,
   ExecutionContext,
   UnauthorizedException,
+  ForbiddenException,
   Logger,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -137,7 +138,7 @@ export class ApiKeyAuthGuard implements CanActivate {
         userScopes?.includes(scope),
       );
       if (!hasScope) {
-        throw new UnauthorizedException(
+        throw new ForbiddenException(
           `Insufficient scopes. Required: ${requiredScopes.join(' | ')}`,
         );
       }

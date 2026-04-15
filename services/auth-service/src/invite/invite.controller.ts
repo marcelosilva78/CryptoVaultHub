@@ -26,6 +26,6 @@ export class InviteController {
   @Get('invite/:token/validate')
   async validate(@Param('token') token: string) {
     const invite = await this.inviteService.validateToken(token);
-    return { email: invite.email, valid: true };
+    return { valid: true, expiresAt: invite.expiresAt };
   }
 }

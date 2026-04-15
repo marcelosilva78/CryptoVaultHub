@@ -4,12 +4,14 @@ import {
   HttpException,
   HttpStatus,
   Logger,
+  OnModuleDestroy,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
 import { createHash, randomBytes } from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
+import Redis from 'ioredis';
 import { PrismaService } from '../prisma/prisma.service';
 
 export class TooManyRequestsException extends HttpException {
@@ -33,15 +35,10 @@ export interface TokenPair {
 }
 
 @Injectable()
-export class JwtAuthService {
+export class JwtAuthService implements OnModuleDestroy {
   private readonly logger = new Logger(JwtAuthService.name);
   private readonly refreshTokenTtlMs: number;
-
-  // In-memory rate limiting stores (use Redis in production for multi-instance)
-  private readonly loginAttemptsByEmail = new Map<string, { count: number; expiresAt: number }>();
-  private readonly loginAttemptsByIp = new Map<string, { count: number; expiresAt: number }>();
-  private readonly totpAttempts = new Map<string, { count: number; expiresAt: number }>();
-  private readonly accountLockouts = new Map<string, { count: number; lockedUntil: number }>();
+  private readonly redis: Redis;
 
   constructor(
     private readonly jwtService: JwtService,
@@ -57,6 +54,22 @@ export class JwtAuthService {
       60 *
       60 *
       1000;
+
+    this.redis = new Redis({
+      host: this.configService.get<string>('REDIS_HOST', 'localhost'),
+      port: parseInt(this.configService.get<string>('REDIS_PORT', '6379'), 10),
+      password: this.configService.get<string>('REDIS_PASSWORD') || undefined,
+      db: parseInt(this.configService.get<string>('REDIS_DB', '0'), 10),
+      keyPrefix: 'cvh:auth:ratelimit:',
+      lazyConnect: true,
+    });
+    this.redis.connect().catch((err) =>
+      this.logger.error(`Redis connection failed: ${err.message}`),
+    );
+  }
+
+  async onModuleDestroy() {
+    await this.redis.quit();
   }
 
   /**
@@ -64,64 +77,56 @@ export class JwtAuthService {
    * - Per-IP rate limit: 5 attempts per 5 minutes
    * - Per-email rate limit: 5 attempts per 5 minutes
    * - Account lockout after 10 failed attempts (15 min lockout)
+   *
+   * Uses Redis INCR + EXPIRE for multi-instance safe rate limiting.
    */
   async checkAndTrackLoginAttempt(email: string, ip: string): Promise<void> {
-    const now = Date.now();
-    const windowMs = 5 * 60 * 1000; // 5 minutes
+    const windowSec = 5 * 60; // 5 minutes
 
     // Check account lockout
-    const lockout = this.accountLockouts.get(email);
-    if (lockout && lockout.lockedUntil > now) {
-      const remainingSec = Math.ceil((lockout.lockedUntil - now) / 1000);
+    const lockoutTtl = await this.redis.ttl(`login:lockout:${email}`);
+    if (lockoutTtl > 0) {
       throw new TooManyRequestsException(
-        `Account temporarily locked. Try again in ${remainingSec} seconds.`,
+        `Account temporarily locked. Try again in ${lockoutTtl} seconds.`,
       );
     }
 
-    // Per-IP rate limit
-    const ipEntry = this.loginAttemptsByIp.get(ip);
-    if (ipEntry && ipEntry.expiresAt > now) {
-      if (ipEntry.count >= 5) {
-        throw new TooManyRequestsException('Too many login attempts from this IP. Try again later.');
-      }
-      ipEntry.count++;
-    } else {
-      this.loginAttemptsByIp.set(ip, { count: 1, expiresAt: now + windowMs });
+    // Per-IP rate limit (5 attempts per 5 minutes)
+    const ipCount = await this.redis.incr(`login:ip:${ip}`);
+    if (ipCount === 1) {
+      await this.redis.expire(`login:ip:${ip}`, windowSec);
+    }
+    if (ipCount > 5) {
+      throw new TooManyRequestsException('Too many login attempts from this IP. Try again later.');
     }
 
-    // Per-email rate limit
-    const emailEntry = this.loginAttemptsByEmail.get(email);
-    if (emailEntry && emailEntry.expiresAt > now) {
-      if (emailEntry.count >= 5) {
-        throw new TooManyRequestsException('Too many login attempts for this account. Try again later.');
-      }
-      emailEntry.count++;
-    } else {
-      this.loginAttemptsByEmail.set(email, { count: 1, expiresAt: now + windowMs });
+    // Per-email rate limit (5 attempts per 5 minutes)
+    const emailCount = await this.redis.incr(`login:email:${email}`);
+    if (emailCount === 1) {
+      await this.redis.expire(`login:email:${email}`, windowSec);
     }
-
-    // Track cumulative failures for lockout (10 failed = 15 min lock)
-    if (lockout && lockout.lockedUntil <= now) {
-      // Previous lockout expired, reset
-      this.accountLockouts.delete(email);
+    if (emailCount > 5) {
+      throw new TooManyRequestsException('Too many login attempts for this account. Try again later.');
     }
   }
 
   /**
    * Record a failed login for account lockout tracking.
+   * After 10 cumulative failures within a 15-min window, lock the account for 15 min.
    */
-  private recordFailedLogin(email: string): void {
-    const now = Date.now();
-    const lockoutDurationMs = 15 * 60 * 1000; // 15 minutes
-    const entry = this.accountLockouts.get(email);
-    if (entry) {
-      entry.count++;
-      if (entry.count >= 10) {
-        entry.lockedUntil = now + lockoutDurationMs;
-        this.logger.warn(`Account locked due to too many failed attempts: ${email}`);
-      }
-    } else {
-      this.accountLockouts.set(email, { count: 1, lockedUntil: 0 });
+  private async recordFailedLogin(email: string): Promise<void> {
+    const lockoutWindowSec = 15 * 60; // 15 minutes
+    const failKey = `login:failures:${email}`;
+
+    const failures = await this.redis.incr(failKey);
+    if (failures === 1) {
+      await this.redis.expire(failKey, lockoutWindowSec);
+    }
+
+    if (failures >= 10) {
+      await this.redis.set(`login:lockout:${email}`, '1', 'EX', lockoutWindowSec);
+      await this.redis.del(failKey);
+      this.logger.warn(`Account locked due to too many failed attempts: ${email}`);
     }
   }
 
@@ -129,27 +134,27 @@ export class JwtAuthService {
    * Reset login attempts on successful authentication.
    */
   async resetLoginAttempts(email: string, ip: string): Promise<void> {
-    this.loginAttemptsByEmail.delete(email);
-    this.loginAttemptsByIp.delete(ip);
-    this.accountLockouts.delete(email);
+    await this.redis.del(
+      `login:email:${email}`,
+      `login:ip:${ip}`,
+      `login:lockout:${email}`,
+      `login:failures:${email}`,
+    );
   }
 
   /**
    * C4: Per-user TOTP rate limit: 5 attempts per 5 minutes.
    */
   async checkTotpAttempt(userId: string): Promise<void> {
-    const now = Date.now();
-    const windowMs = 5 * 60 * 1000;
+    const windowSec = 5 * 60;
     const key = `totp:${userId}`;
 
-    const entry = this.totpAttempts.get(key);
-    if (entry && entry.expiresAt > now) {
-      if (entry.count >= 5) {
-        throw new TooManyRequestsException('Too many TOTP verification attempts. Try again later.');
-      }
-      entry.count++;
-    } else {
-      this.totpAttempts.set(key, { count: 1, expiresAt: now + windowMs });
+    const count = await this.redis.incr(key);
+    if (count === 1) {
+      await this.redis.expire(key, windowSec);
+    }
+    if (count > 5) {
+      throw new TooManyRequestsException('Too many TOTP verification attempts. Try again later.');
     }
   }
 
@@ -168,13 +173,13 @@ export class JwtAuthService {
     });
 
     if (!user || !user.isActive) {
-      this.recordFailedLogin(email);
+      await this.recordFailedLogin(email);
       throw new UnauthorizedException('Invalid credentials');
     }
 
     const passwordValid = await bcrypt.compare(password, user.passwordHash);
     if (!passwordValid) {
-      this.recordFailedLogin(email);
+      await this.recordFailedLogin(email);
       throw new UnauthorizedException('Invalid credentials');
     }
 
