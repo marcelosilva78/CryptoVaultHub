@@ -124,12 +124,6 @@ ALTER TABLE `key_vault_audit`
   MODIFY COLUMN `address` VARCHAR(100) NULL;
 
 -- =============================================================================
--- 14. cvh_auth.users
---     ISSUE: totp_secret column is VARCHAR(64) which is too small for encrypted
---            TOTP secrets. Widen to VARCHAR(300).
+-- 12. (Removed) Duplicate of section 3 — totp_secret VARCHAR(300) already
+--     applied above. Kept this comment for audit trail.
 -- =============================================================================
-
-USE `cvh_auth`;
-
-ALTER TABLE `users`
-  MODIFY COLUMN `totp_secret` VARCHAR(300) NULL;

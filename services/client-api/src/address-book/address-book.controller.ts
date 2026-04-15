@@ -8,6 +8,9 @@ import {
   Body,
   Query,
   Req,
+  Headers,
+  ForbiddenException,
+  Logger,
 } from '@nestjs/common';
 import { Request } from 'express';
 import {
@@ -17,6 +20,7 @@ import {
   ApiResponse,
   ApiParam,
   ApiBody,
+  ApiHeader,
 } from '@nestjs/swagger';
 import { ClientAuth } from '../common/decorators';
 import { AddressBookService } from './address-book.service';
@@ -25,18 +29,68 @@ import {
   UpdateAddressDto,
   ListAddressesQueryDto,
 } from '../common/dto/address-book.dto';
+import axios from 'axios';
 
 @ApiTags('Address Book')
 @ApiSecurity('ApiKey')
 @Controller('client/v1/addresses')
 export class AddressBookController {
-  constructor(private readonly addressBookService: AddressBookService) {}
+  private readonly logger = new Logger(AddressBookController.name);
+  private readonly authServiceUrl: string;
+
+  constructor(private readonly addressBookService: AddressBookService) {
+    this.authServiceUrl =
+      process.env.AUTH_SERVICE_URL || 'http://localhost:3003';
+  }
+
+  /**
+   * Verify a TOTP code against the auth-service.
+   * The caller must supply the code via the `X-2FA-Code` header.
+   */
+  private async verify2fa(req: Request): Promise<void> {
+    const totpCode =
+      req.headers['x-2fa-code'] as string | undefined;
+
+    if (!totpCode) {
+      throw new ForbiddenException(
+        '2FA verification required. Provide a valid TOTP code in the X-2FA-Code header.',
+      );
+    }
+
+    const token = req.headers.authorization;
+    try {
+      const { data } = await axios.post(
+        `${this.authServiceUrl}/auth/2fa/verify`,
+        { code: totpCode },
+        {
+          headers: {
+            Authorization: token || '',
+            'X-Internal-Service-Key':
+              process.env.INTERNAL_SERVICE_KEY || '',
+          },
+          timeout: 5000,
+        },
+      );
+      if (!data?.success) {
+        throw new ForbiddenException('2FA verification failed');
+      }
+    } catch (error: any) {
+      if (error instanceof ForbiddenException) throw error;
+      this.logger.warn(`2FA verification failed: ${error.message}`);
+      throw new ForbiddenException(
+        '2FA verification required',
+      );
+    }
+  }
 
   @Post()
   @ClientAuth('write')
   @ApiOperation({
     summary: 'Add a whitelisted address',
     description: `Adds a new address to the client's whitelisted address book. Only whitelisted addresses can be used as withdrawal destinations. This is a critical security feature that prevents unauthorized fund transfers.
+
+**2FA Requirement:**
+This endpoint requires a valid TOTP code in the \`X-2FA-Code\` header. The code is verified against the auth-service before the address is added.
 
 **24-Hour Cooldown Period:**
 Newly added addresses enter a mandatory 24-hour cooldown period. During this window, the address cannot be used as a withdrawal destination. This protects against scenarios where an attacker gains temporary access to the API key and attempts to add their own address for immediate withdrawal.
@@ -51,6 +105,12 @@ Newly added addresses enter a mandatory 24-hour cooldown period. During this win
 - Adding an address that was previously \`disabled\` creates a new entry with a fresh 24-hour cooldown
 
 **Required scope:** \`write\``,
+  })
+  @ApiHeader({
+    name: 'X-2FA-Code',
+    description: 'TOTP two-factor authentication code (6 digits)',
+    required: true,
+    example: '123456',
   })
   @ApiBody({
     type: AddAddressDto,
@@ -104,6 +164,7 @@ Newly added addresses enter a mandatory 24-hour cooldown period. During this win
   @ApiResponse({ status: 403, description: 'API key does not have the `write` scope.' })
   @ApiResponse({ status: 409, description: 'Address+chain combination already exists and is active or in cooldown.' })
   async addAddress(@Body() dto: AddAddressDto, @Req() req: Request) {
+    await this.verify2fa(req);
     const clientId = (req as any).clientId;
     const result = await this.addressBookService.addAddress(clientId, dto);
     return { success: true, ...result };
@@ -253,6 +314,9 @@ Newly added addresses enter a mandatory 24-hour cooldown period. During this win
     summary: 'Disable a whitelisted address',
     description: `Disables a whitelisted address, preventing it from being used as a withdrawal destination. This is a soft delete — the address record is retained for audit purposes but its status changes to \`disabled\`.
 
+**2FA Requirement:**
+This endpoint requires a valid TOTP code in the \`X-2FA-Code\` header.
+
 **After disabling:**
 - The address can no longer be used as a withdrawal destination
 - In-flight withdrawals to this address (already submitted) are NOT affected
@@ -260,6 +324,12 @@ Newly added addresses enter a mandatory 24-hour cooldown period. During this win
 - Disabling an address in \`cooldown\` status is also permitted
 
 **Required scope:** \`write\``,
+  })
+  @ApiHeader({
+    name: 'X-2FA-Code',
+    description: 'TOTP two-factor authentication code (6 digits)',
+    required: true,
+    example: '123456',
   })
   @ApiParam({
     name: 'id',
@@ -282,6 +352,7 @@ Newly added addresses enter a mandatory 24-hour cooldown period. During this win
   @ApiResponse({ status: 403, description: 'API key does not have the `write` scope.' })
   @ApiResponse({ status: 404, description: 'Address not found, already disabled, or does not belong to the authenticated client.' })
   async disableAddress(@Param('id') id: string, @Req() req: Request) {
+    await this.verify2fa(req);
     const clientId = (req as any).clientId;
     await this.addressBookService.disableAddress(clientId, id);
     return { success: true, message: 'Address disabled' };
