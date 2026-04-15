@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
+import { MetricsModule, StructuredLoggerModule } from '@cvh/config';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuditModule } from './audit/audit.module';
 import { EncryptionModule } from './encryption/encryption.module';
@@ -16,6 +17,8 @@ import { HealthController } from './common/health.controller';
       isGlobal: true,
       envFilePath: ['.env', '../../.env'],
     }),
+    MetricsModule,
+    StructuredLoggerModule,
     PrismaModule,
     AuditModule,
     EncryptionModule,
