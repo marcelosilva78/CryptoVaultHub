@@ -23,6 +23,7 @@ interface Client {
   custodyPolicy?: string;
   deletionScheduledFor?: string | null;
   deletionRequestedAt?: string | null;
+  projectCount?: number;
 }
 
 /* ─── CreateClientModal ────────────────────────────────────────────────────── */
@@ -282,6 +283,7 @@ export default function ClientsPage() {
         headers={[
           "Client",
           "Tier",
+          "Projects",
           "Chains",
           "Forwarders",
           "Volume 24h",
@@ -310,7 +312,7 @@ export default function ClientsPage() {
       >
         {loading && (
           <tr>
-            <td colSpan={8} className="px-4 py-3 border-b border-border-subtle">
+            <td colSpan={9} className="px-4 py-3 border-b border-border-subtle">
               <div className="flex items-center justify-center gap-2 py-6 text-text-muted text-caption font-display">
                 <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
                 Loading clients…
@@ -320,7 +322,7 @@ export default function ClientsPage() {
         )}
         {!loading && error && (
           <tr>
-            <td colSpan={8} className="px-4 py-3 border-b border-border-subtle">
+            <td colSpan={9} className="px-4 py-3 border-b border-border-subtle">
               <div className="py-6 text-center text-status-error text-caption font-display">
                 Failed to load clients: {error}
               </div>
@@ -329,7 +331,7 @@ export default function ClientsPage() {
         )}
         {!loading && !error && clients.length === 0 && (
           <tr>
-            <td colSpan={8} className="px-4 py-3 border-b border-border-subtle">
+            <td colSpan={9} className="px-4 py-3 border-b border-border-subtle">
               <div className="py-6 text-center text-text-muted text-caption font-display">
                 No clients found.
               </div>
@@ -368,6 +370,7 @@ export default function ClientsPage() {
               <TableCell>
                 <Badge variant="accent">{tierName}</Badge>
               </TableCell>
+              <TableCell mono>{client.projectCount ?? 0}</TableCell>
               <TableCell>—</TableCell>
               <TableCell mono>—</TableCell>
               <TableCell mono>—</TableCell>

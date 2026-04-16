@@ -340,6 +340,25 @@ Results are ordered by creation date (newest first). The response includes pagin
     return { success: true, keys };
   }
 
+  @Get(':id/projects')
+  @AdminAuth('super_admin', 'admin', 'viewer')
+  @ApiOperation({ summary: 'Get projects for a client' })
+  async getProjects(@Param('id', ParseIntPipe) id: number) {
+    try { return { success: true, projects: await this.clientService.getClientSubResource(id, 'projects') }; }
+    catch { return { success: true, projects: [] }; }
+  }
+
+  @Get(':id/projects/:projectId')
+  @AdminAuth('super_admin', 'admin', 'viewer')
+  @ApiOperation({ summary: 'Get project chain deployment details' })
+  async getProjectDetail(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('projectId', ParseIntPipe) projectId: number,
+  ) {
+    try { return { success: true, chains: await this.clientService.getProjectChains(projectId) }; }
+    catch { return { success: true, chains: [] }; }
+  }
+
   @Get(':id/wallets')
   @AdminAuth('super_admin', 'admin', 'viewer')
   @ApiOperation({ summary: 'Get wallets for a client' })

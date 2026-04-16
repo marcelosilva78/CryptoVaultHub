@@ -413,8 +413,151 @@ function OverviewGasTanks({ clientId }: { clientId: string }) {
   );
 }
 
+/* ─── Projects Tab ───────────────────────────────────────────────────────── */
+function ProjectsTab({ clientId, active }: { clientId: string; active: boolean }) {
+  const { data, loading, error } = useLazyTabData(
+    () => adminFetch(`/clients/${clientId}/projects`).then((r) => {
+      const list = Array.isArray(r) ? r : r?.projects ?? r?.items ?? r?.data ?? [];
+      return list as any[];
+    }),
+    active,
+  );
+
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [chainData, setChainData] = useState<Record<string, any[]>>({});
+  const [chainLoading, setChainLoading] = useState<Record<string, boolean>>({});
+
+  const toggleExpand = async (projectId: string) => {
+    if (expandedId === projectId) {
+      setExpandedId(null);
+      return;
+    }
+    setExpandedId(projectId);
+    if (chainData[projectId]) return; // already loaded
+    setChainLoading((prev) => ({ ...prev, [projectId]: true }));
+    try {
+      const res = await adminFetch(`/clients/${clientId}/projects/${projectId}`);
+      const chains = Array.isArray(res) ? res : res?.chains ?? [];
+      setChainData((prev) => ({ ...prev, [projectId]: chains }));
+    } catch {
+      setChainData((prev) => ({ ...prev, [projectId]: [] }));
+    } finally {
+      setChainLoading((prev) => ({ ...prev, [projectId]: false }));
+    }
+  };
+
+  if (loading) return <TabSpinner label="Loading projects..." />;
+  if (error) return <TabError message={`Failed to load projects: ${error}`} />;
+  if (!data || data.length === 0) return <TabEmpty label="No projects found for this client." />;
+
+  const deployStatusVariant = (s: string) =>
+    s === "ready" || s === "completed" ? "success" :
+    s === "failed" ? "error" : "warning";
+
+  const statusVariant = (s: string) =>
+    s === "active" ? "success" :
+    s === "suspended" ? "error" : "warning";
+
+  return (
+    <div className="space-y-3">
+      {data.map((project: any) => {
+        const pid = String(project.id);
+        const isExpanded = expandedId === pid;
+        const chains = chainData[pid] ?? [];
+        const isLoadingChains = chainLoading[pid] ?? false;
+        const settings = typeof project.settings === "string" ? (() => { try { return JSON.parse(project.settings); } catch { return {}; } })() : project.settings ?? {};
+
+        return (
+          <div key={pid} className="bg-surface-elevated rounded-card border border-border-subtle overflow-hidden">
+            {/* Project row */}
+            <button
+              onClick={() => toggleExpand(pid)}
+              className="w-full px-4 py-3 flex items-center gap-4 text-left hover:bg-surface-hover transition-colors duration-fast"
+            >
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-body font-semibold text-text-primary font-display truncate">
+                    {project.name}
+                  </span>
+                  {project.isDefault && (
+                    <Badge variant="accent" className="text-micro">Default</Badge>
+                  )}
+                </div>
+                <div className="text-caption text-text-muted font-mono mt-0.5">
+                  {project.slug ?? "—"}
+                </div>
+              </div>
+              <div className="flex items-center gap-3 flex-shrink-0">
+                <Badge variant={statusVariant(project.status ?? "unknown")} dot>
+                  {project.status ?? "unknown"}
+                </Badge>
+                <div className="text-caption text-text-muted font-display">
+                  {settings.custodyPolicy ?? "—"}
+                </div>
+                <div className="text-caption text-text-muted font-display">
+                  {project.createdAt ? new Date(project.createdAt).toLocaleDateString() : "—"}
+                </div>
+                <span className={cn(
+                  "text-caption text-text-muted transition-transform duration-fast",
+                  isExpanded && "rotate-180"
+                )}>
+                  &#9660;
+                </span>
+              </div>
+            </button>
+
+            {/* Expanded chain details */}
+            {isExpanded && (
+              <div className="border-t border-border-subtle px-4 py-3 bg-surface-card">
+                {isLoadingChains ? (
+                  <TabSpinner label="Loading chain deployments..." />
+                ) : chains.length === 0 ? (
+                  <div className="text-caption text-text-muted font-display py-2">
+                    No chain deployments found for this project.
+                  </div>
+                ) : (
+                  <DataTable headers={["Chain", "Deploy Status", "Hot Wallet", "Wallet Factory", "Forwarder Factory", "Completed"]}>
+                    {chains.map((chain: any, i: number) => (
+                      <TableRow key={chain.id ?? i}>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <ChainHexAvatar name={chain.chainName ?? String(chain.chainId ?? "?")} size={24} />
+                            <span className="font-display">{chain.chainName ?? chain.chainId ?? "—"}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={deployStatusVariant(chain.deployStatus ?? "unknown")} dot>
+                            {chain.deployStatus ?? "unknown"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell mono className="max-w-[160px] truncate">
+                          {chain.hotWalletAddress ?? "—"}
+                        </TableCell>
+                        <TableCell mono className="max-w-[160px] truncate">
+                          {chain.walletFactoryAddress ?? "—"}
+                        </TableCell>
+                        <TableCell mono className="max-w-[160px] truncate">
+                          {chain.forwarderFactoryAddress ?? "—"}
+                        </TableCell>
+                        <TableCell>
+                          {chain.deployCompletedAt ? new Date(chain.deployCompletedAt).toLocaleString() : "—"}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </DataTable>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 const tabs = [
   "Overview",
+  "Projects",
   "Wallets",
   "Forwarders",
   "Transactions",
@@ -1074,6 +1217,11 @@ export default function ClientDetailPage() {
             <OverviewGasTanks clientId={clientId} />
           </div>
         </div>
+      )}
+
+      {/* Tab: Projects */}
+      {activeTab === "Projects" && (
+        <ProjectsTab clientId={clientId} active={activeTab === "Projects"} />
       )}
 
       {/* Tab: Wallets */}

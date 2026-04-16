@@ -11,7 +11,7 @@ import axios from 'axios';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../common/audit-log.service';
 import { SettingsService } from '../settings/settings.service';
-import { CustodyPolicy, KytLevel } from '../generated/prisma-client';
+import { Prisma, CustodyPolicy, KytLevel } from '../generated/prisma-client';
 
 @Injectable()
 export class ClientManagementService {
@@ -119,8 +119,30 @@ export class ClientManagementService {
       this.prisma.client.count({ where }),
     ]);
 
+    // Fetch project counts for all returned clients in one query
+    let projectCounts: Record<string, number> = {};
+    if (items.length > 0) {
+      try {
+        const clientIds = items.map((c) => c.id);
+        const counts = await this.prisma.$queryRaw<Array<{ client_id: bigint; cnt: bigint }>>`
+          SELECT client_id, COUNT(*) AS cnt
+          FROM cvh_admin.projects
+          WHERE client_id IN (${Prisma.join(clientIds)})
+          GROUP BY client_id
+        `;
+        for (const row of counts) {
+          projectCounts[row.client_id.toString()] = Number(row.cnt);
+        }
+      } catch (err) {
+        this.logger.warn(`Failed to fetch project counts: ${(err as Error).message}`);
+      }
+    }
+
     return {
-      items: items.map((c) => this.serializeClient(c)),
+      items: items.map((c) => ({
+        ...this.serializeClient(c),
+        projectCount: projectCounts[c.id.toString()] ?? 0,
+      })),
       total,
       page: params.page,
       limit: params.limit,
@@ -318,6 +340,14 @@ export class ClientManagementService {
             FROM cvh_notifications.webhooks wh
             WHERE wh.client_id = ${clientId}
             ORDER BY wh.created_at DESC
+          `;
+        case 'projects':
+          return this.prisma.$queryRaw<any[]>`
+            SELECT p.id, p.name, p.slug, p.description, p.status, p.is_default AS isDefault,
+                   p.settings, p.created_at AS createdAt
+            FROM cvh_admin.projects p
+            WHERE p.client_id = ${clientId}
+            ORDER BY p.is_default DESC, p.created_at DESC
           `;
         case 'api-usage':
           return {
@@ -585,6 +615,24 @@ export class ClientManagementService {
     this.logger.log(`Client ${id} deletion cancelled, status restored to active`);
 
     return { status: 'active' };
+  }
+
+  async getProjectChains(projectId: number) {
+    try {
+      return await this.prisma.$queryRaw<any[]>`
+        SELECT pc.id, pc.chain_id AS chainId, c.name AS chainName,
+               pc.deploy_status AS deployStatus, pc.hot_wallet_address AS hotWalletAddress,
+               pc.wallet_factory_address AS walletFactoryAddress,
+               pc.forwarder_factory_address AS forwarderFactoryAddress,
+               pc.deploy_completed_at AS deployCompletedAt
+        FROM cvh_wallets.project_chains pc
+        LEFT JOIN cvh_admin.chains c ON c.chain_id = pc.chain_id
+        WHERE pc.project_id = ${BigInt(projectId)}
+      `;
+    } catch (err) {
+      this.logger.warn(`Failed to load chains for project ${projectId}: ${(err as Error).message}`);
+      return [];
+    }
   }
 
   private serializeClient(client: any) {
