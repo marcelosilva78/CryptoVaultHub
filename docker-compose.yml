@@ -244,7 +244,9 @@ services:
       - AUTH_SERVICE_URL=http://auth-service:3003
       - CORE_WALLET_SERVICE_URL=http://core-wallet-service:3004
       - KEY_VAULT_URL=http://key-vault-service:3005
+      - KEY_VAULT_SERVICE_URL=http://key-vault-service:3005
       - CHAIN_INDEXER_URL=http://chain-indexer-service:3006
+      - CHAIN_INDEXER_SERVICE_URL=http://chain-indexer-service:3006
       - NOTIFICATION_SERVICE_URL=http://notification-service:3007
       - CRON_WORKER_SERVICE_URL=http://cron-worker-service:3008
       - RPC_GATEWAY_URL=http://rpc-gateway-service:3009
@@ -292,6 +294,9 @@ services:
       - INTERNAL_SERVICE_KEY=${INTERNAL_SERVICE_KEY}
       - AUTH_SERVICE_URL=http://auth-service:3003
       - CORE_WALLET_SERVICE_URL=http://core-wallet-service:3004
+      - KEY_VAULT_SERVICE_URL=http://key-vault-service:3005
+      - CHAIN_INDEXER_SERVICE_URL=http://chain-indexer-service:3006
+      - NOTIFICATION_SERVICE_URL=http://notification-service:3007
       - CRON_WORKER_SERVICE_URL=http://cron-worker-service:3008
     depends_on:
       mysql:
