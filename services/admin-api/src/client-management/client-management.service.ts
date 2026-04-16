@@ -250,7 +250,8 @@ export class ClientManagementService {
       );
       // core-wallet returns wallets; extract key info
       const wallets = response.data?.wallets ?? response.data?.keys ?? [];
-      return wallets;
+      if (wallets.length > 0) return wallets;
+      // Wallets empty — fall through to query derived_keys directly
     } catch {
       // Fallback: query derived_keys directly from cvh_keyvault
       try {
