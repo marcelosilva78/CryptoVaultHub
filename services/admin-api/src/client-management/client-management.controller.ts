@@ -331,6 +331,14 @@ Results are ordered by creation date (newest first). The response includes pagin
     return { success: true, ...result };
   }
 
+  @Get(':id/keys')
+  @AdminAuth('super_admin', 'admin')
+  @ApiOperation({ summary: 'Get public keys for a client' })
+  async getKeys(@Param('id', ParseIntPipe) id: number) {
+    const keys = await this.clientService.getClientKeys(id);
+    return { success: true, keys };
+  }
+
   @Post(':id/invite')
   @AdminAuth('super_admin', 'admin')
   @HttpCode(HttpStatus.OK)

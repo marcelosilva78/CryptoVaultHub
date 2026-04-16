@@ -629,6 +629,7 @@ export default function ClientDetailPage() {
   const [tierModal, setTierModal] = useState(false);
   const [keysModal, setKeysModal] = useState(false);
   const [keysLoading, setKeysLoading] = useState(false);
+  const [generatedKeys, setGeneratedKeys] = useState<Array<{ keyType: string; address: string; publicKey: string; derivationPath: string }> | null>(null);
 
   const [client, setClient] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -716,17 +717,17 @@ export default function ClientDetailPage() {
         clientId={clientId}
       />
       <ConfirmationModal
-        open={keysModal}
+        open={keysModal && !generatedKeys}
         onClose={() => setKeysModal(false)}
         onConfirm={async () => {
           setKeysLoading(true);
           try {
-            await adminFetch(`/clients/${clientId}/generate-keys`, { method: "POST" });
-            setKeysModal(false);
+            const res = await adminFetch<{ success: boolean; keys: Array<{ keyType: string; address: string; publicKey: string; derivationPath: string }> }>(`/clients/${clientId}/generate-keys`, { method: "POST" });
+            setGeneratedKeys(res.keys ?? []);
             setReload(r => r + 1);
-            alert("Key generation started");
           } catch (err: any) {
             alert(err.message);
+            setKeysModal(false);
           } finally {
             setKeysLoading(false);
           }
@@ -736,6 +737,32 @@ export default function ClientDetailPage() {
         confirmLabel="Generate Keys"
         loading={keysLoading}
       />
+      {/* Keys Result Modal */}
+      {generatedKeys && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => { setGeneratedKeys(null); setKeysModal(false); }}>
+          <div className="bg-surface-primary rounded-card p-6 max-w-lg w-full shadow-lg" onClick={e => e.stopPropagation()}>
+            <h3 className="text-heading font-bold text-text-primary font-display mb-4">Keys Generated Successfully</h3>
+            <div className="space-y-3">
+              {generatedKeys.map((k, i) => (
+                <div key={i} className="bg-surface-elevated rounded-card p-3">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-caption font-semibold text-accent-primary font-display uppercase">{k.keyType}</span>
+                    <span className="text-micro text-text-muted font-mono">{k.derivationPath}</span>
+                  </div>
+                  <div className="text-caption text-text-primary font-mono break-all">{k.address}</div>
+                  <div className="text-micro text-text-muted font-mono break-all mt-1">{k.publicKey}</div>
+                </div>
+              ))}
+            </div>
+            <p className="text-micro text-text-muted mt-3">Private keys are stored encrypted in the Key Vault. Only public keys and addresses are shown.</p>
+            <div className="flex justify-end mt-4">
+              <button onClick={() => { setGeneratedKeys(null); setKeysModal(false); }} className="bg-accent-primary text-accent-text text-caption font-semibold px-4 py-2 rounded-button hover:bg-accent-hover transition-colors font-display">
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Header */}
       <div className="flex items-center justify-between mb-5">
@@ -789,7 +816,19 @@ export default function ClientDetailPage() {
             Change Tier
           </button>
           <button
-            onClick={() => setKeysModal(true)}
+            onClick={async () => {
+              // Try to fetch existing keys first
+              try {
+                const res = await adminFetch<{ success?: boolean; keys?: any[] }>(`/clients/${clientId}/keys`);
+                if (res.keys && res.keys.length > 0) {
+                  setGeneratedKeys(res.keys);
+                } else {
+                  setKeysModal(true);
+                }
+              } catch {
+                setKeysModal(true);
+              }
+            }}
             className="bg-accent-primary text-accent-text text-caption font-semibold px-3.5 py-1.5 rounded-button hover:bg-accent-hover transition-colors duration-fast font-display"
           >
             Manage Keys

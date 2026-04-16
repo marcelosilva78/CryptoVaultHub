@@ -236,6 +236,37 @@ export class ClientManagementService {
     }
   }
 
+  async getClientKeys(id: number) {
+    try {
+      const response = await axios.get(
+        `${this.keyVaultUrl}/wallets/${id}`,
+        {
+          timeout: 10000,
+          headers: {
+            'X-Internal-Service-Key':
+              this.configService.get<string>('INTERNAL_SERVICE_KEY', ''),
+          },
+        },
+      );
+      // core-wallet returns wallets; extract key info
+      const wallets = response.data?.wallets ?? response.data?.keys ?? [];
+      return wallets;
+    } catch {
+      // Fallback: query derived_keys directly from cvh_keyvault
+      try {
+        const keys = await this.prisma.$queryRaw<any[]>`
+          SELECT key_type AS keyType, address, public_key AS publicKey, derivation_path AS derivationPath, chain_scope AS chainScope
+          FROM cvh_keyvault.derived_keys
+          WHERE client_id = ${BigInt(id)} AND is_active = 1
+          ORDER BY key_type, chain_scope
+        `;
+        return keys;
+      } catch {
+        return [];
+      }
+    }
+  }
+
   async inviteClient(id: number, adminUserId: string, ipAddress?: string) {
     const client = await this.prisma.client.findUnique({
       where: { id: BigInt(id) },
