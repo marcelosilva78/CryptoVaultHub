@@ -57,7 +57,7 @@ export class KeyGenerationService {
 
     const mnemonicObj = ethers.Mnemonic.fromPhrase(mnemonic);
     let masterNode: ethers.HDNodeWallet | null =
-      ethers.HDNodeWallet.fromMnemonic(mnemonicObj);
+      ethers.HDNodeWallet.fromMnemonic(mnemonicObj, "");
 
     // Drop mnemonic string reference immediately — no longer needed after
     // deriving masterNode. This doesn't zero V8's interned copy but removes
@@ -176,7 +176,7 @@ export class KeyGenerationService {
 
     const mnemonicObj = ethers.Mnemonic.fromPhrase(mnemonic);
     let masterNode: ethers.HDNodeWallet | null =
-      ethers.HDNodeWallet.fromMnemonic(mnemonicObj);
+      ethers.HDNodeWallet.fromMnemonic(mnemonicObj, "");
 
     // Drop mnemonic string reference immediately (JS strings are immutable in V8;
     // we cannot zero them, but nulling removes the strong ref to aid GC)
