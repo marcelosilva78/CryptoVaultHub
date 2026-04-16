@@ -16,6 +16,8 @@ import {
   LogOut,
   Download,
   Bell,
+  FolderKanban,
+  Rocket,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useClientAuth } from "@/lib/auth-context";
@@ -42,6 +44,14 @@ const navSections: NavSection[] = [
     ],
   },
   {
+    title: "Projects",
+    items: [
+      { label: "All Projects", href: "/projects", icon: FolderKanban },
+      { label: "Deploy History", href: "/projects/deploys", icon: Rocket },
+      { label: "Setup Wizard", href: "/setup", icon: Wand2 },
+    ],
+  },
+  {
     title: "Operations",
     items: [
       { label: "Deposits", href: "/deposits", icon: ArrowDownToLine },
@@ -62,7 +72,6 @@ const navSections: NavSection[] = [
     items: [
       { label: "Notifications", href: "/notifications", icon: Bell },
       { label: "Security", href: "/security", icon: ShieldCheck },
-      { label: "Setup Wizard", href: "/setup", icon: Wand2 },
     ],
   },
 ];
