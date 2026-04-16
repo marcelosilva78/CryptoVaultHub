@@ -118,6 +118,7 @@ const isValid = signature === request.headers['x-cvh-signature'];
     .addTag('Flush', 'Sweep forwarder balances back to the hot wallet')
     .addTag('Address Groups', 'Manage logical groupings of deposit addresses')
     .addTag('Exports', 'Request and download data exports (CSV, XLSX, JSON)')
+    .addTag('Project Setup', 'Create projects, initialize keys, check gas, and deploy contracts')
     .addTag('Deploy Traces', 'Query on-chain deployment audit trail for contracts')
     .addTag('Tokens', 'Query available tokens across supported chains')
     .addTag('Health', 'Service health and token metadata endpoints')

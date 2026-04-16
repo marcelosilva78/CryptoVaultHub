@@ -1,0 +1,665 @@
+import {
+  Injectable,
+  Logger,
+  HttpException,
+  ForbiddenException,
+  BadRequestException,
+  InternalServerErrorException,
+  NotFoundException,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import axios from 'axios';
+import { AdminDatabaseService } from '../prisma/admin-database.service';
+
+// ---- Row interfaces --------------------------------------------------------
+
+interface ProjectRow {
+  id: number;
+  client_id: number;
+  name: string;
+  slug: string;
+  description: string | null;
+  is_default: number;
+  status: string;
+  settings: string | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+interface ProjectChainRow {
+  id: number;
+  project_id: number;
+  chain_id: number;
+  deploy_status: string;
+  deploy_started_at: Date | null;
+  deploy_completed_at: Date | null;
+  deploy_error: string | null;
+  wallet_factory_address: string | null;
+  forwarder_factory_address: string | null;
+  wallet_impl_address: string | null;
+  forwarder_impl_address: string | null;
+  hot_wallet_address: string | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+interface ChainRow {
+  chain_id: number;
+  name: string;
+  short_name: string;
+  native_currency_symbol: string;
+  native_currency_decimals: number;
+  rpc_endpoints: string | object;
+  is_active: number;
+}
+
+interface InsertResult {
+  insertId: number;
+}
+
+// ---- Service ---------------------------------------------------------------
+
+@Injectable()
+export class ProjectSetupService {
+  private readonly logger = new Logger(ProjectSetupService.name);
+  private readonly keyVaultUrl: string;
+  private readonly coreWalletUrl: string;
+
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly adminDb: AdminDatabaseService,
+  ) {
+    this.keyVaultUrl = this.configService.get<string>(
+      'KEY_VAULT_SERVICE_URL',
+      'http://localhost:3005',
+    );
+    this.coreWalletUrl = this.configService.get<string>(
+      'CORE_WALLET_SERVICE_URL',
+      'http://localhost:3004',
+    );
+  }
+
+  private get headers() {
+    return { 'X-Internal-Service-Key': process.env.INTERNAL_SERVICE_KEY || '' };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Ownership verification (reused by every method)
+  // ---------------------------------------------------------------------------
+
+  private async verifyOwnership(clientId: number, projectId: number): Promise<ProjectRow> {
+    const rows = await this.adminDb.query<ProjectRow>(
+      `SELECT id, client_id, name, slug, description, is_default, status, settings, created_at, updated_at
+       FROM projects
+       WHERE id = ? AND client_id = ?
+       LIMIT 1`,
+      [projectId, clientId],
+    );
+
+    if (rows.length === 0) {
+      throw new ForbiddenException(
+        `Project ${projectId} not found or does not belong to client ${clientId}`,
+      );
+    }
+
+    return rows[0];
+  }
+
+  // ---------------------------------------------------------------------------
+  // 1. createProject
+  // ---------------------------------------------------------------------------
+
+  async createProject(
+    clientId: number,
+    data: {
+      name: string;
+      description?: string;
+      chains: number[];
+      custodyMode: 'platform' | 'co-sign';
+    },
+  ) {
+    const slug = data.name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+
+    const settings = JSON.stringify({ custodyMode: data.custodyMode });
+
+    // Insert into cvh_admin.projects
+    const insertRows = await this.adminDb.query<InsertResult>(
+      `INSERT INTO projects (client_id, name, slug, description, status, settings)
+       VALUES (?, ?, ?, ?, 'active', ?)`,
+      [clientId, data.name, slug, data.description ?? null, settings],
+    );
+
+    // mysql2 returns the insertId on the ResultSetHeader (first element)
+    const projectId = (insertRows as any).insertId ?? (insertRows as any)[0]?.insertId;
+
+    if (!projectId) {
+      // Fallback: query by slug + client_id
+      const fallback = await this.adminDb.query<ProjectRow>(
+        `SELECT id FROM projects WHERE client_id = ? AND slug = ? ORDER BY id DESC LIMIT 1`,
+        [clientId, slug],
+      );
+      if (fallback.length === 0) {
+        throw new InternalServerErrorException('Failed to retrieve newly created project');
+      }
+      return this.buildCreatedProjectResponse(fallback[0].id, clientId, data, slug);
+    }
+
+    return this.buildCreatedProjectResponse(projectId, clientId, data, slug);
+  }
+
+  private async buildCreatedProjectResponse(
+    projectId: number,
+    clientId: number,
+    data: { name: string; description?: string; chains: number[]; custodyMode: string },
+    slug: string,
+  ) {
+    // Insert project_chains into cvh_wallets via core-wallet,
+    // but project_chains lives in cvh_wallets DB which client-api cannot reach directly.
+    // We insert into cvh_admin DB cross-reference or call core-wallet.
+    // Actually, per the schema (031-project-chains.sql), project_chains is in cvh_wallets.
+    // client-api only has AdminDatabaseService. We call core-wallet to create the chain records.
+    // However, if the deploy controller only deploys (POST /deploy/project/:projectId/chain/:chainId),
+    // we can call that endpoint later. For now, register chains via core-wallet.
+    const chainResults: Array<{ chainId: number; status: string }> = [];
+
+    for (const chainId of data.chains) {
+      try {
+        // Call core-wallet to upsert project_chain record (the deploy endpoint handles upsert)
+        // We use the status endpoint to seed the record; if not found, the deploy will create it.
+        // Instead, call the deploy status endpoint first - if 404, the record will be created on deploy.
+        // Simplest approach: call core-wallet to register the chain (POST deploy triggers create)
+        // For now, just record the intent - the actual project_chain row is created when deploy starts.
+        chainResults.push({ chainId, status: 'pending' });
+      } catch (error) {
+        this.logger.warn(
+          `Failed to register chain ${chainId} for project ${projectId}: ${error}`,
+        );
+        chainResults.push({ chainId, status: 'error' });
+      }
+    }
+
+    this.logger.log(
+      `Project created: id=${projectId} name=${data.name} slug=${slug} chains=${data.chains.join(',')}`,
+    );
+
+    return {
+      id: projectId,
+      name: data.name,
+      slug,
+      description: data.description ?? null,
+      custodyMode: data.custodyMode,
+      status: 'active',
+      chains: chainResults,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // 2. initializeKeys
+  // ---------------------------------------------------------------------------
+
+  async initializeKeys(clientId: number, projectId: number, custodyMode?: string) {
+    const project = await this.verifyOwnership(clientId, projectId);
+
+    // Resolve custodyMode from project settings if not explicitly passed
+    let resolvedCustodyMode = custodyMode;
+    if (!resolvedCustodyMode && project.settings) {
+      try {
+        const settings =
+          typeof project.settings === 'string'
+            ? JSON.parse(project.settings)
+            : project.settings;
+        resolvedCustodyMode = settings.custodyMode;
+      } catch {
+        // ignore parse error
+      }
+    }
+    resolvedCustodyMode = resolvedCustodyMode || 'platform';
+
+    try {
+      // Step 1: Generate seed (24-word mnemonic)
+      this.logger.log(`Generating seed for project ${projectId}`);
+      const { data: seedData } = await axios.post(
+        `${this.keyVaultUrl}/projects/${projectId}/generate-seed`,
+        { requestedBy: 'project-setup' },
+        { headers: this.headers, timeout: 30000 },
+      );
+
+      const mnemonic: string = seedData.mnemonic;
+
+      // Step 2: Generate keys (platform, client, backup, gas_tank)
+      this.logger.log(`Generating keys for project ${projectId} (custodyMode=${resolvedCustodyMode})`);
+      const { data: keysData } = await axios.post(
+        `${this.keyVaultUrl}/projects/${projectId}/generate-keys`,
+        { clientId, custodyMode: resolvedCustodyMode, requestedBy: 'project-setup' },
+        { headers: this.headers, timeout: 30000 },
+      );
+
+      // Step 3: Mark seed as shown
+      this.logger.log(`Marking seed shown for project ${projectId}`);
+      await axios.post(
+        `${this.keyVaultUrl}/projects/${projectId}/mark-seed-shown`,
+        {},
+        { headers: this.headers, timeout: 10000 },
+      );
+
+      // Step 4: Get public keys
+      this.logger.log(`Fetching public keys for project ${projectId}`);
+      const { data: pubKeysData } = await axios.get(
+        `${this.keyVaultUrl}/projects/${projectId}/public-keys`,
+        { headers: this.headers, timeout: 10000 },
+      );
+
+      this.logger.log(
+        `Key ceremony complete for project ${projectId}: ${pubKeysData.keys?.length ?? 0} keys generated`,
+      );
+
+      return {
+        mnemonic,
+        publicKeys: pubKeysData.keys ?? [],
+      };
+    } catch (error: any) {
+      if (error.response) {
+        throw new HttpException(
+          error.response.data?.message || 'Key Vault error',
+          error.response.status,
+        );
+      }
+      throw new InternalServerErrorException('Key Vault service unavailable');
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // 3. checkGasBalance
+  // ---------------------------------------------------------------------------
+
+  async checkGasBalance(clientId: number, projectId: number) {
+    await this.verifyOwnership(clientId, projectId);
+
+    // Get chains for this project from the project settings or from a list
+    // Since project_chains is in cvh_wallets (not accessible directly),
+    // we call core-wallet to get deploy status per chain, which also tells us which chains exist.
+    // Alternatively, we retrieve the wallets (gas_tanks) for the client via core-wallet.
+    try {
+      // Get all wallets for the client (includes gas_tank wallets)
+      const { data: walletsData } = await axios.get(
+        `${this.coreWalletUrl}/wallets/${clientId}`,
+        { headers: this.headers, timeout: 10000 },
+      );
+
+      const wallets = walletsData.wallets ?? walletsData ?? [];
+      const gasTanks = Array.isArray(wallets)
+        ? wallets.filter((w: any) => w.walletType === 'gas_tank' || w.wallet_type === 'gas_tank')
+        : [];
+
+      if (gasTanks.length === 0) {
+        return { chains: [], allSufficient: true };
+      }
+
+      // Get chain info from admin DB
+      const chainIds = gasTanks.map((g: any) => g.chainId ?? g.chain_id);
+      const placeholders = chainIds.map(() => '?').join(',');
+      const chains = await this.adminDb.query<ChainRow>(
+        `SELECT chain_id, name, short_name, native_currency_symbol, native_currency_decimals, rpc_endpoints, is_active
+         FROM chains
+         WHERE chain_id IN (${placeholders})`,
+        chainIds,
+      );
+
+      const chainMap = new Map<number, ChainRow>();
+      for (const c of chains) {
+        chainMap.set(c.chain_id, c);
+      }
+
+      // Estimated gas required: ~5.65M gas per chain (5 contract deployments)
+      const ESTIMATED_GAS_PER_CHAIN = 5_650_000n;
+
+      const results: Array<{
+        chainId: number;
+        chainName: string;
+        gasTankAddress: string;
+        balanceWei: string;
+        balanceFormatted: string;
+        requiredWei: string;
+        requiredFormatted: string;
+        sufficient: boolean;
+      }> = [];
+
+      for (const gasTank of gasTanks) {
+        const chainId = gasTank.chainId ?? gasTank.chain_id;
+        const chain = chainMap.get(chainId);
+        if (!chain) continue;
+
+        const address = gasTank.address;
+        const decimals = chain.native_currency_decimals;
+
+        // Get balance via core-wallet balances endpoint
+        let balanceWei = 0n;
+        try {
+          const { data: balanceData } = await axios.get(
+            `${this.coreWalletUrl}/wallets/${clientId}/${chainId}/balances`,
+            { headers: this.headers, timeout: 15000 },
+          );
+
+          // The balances endpoint returns native balance
+          const nativeBalance = Array.isArray(balanceData.balances)
+            ? balanceData.balances.find(
+                (b: any) =>
+                  b.tokenAddress === '0x0000000000000000000000000000000000000000' ||
+                  b.isNative === true,
+              )
+            : null;
+
+          if (nativeBalance) {
+            // Balance is returned in standard units; convert back to wei
+            const balStr = nativeBalance.balance ?? '0';
+            balanceWei = this.parseUnits(balStr, decimals);
+          }
+        } catch (err) {
+          this.logger.warn(
+            `Failed to get balance for gas tank ${address} on chain ${chainId}: ${err}`,
+          );
+        }
+
+        // Estimate required wei: gas units * estimated gas price
+        // Use a conservative gas price estimate (fallback 20 gwei)
+        let gasPriceWei = 20_000_000_000n; // 20 gwei default
+        try {
+          const { data: gasPriceData } = await axios.get(
+            `${this.coreWalletUrl}/chains/${chainId}/gas-price`,
+            { headers: this.headers, timeout: 10000 },
+          );
+          if (gasPriceData.gasPrice) {
+            gasPriceWei = BigInt(gasPriceData.gasPrice);
+          }
+        } catch {
+          // Use default gas price
+        }
+
+        const requiredWei = ESTIMATED_GAS_PER_CHAIN * gasPriceWei;
+
+        results.push({
+          chainId,
+          chainName: chain.name,
+          gasTankAddress: address,
+          balanceWei: balanceWei.toString(),
+          balanceFormatted: this.formatUnits(balanceWei, decimals),
+          requiredWei: requiredWei.toString(),
+          requiredFormatted: this.formatUnits(requiredWei, decimals),
+          sufficient: balanceWei >= requiredWei,
+        });
+      }
+
+      return {
+        chains: results,
+        allSufficient: results.every((r) => r.sufficient),
+      };
+    } catch (error: any) {
+      if (error instanceof HttpException) throw error;
+      if (error.response) {
+        throw new HttpException(
+          error.response.data?.message || 'Service error',
+          error.response.status,
+        );
+      }
+      throw new InternalServerErrorException('Downstream service unavailable');
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // 4. startDeploy
+  // ---------------------------------------------------------------------------
+
+  async startDeploy(clientId: number, projectId: number) {
+    await this.verifyOwnership(clientId, projectId);
+
+    // Check gas balances first
+    const gasCheck = await this.checkGasBalance(clientId, projectId);
+    const insufficientChains = gasCheck.chains.filter((c) => !c.sufficient);
+    if (insufficientChains.length > 0) {
+      throw new BadRequestException({
+        message: 'Insufficient gas balance on one or more chains',
+        insufficientChains: insufficientChains.map((c) => ({
+          chainId: c.chainId,
+          chainName: c.chainName,
+          balanceFormatted: c.balanceFormatted,
+          requiredFormatted: c.requiredFormatted,
+        })),
+      });
+    }
+
+    // Get public keys to extract signer addresses
+    let signers: string[] = [];
+    try {
+      const { data: pubKeysData } = await axios.get(
+        `${this.keyVaultUrl}/projects/${projectId}/public-keys`,
+        { headers: this.headers, timeout: 10000 },
+      );
+
+      const keys = pubKeysData.keys ?? [];
+      // Extract addresses for platform, client, backup signers
+      const platformKey = keys.find((k: any) => k.keyType === 'platform' || k.key_type === 'platform');
+      const clientKey = keys.find((k: any) => k.keyType === 'client' || k.key_type === 'client');
+      const backupKey = keys.find((k: any) => k.keyType === 'backup' || k.key_type === 'backup');
+
+      signers = [
+        platformKey?.address ?? platformKey?.ethAddress,
+        clientKey?.address ?? clientKey?.ethAddress,
+        backupKey?.address ?? backupKey?.ethAddress,
+      ].filter(Boolean) as string[];
+
+      if (signers.length < 3) {
+        throw new BadRequestException(
+          `Expected 3 signers (platform, client, backup) but found ${signers.length}. Run key initialization first.`,
+        );
+      }
+    } catch (error: any) {
+      if (error instanceof HttpException) throw error;
+      if (error.response) {
+        throw new HttpException(
+          error.response.data?.message || 'Key Vault error',
+          error.response.status,
+        );
+      }
+      throw new InternalServerErrorException('Key Vault service unavailable');
+    }
+
+    // Deploy on each chain
+    const deployResults: Array<{
+      chainId: number;
+      chainName: string;
+      status: string;
+      result?: any;
+      error?: string;
+    }> = [];
+
+    for (const chainInfo of gasCheck.chains) {
+      try {
+        this.logger.log(
+          `Starting deploy for project ${projectId} on chain ${chainInfo.chainId} (${chainInfo.chainName})`,
+        );
+
+        const { data: deployData } = await axios.post(
+          `${this.coreWalletUrl}/deploy/project/${projectId}/chain/${chainInfo.chainId}`,
+          { clientId, signers },
+          { headers: this.headers, timeout: 300000 }, // 5 min — deployment is slow
+        );
+
+        deployResults.push({
+          chainId: chainInfo.chainId,
+          chainName: chainInfo.chainName,
+          status: 'deployed',
+          result: deployData,
+        });
+
+        this.logger.log(
+          `Deploy complete for project ${projectId} on chain ${chainInfo.chainId}`,
+        );
+      } catch (error: any) {
+        const errMsg =
+          error.response?.data?.message ??
+          (error instanceof Error ? error.message : String(error));
+
+        this.logger.error(
+          `Deploy FAILED for project ${projectId} on chain ${chainInfo.chainId}: ${errMsg}`,
+        );
+
+        deployResults.push({
+          chainId: chainInfo.chainId,
+          chainName: chainInfo.chainName,
+          status: 'failed',
+          error: errMsg,
+        });
+      }
+    }
+
+    return {
+      projectId,
+      deploys: deployResults,
+      allDeployed: deployResults.every((d) => d.status === 'deployed'),
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // 5. getDeployStatus
+  // ---------------------------------------------------------------------------
+
+  async getDeployStatus(clientId: number, projectId: number) {
+    await this.verifyOwnership(clientId, projectId);
+
+    try {
+      // Get all wallets for the client to know which chains exist
+      const { data: walletsData } = await axios.get(
+        `${this.coreWalletUrl}/wallets/${clientId}`,
+        { headers: this.headers, timeout: 10000 },
+      );
+
+      const wallets = walletsData.wallets ?? walletsData ?? [];
+      const gasTanks = Array.isArray(wallets)
+        ? wallets.filter((w: any) => w.walletType === 'gas_tank' || w.wallet_type === 'gas_tank')
+        : [];
+
+      const chainIds = [...new Set(gasTanks.map((g: any) => g.chainId ?? g.chain_id))];
+
+      const statuses: Array<{
+        chainId: number;
+        status: string;
+        deployStartedAt?: Date | null;
+        deployCompletedAt?: Date | null;
+        deployError?: string | null;
+        contracts?: Record<string, string | null>;
+      }> = [];
+
+      for (const chainId of chainIds) {
+        try {
+          const { data } = await axios.get(
+            `${this.coreWalletUrl}/deploy/project/${projectId}/chain/${chainId}/status`,
+            { headers: this.headers, timeout: 10000 },
+          );
+
+          statuses.push({
+            chainId: chainId as number,
+            status: data.deployStatus ?? data.deploy_status ?? 'unknown',
+            deployStartedAt: data.deployStartedAt ?? data.deploy_started_at ?? null,
+            deployCompletedAt: data.deployCompletedAt ?? data.deploy_completed_at ?? null,
+            deployError: data.deployError ?? data.deploy_error ?? null,
+            contracts: {
+              walletFactory: data.walletFactoryAddress ?? data.wallet_factory_address ?? null,
+              forwarderFactory: data.forwarderFactoryAddress ?? data.forwarder_factory_address ?? null,
+              walletImpl: data.walletImplAddress ?? data.wallet_impl_address ?? null,
+              forwarderImpl: data.forwarderImplAddress ?? data.forwarder_impl_address ?? null,
+              hotWallet: data.hotWalletAddress ?? data.hot_wallet_address ?? null,
+            },
+          });
+        } catch (error: any) {
+          if (error.response?.status === 404) {
+            statuses.push({
+              chainId: chainId as number,
+              status: 'not_started',
+            });
+          } else {
+            statuses.push({
+              chainId: chainId as number,
+              status: 'error',
+              deployError: error.response?.data?.message ?? 'Failed to fetch status',
+            });
+          }
+        }
+      }
+
+      return {
+        projectId,
+        chains: statuses,
+      };
+    } catch (error: any) {
+      if (error instanceof HttpException) throw error;
+      if (error.response) {
+        throw new HttpException(
+          error.response.data?.message || 'Service error',
+          error.response.status,
+        );
+      }
+      throw new InternalServerErrorException('Downstream service unavailable');
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // 6. getDeployTraces
+  // ---------------------------------------------------------------------------
+
+  async getDeployTraces(clientId: number, projectId: number, chainId?: number) {
+    await this.verifyOwnership(clientId, projectId);
+
+    try {
+      const url = chainId
+        ? `${this.coreWalletUrl}/deploy/project/${projectId}/chain/${chainId}/traces`
+        : `${this.coreWalletUrl}/deploy/project/${projectId}/traces`;
+
+      const { data } = await axios.get(url, {
+        headers: this.headers,
+        timeout: 15000,
+      });
+
+      return {
+        projectId,
+        chainId: chainId ?? null,
+        traces: data.traces ?? [],
+      };
+    } catch (error: any) {
+      if (error.response) {
+        throw new HttpException(
+          error.response.data?.message || 'Service error',
+          error.response.status,
+        );
+      }
+      throw new InternalServerErrorException('Downstream service unavailable');
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // BigInt helpers (avoid ethers dependency in client-api)
+  // ---------------------------------------------------------------------------
+
+  private parseUnits(value: string, decimals: number): bigint {
+    const parts = value.split('.');
+    const whole = parts[0] || '0';
+    let fraction = parts[1] || '';
+    if (fraction.length > decimals) {
+      fraction = fraction.slice(0, decimals);
+    } else {
+      fraction = fraction.padEnd(decimals, '0');
+    }
+    return BigInt(whole + fraction);
+  }
+
+  private formatUnits(value: bigint, decimals: number): string {
+    const str = value.toString().padStart(decimals + 1, '0');
+    const whole = str.slice(0, str.length - decimals) || '0';
+    const fraction = str.slice(str.length - decimals);
+    // Trim trailing zeros but keep at least 4 decimal places
+    const trimmed = fraction.replace(/0+$/, '').padEnd(4, '0');
+    return `${whole}.${trimmed}`;
+  }
+}

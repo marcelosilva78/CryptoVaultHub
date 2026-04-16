@@ -12,6 +12,7 @@ import { CoSignModule } from './co-sign/co-sign.module';
 import { AdminDatabaseModule } from './prisma/admin-database.module';
 import { RedisModule } from './common/redis/redis.module';
 import { ProjectModule } from './project/project.module';
+import { ProjectSetupModule } from './project-setup/project-setup.module';
 import { FlushModule } from './flush/flush.module';
 import { DeployTraceModule } from './deploy-trace/deploy-trace.module';
 import { AddressGroupModule } from './address-group/address-group.module';
@@ -40,6 +41,7 @@ import { PostHogInterceptor } from './common/interceptors/posthog.interceptor';
     ApiKeyModule,
     CoSignModule,
     ProjectModule,
+    ProjectSetupModule,
     FlushModule,
     DeployTraceModule,
     AddressGroupModule,
