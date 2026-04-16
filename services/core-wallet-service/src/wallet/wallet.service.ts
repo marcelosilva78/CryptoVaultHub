@@ -274,7 +274,7 @@ export class WalletService implements OnModuleInit {
     return body.keys ?? [];
   }
 
-  private async generateKeysInVault(
+  async generateKeysInVault(
     clientId: number,
   ): Promise<KeyVaultPublicKey[]> {
     const res = await fetch(

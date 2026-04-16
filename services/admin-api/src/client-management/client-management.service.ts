@@ -23,8 +23,9 @@ export class ClientManagementService {
     private readonly auditLog: AuditLogService,
     private readonly configService: ConfigService,
   ) {
+    // Route key operations through core-wallet-service (bridges internal-net → vault-net)
     this.keyVaultUrl = this.configService.get<string>(
-      'KEY_VAULT_SERVICE_URL',
+      'CORE_WALLET_SERVICE_URL',
       'http://localhost:3005',
     );
     this.authServiceUrl = this.configService.get<string>(

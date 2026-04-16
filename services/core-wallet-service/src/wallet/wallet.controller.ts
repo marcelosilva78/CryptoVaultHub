@@ -65,3 +65,18 @@ export class WalletController {
     };
   }
 }
+
+/**
+ * Proxy controller for key generation — routes admin-api requests to key-vault
+ * through core-wallet-service (which bridges internal-net → vault-net).
+ */
+@Controller('keys')
+export class KeyProxyController {
+  constructor(private readonly walletService: WalletService) {}
+
+  @Post('generate')
+  async generateKeys(@Body() body: { clientId: number }) {
+    const keys = await this.walletService.generateKeysInVault(body.clientId);
+    return { success: true, keys };
+  }
+}
