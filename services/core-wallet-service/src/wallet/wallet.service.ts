@@ -12,7 +12,7 @@ import { ethers } from 'ethers';
 import { PrismaService } from '../prisma/prisma.service';
 import { ContractService } from '../blockchain/contract.service';
 
-interface KeyVaultPublicKey {
+export interface KeyVaultPublicKey {
   keyType: string;
   publicKey: string;
   address: string;
