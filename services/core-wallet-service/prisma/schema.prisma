@@ -314,6 +314,66 @@ model AddressGroup {
 }
 
 // ---------------------------------------------------------------------------
+// Project-Isolated Contract Deployment
+// ---------------------------------------------------------------------------
+
+model ProjectChain {
+  id                        BigInt   @id @default(autoincrement())
+  projectId                 BigInt   @map("project_id")
+  chainId                   Int      @map("chain_id")
+  walletFactoryAddress      String?  @db.VarChar(42) @map("wallet_factory_address")
+  forwarderFactoryAddress   String?  @db.VarChar(42) @map("forwarder_factory_address")
+  walletImplAddress         String?  @db.VarChar(42) @map("wallet_impl_address")
+  forwarderImplAddress      String?  @db.VarChar(42) @map("forwarder_impl_address")
+  hotWalletAddress          String?  @db.VarChar(42) @map("hot_wallet_address")
+  hotWalletSequenceId       Int      @default(0) @map("hot_wallet_sequence_id")
+  deployStatus              String   @default("pending") @db.VarChar(20) @map("deploy_status")
+  deployStartedAt           DateTime? @map("deploy_started_at")
+  deployCompletedAt         DateTime? @map("deploy_completed_at")
+  deployError               String?  @db.Text @map("deploy_error")
+  createdAt                 DateTime @default(now()) @map("created_at")
+  updatedAt                 DateTime @updatedAt @map("updated_at")
+  traces                    ProjectDeployTrace[]
+
+  @@unique([projectId, chainId], name: "uq_project_chain")
+  @@map("project_chains")
+}
+
+model ProjectDeployTrace {
+  id                    BigInt   @id @default(autoincrement())
+  projectId             BigInt   @map("project_id")
+  chainId               Int      @map("chain_id")
+  projectChainId        BigInt   @map("project_chain_id")
+  contractType          String   @db.VarChar(30) @map("contract_type")
+  contractAddress       String?  @db.VarChar(42) @map("contract_address")
+  txHash                String?  @db.VarChar(66) @map("tx_hash")
+  blockNumber           BigInt?  @map("block_number")
+  blockHash             String?  @db.VarChar(66) @map("block_hash")
+  gasUsed               String?  @db.VarChar(78) @map("gas_used")
+  gasPrice              String?  @db.VarChar(78) @map("gas_price")
+  gasCostWei            String?  @db.VarChar(78) @map("gas_cost_wei")
+  deployerAddress       String   @db.VarChar(42) @map("deployer_address")
+  calldataHex           String?  @db.MediumText @map("calldata_hex")
+  constructorArgsJson   Json?    @map("constructor_args_json")
+  signedTxHex           String?  @db.MediumText @map("signed_tx_hex")
+  rpcRequestJson        Json?    @map("rpc_request_json")
+  rpcResponseJson       Json?    @map("rpc_response_json")
+  abiJson               Json?    @map("abi_json")
+  bytecodeHash          String?  @db.VarChar(66) @map("bytecode_hash")
+  verificationProofJson Json?    @map("verification_proof_json")
+  explorerUrl           String?  @db.VarChar(500) @map("explorer_url")
+  status                String   @default("pending") @db.VarChar(20)
+  errorMessage          String?  @db.Text @map("error_message")
+  createdAt             DateTime @default(now()) @map("created_at")
+  confirmedAt           DateTime? @map("confirmed_at")
+  projectChain          ProjectChain @relation(fields: [projectChainId], references: [id])
+
+  @@index([projectId, chainId])
+  @@index([txHash])
+  @@map("project_deploy_traces")
+}
+
+// ---------------------------------------------------------------------------
 // Compliance / KYT
 // ---------------------------------------------------------------------------
 
