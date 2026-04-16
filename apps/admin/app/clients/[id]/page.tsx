@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
-import { X } from "lucide-react";
+import { X, Trash2, XCircle } from "lucide-react";
 import { StatCard } from "@/components/stat-card";
 import { DataTable, TableCell, TableRow } from "@/components/data-table";
 import { Badge } from "@/components/badge";
@@ -637,6 +637,13 @@ export default function ClientDetailPage() {
   const [reload, setReload] = useState(0);
   const [inviteState, setInviteState] = useState<{ loading?: boolean; url?: string; error?: string }>({});
 
+  /* Deletion state */
+  const [deleteConfirmModal, setDeleteConfirmModal] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [gracePeriodModal, setGracePeriodModal] = useState(false);
+  const [gracePeriodInfo, setGracePeriodInfo] = useState<{ transactionCount: number; scheduledFor: string }>({ transactionCount: 0, scheduledFor: "" });
+  const [cancelDeletionLoading, setCancelDeletionLoading] = useState(false);
+
   async function handleSendInvite() {
     setInviteState({ loading: true });
     try {
@@ -649,6 +656,39 @@ export default function ClientDetailPage() {
       setInviteState({ url: data.inviteUrl });
     } catch {
       setInviteState({ error: 'Network error. Please try again.' });
+    }
+  }
+
+  async function handleDeleteClient() {
+    setDeleteLoading(true);
+    try {
+      const res = await adminFetch(`/clients/${clientId}`, { method: "DELETE" });
+      if (res.immediate) {
+        setReload((r) => r + 1);
+      } else {
+        setGracePeriodInfo({
+          transactionCount: res.transactionCount ?? 0,
+          scheduledFor: res.scheduledFor ?? "",
+        });
+        setGracePeriodModal(true);
+      }
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setDeleteLoading(false);
+      setDeleteConfirmModal(false);
+    }
+  }
+
+  async function handleCancelDeletion() {
+    setCancelDeletionLoading(true);
+    try {
+      await adminFetch(`/clients/${clientId}/cancel-deletion`, { method: "POST" });
+      setReload((r) => r + 1);
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setCancelDeletionLoading(false);
     }
   }
 
@@ -674,7 +714,9 @@ export default function ClientDetailPage() {
   const tierName = typeof client?.tier === "object" ? client?.tier?.name : client?.tier ?? "—";
   const statusVariant =
     client?.status === "active" ? "success" :
-    client?.status === "suspended" ? "error" : "warning";
+    client?.status === "suspended" ? "error" :
+    client?.status === "deleted" ? "error" :
+    client?.status === "pending_deletion" ? "warning" : "warning";
 
   if (loading) {
     return (
@@ -737,6 +779,61 @@ export default function ClientDetailPage() {
         confirmLabel="Generate Keys"
         loading={keysLoading}
       />
+      {/* Delete Confirmation Modal (immediate) */}
+      <ConfirmationModal
+        open={deleteConfirmModal}
+        onClose={() => setDeleteConfirmModal(false)}
+        onConfirm={handleDeleteClient}
+        title={`Delete Client ${client?.name ?? ""}?`}
+        description="This action will initiate client deletion. If the client has no transactions, the deletion is immediate. If the client has transactions, a 30-day grace period will begin."
+        destructive
+        confirmLabel="Delete"
+        loading={deleteLoading}
+      />
+
+      {/* Grace Period Info Modal */}
+      {gracePeriodModal && (
+        <div className="fixed inset-0 z-[200] flex items-start justify-center pt-16 pb-4 overflow-y-auto bg-black/60 backdrop-blur-sm" onClick={(e) => { if (e.target === e.currentTarget) { setGracePeriodModal(false); setReload((r) => r + 1); } }}>
+          <div className="bg-surface-card border border-border-subtle rounded-modal shadow-float w-full max-w-[480px] mx-4">
+            <div className="flex items-center justify-between p-5 border-b border-border-subtle">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-card bg-status-warning-subtle flex items-center justify-center flex-shrink-0">
+                  <Trash2 className="w-4 h-4 text-status-warning" />
+                </div>
+                <h3 className="font-display text-subheading text-text-primary">Deletion Scheduled</h3>
+              </div>
+              <button onClick={() => { setGracePeriodModal(false); setReload((r) => r + 1); }} className="p-1 rounded-button text-text-muted hover:text-text-primary hover:bg-surface-hover transition-all duration-fast"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="p-5 space-y-4">
+              <p className="text-body text-text-secondary leading-relaxed">
+                <span className="font-semibold text-text-primary">{client?.name}</span> has{" "}
+                <span className="font-semibold text-text-primary">{gracePeriodInfo.transactionCount}</span> transaction{gracePeriodInfo.transactionCount !== 1 ? "s" : ""}. The account will enter a <span className="font-semibold text-text-primary">30-day</span> deletion period.
+              </p>
+              <div className="bg-surface-elevated rounded-card p-4 space-y-2">
+                <div className="text-caption text-text-secondary font-display">During this period:</div>
+                <ul className="text-caption text-text-secondary font-display space-y-1.5 ml-1">
+                  <li className="flex items-start gap-2"><span className="text-text-muted mt-0.5">&#x2022;</span> The client will receive a daily email notification</li>
+                  <li className="flex items-start gap-2"><span className="text-text-muted mt-0.5">&#x2022;</span> The client&apos;s API access will remain active</li>
+                  <li className="flex items-start gap-2"><span className="text-text-muted mt-0.5">&#x2022;</span> After 30 days, the account will be permanently deleted</li>
+                  <li className="flex items-start gap-2"><span className="text-text-muted mt-0.5">&#x2022;</span> You can cancel the deletion at any time</li>
+                </ul>
+              </div>
+              {gracePeriodInfo.scheduledFor && (
+                <div className="bg-surface-elevated rounded-card px-4 py-3 flex items-center justify-between">
+                  <span className="text-caption text-text-muted font-display">Scheduled deletion date</span>
+                  <span className="text-caption font-semibold text-text-primary font-mono">{new Date(gracePeriodInfo.scheduledFor).toLocaleDateString()}</span>
+                </div>
+              )}
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-border-subtle">
+                <button type="button" onClick={() => { setGracePeriodModal(false); setReload((r) => r + 1); }} className="px-4 py-2 rounded-button text-body font-display font-semibold bg-status-warning text-white hover:bg-status-warning/90 transition-all duration-fast">
+                  Understood
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Keys Result Modal */}
       {generatedKeys && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => { setGeneratedKeys(null); setKeysModal(false); }}>
@@ -833,8 +930,57 @@ export default function ClientDetailPage() {
           >
             Manage Keys
           </button>
+          {/* Delete / Cancel Deletion */}
+          {client.status === "pending_deletion" ? (
+            <button
+              onClick={handleCancelDeletion}
+              disabled={cancelDeletionLoading}
+              className="text-status-warning border border-status-warning/30 text-caption font-semibold px-3.5 py-1.5 rounded-button hover:bg-status-warning-subtle transition-all duration-fast font-display flex items-center gap-1.5 disabled:opacity-50"
+            >
+              <XCircle className="w-3.5 h-3.5" />
+              {cancelDeletionLoading ? "Cancelling..." : "Cancel Deletion"}
+            </button>
+          ) : client.status !== "deleted" ? (
+            <button
+              onClick={() => setDeleteConfirmModal(true)}
+              className="text-status-error border border-status-error/30 text-caption font-semibold px-3.5 py-1.5 rounded-button hover:bg-status-error-subtle transition-all duration-fast font-display flex items-center gap-1.5"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Delete
+            </button>
+          ) : null}
         </div>
       </div>
+
+      {/* Pending deletion banner */}
+      {client.status === "pending_deletion" && client.deletionScheduledFor && (
+        <div className="mb-5 px-4 py-3 bg-status-warning-subtle border border-status-warning/20 rounded-card flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Trash2 className="w-4 h-4 text-status-warning flex-shrink-0" />
+            <div>
+              <span className="text-body font-semibold text-text-primary font-display">Scheduled for deletion</span>
+              <span className="text-caption text-text-secondary font-display ml-2">
+                {Math.max(0, Math.ceil((new Date(client.deletionScheduledFor).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))} days remaining
+                (scheduled for {new Date(client.deletionScheduledFor).toLocaleDateString()})
+              </span>
+            </div>
+          </div>
+          <button
+            onClick={handleCancelDeletion}
+            disabled={cancelDeletionLoading}
+            className="text-status-warning border border-status-warning/30 text-caption font-semibold px-3 py-1 rounded-button hover:bg-status-warning/10 transition-all duration-fast font-display flex items-center gap-1.5 disabled:opacity-50"
+          >
+            <XCircle className="w-3.5 h-3.5" />
+            {cancelDeletionLoading ? "Cancelling..." : "Cancel Deletion"}
+          </button>
+        </div>
+      )}
+      {client.status === "deleted" && (
+        <div className="mb-5 px-4 py-3 bg-status-error-subtle border border-status-error/20 rounded-card flex items-center gap-3">
+          <Trash2 className="w-4 h-4 text-status-error flex-shrink-0" />
+          <span className="text-body font-semibold text-status-error font-display">This client has been deleted</span>
+        </div>
+      )}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-4 gap-stat-grid-gap mb-section-gap">

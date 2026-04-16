@@ -4,6 +4,7 @@ import {
   NotFoundException,
   ConflictException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
@@ -391,6 +392,144 @@ export class ClientManagementService {
     return { inviteUrl };
   }
 
+  async requestClientDeletion(
+    id: number,
+    adminUserId: string,
+    ipAddress?: string,
+  ) {
+    const client = await this.prisma.client.findUnique({
+      where: { id: BigInt(id) },
+    });
+    if (!client) {
+      throw new NotFoundException(`Client ${id} not found`);
+    }
+    if (client.status === 'deleted') {
+      throw new ConflictException(`Client ${id} is already deleted`);
+    }
+    if (client.status === 'pending_deletion') {
+      throw new ConflictException(`Client ${id} already has a pending deletion`);
+    }
+
+    // Check if the client has any transactions (deposits or withdrawals)
+    const [deposits, withdrawals] = await Promise.all([
+      this.prisma.$queryRaw<[{ cnt: bigint }]>`
+        SELECT COUNT(*) AS cnt FROM cvh_transactions.deposits WHERE client_id = ${BigInt(id)}
+      `,
+      this.prisma.$queryRaw<[{ cnt: bigint }]>`
+        SELECT COUNT(*) AS cnt FROM cvh_transactions.withdrawals WHERE client_id = ${BigInt(id)}
+      `,
+    ]);
+
+    const depositCount = Number(deposits[0]?.cnt ?? 0);
+    const withdrawalCount = Number(withdrawals[0]?.cnt ?? 0);
+    const transactionCount = depositCount + withdrawalCount;
+
+    if (transactionCount === 0) {
+      // Immediate soft-delete — no transactions
+      await this.prisma.client.update({
+        where: { id: BigInt(id) },
+        data: {
+          status: 'deleted',
+          deletionRequestedAt: new Date(),
+          deletionRequestedBy: BigInt(adminUserId),
+        },
+      });
+
+      await this.auditLog.log({
+        adminUserId,
+        action: 'client.deleted',
+        entityType: 'client',
+        entityId: id.toString(),
+        details: { immediate: true, transactionCount: 0 },
+        ipAddress,
+      });
+
+      this.logger.log(`Client ${id} deleted immediately (no transactions)`);
+
+      return { immediate: true, deleted: true };
+    }
+
+    // Grace period — has transactions
+    const now = new Date();
+    const scheduledFor = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+    await this.prisma.client.update({
+      where: { id: BigInt(id) },
+      data: {
+        status: 'pending_deletion',
+        deletionRequestedAt: now,
+        deletionScheduledFor: scheduledFor,
+        deletionRequestedBy: BigInt(adminUserId),
+      },
+    });
+
+    await this.auditLog.log({
+      adminUserId,
+      action: 'client.deletion_scheduled',
+      entityType: 'client',
+      entityId: id.toString(),
+      details: {
+        immediate: false,
+        transactionCount,
+        scheduledFor: scheduledFor.toISOString(),
+      },
+      ipAddress,
+    });
+
+    this.logger.log(
+      `Client ${id} scheduled for deletion on ${scheduledFor.toISOString()} (${transactionCount} transactions)`,
+    );
+
+    return {
+      immediate: false,
+      scheduledFor: scheduledFor.toISOString(),
+      transactionCount,
+    };
+  }
+
+  async cancelDeletion(
+    id: number,
+    adminUserId: string,
+    ipAddress?: string,
+  ) {
+    const client = await this.prisma.client.findUnique({
+      where: { id: BigInt(id) },
+    });
+    if (!client) {
+      throw new NotFoundException(`Client ${id} not found`);
+    }
+    if (client.status !== 'pending_deletion') {
+      throw new BadRequestException(
+        `Client ${id} is not pending deletion (current status: ${client.status})`,
+      );
+    }
+
+    await this.prisma.client.update({
+      where: { id: BigInt(id) },
+      data: {
+        status: 'active',
+        deletionRequestedAt: null,
+        deletionScheduledFor: null,
+        deletionRequestedBy: null,
+      },
+    });
+
+    await this.auditLog.log({
+      adminUserId,
+      action: 'client.deletion_cancelled',
+      entityType: 'client',
+      entityId: id.toString(),
+      details: {
+        previousScheduledFor: client.deletionScheduledFor?.toISOString() ?? null,
+      },
+      ipAddress,
+    });
+
+    this.logger.log(`Client ${id} deletion cancelled, status restored to active`);
+
+    return { status: 'active' };
+  }
+
   private serializeClient(client: any) {
     return {
       id: client.id.toString(),
@@ -404,6 +543,9 @@ export class ClientManagementService {
       kytLevel: client.kytLevel,
       createdAt: client.createdAt,
       updatedAt: client.updatedAt,
+      deletionRequestedAt: client.deletionRequestedAt ?? null,
+      deletionScheduledFor: client.deletionScheduledFor ?? null,
+      deletionRequestedBy: client.deletionRequestedBy?.toString() ?? null,
       tier: client.tier
         ? {
             id: client.tier.id.toString(),

@@ -12,6 +12,7 @@ import { GasTankModule } from './gas-tank/gas-tank.module';
 import { SanctionsListSyncModule } from './sanctions-list-sync/sanctions-list-sync.module';
 import { WithdrawalModule } from './withdrawal/withdrawal.module';
 import { ChainListenerModule } from './chain-listener/chain-listener.module';
+import { ClientDeletionModule } from './client-deletion/client-deletion.module';
 import { HealthController } from './common/health.controller';
 
 @Module({
@@ -48,6 +49,7 @@ import { HealthController } from './common/health.controller';
     SanctionsListSyncModule,
     WithdrawalModule,
     ChainListenerModule,
+    ClientDeletionModule,
   ],
   controllers: [HealthController],
 })

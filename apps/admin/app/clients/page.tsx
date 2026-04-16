@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { Search, X } from "lucide-react";
+import { Search, X, Trash2, XCircle } from "lucide-react";
 import { StatCard } from "@/components/stat-card";
 import { DataTable, TableCell, TableRow } from "@/components/data-table";
 import { Badge } from "@/components/badge";
+import { ConfirmationModal } from "@/components/confirmation-modal";
 
 /* ─── API fetch helper ─────────────────────────────────────────────────────── */
 import { adminFetch, ADMIN_API } from "@/lib/api";
@@ -20,6 +21,8 @@ interface Client {
   tier?: string | { name: string };
   createdAt?: string;
   custodyPolicy?: string;
+  deletionScheduledFor?: string | null;
+  deletionRequestedAt?: string | null;
 }
 
 /* ─── CreateClientModal ────────────────────────────────────────────────────── */
@@ -110,6 +113,70 @@ function CreateClientModal({ open, onClose, onCreated }: { open: boolean; onClos
   );
 }
 
+/* ─── GracePeriodModal ────────────────────────────────────────────────────── */
+function GracePeriodModal({ open, onClose, onConfirm, clientName, transactionCount, scheduledFor, loading }: {
+  open: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  clientName: string;
+  transactionCount: number;
+  scheduledFor: string;
+  loading?: boolean;
+}) {
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", h); return () => window.removeEventListener("keydown", h);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  const scheduledDate = new Date(scheduledFor);
+  const daysRemaining = Math.ceil((scheduledDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-start justify-center pt-16 pb-4 overflow-y-auto bg-black/60 backdrop-blur-sm" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="bg-surface-card border border-border-subtle rounded-modal shadow-float w-full max-w-[480px] mx-4">
+        <div className="flex items-center justify-between p-5 border-b border-border-subtle">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-card bg-status-warning-subtle flex items-center justify-center flex-shrink-0">
+              <Trash2 className="w-4 h-4 text-status-warning" />
+            </div>
+            <h3 className="font-display text-subheading text-text-primary">Deletion Scheduled</h3>
+          </div>
+          <button onClick={onClose} className="p-1 rounded-button text-text-muted hover:text-text-primary hover:bg-surface-hover transition-all duration-fast"><X className="w-4 h-4" /></button>
+        </div>
+        <div className="p-5 space-y-4">
+          <p className="text-body text-text-secondary leading-relaxed">
+            <span className="font-semibold text-text-primary">{clientName}</span> has{" "}
+            <span className="font-semibold text-text-primary">{transactionCount}</span> transaction{transactionCount !== 1 ? "s" : ""}. The account will enter a <span className="font-semibold text-text-primary">30-day</span> deletion period.
+          </p>
+          <div className="bg-surface-elevated rounded-card p-4 space-y-2">
+            <div className="text-caption text-text-secondary font-display">During this period:</div>
+            <ul className="text-caption text-text-secondary font-display space-y-1.5 ml-1">
+              <li className="flex items-start gap-2"><span className="text-text-muted mt-0.5">&#x2022;</span> The client will receive a daily email notification</li>
+              <li className="flex items-start gap-2"><span className="text-text-muted mt-0.5">&#x2022;</span> The client&apos;s API access will remain active</li>
+              <li className="flex items-start gap-2"><span className="text-text-muted mt-0.5">&#x2022;</span> After {daysRemaining} days, the account will be permanently deleted</li>
+              <li className="flex items-start gap-2"><span className="text-text-muted mt-0.5">&#x2022;</span> You can cancel the deletion at any time</li>
+            </ul>
+          </div>
+          <div className="bg-surface-elevated rounded-card px-4 py-3 flex items-center justify-between">
+            <span className="text-caption text-text-muted font-display">Scheduled deletion date</span>
+            <span className="text-caption font-semibold text-text-primary font-mono">{scheduledDate.toLocaleDateString()}</span>
+          </div>
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-border-subtle">
+            <button type="button" onClick={onClose} disabled={loading} className="px-4 py-2 rounded-button text-body font-display font-semibold text-text-secondary hover:text-text-primary hover:bg-surface-hover border border-border-subtle transition-all duration-fast">Close</button>
+            <button type="button" onClick={onConfirm} disabled={loading} className="px-4 py-2 rounded-button text-body font-display font-semibold bg-status-warning text-white hover:bg-status-warning/90 disabled:opacity-50 transition-all duration-fast flex items-center gap-2">
+              {loading && <span className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />}
+              Understood
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ─── Page component ───────────────────────────────────────────────────────── */
 export default function ClientsPage() {
   const [createModal, setCreateModal] = useState(false);
@@ -118,6 +185,14 @@ export default function ClientsPage() {
   const [error, setError] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
   const [inviteState, setInviteState] = useState<Record<string, { loading?: boolean; url?: string; error?: string }>>({});
+
+  /* Deletion state */
+  const [deleteTarget, setDeleteTarget] = useState<Client | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteConfirmModal, setDeleteConfirmModal] = useState(false);
+  const [gracePeriodModal, setGracePeriodModal] = useState(false);
+  const [gracePeriodInfo, setGracePeriodInfo] = useState<{ transactionCount: number; scheduledFor: string }>({ transactionCount: 0, scheduledFor: "" });
+  const [cancelDeletionLoading, setCancelDeletionLoading] = useState<Record<string, boolean>>({});
 
   async function handleSendInvite(clientId: string) {
     setInviteState((prev) => ({ ...prev, [clientId]: { loading: true } }));
@@ -131,6 +206,43 @@ export default function ClientsPage() {
       setInviteState((prev) => ({ ...prev, [clientId]: { url: data.inviteUrl } }));
     } catch {
       setInviteState((prev) => ({ ...prev, [clientId]: { error: 'Network error. Please try again.' } }));
+    }
+  }
+
+  async function handleDeleteClient(client: Client) {
+    setDeleteTarget(client);
+    setDeleteLoading(true);
+    try {
+      const res = await adminFetch(`/clients/${client.id}`, { method: "DELETE" });
+      if (res.immediate) {
+        // Immediate delete — just refresh
+        setReload((r) => r + 1);
+        setDeleteTarget(null);
+      } else {
+        // Grace period — show info modal
+        setGracePeriodInfo({
+          transactionCount: res.transactionCount ?? 0,
+          scheduledFor: res.scheduledFor ?? "",
+        });
+        setGracePeriodModal(true);
+      }
+    } catch (err: any) {
+      alert(err.message);
+      setDeleteTarget(null);
+    } finally {
+      setDeleteLoading(false);
+    }
+  }
+
+  async function handleCancelDeletion(clientId: string) {
+    setCancelDeletionLoading((prev) => ({ ...prev, [clientId]: true }));
+    try {
+      await adminFetch(`/clients/${clientId}/cancel-deletion`, { method: "POST" });
+      setReload((r) => r + 1);
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setCancelDeletionLoading((prev) => ({ ...prev, [clientId]: false }));
     }
   }
 
@@ -150,12 +262,23 @@ export default function ClientsPage() {
         onCreated={() => setReload(r => r + 1)}
       />
 
+      {/* Grace period modal */}
+      <GracePeriodModal
+        open={gracePeriodModal}
+        onClose={() => { setGracePeriodModal(false); setDeleteTarget(null); setReload((r) => r + 1); }}
+        onConfirm={() => { setGracePeriodModal(false); setDeleteTarget(null); setReload((r) => r + 1); }}
+        clientName={deleteTarget?.name ?? ""}
+        transactionCount={gracePeriodInfo.transactionCount}
+        scheduledFor={gracePeriodInfo.scheduledFor}
+      />
+
       {/* KPIs */}
-      <div className="grid grid-cols-4 gap-stat-grid-gap mb-section-gap">
-        <StatCard label="Total Clients" value={String(clients.length)} />
+      <div className="grid grid-cols-5 gap-stat-grid-gap mb-section-gap">
+        <StatCard label="Total Clients" value={String(clients.filter(c => c.status !== "deleted").length)} />
         <StatCard label="Active" value={String(clients.filter(c => c.status === "active").length)} color="success" />
         <StatCard label="Suspended" value={String(clients.filter(c => c.status === "suspended").length)} color="error" />
-        <StatCard label="Pending" value={String(clients.filter(c => c.status === "pending" || c.status === "pending_setup").length)} color="warning" />
+        <StatCard label="Pending" value={String(clients.filter(c => c.status === "pending" || c.status === "pending_setup" || c.status === "onboarding").length)} color="warning" />
+        <StatCard label="Pending Deletion" value={String(clients.filter(c => c.status === "pending_deletion").length)} color="warning" />
       </div>
 
       {/* Clients Table */}
@@ -222,10 +345,20 @@ export default function ClientsPage() {
           const tierName = typeof client.tier === "object" ? client.tier?.name : client.tier ?? "—";
           const statusVariant =
             client.status === "active" ? "success" :
-            client.status === "suspended" ? "error" : "warning";
-          const statusLabel =
-            client.status === "active" ? "Active" :
-            client.status === "suspended" ? "Suspended" : "Pending";
+            client.status === "suspended" ? "error" :
+            client.status === "deleted" ? "error" :
+            client.status === "pending_deletion" ? "warning" : "warning";
+
+          let statusLabel = "Pending";
+          if (client.status === "active") statusLabel = "Active";
+          else if (client.status === "suspended") statusLabel = "Suspended";
+          else if (client.status === "deleted") statusLabel = "Deleted";
+          else if (client.status === "pending_deletion") {
+            const daysLeft = client.deletionScheduledFor
+              ? Math.max(0, Math.ceil((new Date(client.deletionScheduledFor).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+              : 0;
+            statusLabel = `Deleting in ${daysLeft}d`;
+          }
 
           return (
             <TableRow key={client.id}>
@@ -287,6 +420,28 @@ export default function ClientsPage() {
                       </button>
                     );
                   })()}
+                  {/* Delete / Cancel Deletion */}
+                  {client.status === "pending_deletion" ? (
+                    <button
+                      onClick={() => handleCancelDeletion(String(client.id))}
+                      disabled={!!cancelDeletionLoading[String(client.id)]}
+                      title="Cancel scheduled deletion"
+                      className="px-3 py-1 text-sm text-status-warning border border-status-warning/30 rounded-lg hover:bg-status-warning-subtle disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 font-display font-semibold"
+                    >
+                      <XCircle className="w-3.5 h-3.5" />
+                      {cancelDeletionLoading[String(client.id)] ? "Cancelling..." : "Cancel Deletion"}
+                    </button>
+                  ) : client.status !== "deleted" ? (
+                    <button
+                      onClick={() => handleDeleteClient(client)}
+                      disabled={deleteLoading && deleteTarget?.id === client.id}
+                      title="Delete client"
+                      className="px-3 py-1 text-sm text-status-error border border-status-error/30 rounded-lg hover:bg-status-error-subtle disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 font-display font-semibold"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      {deleteLoading && deleteTarget?.id === client.id ? "Deleting..." : "Delete"}
+                    </button>
+                  ) : null}
                 </div>
               </TableCell>
             </TableRow>

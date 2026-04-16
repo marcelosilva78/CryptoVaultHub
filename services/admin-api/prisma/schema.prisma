@@ -22,6 +22,10 @@ model Client {
   createdAt     DateTime       @default(now()) @map("created_at")
   updatedAt     DateTime       @updatedAt @map("updated_at")
 
+  deletionRequestedAt   DateTime? @map("deletion_requested_at")
+  deletionScheduledFor  DateTime? @map("deletion_scheduled_for")
+  deletionRequestedBy   BigInt?   @map("deletion_requested_by")
+
   tier      Tier?               @relation(fields: [tierId], references: [id])
   overrides ClientTierOverride[]
   projects  Project[]
@@ -140,6 +144,8 @@ enum ClientStatus {
   active
   suspended
   onboarding
+  pending_deletion
+  deleted
 }
 
 enum CustodyPolicy {

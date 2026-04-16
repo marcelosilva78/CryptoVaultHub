@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
   Param,
   Body,
   Query,
@@ -408,6 +409,76 @@ Results are ordered by creation date (newest first). The response includes pagin
   ) {
     const user = (req as any).user;
     const result = await this.clientService.inviteClient(id, user.userId, req.ip);
+    return { success: true, ...result };
+  }
+
+  @Delete(':id')
+  @AdminAuth('super_admin', 'admin')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Request client deletion',
+    description: `Initiates a soft-delete of a client organization.
+
+**Without transactions:** The client is immediately set to \`deleted\` status.
+**With transactions:** A 30-day grace period begins:
+- Status changes to \`pending_deletion\`
+- Daily email notifications are sent to the client
+- After 30 days, the account is permanently soft-deleted
+- Deletion can be cancelled at any time during the grace period`,
+  })
+  @ApiParam({ name: 'id', type: 'integer', example: 1 })
+  @ApiResponse({
+    status: 200,
+    description: 'Deletion initiated',
+    schema: {
+      example: {
+        success: true,
+        immediate: false,
+        scheduledFor: '2026-05-14T10:30:00Z',
+        transactionCount: 42,
+      },
+    },
+  })
+  @ApiResponse({ status: 404, description: 'Client not found' })
+  @ApiResponse({ status: 409, description: 'Client already deleted or pending deletion' })
+  async deleteClient(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: Request,
+  ) {
+    const user = (req as any).user;
+    const result = await this.clientService.requestClientDeletion(
+      id,
+      user.userId,
+      req.ip,
+    );
+    return { success: true, ...result };
+  }
+
+  @Post(':id/cancel-deletion')
+  @AdminAuth('super_admin', 'admin')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Cancel a pending client deletion',
+    description: 'Cancels a scheduled deletion and restores the client to active status.',
+  })
+  @ApiParam({ name: 'id', type: 'integer', example: 1 })
+  @ApiResponse({
+    status: 200,
+    description: 'Deletion cancelled, client reactivated',
+    schema: { example: { success: true, status: 'active' } },
+  })
+  @ApiResponse({ status: 404, description: 'Client not found' })
+  @ApiResponse({ status: 400, description: 'Client is not pending deletion' })
+  async cancelDeletion(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: Request,
+  ) {
+    const user = (req as any).user;
+    const result = await this.clientService.cancelDeletion(
+      id,
+      user.userId,
+      req.ip,
+    );
     return { success: true, ...result };
   }
 }

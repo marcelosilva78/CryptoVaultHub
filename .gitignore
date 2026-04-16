@@ -30,3 +30,5 @@ DEPLOYMENT_REPORT.md
 # Git worktrees
 .worktrees/
 .superpowers/
+test-*.png
+.playwright-mcp/
