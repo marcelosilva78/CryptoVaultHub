@@ -237,6 +237,7 @@ export class ClientManagementService {
   }
 
   async getClientKeys(id: number) {
+    // Try core-wallet first (may have enriched wallet data)
     try {
       const response = await axios.get(
         `${this.keyVaultUrl}/wallets/${id}`,
@@ -248,24 +249,24 @@ export class ClientManagementService {
           },
         },
       );
-      // core-wallet returns wallets; extract key info
       const wallets = response.data?.wallets ?? response.data?.keys ?? [];
       if (wallets.length > 0) return wallets;
-      // Wallets empty — fall through to query derived_keys directly
     } catch {
-      // Fallback: query derived_keys directly from cvh_keyvault
-      try {
-        const keys = await this.prisma.$queryRaw<any[]>`
-          SELECT key_type AS keyType, address, public_key AS publicKey, derivation_path AS derivationPath, chain_scope AS chainScope
-          FROM cvh_keyvault.derived_keys
-          WHERE client_id = ${BigInt(id)} AND is_active = TRUE
-          ORDER BY key_type, chain_scope
-        `;
-        return keys;
-      } catch (dbErr) {
-        this.logger.warn(`Failed to query derived_keys: ${(dbErr as Error).message}`);
-        return [];
-      }
+      // core-wallet unavailable — continue to DB query
+    }
+
+    // Query derived_keys directly from cvh_keyvault
+    try {
+      const keys = await this.prisma.$queryRaw<any[]>`
+        SELECT key_type AS keyType, address, public_key AS publicKey, derivation_path AS derivationPath, chain_scope AS chainScope
+        FROM cvh_keyvault.derived_keys
+        WHERE client_id = ${BigInt(id)} AND is_active = TRUE
+        ORDER BY key_type, chain_scope
+      `;
+      return keys;
+    } catch (dbErr) {
+      this.logger.warn(`Failed to query derived_keys: ${(dbErr as Error).message}`);
+      return [];
     }
   }
 
