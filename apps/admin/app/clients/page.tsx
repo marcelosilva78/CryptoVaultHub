@@ -197,15 +197,10 @@ export default function ClientsPage() {
   async function handleSendInvite(clientId: string) {
     setInviteState((prev) => ({ ...prev, [clientId]: { loading: true } }));
     try {
-      const res = await fetch(`${ADMIN_API}/clients/${clientId}/invite`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' } });
-      const data = await res.json();
-      if (!res.ok) {
-        setInviteState((prev) => ({ ...prev, [clientId]: { error: data.message ?? 'Failed to send invite.' } }));
-        return;
-      }
+      const data = await adminFetch<{ inviteUrl?: string; message?: string }>(`/clients/${clientId}/invite`, { method: 'POST' });
       setInviteState((prev) => ({ ...prev, [clientId]: { url: data.inviteUrl } }));
-    } catch {
-      setInviteState((prev) => ({ ...prev, [clientId]: { error: 'Network error. Please try again.' } }));
+    } catch (err: any) {
+      setInviteState((prev) => ({ ...prev, [clientId]: { error: err.message ?? 'Failed to send invite.' } }));
     }
   }
 
