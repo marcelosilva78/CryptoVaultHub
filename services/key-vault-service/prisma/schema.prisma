@@ -26,6 +26,7 @@ model MasterSeed {
 model DerivedKey {
   id             BigInt    @id @default(autoincrement())
   clientId       BigInt    @map("client_id")
+  projectId      BigInt?   @map("project_id")
   keyType        KeyType   @map("key_type")
   chainScope     String    @default("evm") @map("chain_scope") @db.VarChar(10)
   publicKey      String    @map("public_key") @db.VarChar(130)
@@ -78,6 +79,22 @@ model KeyVaultAudit {
 
   @@index([clientId, operation, createdAt], name: "idx_client_op")
   @@map("key_vault_audit")
+}
+
+model ProjectSeed {
+  id              BigInt   @id @default(autoincrement())
+  projectId       BigInt   @unique @map("project_id")
+  encryptedSeed   Bytes    @map("encrypted_seed") @db.Blob
+  encryptedDek    Bytes    @map("encrypted_dek") @db.Blob
+  iv              Bytes    @db.VarBinary(16)
+  authTag         Bytes    @map("auth_tag") @db.VarBinary(16)
+  salt            Bytes    @db.VarBinary(32)
+  kdfIterations   Int      @default(600000) @map("kdf_iterations")
+  seedShownToClient Boolean @default(false) @map("seed_shown_to_client")
+  shamirSplitDone Boolean  @default(false) @map("shamir_split_done")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@map("project_seeds")
 }
 
 enum KeyType {

@@ -164,6 +164,22 @@ export class SplitSharesDto {
   requestedBy?: string;
 }
 
+export class GenerateProjectKeysDto {
+  @IsNumber()
+  @IsPositive()
+  clientId!: number;
+
+  @IsString()
+  @IsIn(['platform', 'client_only'], {
+    message: 'custodyMode must be one of: platform, client_only',
+  })
+  custodyMode!: string;
+
+  @IsString()
+  @IsOptional()
+  requestedBy?: string;
+}
+
 export class ReconstructDto {
   @IsArray()
   @ArrayMinSize(3, { message: 'At least 3 shares are required for reconstruction' })
