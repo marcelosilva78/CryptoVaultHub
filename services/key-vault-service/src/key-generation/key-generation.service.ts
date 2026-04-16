@@ -361,6 +361,7 @@ export class KeyGenerationService {
         iv: encrypted.iv,
         authTag: encrypted.authTag,
         salt: encrypted.salt,
+        kdfIterations: this.encryption.kdfIterations,
       },
     });
 

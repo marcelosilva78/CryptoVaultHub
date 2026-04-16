@@ -18,7 +18,7 @@ export interface EncryptedPayload {
 @Injectable()
 export class EncryptionService {
   private readonly masterPassword: string;
-  private readonly kdfIterations: number;
+  readonly kdfIterations: number;
 
   constructor(private readonly configService: ConfigService) {
     this.masterPassword = this.configService.getOrThrow<string>(
