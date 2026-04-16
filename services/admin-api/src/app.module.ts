@@ -20,6 +20,7 @@ import { TokenManagementModule } from './token-management/token-management.modul
 import { AuditLogModule } from './audit-log/audit-log.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { TraceabilityModule } from './traceability/traceability.module';
+import { SettingsModule } from './settings/settings.module';
 import { PostHogInterceptor } from './common/interceptors/posthog.interceptor';
 import { HealthController } from './common/health.controller';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
@@ -54,6 +55,7 @@ import { ImpersonationGuard } from './common/guards/impersonation.guard';
     AuditLogModule,
     DashboardModule,
     TraceabilityModule,
+    SettingsModule,
   ],
   controllers: [HealthController],
   providers: [

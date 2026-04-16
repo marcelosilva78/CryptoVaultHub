@@ -10,6 +10,7 @@ import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../common/audit-log.service';
+import { SettingsService } from '../settings/settings.service';
 import { CustodyPolicy, KytLevel } from '../generated/prisma-client';
 
 @Injectable()
@@ -23,6 +24,7 @@ export class ClientManagementService {
     private readonly prisma: PrismaService,
     private readonly auditLog: AuditLogService,
     private readonly configService: ConfigService,
+    private readonly settingsService: SettingsService,
   ) {
     // Route key operations through core-wallet-service (bridges internal-net → vault-net)
     this.keyVaultUrl = this.configService.get<string>(
@@ -361,35 +363,90 @@ export class ClientManagementService {
     );
     const { inviteUrl } = authRes.data as { token: string; inviteUrl: string };
 
-    // 2. Queue invite email via notification-service (fire and forget)
-    axios
-      .post(
-        `${this.notificationServiceUrl}/email/invite`,
-        {
-          to: client.email,
-          clientId: id,
-          inviteUrl,
-          orgName: client.name,
-        },
-        {
-          timeout: 10000,
-          headers: { 'X-Internal-Service-Key': internalKey },
-        },
-      )
-      .catch((err: Error) =>
-        this.logger.warn(`Invite email queue failed for client ${id}: ${err.message}`),
+    // 2. Send invite email — try direct SMTP first, fall back to notification-service
+    let emailSent = false;
+    let emailWarning: string | undefined;
+
+    const smtpResult = await this.settingsService.sendEmail({
+      to: client.email,
+      subject: `You're invited to CryptoVaultHub — ${client.name}`,
+      text: `Hello,\n\nYou have been invited to join CryptoVaultHub as a member of ${client.name}.\n\nClick the link below to complete your registration:\n${inviteUrl}\n\nThis invite link will expire in 48 hours.\n\nBest regards,\nCryptoVaultHub Team`,
+      html: `
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 520px; margin: 0 auto; padding: 32px 24px;">
+          <h2 style="color: #10b981; margin-bottom: 8px;">Welcome to CryptoVaultHub</h2>
+          <p style="color: #374151; line-height: 1.6;">
+            You have been invited to join <strong>${client.name}</strong> on CryptoVaultHub.
+          </p>
+          <div style="margin: 24px 0;">
+            <a href="${inviteUrl}" style="display: inline-block; padding: 12px 28px; background-color: #10b981; color: #fff; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px;">
+              Accept Invitation
+            </a>
+          </div>
+          <p style="color: #6b7280; font-size: 13px; line-height: 1.5;">
+            Or copy this link into your browser:<br/>
+            <a href="${inviteUrl}" style="color: #10b981; word-break: break-all;">${inviteUrl}</a>
+          </p>
+          <p style="color: #9ca3af; font-size: 12px; margin-top: 24px;">
+            This invite link will expire in 48 hours.
+          </p>
+          <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
+          <p style="color: #9ca3af; font-size: 11px;">
+            CryptoVaultHub &middot; Secure Digital Asset Custody
+          </p>
+        </div>
+      `,
+    });
+
+    if (smtpResult.success) {
+      emailSent = true;
+    } else {
+      // SMTP not configured or failed — fall back to notification-service
+      this.logger.warn(
+        `Direct SMTP failed for client ${id} invite: ${smtpResult.error}. Falling back to notification-service.`,
       );
+
+      try {
+        await axios.post(
+          `${this.notificationServiceUrl}/email/invite`,
+          {
+            to: client.email,
+            clientId: id,
+            inviteUrl,
+            orgName: client.name,
+          },
+          {
+            timeout: 10000,
+            headers: { 'X-Internal-Service-Key': internalKey },
+          },
+        );
+        emailSent = true;
+      } catch (err: any) {
+        this.logger.warn(
+          `Invite email queue also failed for client ${id}: ${err.message}`,
+        );
+        emailWarning =
+          'SMTP is not configured and the notification service is unavailable. The invite URL was generated but no email was sent.';
+      }
+    }
 
     await this.auditLog.log({
       adminUserId,
-      action: 'client.invite_queued',
+      action: emailSent ? 'client.invite_sent' : 'client.invite_queued',
       entityType: 'client',
       entityId: id.toString(),
-      details: { email: client.email },
+      details: {
+        email: client.email,
+        emailSent,
+        ...(emailWarning ? { warning: emailWarning } : {}),
+      },
       ipAddress,
     });
 
-    return { inviteUrl };
+    return {
+      inviteUrl,
+      emailSent,
+      ...(emailWarning ? { warning: emailWarning } : {}),
+    };
   }
 
   async requestClientDeletion(
