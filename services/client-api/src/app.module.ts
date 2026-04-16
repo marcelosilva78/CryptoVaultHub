@@ -10,6 +10,7 @@ import { WebhookModule } from './webhook/webhook.module';
 import { ApiKeyModule } from './api-key/api-key.module';
 import { CoSignModule } from './co-sign/co-sign.module';
 import { AdminDatabaseModule } from './prisma/admin-database.module';
+import { RedisModule } from './common/redis/redis.module';
 import { ProjectModule } from './project/project.module';
 import { FlushModule } from './flush/flush.module';
 import { DeployTraceModule } from './deploy-trace/deploy-trace.module';
@@ -30,6 +31,7 @@ import { PostHogInterceptor } from './common/interceptors/posthog.interceptor';
     MetricsModule,
     StructuredLoggerModule,
     AdminDatabaseModule,
+    RedisModule,
     WalletModule,
     DepositModule,
     WithdrawalModule,

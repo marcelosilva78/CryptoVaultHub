@@ -1,7 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
+import { Reflector } from '@nestjs/core';
 import { WalletController } from './wallet.controller';
 import { WalletService } from './wallet.service';
+import { ApiKeyAuthGuard } from '../common/guards/api-key-auth.guard';
+import { TierRateLimitGuard } from '../common/guards/tier-rate-limit.guard';
 
 describe('WalletController', () => {
   let controller: WalletController;
@@ -24,8 +27,14 @@ describe('WalletController', () => {
       providers: [
         { provide: WalletService, useValue: mockService },
         { provide: ConfigService, useValue: { get: jest.fn() } },
+        { provide: Reflector, useValue: { getAllAndOverride: jest.fn() } },
       ],
-    }).compile();
+    })
+      .overrideGuard(ApiKeyAuthGuard)
+      .useValue({ canActivate: () => true })
+      .overrideGuard(TierRateLimitGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
 
     controller = module.get<WalletController>(WalletController);
     service = module.get<WalletService>(WalletService);

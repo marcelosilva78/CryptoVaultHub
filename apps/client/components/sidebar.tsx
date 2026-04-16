@@ -9,6 +9,7 @@ import {
   ArrowDownToLine,
   ArrowUpFromLine,
   Webhook,
+  PenTool,
   KeyRound,
   ShieldCheck,
   Wand2,
@@ -52,6 +53,7 @@ const navSections: NavSection[] = [
     title: "Integration",
     items: [
       { label: "Webhooks", href: "/webhooks", icon: Webhook },
+      { label: "Co-Sign", href: "/co-sign", icon: PenTool },
       { label: "API Keys", href: "/api-keys", icon: KeyRound },
     ],
   },

@@ -47,9 +47,21 @@ curl -X GET https://api.cryptovaulthub.com/client/v1/wallets \\
 \`\`\`
 
 ## Rate Limiting
-- 100 requests/second per API key (enforced by Kong API Gateway)
-- Batch endpoints count as N requests where N is the batch size
-- Rate limits are configurable per client tier
+Rate limits are enforced per-client based on tier configuration:
+
+| Tier | Global (req/s) | Example Endpoint Limits (req/min) |
+|------|---------------|-----------------------------------|
+| Starter | 60 | Deposit addresses: 10, Withdrawals: 5 |
+| Business | 300 | Deposit addresses: 50, Withdrawals: 30 |
+| Enterprise | 1,000 | Deposit addresses: 200, Withdrawals: 100 |
+
+**Response headers** (included on every authenticated response):
+- \`X-RateLimit-Limit\` — Your tier's per-second limit
+- \`X-RateLimit-Remaining\` — Remaining requests in the current window
+- \`X-RateLimit-Reset\` — Unix epoch when the window resets
+- \`Retry-After\` — Seconds to wait (only on 429 responses)
+
+Custom limits can be configured per-client via tier overrides. Contact support to upgrade your tier.
 
 ## Pagination
 List endpoints support cursor-based pagination:

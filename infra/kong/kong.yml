@@ -1,3 +1,29 @@
+# =============================================================================
+# Kong Declarative Configuration — CryptoVaultHub
+# =============================================================================
+#
+# Rate-Limiting Architecture (two layers):
+#
+#   1. EDGE LAYER (this file) — Kong provides a static, service-wide safety
+#      net. These are hard caps that protect backend services from excessive
+#      traffic regardless of client identity (e.g. 100 req/s for client-api).
+#      Since Kong runs in DB-less / declarative mode (KONG_DATABASE=off), it
+#      cannot create consumers dynamically, so per-client limits are not
+#      feasible here.
+#
+#   2. APPLICATION LAYER (TierRateLimitGuard in client-api) — After API key
+#      authentication, the guard reads the client's tier configuration from
+#      the cvh_admin.tiers table (cached in Redis for 5 min) and enforces:
+#        - Global per-second limit (e.g. Starter=60, Business=300, Enterprise=1000)
+#        - Per-endpoint per-minute limits (e.g. POST /withdrawals = 5 for Starter)
+#      Uses Redis sorted-set sliding window with atomic Lua scripts, the same
+#      pattern as rpc-gateway-service. Client-specific overrides from the
+#      client_tier_overrides table are merged on top of tier defaults.
+#
+#      Standard headers: X-RateLimit-Limit, X-RateLimit-Remaining,
+#                        X-RateLimit-Reset, Retry-After (on 429)
+# =============================================================================
+
 _format_version: "3.0"
 
 services:

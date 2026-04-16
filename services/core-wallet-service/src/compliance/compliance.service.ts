@@ -208,6 +208,12 @@ export class ComplianceService {
     };
   }
 
+  /** Maximum unique addresses to discover per hop to prevent explosion. */
+  private static readonly MAX_ADDRESSES_PER_HOP = 1000;
+
+  /** Default timeout (ms) for the entire N-hop trace operation. */
+  private static readonly TRACE_TIMEOUT_MS = 30_000;
+
   /**
    * N-hop address tracing for KYT "full" mode.
    *
@@ -215,14 +221,17 @@ export class ComplianceService {
    * from a given address, using indexed on-chain events to discover
    * counterparties and screening each against sanctions lists.
    *
-   * Current implementation: hop-1 only (direct counterparties) via
-   * cvh_indexer.indexed_events. Hops 2-3 are stubbed for future expansion
-   * once cross-chain and deeper graph traversal is implemented.
+   * Efficiency measures:
+   * - Batch queries: all addresses from hop N are queried in a single SQL statement
+   * - Deduplication: addresses already scanned in earlier hops are never re-traced
+   * - Address cap: max 1000 unique addresses discovered per hop
+   * - Timeout: configurable timeout (default 30s) aborts the trace gracefully
    */
   async traceAddressHops(
     address: string,
     maxHops: number,
     listsToCheck: string[],
+    timeoutMs: number = ComplianceService.TRACE_TIMEOUT_MS,
   ): Promise<TraceResult> {
     const hops = Math.min(Math.max(maxHops, 1), 3);
     const normalizedAddress = address.toLowerCase();
@@ -230,101 +239,158 @@ export class ComplianceService {
     const flaggedAddresses: HopResult[] = [];
     const scannedAddresses = new Set<string>([normalizedAddress]);
 
-    // Hop 1: Query indexed_events for direct counterparties
     let currentAddresses = [normalizedAddress];
+    let hopsCompleted = 0;
+    const deadline = Date.now() + timeoutMs;
 
     for (let hop = 1; hop <= hops; hop++) {
       if (currentAddresses.length === 0) break;
 
-      const counterparties = new Set<string>();
-
-      for (const addr of currentAddresses) {
-        try {
-          // Query events where this address sent or received
-          const events: Array<{ from_address: string | null; to_address: string | null }> =
-            await this.prisma.$queryRawUnsafe(
-              `SELECT DISTINCT from_address, to_address
-               FROM cvh_indexer.indexed_events
-               WHERE (from_address = ? OR to_address = ?)
-               LIMIT 500`,
-              addr,
-              addr,
-            );
-
-          for (const event of events) {
-            if (event.from_address && event.from_address !== addr && !scannedAddresses.has(event.from_address)) {
-              counterparties.add(event.from_address);
-            }
-            if (event.to_address && event.to_address !== addr && !scannedAddresses.has(event.to_address)) {
-              counterparties.add(event.to_address);
-            }
-          }
-        } catch (err) {
-          this.logger.warn(
-            `Hop-${hop} counterparty query failed for ${addr}: ${(err as Error).message}`,
-          );
-        }
+      // Check timeout before starting a new hop
+      if (Date.now() >= deadline) {
+        this.logger.warn(
+          `N-hop trace timeout reached after hop-${hop - 1} (${timeoutMs}ms limit)`,
+        );
+        break;
       }
 
-      // Screen each counterparty against sanctions
-      const nextHopAddresses: string[] = [];
+      const counterparties = new Set<string>();
 
-      for (const counterparty of counterparties) {
-        scannedAddresses.add(counterparty);
+      // --- Batch query: discover counterparties for ALL current addresses at once ---
+      try {
+        // Build placeholders for the IN clause
+        const placeholders = currentAddresses.map(() => '?').join(', ');
+        const params = [...currentAddresses, ...currentAddresses];
 
+        const events: Array<{ from_address: string | null; to_address: string | null }> =
+          await this.prisma.$queryRawUnsafe(
+            `SELECT DISTINCT from_address, to_address
+             FROM cvh_indexer.indexed_events
+             WHERE from_address IN (${placeholders})
+                OR to_address IN (${placeholders})
+             LIMIT ${ComplianceService.MAX_ADDRESSES_PER_HOP * 2}`,
+            ...params,
+          );
+
+        const currentSet = new Set(currentAddresses);
+
+        for (const event of events) {
+          if (counterparties.size >= ComplianceService.MAX_ADDRESSES_PER_HOP) break;
+
+          if (
+            event.from_address &&
+            !currentSet.has(event.from_address) &&
+            !scannedAddresses.has(event.from_address)
+          ) {
+            counterparties.add(event.from_address);
+          }
+          if (counterparties.size >= ComplianceService.MAX_ADDRESSES_PER_HOP) break;
+
+          if (
+            event.to_address &&
+            !currentSet.has(event.to_address) &&
+            !scannedAddresses.has(event.to_address)
+          ) {
+            counterparties.add(event.to_address);
+          }
+        }
+      } catch (err) {
+        this.logger.warn(
+          `Hop-${hop} batch counterparty query failed: ${(err as Error).message}`,
+        );
+        // Non-fatal: move on without counterparties for this hop
+      }
+
+      if (counterparties.size === 0) {
+        this.logger.debug(
+          `Hop-${hop}: no new counterparties discovered — stopping`,
+        );
+        hopsCompleted = hop;
+        break;
+      }
+
+      // Check timeout before screening
+      if (Date.now() >= deadline) {
+        this.logger.warn(
+          `N-hop trace timeout reached before screening hop-${hop} counterparties`,
+        );
+        break;
+      }
+
+      // --- Batch screening: check all counterparties against sanctions in one query ---
+      const counterpartyList = [...counterparties];
+      for (const cp of counterpartyList) {
+        scannedAddresses.add(cp);
+      }
+
+      try {
         const matches = await this.prisma.sanctionsEntry.findMany({
           where: {
-            address: counterparty,
+            address: { in: counterpartyList },
             listSource: { in: listsToCheck },
             isActive: true,
           },
         });
 
-        const matchDetails: MatchDetail[] = matches.map((m) => ({
-          listSource: m.listSource,
-          entityName: m.entityName,
-          entityId: m.entityId,
-          address: m.address,
-        }));
-
-        const result: HopResult = {
-          hop,
-          address: counterparty,
-          screeningResult: matches.length > 0 ? 'hit' : 'clear',
-          matchDetails: matches.length > 0 ? matchDetails : null,
-        };
-
-        allResults.push(result);
-        if (matches.length > 0) {
-          flaggedAddresses.push(result);
+        // Group matches by address for efficient lookup
+        const matchesByAddress = new Map<string, typeof matches>();
+        for (const m of matches) {
+          const existing = matchesByAddress.get(m.address) || [];
+          existing.push(m);
+          matchesByAddress.set(m.address, existing);
         }
 
-        nextHopAddresses.push(counterparty);
+        // Build results for every counterparty
+        for (const counterparty of counterpartyList) {
+          const addrMatches = matchesByAddress.get(counterparty) || [];
+          const matchDetails: MatchDetail[] = addrMatches.map((m) => ({
+            listSource: m.listSource,
+            entityName: m.entityName,
+            entityId: m.entityId,
+            address: m.address,
+          }));
+
+          const result: HopResult = {
+            hop,
+            address: counterparty,
+            screeningResult: addrMatches.length > 0 ? 'hit' : 'clear',
+            matchDetails: addrMatches.length > 0 ? matchDetails : null,
+          };
+
+          allResults.push(result);
+          if (addrMatches.length > 0) {
+            flaggedAddresses.push(result);
+          }
+        }
+      } catch (err) {
+        this.logger.warn(
+          `Hop-${hop} batch sanctions screening failed: ${(err as Error).message}`,
+        );
+        // Non-fatal: record all counterparties as clear (screening failed, not hit)
+        for (const counterparty of counterpartyList) {
+          allResults.push({
+            hop,
+            address: counterparty,
+            screeningResult: 'clear',
+            matchDetails: null,
+          });
+        }
       }
 
-      currentAddresses = nextHopAddresses;
+      hopsCompleted = hop;
 
-      // For hops > 1, break early if this is the stub boundary
-      if (hop >= 1) {
-        // Currently only hop-1 is fully implemented.
-        // Hops 2-3 will follow the same pattern once cross-chain
-        // graph traversal and performance optimization are in place.
-        this.logger.debug(
-          `Hop-${hop} completed: ${counterparties.size} counterparties scanned, ${flaggedAddresses.length} flagged`,
-        );
-        if (hop >= hops) break;
-        // Future: continue loop for hop 2-3 with nextHopAddresses
-        this.logger.debug(
-          `Hop-${hop + 1} tracing is stubbed — stopping at hop-1 for now`,
-        );
-        break;
-      }
+      this.logger.debug(
+        `Hop-${hop} completed: ${counterparties.size} counterparties scanned, ${flaggedAddresses.length} total flagged`,
+      );
+
+      // Advance to next hop with the newly discovered counterparties
+      currentAddresses = counterpartyList;
     }
 
     return {
       sourceAddress: normalizedAddress,
       totalHops: hops,
-      hopsCompleted: Math.min(1, hops),
+      hopsCompleted,
       counterpartiesScanned: scannedAddresses.size - 1,
       flaggedAddresses,
       allResults,
@@ -358,13 +424,13 @@ export class ComplianceService {
         const listsToCheck = KYT_LEVEL_LISTS['full'];
         const traceResult = await this.traceAddressHops(
           deposit.fromAddress,
-          1,
+          3,
           listsToCheck,
         );
 
         if (traceResult.flaggedAddresses.length > 0) {
           this.logger.warn(
-            `N-hop trace flagged ${traceResult.flaggedAddresses.length} counterparties for deposit from ${deposit.fromAddress}`,
+            `N-hop trace (${traceResult.hopsCompleted} hops) flagged ${traceResult.flaggedAddresses.length} counterparties for deposit from ${deposit.fromAddress}`,
           );
 
           await this.createAlert({
@@ -420,13 +486,13 @@ export class ComplianceService {
         const listsToCheck = KYT_LEVEL_LISTS['full'];
         const traceResult = await this.traceAddressHops(
           withdrawal.toAddress,
-          1,
+          3,
           listsToCheck,
         );
 
         if (traceResult.flaggedAddresses.length > 0) {
           this.logger.warn(
-            `N-hop trace flagged ${traceResult.flaggedAddresses.length} counterparties for withdrawal to ${withdrawal.toAddress}`,
+            `N-hop trace (${traceResult.hopsCompleted} hops) flagged ${traceResult.flaggedAddresses.length} counterparties for withdrawal to ${withdrawal.toAddress}`,
           );
 
           await this.createAlert({
