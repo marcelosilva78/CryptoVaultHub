@@ -257,11 +257,12 @@ export class ClientManagementService {
         const keys = await this.prisma.$queryRaw<any[]>`
           SELECT key_type AS keyType, address, public_key AS publicKey, derivation_path AS derivationPath, chain_scope AS chainScope
           FROM cvh_keyvault.derived_keys
-          WHERE client_id = ${BigInt(id)} AND is_active = 1
+          WHERE client_id = ${BigInt(id)} AND is_active = TRUE
           ORDER BY key_type, chain_scope
         `;
         return keys;
-      } catch {
+      } catch (dbErr) {
+        this.logger.warn(`Failed to query derived_keys: ${(dbErr as Error).message}`);
         return [];
       }
     }
