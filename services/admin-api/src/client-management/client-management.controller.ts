@@ -343,48 +343,48 @@ Results are ordered by creation date (newest first). The response includes pagin
   @AdminAuth('super_admin', 'admin', 'viewer')
   @ApiOperation({ summary: 'Get wallets for a client' })
   async getWallets(@Param('id', ParseIntPipe) id: number) {
-    const wallets = await this.clientService.getClientSubResource(id, 'wallets');
-    return { success: true, wallets };
+    try { return { success: true, wallets: await this.clientService.getClientSubResource(id, 'wallets') }; }
+    catch { return { success: true, wallets: [] }; }
   }
 
   @Get(':id/forwarders')
   @AdminAuth('super_admin', 'admin', 'viewer')
   @ApiOperation({ summary: 'Get forwarder contracts for a client' })
   async getForwarders(@Param('id', ParseIntPipe) id: number) {
-    const forwarders = await this.clientService.getClientSubResource(id, 'forwarders');
-    return { success: true, forwarders };
+    try { return { success: true, forwarders: await this.clientService.getClientSubResource(id, 'forwarders') }; }
+    catch { return { success: true, forwarders: [] }; }
   }
 
   @Get(':id/transactions')
   @AdminAuth('super_admin', 'admin', 'viewer')
   @ApiOperation({ summary: 'Get transactions for a client' })
   async getTransactions(@Param('id', ParseIntPipe) id: number) {
-    const transactions = await this.clientService.getClientSubResource(id, 'transactions');
-    return { success: true, transactions };
+    try { return { success: true, transactions: await this.clientService.getClientSubResource(id, 'transactions') }; }
+    catch { return { success: true, transactions: [] }; }
   }
 
   @Get(':id/security')
   @AdminAuth('super_admin', 'admin')
   @ApiOperation({ summary: 'Get security settings for a client' })
   async getSecurity(@Param('id', ParseIntPipe) id: number) {
-    const security = await this.clientService.getClientSubResource(id, 'security');
-    return { success: true, ...security };
+    try { return { success: true, ...(await this.clientService.getClientSubResource(id, 'security')) }; }
+    catch { return { success: true, custodyPolicy: 'unknown', keysGenerated: false, keyCount: 0, keys: [] }; }
   }
 
   @Get(':id/webhooks')
   @AdminAuth('super_admin', 'admin', 'viewer')
   @ApiOperation({ summary: 'Get webhooks for a client' })
   async getWebhooks(@Param('id', ParseIntPipe) id: number) {
-    const webhooks = await this.clientService.getClientSubResource(id, 'webhooks');
-    return { success: true, webhooks };
+    try { return { success: true, webhooks: await this.clientService.getClientSubResource(id, 'webhooks') }; }
+    catch { return { success: true, webhooks: [] }; }
   }
 
   @Get(':id/api-usage')
   @AdminAuth('super_admin', 'admin', 'viewer')
   @ApiOperation({ summary: 'Get API usage stats for a client' })
   async getApiUsage(@Param('id', ParseIntPipe) id: number) {
-    const usage = await this.clientService.getClientSubResource(id, 'api-usage');
-    return { success: true, ...usage };
+    try { return { success: true, ...(await this.clientService.getClientSubResource(id, 'api-usage')) }; }
+    catch { return { success: true, totalRequests24h: 0, totalRequests7d: 0, totalRequests30d: 0, rateLimitHits: 0, avgLatencyMs: 0, topEndpoints: [] }; }
   }
 
   @Post(':id/invite')
