@@ -339,6 +339,54 @@ Results are ordered by creation date (newest first). The response includes pagin
     return { success: true, keys };
   }
 
+  @Get(':id/wallets')
+  @AdminAuth('super_admin', 'admin', 'viewer')
+  @ApiOperation({ summary: 'Get wallets for a client' })
+  async getWallets(@Param('id', ParseIntPipe) id: number) {
+    const wallets = await this.clientService.getClientSubResource(id, 'wallets');
+    return { success: true, wallets };
+  }
+
+  @Get(':id/forwarders')
+  @AdminAuth('super_admin', 'admin', 'viewer')
+  @ApiOperation({ summary: 'Get forwarder contracts for a client' })
+  async getForwarders(@Param('id', ParseIntPipe) id: number) {
+    const forwarders = await this.clientService.getClientSubResource(id, 'forwarders');
+    return { success: true, forwarders };
+  }
+
+  @Get(':id/transactions')
+  @AdminAuth('super_admin', 'admin', 'viewer')
+  @ApiOperation({ summary: 'Get transactions for a client' })
+  async getTransactions(@Param('id', ParseIntPipe) id: number) {
+    const transactions = await this.clientService.getClientSubResource(id, 'transactions');
+    return { success: true, transactions };
+  }
+
+  @Get(':id/security')
+  @AdminAuth('super_admin', 'admin')
+  @ApiOperation({ summary: 'Get security settings for a client' })
+  async getSecurity(@Param('id', ParseIntPipe) id: number) {
+    const security = await this.clientService.getClientSubResource(id, 'security');
+    return { success: true, ...security };
+  }
+
+  @Get(':id/webhooks')
+  @AdminAuth('super_admin', 'admin', 'viewer')
+  @ApiOperation({ summary: 'Get webhooks for a client' })
+  async getWebhooks(@Param('id', ParseIntPipe) id: number) {
+    const webhooks = await this.clientService.getClientSubResource(id, 'webhooks');
+    return { success: true, webhooks };
+  }
+
+  @Get(':id/api-usage')
+  @AdminAuth('super_admin', 'admin', 'viewer')
+  @ApiOperation({ summary: 'Get API usage stats for a client' })
+  async getApiUsage(@Param('id', ParseIntPipe) id: number) {
+    const usage = await this.clientService.getClientSubResource(id, 'api-usage');
+    return { success: true, ...usage };
+  }
+
   @Post(':id/invite')
   @AdminAuth('super_admin', 'admin')
   @HttpCode(HttpStatus.OK)

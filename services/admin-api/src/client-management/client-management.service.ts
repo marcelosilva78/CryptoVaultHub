@@ -270,6 +270,70 @@ export class ClientManagementService {
     }
   }
 
+  async getClientSubResource(id: number, resource: string): Promise<any> {
+    const clientId = BigInt(id);
+    try {
+      switch (resource) {
+        case 'wallets':
+          return this.prisma.$queryRaw<any[]>`
+            SELECT w.id, w.chain_id AS chainId, c.name AS chainName, w.address, w.wallet_type AS type, w.status, w.created_at AS createdAt
+            FROM cvh_wallets.wallets w
+            LEFT JOIN cvh_admin.chains c ON c.chain_id = w.chain_id
+            WHERE w.client_id = ${clientId}
+            ORDER BY w.chain_id, w.wallet_type
+          `;
+        case 'forwarders':
+          return this.prisma.$queryRaw<any[]>`
+            SELECT da.id, da.chain_id AS chainId, c.name AS chainName, da.address, da.label, da.external_id AS externalId, da.status, da.created_at AS createdAt
+            FROM cvh_wallets.deposit_addresses da
+            LEFT JOIN cvh_admin.chains c ON c.chain_id = da.chain_id
+            WHERE da.client_id = ${clientId}
+            ORDER BY da.created_at DESC LIMIT 100
+          `;
+        case 'transactions':
+          return this.prisma.$queryRaw<any[]>`
+            (SELECT 'deposit' AS type, d.id, d.chain_id AS chainId, d.amount, d.token_symbol AS tokenSymbol, d.status, d.tx_hash AS txHash, d.created_at AS createdAt
+             FROM cvh_transactions.deposits d WHERE d.client_id = ${clientId} ORDER BY d.created_at DESC LIMIT 50)
+            UNION ALL
+            (SELECT 'withdrawal' AS type, w.id, w.chain_id AS chainId, w.amount, '' AS tokenSymbol, w.status, w.tx_hash AS txHash, w.created_at AS createdAt
+             FROM cvh_transactions.withdrawals w WHERE w.client_id = ${clientId} ORDER BY w.created_at DESC LIMIT 50)
+            ORDER BY createdAt DESC LIMIT 50
+          `;
+        case 'security': {
+          const keys = await this.getClientKeys(id);
+          const client = await this.prisma.client.findUnique({ where: { id: clientId } });
+          return {
+            custodyPolicy: client?.custodyPolicy ?? 'full_custody',
+            keysGenerated: keys.length > 0,
+            keyCount: keys.length,
+            keys,
+          };
+        }
+        case 'webhooks':
+          return this.prisma.$queryRaw<any[]>`
+            SELECT wh.id, wh.url, wh.events, wh.is_active AS isActive, wh.created_at AS createdAt
+            FROM cvh_notifications.webhooks wh
+            WHERE wh.client_id = ${clientId}
+            ORDER BY wh.created_at DESC
+          `;
+        case 'api-usage':
+          return {
+            totalRequests24h: 0,
+            totalRequests7d: 0,
+            totalRequests30d: 0,
+            rateLimitHits: 0,
+            avgLatencyMs: 0,
+            topEndpoints: [],
+          };
+        default:
+          return [];
+      }
+    } catch (err) {
+      this.logger.warn(`Failed to load ${resource} for client ${id}: ${(err as Error).message}`);
+      return resource === 'security' || resource === 'api-usage' ? {} : [];
+    }
+  }
+
   async inviteClient(id: number, adminUserId: string, ipAddress?: string) {
     const client = await this.prisma.client.findUnique({
       where: { id: BigInt(id) },
