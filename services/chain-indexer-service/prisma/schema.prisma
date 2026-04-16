@@ -43,12 +43,14 @@ model MonitoredAddress {
   chainId   Int      @map("chain_id")
   address   String   @db.VarChar(42)
   clientId  BigInt   @map("client_id")
+  projectId BigInt   @map("project_id")
   walletId  BigInt   @map("wallet_id")
   isActive  Boolean  @default(true) @map("is_active")
   createdAt DateTime @default(now()) @map("created_at")
 
   @@unique([chainId, address])
   @@index([chainId, isActive])
+  @@index([clientId, projectId])
   @@map("monitored_addresses")
 }
 

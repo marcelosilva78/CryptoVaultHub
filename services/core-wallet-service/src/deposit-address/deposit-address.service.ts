@@ -98,10 +98,14 @@ export class DepositAddressService {
         salt,
       );
 
+    // Resolve project from the hot wallet's project, or default project
+    const projectId = hotWallet.projectId;
+
     // Save to DB
     await this.prisma.depositAddress.create({
       data: {
         clientId: BigInt(clientId),
+        projectId,
         chainId,
         walletId: hotWallet.id,
         address: forwarderAddress,

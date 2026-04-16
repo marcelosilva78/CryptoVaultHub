@@ -18,6 +18,7 @@ import {
   Bell,
   FolderKanban,
   Rocket,
+  PackageOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useClientAuth } from "@/lib/auth-context";
@@ -48,6 +49,7 @@ const navSections: NavSection[] = [
     items: [
       { label: "All Projects", href: "/projects", icon: FolderKanban },
       { label: "Deploy History", href: "/projects/deploys", icon: Rocket },
+      { label: "Export", href: "/projects/export", icon: PackageOpen },
       { label: "Setup Wizard", href: "/setup", icon: Wand2 },
     ],
   },

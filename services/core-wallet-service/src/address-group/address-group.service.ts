@@ -213,6 +213,7 @@ export class AddressGroupService {
         await this.prisma.depositAddress.create({
           data: {
             clientId: BigInt(dto.clientId),
+            projectId: hotWallet.projectId,
             chainId,
             walletId: hotWallet.id,
             address: forwarderAddress,

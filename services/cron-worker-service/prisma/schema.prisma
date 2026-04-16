@@ -70,6 +70,7 @@ model Token {
 model Wallet {
   id         BigInt   @id @default(autoincrement())
   clientId   BigInt   @map("client_id")
+  projectId  BigInt   @map("project_id")
   chainId    Int      @map("chain_id")
   address    String   @db.VarChar(42)
   walletType String   @db.VarChar(20) @map("wallet_type")
@@ -77,12 +78,14 @@ model Wallet {
   createdAt  DateTime @default(now()) @map("created_at")
 
   @@unique([clientId, chainId, walletType], name: "uq_client_chain_type")
+  @@index([clientId, projectId])
   @@map("wallets")
 }
 
 model DepositAddress {
   id         BigInt   @id @default(autoincrement())
   clientId   BigInt   @map("client_id")
+  projectId  BigInt   @map("project_id")
   chainId    Int      @map("chain_id")
   walletId   BigInt   @map("wallet_id")
   address    String   @db.VarChar(42)
@@ -94,6 +97,7 @@ model DepositAddress {
 
   @@unique([clientId, chainId, externalId], name: "uq_client_chain_external")
   @@index([address])
+  @@index([clientId, projectId])
   @@map("deposit_addresses")
 }
 
@@ -104,6 +108,7 @@ model DepositAddress {
 model Deposit {
   id                    BigInt    @id @default(autoincrement())
   clientId              BigInt    @map("client_id")
+  projectId             BigInt    @map("project_id")
   chainId               Int       @map("chain_id")
   forwarderAddress      String    @db.VarChar(42) @map("forwarder_address")
   externalId            String    @db.VarChar(200) @map("external_id")
@@ -124,6 +129,7 @@ model Deposit {
 
   @@unique([txHash, forwarderAddress], name: "uq_tx_forwarder")
   @@index([clientId, status])
+  @@index([clientId, projectId])
   @@map("deposits")
 }
 
@@ -131,6 +137,31 @@ model Deposit {
 // Withdrawals: accessed via raw SQL ($queryRaw/$executeRaw) against
 // cvh_transactions.withdrawals since that table is in a different database.
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Project-Isolated Contract Deployment (read-only for sweep routing)
+// ---------------------------------------------------------------------------
+
+model ProjectChain {
+  id                        BigInt   @id @default(autoincrement())
+  projectId                 BigInt   @map("project_id")
+  chainId                   Int      @map("chain_id")
+  walletFactoryAddress      String?  @db.VarChar(42) @map("wallet_factory_address")
+  forwarderFactoryAddress   String?  @db.VarChar(42) @map("forwarder_factory_address")
+  walletImplAddress         String?  @db.VarChar(42) @map("wallet_impl_address")
+  forwarderImplAddress      String?  @db.VarChar(42) @map("forwarder_impl_address")
+  hotWalletAddress          String?  @db.VarChar(42) @map("hot_wallet_address")
+  hotWalletSequenceId       Int      @default(0) @map("hot_wallet_sequence_id")
+  deployStatus              String   @default("pending") @db.VarChar(20) @map("deploy_status")
+  deployStartedAt           DateTime? @map("deploy_started_at")
+  deployCompletedAt         DateTime? @map("deploy_completed_at")
+  deployError               String?  @db.Text @map("deploy_error")
+  createdAt                 DateTime @default(now()) @map("created_at")
+  updatedAt                 DateTime @updatedAt @map("updated_at")
+
+  @@unique([projectId, chainId], name: "uq_project_chain")
+  @@map("project_chains")
+}
 
 // ---------------------------------------------------------------------------
 // Sanctions entries (OFAC/EU/UN)

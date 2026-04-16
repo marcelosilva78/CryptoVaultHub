@@ -183,10 +183,17 @@ export class WalletService implements OnModuleInit {
       walletSalt,
     );
 
-    // Step 4: Save wallet records
+    // Step 4: Resolve default project for this client
+    const defaultProjectRows = await this.prisma.$queryRaw<
+      Array<{ id: bigint }>
+    >`SELECT id FROM cvh_admin.projects WHERE client_id = ${BigInt(clientId)} AND is_default = 1 LIMIT 1`;
+    const defaultProjectId = defaultProjectRows[0]?.id ?? BigInt(0);
+
+    // Step 5: Save wallet records
     await this.prisma.wallet.create({
       data: {
         clientId: BigInt(clientId),
+        projectId: defaultProjectId,
         chainId,
         address: hotWalletAddress,
         walletType: 'hot',
@@ -196,6 +203,7 @@ export class WalletService implements OnModuleInit {
     await this.prisma.wallet.create({
       data: {
         clientId: BigInt(clientId),
+        projectId: defaultProjectId,
         chainId,
         address: gasTankKey.address,
         walletType: 'gas_tank',

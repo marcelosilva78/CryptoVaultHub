@@ -90,6 +90,7 @@ model Token {
 model Wallet {
   id         BigInt   @id @default(autoincrement())
   clientId   BigInt   @map("client_id")
+  projectId  BigInt   @map("project_id")
   chainId    Int      @map("chain_id")
   address    String   @db.VarChar(42)
   walletType String   @db.VarChar(20) @map("wallet_type")
@@ -97,12 +98,14 @@ model Wallet {
   createdAt  DateTime @default(now()) @map("created_at")
 
   @@unique([clientId, chainId, walletType], name: "uq_client_chain_type")
+  @@index([clientId, projectId])
   @@map("wallets")
 }
 
 model DepositAddress {
   id              BigInt   @id @default(autoincrement())
   clientId        BigInt   @map("client_id")
+  projectId       BigInt   @map("project_id")
   chainId         Int      @map("chain_id")
   walletId        BigInt   @map("wallet_id")
   address         String   @db.VarChar(42)
@@ -117,6 +120,7 @@ model DepositAddress {
   @@unique([clientId, chainId, externalId], name: "uq_client_chain_external")
   @@index([address])
   @@index([addressGroupId], map: "idx_address_group")
+  @@index([clientId, projectId])
   @@map("deposit_addresses")
 }
 
@@ -140,6 +144,7 @@ model WhitelistedAddress {
 model Deposit {
   id                    BigInt    @id @default(autoincrement())
   clientId              BigInt    @map("client_id")
+  projectId             BigInt    @map("project_id")
   chainId               Int       @map("chain_id")
   forwarderAddress      String    @db.VarChar(42) @map("forwarder_address")
   externalId            String    @db.VarChar(200) @map("external_id")
@@ -160,12 +165,14 @@ model Deposit {
 
   @@unique([txHash, forwarderAddress], name: "uq_tx_forwarder")
   @@index([clientId, status])
+  @@index([clientId, projectId])
   @@map("deposits")
 }
 
 model Withdrawal {
   id             BigInt    @id @default(autoincrement())
   clientId       BigInt    @map("client_id")
+  projectId      BigInt    @map("project_id")
   chainId        Int       @map("chain_id")
   tokenId        BigInt    @map("token_id")
   fromWallet     String    @db.VarChar(42) @map("from_wallet")
@@ -185,6 +192,7 @@ model Withdrawal {
   confirmedAt    DateTime? @map("confirmed_at")
 
   @@index([clientId, status])
+  @@index([clientId, projectId])
   @@map("withdrawals")
 }
 

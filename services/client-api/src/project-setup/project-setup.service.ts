@@ -639,6 +639,199 @@ export class ProjectSetupService {
   }
 
   // ---------------------------------------------------------------------------
+  // 7. exportProject
+  // ---------------------------------------------------------------------------
+
+  async exportProject(clientId: number, projectId: number) {
+    const project = await this.verifyOwnership(clientId, projectId);
+
+    // Resolve custodyMode from project settings
+    let custodyMode = 'platform';
+    if (project.settings) {
+      try {
+        const settings =
+          typeof project.settings === 'string'
+            ? JSON.parse(project.settings)
+            : project.settings;
+        custodyMode = settings.custodyMode ?? 'platform';
+      } catch {
+        // ignore parse error
+      }
+    }
+
+    // 1. Public keys from Key Vault
+    let publicKeys: Record<string, any> = {};
+    try {
+      const { data: pubKeysData } = await axios.get(
+        `${this.keyVaultUrl}/projects/${projectId}/public-keys`,
+        { headers: this.headers, timeout: 10000 },
+      );
+
+      const keys = pubKeysData.keys ?? [];
+      for (const key of keys) {
+        const keyType = key.keyType ?? key.key_type ?? 'unknown';
+        publicKeys[keyType] = {
+          address: key.address ?? key.ethAddress ?? null,
+          publicKey: key.publicKey ?? key.public_key ?? null,
+          derivationPath: key.derivationPath ?? key.derivation_path ?? null,
+        };
+      }
+    } catch (error: any) {
+      this.logger.warn(
+        `Failed to fetch public keys for project ${projectId}: ${error.message ?? error}`,
+      );
+    }
+
+    // 2. Project chains + contract addresses from core-wallet deploy status
+    const chainsExport: Record<string, any> = {};
+    const chainIds: number[] = [];
+
+    // Get gas tanks to determine which chains the client has
+    let gasTanks: any[] = [];
+    try {
+      const { data: walletsData } = await axios.get(
+        `${this.coreWalletUrl}/wallets/${clientId}`,
+        { headers: this.headers, timeout: 10000 },
+      );
+      const wallets = walletsData.wallets ?? walletsData ?? [];
+      gasTanks = Array.isArray(wallets)
+        ? wallets.filter((w: any) => w.walletType === 'gas_tank' || w.wallet_type === 'gas_tank')
+        : [];
+    } catch (error: any) {
+      this.logger.warn(
+        `Failed to fetch wallets for export: ${error.message ?? error}`,
+      );
+    }
+
+    for (const gasTank of gasTanks) {
+      const chainId = gasTank.chainId ?? gasTank.chain_id;
+      chainIds.push(chainId);
+    }
+
+    // Get chain info from admin DB
+    let chainMap = new Map<number, ChainRow>();
+    if (chainIds.length > 0) {
+      const placeholders = chainIds.map(() => '?').join(',');
+      const chains = await this.adminDb.query<ChainRow>(
+        `SELECT chain_id, name, short_name, native_currency_symbol, native_currency_decimals, rpc_endpoints, is_active
+         FROM chains
+         WHERE chain_id IN (${placeholders})`,
+        chainIds,
+      );
+      for (const c of chains) {
+        chainMap.set(c.chain_id, c);
+      }
+    }
+
+    // For each chain, get deploy status (contract addresses)
+    for (const chainId of chainIds) {
+      const chain = chainMap.get(chainId);
+      try {
+        const { data } = await axios.get(
+          `${this.coreWalletUrl}/deploy/project/${projectId}/chain/${chainId}/status`,
+          { headers: this.headers, timeout: 10000 },
+        );
+
+        chainsExport[chainId.toString()] = {
+          chainName: chain?.name ?? `Chain ${chainId}`,
+          contracts: {
+            walletFactory: data.walletFactoryAddress ?? data.wallet_factory_address ?? null,
+            forwarderFactory: data.forwarderFactoryAddress ?? data.forwarder_factory_address ?? null,
+            walletImpl: data.walletImplAddress ?? data.wallet_impl_address ?? null,
+            forwarderImpl: data.forwarderImplAddress ?? data.forwarder_impl_address ?? null,
+            hotWallet: data.hotWalletAddress ?? data.hot_wallet_address ?? null,
+          },
+          forwarders: data.forwarders ?? [],
+        };
+      } catch {
+        chainsExport[chainId.toString()] = {
+          chainName: chain?.name ?? `Chain ${chainId}`,
+          contracts: {},
+          forwarders: [],
+        };
+      }
+    }
+
+    // 3. Deploy traces from core-wallet
+    let deployTraces: any[] = [];
+    try {
+      const { data } = await axios.get(
+        `${this.coreWalletUrl}/deploy/project/${projectId}/traces`,
+        { headers: this.headers, timeout: 15000 },
+      );
+      deployTraces = data.traces ?? [];
+    } catch (error: any) {
+      this.logger.warn(
+        `Failed to fetch deploy traces for export: ${error.message ?? error}`,
+      );
+    }
+
+    // 4. Extract ABIs from deploy traces (unique by contract type)
+    const abis: Record<string, any[]> = {};
+    for (const trace of deployTraces) {
+      const contractType = trace.contractType ?? trace.contract_type;
+      const abi = trace.abiJson ?? trace.abi_json ?? trace.abi;
+      if (contractType && abi && !abis[contractType]) {
+        abis[contractType] = abi;
+      }
+    }
+
+    // 5. Get forwarder addresses from core-wallet
+    for (const chainId of chainIds) {
+      try {
+        const { data } = await axios.get(
+          `${this.coreWalletUrl}/deposit-addresses/${clientId}/${chainId}?projectId=${projectId}`,
+          { headers: this.headers, timeout: 15000 },
+        );
+        const addresses = data.addresses ?? data.depositAddresses ?? data ?? [];
+        if (Array.isArray(addresses) && addresses.length > 0) {
+          const forwarderAddrs = addresses.map((a: any) => a.address).filter(Boolean);
+          if (chainsExport[chainId.toString()]) {
+            chainsExport[chainId.toString()].forwarders = forwarderAddrs;
+          }
+        }
+      } catch {
+        // Forwarder list is best-effort
+      }
+    }
+
+    // Build export JSON
+    const exportData = {
+      exportVersion: '1.0',
+      exportedAt: new Date().toISOString(),
+      project: {
+        name: project.name,
+        slug: project.slug,
+        custodyMode,
+        chains: chainIds,
+      },
+      publicKeys,
+      chains: chainsExport,
+      abis,
+      deployTraces: deployTraces.map((trace: any) => ({
+        id: trace.id,
+        chainId: trace.chainId ?? trace.chain_id,
+        contractType: trace.contractType ?? trace.contract_type,
+        contractAddress: trace.contractAddress ?? trace.contract_address ?? null,
+        txHash: trace.txHash ?? trace.tx_hash ?? null,
+        blockNumber: trace.blockNumber ?? trace.block_number ?? null,
+        gasUsed: trace.gasUsed ?? trace.gas_used ?? null,
+        gasCostWei: trace.gasCostWei ?? trace.gas_cost_wei ?? null,
+        deployerAddress: trace.deployerAddress ?? trace.deployer_address ?? null,
+        status: trace.status,
+        explorerUrl: trace.explorerUrl ?? trace.explorer_url ?? null,
+        createdAt: trace.createdAt ?? trace.created_at ?? null,
+      })),
+    };
+
+    this.logger.log(
+      `Project export generated: projectId=${projectId} chains=${chainIds.join(',')} traces=${deployTraces.length}`,
+    );
+
+    return exportData;
+  }
+
+  // ---------------------------------------------------------------------------
   // BigInt helpers (avoid ethers dependency in client-api)
   // ---------------------------------------------------------------------------
 

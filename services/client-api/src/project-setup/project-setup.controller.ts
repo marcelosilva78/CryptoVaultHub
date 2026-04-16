@@ -380,6 +380,60 @@ Deployment may take several minutes per chain. Use \`GET /projects/:id/deploy/st
   }
 
   // ---------------------------------------------------------------------------
+  // GET /client/v1/projects/:id/export
+  // ---------------------------------------------------------------------------
+  @Get(':id/export')
+  @ClientAuth('read')
+  @ApiOperation({
+    summary: 'Export full project data',
+    description: `Exports the complete project data for portability: public keys, contract addresses, ABIs, deploy traces, and forwarder list.
+
+**Note:** The seed phrase is NOT included in the export. The client should already have it from the initial key ceremony.
+
+The response is a JSON object suitable for download.
+
+**Required scope:** \`read\``,
+  })
+  @ApiParam({
+    name: 'id',
+    type: Number,
+    description: 'The project ID.',
+    example: 42,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Project export data.',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        export: {
+          type: 'object',
+          properties: {
+            exportVersion: { type: 'string', example: '1.0' },
+            exportedAt: { type: 'string', format: 'date-time' },
+            project: { type: 'object' },
+            publicKeys: { type: 'object' },
+            chains: { type: 'object' },
+            abis: { type: 'object' },
+            deployTraces: { type: 'array', items: { type: 'object' } },
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 401, description: 'Missing or invalid API key.' })
+  @ApiResponse({ status: 403, description: 'Project does not belong to client.' })
+  async exportProject(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: Request,
+  ) {
+    const clientId = (req as any).clientId;
+    const result = await this.setupService.exportProject(clientId, id);
+    return { success: true, export: result };
+  }
+
+  // ---------------------------------------------------------------------------
   // GET /client/v1/projects/:id/deploy/traces/:chainId
   // ---------------------------------------------------------------------------
   @Get(':id/deploy/traces/:chainId')

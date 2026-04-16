@@ -95,10 +95,17 @@ export class WithdrawalService {
         `Withdrawal rejected: sanctions hit for address ${whitelisted.address} (client ${clientId})`,
       );
 
+      // Resolve default project for this client
+      const defaultProjRows = await this.prisma.$queryRaw<
+        Array<{ id: bigint }>
+      >`SELECT id FROM cvh_admin.projects WHERE client_id = ${BigInt(clientId)} AND is_default = 1 LIMIT 1`;
+      const rejectedProjectId = defaultProjRows[0]?.id ?? BigInt(0);
+
       // Create a rejected withdrawal record for audit trail
       const rejectedWithdrawal = await this.prisma.withdrawal.create({
         data: {
           clientId: BigInt(clientId),
+          projectId: rejectedProjectId,
           chainId,
           tokenId: BigInt(tokenId),
           fromWallet: '',
@@ -187,10 +194,11 @@ export class WithdrawalService {
       );
     }
 
-    // Create withdrawal record
+    // Create withdrawal record using the hot wallet's project
     const withdrawal = await this.prisma.withdrawal.create({
       data: {
         clientId: BigInt(clientId),
+        projectId: hotWallet.projectId,
         chainId,
         tokenId: BigInt(tokenId),
         fromWallet: hotWallet.address,

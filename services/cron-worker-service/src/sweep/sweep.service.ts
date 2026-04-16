@@ -137,6 +137,46 @@ export class SweepService extends WorkerHost implements OnModuleInit {
   }
 
   /**
+   * Get the project's hot wallet address from project_chains.
+   * Returns null if the project doesn't have a deployed hot wallet on this chain.
+   */
+  async getProjectHotWallet(
+    projectId: bigint,
+    chainId: number,
+  ): Promise<string | null> {
+    const projectChain = await this.prisma.projectChain.findUnique({
+      where: {
+        uq_project_chain: {
+          projectId,
+          chainId,
+        },
+      },
+    });
+
+    return projectChain?.hotWalletAddress ?? null;
+  }
+
+  /**
+   * Get the client's hot wallet address from the wallets table (legacy/default project).
+   */
+  async getClientHotWallet(
+    clientId: number,
+    chainId: number,
+  ): Promise<string | null> {
+    const hotWallet = await this.prisma.wallet.findUnique({
+      where: {
+        uq_client_chain_type: {
+          clientId: BigInt(clientId),
+          chainId,
+          walletType: 'hot',
+        },
+      },
+    });
+
+    return hotWallet?.address ?? null;
+  }
+
+  /**
    * Execute sweep: find forwarders with token balances > 0, flush to hot wallet.
    */
   async executeSweep(
@@ -167,9 +207,19 @@ export class SweepService extends WorkerHost implements OnModuleInit {
     const chain = await this.prisma.chain.findUnique({
       where: { id: chainId },
     });
-    if (!chain || !chain.forwarderFactoryAddress) {
+    if (!chain) {
       this.logger.warn(
-        `No forwarder factory for chain ${chainId}, skipping sweep`,
+        `Chain ${chainId} not found, skipping sweep`,
+      );
+      return result;
+    }
+
+    // Check if project-scoped deposits exist (they have their own forwarder factory).
+    // Only skip if there is no global forwarder factory AND no project-scoped deposits.
+    const hasProjectDeposits = deposits.some((d) => d.projectId != null && d.projectId > 0n);
+    if (!chain.forwarderFactoryAddress && !hasProjectDeposits) {
+      this.logger.warn(
+        `No forwarder factory for chain ${chainId} and no project-scoped deposits, skipping sweep`,
       );
       return result;
     }

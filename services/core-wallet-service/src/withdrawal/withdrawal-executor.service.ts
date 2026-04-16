@@ -102,6 +102,7 @@ export class WithdrawalExecutorService {
 
     const clientId = Number(withdrawal.clientId);
     const chainId = withdrawal.chainId;
+    const projectId = withdrawal.projectId;
 
     // Load token
     const token = await this.prisma.token.findUnique({
@@ -113,20 +114,36 @@ export class WithdrawalExecutorService {
       );
     }
 
-    // Load hot wallet (the CvhWalletSimple contract address)
-    const hotWallet = await this.prisma.wallet.findUnique({
-      where: {
-        uq_client_chain_type: {
-          clientId: BigInt(clientId),
-          chainId,
-          walletType: 'hot',
-        },
-      },
-    });
-    if (!hotWallet) {
-      throw new Error(
-        `Hot wallet not found for client ${clientId} on chain ${chainId}`,
+    // Load hot wallet (the CvhWalletSimple contract address).
+    // For project-scoped withdrawals, use project_chains hot wallet;
+    // otherwise fall back to the global client hot wallet.
+    let hotWalletAddress: string;
+    let hotWalletSequenceIdFromDb: number | null = null;
+
+    const projectWalletInfo = await this.getProjectWalletInfo(projectId, chainId);
+    if (projectWalletInfo) {
+      hotWalletAddress = projectWalletInfo.hotWalletAddress;
+      hotWalletSequenceIdFromDb = projectWalletInfo.sequenceId;
+      this.logger.log(
+        `Using project hot wallet for withdrawal ${withdrawalId}: project=${projectId}, hotWallet=${hotWalletAddress}`,
       );
+    } else {
+      // Legacy: use global client hot wallet
+      const hotWallet = await this.prisma.wallet.findUnique({
+        where: {
+          uq_client_chain_type: {
+            clientId: BigInt(clientId),
+            chainId,
+            walletType: 'hot',
+          },
+        },
+      });
+      if (!hotWallet) {
+        throw new Error(
+          `Hot wallet not found for client ${clientId} on chain ${chainId}`,
+        );
+      }
+      hotWalletAddress = hotWallet.address;
     }
 
     // Load gas tank wallet (used as msg.sender / tx signer)
@@ -148,14 +165,14 @@ export class WithdrawalExecutorService {
     // 2. Get provider and contract instance
     const provider = await this.evmProvider.getProvider(chainId);
     const walletContract = new ethers.Contract(
-      hotWallet.address,
+      hotWalletAddress,
       CVH_WALLET_ABI,
       provider,
     );
 
     // 3. Get next sequence ID from the contract
     const sequenceId = await this.getNextSequenceId(
-      hotWallet.address,
+      hotWalletAddress,
       provider,
     );
 
@@ -260,7 +277,7 @@ export class WithdrawalExecutorService {
 
     try {
       const tx = await gasTankWallet.sendTransaction({
-        to: hotWallet.address,
+        to: hotWalletAddress,
         data: txData,
         nonce,
       });
@@ -290,6 +307,11 @@ export class WithdrawalExecutorService {
         submittedAt,
       },
     });
+
+    // 10. If project-scoped, increment the project_chains.hot_wallet_sequence_id
+    if (projectWalletInfo) {
+      await this.incrementProjectSequenceId(projectId, chainId);
+    }
 
     this.logger.log(
       `Withdrawal ${withdrawalId} status updated to 'broadcasting' (txHash=${txHash}, seqId=${sequenceId})`,
@@ -381,6 +403,59 @@ export class WithdrawalExecutorService {
 
     const nextSeqId: bigint = await contract.getNextSequenceId();
     return Number(nextSeqId);
+  }
+
+  /**
+   * Get the project's hot wallet info from project_chains.
+   * Returns null if the project doesn't have a deployed hot wallet on this chain,
+   * which means the legacy client-level hot wallet should be used instead.
+   */
+  async getProjectWalletInfo(
+    projectId: bigint,
+    chainId: number,
+  ): Promise<{
+    hotWalletAddress: string;
+    sequenceId: number;
+    walletFactoryAddress: string | null;
+  } | null> {
+    const projectChain = await this.prisma.projectChain.findUnique({
+      where: {
+        uq_project_chain: {
+          projectId,
+          chainId,
+        },
+      },
+    });
+
+    if (!projectChain || !projectChain.hotWalletAddress) {
+      return null;
+    }
+
+    return {
+      hotWalletAddress: projectChain.hotWalletAddress,
+      sequenceId: projectChain.hotWalletSequenceId,
+      walletFactoryAddress: projectChain.walletFactoryAddress,
+    };
+  }
+
+  /**
+   * Increment the hot_wallet_sequence_id on project_chains after a successful broadcast.
+   */
+  private async incrementProjectSequenceId(
+    projectId: bigint,
+    chainId: number,
+  ): Promise<void> {
+    await this.prisma.projectChain.update({
+      where: {
+        uq_project_chain: {
+          projectId,
+          chainId,
+        },
+      },
+      data: {
+        hotWalletSequenceId: { increment: 1 },
+      },
+    });
   }
 
   /**
