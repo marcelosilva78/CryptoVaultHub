@@ -92,7 +92,7 @@ Every transaction is tracked end-to-end with JSON artifacts at each stage: creat
 
 ### KYT/AML Compliance
 
-Configurable sanctions screening checks deposit source addresses and withdrawal destinations against OFAC SDN + Consolidated, EU, UN, and UK OFSI lists. The Cron Worker Service syncs sanctions lists daily from official XML sources. Screening results are categorized as CLEAR, HIT, or POSSIBLE_MATCH, with hits blocking the transaction and possible matches routed to a compliance review queue.
+Configurable sanctions screening checks deposit source addresses and withdrawal destinations against 5 sanctions lists: OFAC SDN, OFAC Consolidated, EU, UN, and UK OFSI. The Cron Worker Service syncs sanctions lists daily from official XML sources. Screening results are categorized as CLEAR, HIT, or POSSIBLE_MATCH, with hits blocking the transaction and possible matches routed to a compliance review queue. KYT Full mode includes N-hop address tracing (hop-1) for deeper counterparty risk analysis.
 
 ### Real-Time Deposit Detection
 
@@ -193,6 +193,63 @@ Super admins can impersonate any client organization to view the platform exactl
 
 ---
 
+## v3 -- Post-Audit Hardening (April 2026)
+
+Following a comprehensive full-stack security audit (138 findings), CryptoVaultHub v3 addresses all critical and high-priority items with production-grade implementations.
+
+### 1. On-Chain Sweep Execution
+
+Sweep service now executes real on-chain `flushTokens()` and `batchFlushERC20Tokens()` contract calls via the Key Vault signing pipeline. Deposits are marked as swept only after confirmed on-chain transaction receipts -- no more stub tx hashes.
+
+### 2. On-Chain Withdrawal Broadcast
+
+Full withdrawal signing flow: Core Wallet assembles the `sendMultiSig` / `sendMultiSigToken` transaction, Key Vault signs with 2-of-3 keys via native secp256k1, and the signed transaction is broadcast to the blockchain via RPC Gateway. Real tx hashes are tracked through confirmation milestones.
+
+### 3. mTLS for Key Vault
+
+Optional mutual TLS between Core Wallet Service and Key Vault Service. Certificate generation via `scripts/generate-vault-certs.sh`. Enabled via `VAULT_MTLS_ENABLED=true` environment variable. Key Vault rejects connections without valid client certificates when enabled.
+
+### 4. Native Cryptographic Signing
+
+Transaction signing uses native secp256k1 operations on Node.js Buffer objects throughout the entire pipeline. Private keys never convert to JavaScript strings, preventing leakage to the V8 string pool (which is not zeroed on GC).
+
+### 5. HttpOnly Cookie Authentication
+
+Both frontends (Admin Panel, Client Portal) use HttpOnly secure cookies for session management instead of localStorage. A server-side proxy (`/api/*` routes) attaches cookies automatically, eliminating XSS token theft risk.
+
+### 6. Reorg Detector
+
+Block hash cache is populated during indexing. The reorg detector compares cached hashes against on-chain parentHash values to detect chain reorganizations. Affected deposits are re-evaluated from the fork point.
+
+### 7. All 5 Sanctions Lists
+
+Compliance screening now syncs all 5 required sanctions lists: OFAC SDN, OFAC Consolidated, EU Sanctions, UN Sanctions, and UK OFSI. Daily cron sync from official XML/CSV sources.
+
+### 8. Client Deletion with Grace Period
+
+Clients can be soft-deleted with a configurable 30-day grace period. During the grace period, the client's data is retained but access is suspended. After expiry, a cron job permanently purges all associated data across all databases.
+
+### 9. SMTP Configuration
+
+SMTP server settings (host, port, username, password, from address) are configurable via the Admin Panel's System Settings page. Stored encrypted in the `system_settings` table. Used by the Notification Service for email delivery.
+
+### 10. Additional v3 Improvements
+
+- **Address book 2FA enforcement** -- Adding or modifying whitelisted withdrawal addresses requires TOTP verification.
+- **Per-client token enablement** -- Admins can enable/disable specific ERC-20 tokens per client via `client_tokens` and `client_chain_config`.
+- **Audit log page** -- Full audit trail viewer in Admin Panel with filters by user, action type, and date range.
+- **Notifications page** -- Notification rule management and delivery history in both Admin Panel and Client Portal.
+- **PostHog event integration** -- Blockchain events, compliance actions, and key operations emit PostHog events for business analytics.
+- **OpenTelemetry + Prometheus + Jaeger** -- All services instrumented with distributed tracing (OTLP) and `/metrics` endpoints for Prometheus scraping.
+- **Structured JSON logging** -- All services emit structured JSON logs with trace ID correlation for Loki aggregation.
+- **SDK hooks initialization** -- `@cvh/api-client` hooks (`setAdminApiClient`, `setClientApiClient`) properly initialized in both frontend apps.
+- **Token refresh handling** -- `adminFetch` and `clientFetch` handle 401 responses with automatic token refresh via HttpOnly cookie rotation.
+- **Circuit breaker Redis state** -- RPC Gateway circuit breaker state persisted in Redis (survives service restarts).
+- **N-hop address tracing** -- KYT Full mode traces counterparty addresses 1 hop deep for enhanced risk scoring.
+- **7 new database migrations** (024-030) covering chain lifecycle, schema fixes, client-initiated custody, notification rules, client chain config, client deletion, and system settings.
+
+---
+
 ## Architecture
 
 ### High-Level Architecture Diagram
@@ -227,6 +284,7 @@ graph TB
         
         subgraph Infra["Infrastructure"]
             Redis["Redis 7"]
+            Kafka["Kafka 3.7<br/>KRaft mode"]
         end
         
         subgraph Monitoring["Observability"]
@@ -278,7 +336,7 @@ CryptoVaultHub uses four Docker networks to enforce strict security boundaries:
 | `public-net` | Bridge | External access | Traefik, Kong, Admin Panel, Client Portal |
 | `internal-net` | Bridge, internal | Inter-service communication (no external access) | All NestJS services, Redis, Kong, PostHog Web, Loki, Jaeger, Prometheus |
 | `vault-net` | Bridge, internal | Isolated key management (zero internet access) | Core Wallet Service <-> Key Vault Service only |
-| `monitoring-net` | Bridge | Observability stack | PostHog, Prometheus, Grafana, Loki, Jaeger, ClickHouse, Kafka, Zookeeper |
+| `monitoring-net` | Bridge | Observability stack | PostHog, Prometheus, Grafana, Loki, Jaeger, ClickHouse, Kafka (KRaft) |
 
 > **Note:** Only Traefik exposes ports 80 and 443 to the internet. All other services are accessible only through Traefik's reverse proxy via subdomain routing.
 
@@ -357,14 +415,15 @@ Client submits POST /client/v1/withdrawals
 | Category | Technology | Version | Purpose |
 |----------|-----------|---------|---------|
 | Runtime | Node.js | >= 20 | Server-side JavaScript runtime for all services |
-| Framework | NestJS | 10.3 | Backend microservices framework (8 services) |
+| Framework | NestJS | 10.3 | Backend microservices framework (9 services) |
 | Frontend | Next.js 14 | 14.x | App Router, React Server Components for Admin Panel and Client Portal |
 | UI Components | shadcn/ui + Tailwind CSS | -- | Component library with custom design tokens and semantic theming |
 | Charts | Recharts | -- | Analytics dashboards in Admin Panel |
 | API Client | @cvh/api-client + TanStack Query | v5 | Type-safe API client SDK with React Query hooks for both frontends |
 | Database | MySQL | 8.0+ | External cluster, 10 separate databases for domain isolation |
 | ORM | Prisma | 5.22 | Type-safe database access with transactions, one schema per service |
-| Cache / Queue | Redis 7 + BullMQ | 7.x | Job queues, Redis Streams, rate limiting state, caching |
+| Event Streaming | Apache Kafka (KRaft) | 3.7 | Event bus (primary), PostHog ingest, inter-service messaging |
+| Cache / Queue | Redis 7 + BullMQ | 7.x | Job queues, Redis Streams (event bus fallback), rate limiting state, caching |
 | Blockchain | ethers.js | v6 | EVM interaction, contract calls, transaction signing |
 | Smart Contracts | Solidity | 0.8.27 | Adapted from BitGo eth-multisig-v4 (EIP-1167, CREATE2) |
 | Build Tool | Hardhat | -- | Contract compilation (optimizer: 1000 runs, Cancun EVM), testing, deployment |
@@ -375,7 +434,7 @@ Client submits POST /client/v1/withdrawals
 | Monitoring - Logs | Loki | 2.9.0 | Structured JSON log aggregation from all services |
 | Monitoring - Traces | Jaeger | 1.54 | Distributed tracing via OTLP (port 4318) |
 | Analytics | PostHog (self-hosted) | latest | Business event tracking, API request/response capture |
-| Analytics Backend | ClickHouse + Kafka | 23.12 / 3.6 | PostHog analytics storage and event streaming |
+| Analytics Backend | ClickHouse + Kafka | 25.3 / 3.7 | PostHog analytics storage and event streaming (Kafka KRaft mode) |
 | Authentication | JWT + bcryptjs + otplib | -- | Access/refresh tokens, password hashing, TOTP 2FA |
 | Encryption | Node.js crypto (native) | -- | AES-256-GCM, PBKDF2-SHA512, scrypt, HMAC-SHA256 |
 | Animation | Framer Motion | -- | Frontend micro-interactions, wizard transitions |
@@ -431,6 +490,12 @@ Manages webhook endpoint registration and event delivery. Supports CRUD operatio
 
 Executes scheduled background operations: ERC-20 token sweeping (queries forwarders with pending balances and calls `flushTokens()` or `batchFlushERC20Tokens()` via the Gas Tank), gas tank balance monitoring and top-up, forwarder deployment (deploys computed-but-undeployed forwarders when ERC-20 flushing is needed), and sanctions list synchronization (daily XML sync from OFAC, EU, UN, UK OFSI sources into `cvh_compliance.sanctions_entries`). Communicates with the Core Wallet Service via HTTP/REST on `internal-net`.
 
+### RPC Gateway Service (Port 3009)
+
+Centralized RPC proxy and provider management for all EVM chain interactions. Routes JSON-RPC requests to the healthiest available node per chain with automatic failover, latency-based scoring, and circuit breaker protection (Redis-backed state). Provides a provider registry where admins register multiple RPC endpoints per chain (e.g., Tatum, Alchemy, Infura) with authentication headers. A health check cron probes all nodes periodically (configurable interval), updates health scores, and includes unhealthy nodes in re-checks for recovery detection. Supports provider auth headers in production routing paths. Used by the Chain Indexer Service for block scanning and by the Core Wallet Service for on-chain transaction submission.
+
+**Key endpoints**: `GET /rpc/:chainId`, `POST /rpc/:chainId`, `GET /providers`, `POST /providers`, `GET /providers/:chainId/health`
+
 ---
 
 ## Frontend Applications
@@ -460,6 +525,10 @@ Internal administration application built with Next.js 14 (App Router), Tailwind
 | **Jobs Dashboard** (v2) | `/jobs` | BullMQ queue monitoring with retry controls and DLQ management |
 | **Sync Health** (v2) | `/sync-health` | Per-chain indexer synchronization status with gap detection |
 | **Impersonation** (v2) | `/clients/[id]/impersonate` | View platform as a specific client with full audit logging |
+| **Audit Log** (v3) | `/audit-log` | Full platform audit trail with filters (user, action, date range) |
+| **Notifications** (v3) | `/notifications` | Notification rule management and delivery history |
+| **SMTP Settings** (v3) | `/settings/smtp` | SMTP server configuration for outbound email |
+| **System Settings** (v3) | `/settings` | Platform-wide settings (maintenance mode, feature flags) |
 
 ### Client Portal (Port 3011)
 
@@ -485,6 +554,8 @@ Self-service application for client exchanges and payment gateways. Built with t
 | **Address Groups** (v2) | `/address-groups` | Multi-chain deposit address groups with CREATE2 |
 | **Exports** (v2) | `/exports` | Export transaction/address/compliance data (CSV, JSON, XLSX, PDF) |
 | **Project Selector** (v2) | Header component | Switch between isolated projects within the organization |
+| **Security** (v3) | `/security` | 2FA setup/management, address book 2FA enforcement, session management |
+| **Notifications** (v3) | `/notifications` | Client notification preferences and delivery history |
 
 ---
 
@@ -585,7 +656,7 @@ Located in `database/`:
 
 | Script | Purpose |
 |--------|---------|
-| `000-create-databases.sql` | Creates all 8 databases |
+| `000-create-databases.sql` | Creates all 10 databases |
 | `001-cvh-auth.sql` | Auth tables (users, sessions, api_keys) |
 | `002-cvh-keyvault.sql` | Key vault tables (master_seeds, derived_keys, shamir_shares, key_vault_audit) |
 | `003-cvh-admin.sql` | Admin tables (clients, tiers, chains, tokens, audit_logs) |
@@ -594,9 +665,28 @@ Located in `database/`:
 | `006-cvh-compliance.sql` | Compliance tables (sanctions_entries, screening_results, compliance_alerts) |
 | `007-cvh-notifications.sql` | Notification tables (webhooks, webhook_deliveries, email_logs) |
 | `008-cvh-indexer.sql` | Indexer tables (sync_cursors, monitored_addresses) |
-| `009-seed-data.sql` | Initial seed data |
+| `009-seed-data.sql` | Initial seed data (7 chains, 23 tokens, 3 tiers, admin user) |
 | `010-performance-indexes.sql` | Performance optimization indexes |
 | `011-traceability-views.sql` | Views for transaction traceability queries |
+| `012-schema-fixes.sql` | Schema corrections and data type fixes |
+| `013-create-projects.sql` | Projects table in cvh_admin (v2 multi-project scoping) |
+| `014-add-project-id.sql` | Add project_id to all 13 tenant-scoped tables |
+| `015-rpc-providers.sql` | RPC provider management tables (rpc-gateway-service) |
+| `016-create-cvh-jobs.sql` | cvh_jobs database for persistent BullMQ job tracking |
+| `017-indexer-v2.sql` | Chain Indexer v2 tables (indexed_blocks, events, materialized_balances, sync_gaps, reorg_log) |
+| `018-webhooks-v2.sql` | Webhook v2 tables (delivery_attempts, dead_letters) |
+| `019-flush-operations.sql` | Flush operations table in cvh_transactions |
+| `020-deploy-traces.sql` | Deploy traces table in cvh_transactions |
+| `021-create-cvh-exports.sql` | cvh_exports database for export requests |
+| `022-impersonation.sql` | Impersonation sessions table in cvh_auth |
+| `023-performance-indexes-v2.sql` | Supplementary performance indexes |
+| `024-chain-lifecycle.sql` | Chain lifecycle status + RPC node quota tracking |
+| `025-schema-fixes-v3.sql` | Unique constraint on wallets(address, chain_id), widen address columns |
+| `026-client-initiated-custody.sql` | Add client_initiated custody mode |
+| `027-notification-rules.sql` | Notification rules table in cvh_notifications |
+| `028-client-chain-config.sql` | Per-client chain monitoring mode config |
+| `029-client-deletion.sql` | Client soft-deletion with 30-day grace period |
+| `030-system-settings.sql` | System settings table in cvh_admin (SMTP config, feature flags) |
 | `012-schema-fixes.sql` | Schema corrections and updates |
 
 ---
@@ -608,6 +698,9 @@ CryptoVaultHub implements defense-in-depth security across all layers.
 | Layer | Mechanism | Details |
 |-------|-----------|---------|
 | Network Isolation | `vault-net` Docker network | Key Vault has zero internet access. Only Core Wallet bridges `internal-net` and `vault-net`. `internal-net` is marked `internal: true` (no external access). |
+| mTLS | TLS mutual authentication | Optional mTLS between Core Wallet Service and Key Vault Service. Certificates generated via `scripts/generate-vault-certs.sh`. Opt-in via `VAULT_MTLS_ENABLED=true`. |
+| Native Signing | secp256k1 (noble-secp256k1) | Transaction signing uses native secp256k1 operations on Buffer objects, avoiding JS string conversion that could leak key material to V8 string pool. |
+| Cookie Auth | HttpOnly secure cookies | Frontend authentication uses HttpOnly cookies with server-side proxy, eliminating XSS risk from localStorage token storage. |
 | Encryption at Rest | AES-256-GCM envelope encryption | Two-layer scheme: PBKDF2-derived KEK wraps a random DEK, which encrypts the private key. Per-key random 32-byte salt. |
 | Key Derivation | PBKDF2-HMAC-SHA512 | 600,000 iterations per OWASP 2024 recommendation. Configurable via `KDF_ITERATIONS` environment variable. |
 | Key Backup | Shamir's Secret Sharing | 3-of-5 threshold. Each share individually encrypted. Distributed across 5 custodians (client contacts, platform admin, cold storage, physical vault). |
@@ -736,25 +829,17 @@ GRAFANA_PASSWORD=<your-grafana-password>
 ### 3. Database Setup
 
 ```bash
-# Create all 8 databases
-mysql -h <host> -u root -p < database/000-create-databases.sql
-
-# Run all migration scripts in order
-mysql -h <host> -u root -p < database/001-cvh-auth.sql
-mysql -h <host> -u root -p < database/002-cvh-keyvault.sql
-mysql -h <host> -u root -p < database/003-cvh-admin.sql
-mysql -h <host> -u root -p < database/004-cvh-wallets.sql
-mysql -h <host> -u root -p < database/005-cvh-transactions.sql
-mysql -h <host> -u root -p < database/006-cvh-compliance.sql
-mysql -h <host> -u root -p < database/007-cvh-notifications.sql
-mysql -h <host> -u root -p < database/008-cvh-indexer.sql
-mysql -h <host> -u root -p < database/009-seed-data.sql
-mysql -h <host> -u root -p < database/010-performance-indexes.sql
-mysql -h <host> -u root -p < database/011-traceability-views.sql
-mysql -h <host> -u root -p < database/012-schema-fixes.sql
-
-# Or use the migration script
+# Recommended: use the migration script (runs all 31 scripts in order)
 bash database/migrate.sh
+
+# Or with custom host / user:
+bash database/migrate.sh -h 10.0.0.5 -u admin -p
+
+# Or manually run each script (000 through 030):
+mysql -h <host> -u root -p < database/000-create-databases.sql
+mysql -h <host> -u root -p < database/001-cvh-auth.sql
+# ... (all scripts through 030)
+mysql -h <host> -u root -p < database/030-system-settings.sql
 ```
 
 Create the application database user:
@@ -769,6 +854,8 @@ GRANT ALL PRIVILEGES ON cvh_transactions.* TO 'cvh_admin'@'%';
 GRANT ALL PRIVILEGES ON cvh_compliance.* TO 'cvh_admin'@'%';
 GRANT ALL PRIVILEGES ON cvh_notifications.* TO 'cvh_admin'@'%';
 GRANT ALL PRIVILEGES ON cvh_indexer.* TO 'cvh_admin'@'%';
+GRANT ALL PRIVILEGES ON cvh_jobs.* TO 'cvh_admin'@'%';
+GRANT ALL PRIVILEGES ON cvh_exports.* TO 'cvh_admin'@'%';
 FLUSH PRIVILEGES;
 ```
 
@@ -873,11 +960,14 @@ CryptoVaultHub/
 |   +-- contracts/              # CvhWalletSimple, CvhForwarder, Factories, Batcher
 |   +-- scripts/                # Deployment scripts
 |   +-- test/                   # Contract tests (Hardhat + ethers.js v6)
-+-- packages/                   # Shared packages
++-- packages/                   # Shared packages (8 packages)
 |   +-- api-client/             # Type-safe API client SDK (@cvh/api-client)
-|   +-- config/                 # Shared configuration
+|   +-- config/                 # Shared configuration (@cvh/config)
+|   +-- event-bus/              # Kafka + Redis Streams event bus (@cvh/event-bus)
+|   +-- job-client/             # BullMQ job queue client (@cvh/job-client)
 |   +-- posthog/                # PostHog client wrapper (@cvh/posthog)
 |   +-- types/                  # Shared TypeScript types (@cvh/types)
+|   +-- ui/                     # Shared UI components (@cvh/ui)
 |   +-- utils/                  # Formatters, helpers (@cvh/utils)
 +-- services/                   # NestJS microservices
 |   +-- admin-api/              # Administrative API (Port 3001)
@@ -888,10 +978,11 @@ CryptoVaultHub/
 |   +-- chain-indexer-service/  # Block scanning, deposit detection (Port 3006)
 |   +-- notification-service/   # Webhooks, email delivery (Port 3007)
 |   +-- cron-worker-service/    # Sweeps, gas management, OFAC sync (Port 3008)
+|   +-- rpc-gateway-service/   # RPC proxy, provider management, health checks (Port 3009)
 +-- apps/                       # Next.js frontend applications
 |   +-- admin/                  # Admin Panel (Port 3010) -- includes Analytics
 |   +-- client/                 # Client Portal (Port 3011) -- includes Setup Wizard
-+-- database/                   # SQL migration scripts (12 scripts + migrate.sh)
++-- database/                   # SQL migration scripts (31 scripts: 000-030 + migrate.sh)
 +-- infra/                      # Infrastructure configuration
 |   +-- docker/                 # Dockerfiles (NestJS, Next.js -- multi-stage builds)
 |   +-- kong/                   # Kong declarative config (kong.yml)
@@ -1092,13 +1183,15 @@ The Admin Panel and Client Portal have been designed with the CryptoVaultHub vis
 | Chain Indexer | 3006 | internal-net | InternalServiceGuard |
 | Notification | 3007 | internal-net | InternalServiceGuard |
 | Cron Worker | 3008 | internal-net | -- |
-| Admin Panel | 3010 | public-net | JWT session |
-| Client Portal | 3011 | public-net | JWT session |
+| RPC Gateway | 3009 | internal-net | InternalServiceGuard |
+| Admin Panel | 3010 | public-net | JWT session (HttpOnly cookie) |
+| Client Portal | 3011 | public-net | JWT session (HttpOnly cookie) |
 | Redis | 6379 | internal-net | requirepass |
 | Prometheus | 9090 | monitoring-net, internal-net | -- |
 | Grafana | 3000 | monitoring-net | admin / password |
 | Loki | 3100 | monitoring-net, internal-net | -- |
 | Jaeger | 16686 / 4318 | monitoring-net, internal-net | -- |
+| Kafka | 9092 | monitoring-net, internal-net | -- |
 | PostHog | 8010 | monitoring-net, internal-net | -- |
 
 ---
@@ -1124,6 +1217,10 @@ The Admin Panel and Client Portal have been designed with the CryptoVaultHub vis
 - [ ] Load-test rate limiting configuration per tier
 - [ ] Verify Key Vault has zero internet access: `docker exec key-vault-service ping -c 1 google.com` (should fail)
 - [ ] Set up DNS records for Traefik (all subdomains point to server IP)
+- [ ] Generate mTLS certificates: `bash scripts/generate-vault-certs.sh`
+- [ ] Enable mTLS: Set `VAULT_MTLS_ENABLED=true` in `.env`
+- [ ] Configure SMTP settings in Admin Panel (Settings > SMTP)
+- [ ] Run all 31 database migrations: `bash database/migrate.sh`
 
 ---
 
