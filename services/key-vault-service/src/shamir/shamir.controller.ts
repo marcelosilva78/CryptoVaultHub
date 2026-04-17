@@ -26,6 +26,7 @@ export class ShamirController {
   ) {
     const result = await this.shamirService.splitBackupKey(
       clientId,
+      undefined, // projectId — not applicable for legacy client-scoped split
       dto.totalShares,
       dto.threshold,
       dto.custodians,
