@@ -54,11 +54,12 @@ export class CreateProjectDto {
   @ApiProperty({
     description: `Custody mode for the project.
 
-- **platform** — CryptoVaultHub manages all signing keys
-- **co-sign** — Client co-signs withdrawal transactions`,
-    example: 'platform',
-    enum: ['platform', 'co-sign'],
+- **full_custody** — CryptoVaultHub manages all signing keys (auto-signs both platform and client keys)
+- **co_sign** — Platform key managed by CVH, client key managed by client (needs co-sign for withdrawals)
+- **client_only** — Both keys managed by the client`,
+    example: 'full_custody',
+    enum: ['full_custody', 'co_sign', 'client_only'],
   })
-  @IsEnum(['platform', 'co-sign'])
-  custodyMode!: 'platform' | 'co-sign';
+  @IsEnum(['full_custody', 'co_sign', 'client_only'])
+  custodyMode!: 'full_custody' | 'co_sign' | 'client_only';
 }

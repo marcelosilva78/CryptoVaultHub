@@ -17,7 +17,9 @@ const STREAM_EVENT_MAP: Record<string, string> = {
   'deposits:detected': 'deposit.detected',
   'deposits:confirmation': 'deposit.confirmed',
   'deposits:swept': 'deposit.swept',
+  'deposits:sweep_pending': 'deposit.sweep_pending',
   'withdrawals:submitted': 'withdrawal.submitted',
+  'withdrawals:broadcasting': 'withdrawal.broadcasting',
   'withdrawals:confirmed': 'withdrawal.confirmed',
   'withdrawals:failed': 'withdrawal.failed',
 };

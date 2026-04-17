@@ -253,20 +253,9 @@ export class WithdrawalExecutorService {
       );
     }
 
-    // 8. Sign and submit the outer transaction from the gas tank
-    // The gas tank address is a signer on the CvhWalletSimple contract,
-    // and its private key is managed by Key Vault (keyType: 'gas_tank').
-    const gasTankKeyResult = await this.getGasTankPrivateKey(
-      clientId,
-      chainId,
-    );
-
-    const gasTankWallet = new ethers.Wallet(
-      gasTankKeyResult.privateKeyHex,
-      provider,
-    );
-
-    // Acquire nonce with mutex to prevent collisions
+    // 8. Sign the outer transaction via Key Vault (gas_tank key) and broadcast.
+    // Uses POST /keys/:clientId/sign-transaction with keyType: 'gas_tank'
+    // instead of retrieving the private key directly.
     const { nonce, release } = await this.nonceService.acquireNonce(
       chainId,
       gasTank.address,
@@ -276,13 +265,83 @@ export class WithdrawalExecutorService {
     const submittedAt = new Date();
 
     try {
-      const tx = await gasTankWallet.sendTransaction({
+      const feeData = await provider.getFeeData();
+
+      let gasEstimate: bigint;
+      try {
+        const estimated = await provider.estimateGas({
+          from: gasTank.address,
+          to: hotWalletAddress,
+          data: txData,
+        });
+        gasEstimate = (estimated * 120n) / 100n; // 20% safety margin
+      } catch {
+        gasEstimate = 300_000n; // Conservative default for multisig calls
+      }
+
+      const outerTxData: Record<string, any> = {
         to: hotWalletAddress,
         data: txData,
+        value: '0',
+        gasLimit: gasEstimate.toString(),
         nonce,
-      });
+        chainId,
+      };
 
-      txHash = tx.hash;
+      if (feeData.maxFeePerGas !== null && feeData.maxFeePerGas !== undefined) {
+        outerTxData.maxFeePerGas = feeData.maxFeePerGas.toString();
+        outerTxData.maxPriorityFeePerGas = (feeData.maxPriorityFeePerGas ?? 0n).toString();
+      } else if (feeData.gasPrice !== null && feeData.gasPrice !== undefined) {
+        outerTxData.gasPrice = feeData.gasPrice.toString();
+      } else {
+        throw new Error(`Unable to determine gas price for chain ${chainId}`);
+      }
+
+      const signTxController = new AbortController();
+      const signTxTimeout = setTimeout(() => signTxController.abort(), 10_000);
+
+      try {
+        const signTxRes = await fetch(
+          `${this.keyVaultUrl}/keys/${clientId}/sign-transaction`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Internal-Service-Key': this.internalServiceKey,
+            },
+            body: JSON.stringify({
+              clientId,
+              chainId,
+              keyType: 'gas_tank',
+              txData: outerTxData,
+              requestedBy: 'withdrawal-executor',
+            }),
+            signal: signTxController.signal,
+          },
+        );
+
+        if (!signTxRes.ok) {
+          const body = await signTxRes.text();
+          throw new Error(`Key Vault sign-transaction failed (${signTxRes.status}): ${body}`);
+        }
+
+        const signTxResult = (await signTxRes.json()) as {
+          success: boolean;
+          signedTransaction: string;
+          txHash: string;
+          from: string;
+        };
+
+        if (!signTxResult.success || !signTxResult.signedTransaction) {
+          throw new Error(`Key Vault sign-transaction returned unsuccessful for client ${clientId}, chain ${chainId}`);
+        }
+
+        // Broadcast the signed transaction
+        const broadcastResult = await provider.broadcastTransaction(signTxResult.signedTransaction);
+        txHash = broadcastResult.hash;
+      } finally {
+        clearTimeout(signTxTimeout);
+      }
 
       this.logger.log(
         `Withdrawal ${withdrawalId} broadcast: txHash=${txHash} (nonce=${nonce})`,
@@ -293,8 +352,6 @@ export class WithdrawalExecutorService {
       throw error;
     } finally {
       await release();
-      // Zero the private key from memory
-      gasTankKeyResult.zero();
     }
 
     // 9. Update withdrawal record: approved -> broadcasting
@@ -460,7 +517,7 @@ export class WithdrawalExecutorService {
 
   /**
    * Call Key Vault POST /keys/:clientId/sign to sign the operationHash
-   * with the platform key.
+   * with the platform key. Includes AbortController with 10s timeout.
    */
   private async signViaKeyVault(
     clientId: number,
@@ -468,72 +525,34 @@ export class WithdrawalExecutorService {
   ): Promise<KeyVaultSignResponse> {
     const url = `${this.keyVaultUrl}/keys/${clientId}/sign`;
 
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Internal-Service-Key': this.internalServiceKey,
-      },
-      body: JSON.stringify({
-        hash: operationHash,
-        keyType: 'platform',
-        requestedBy: 'withdrawal-executor',
-      }),
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10_000);
 
-    if (!res.ok) {
-      const body = await res.text();
-      throw new Error(
-        `Key Vault sign failed (${res.status}): ${body}`,
-      );
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Internal-Service-Key': this.internalServiceKey,
+        },
+        body: JSON.stringify({
+          hash: operationHash,
+          keyType: 'platform',
+          requestedBy: 'withdrawal-executor',
+        }),
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const body = await res.text();
+        throw new Error(
+          `Key Vault sign failed (${res.status}): ${body}`,
+        );
+      }
+
+      return (await res.json()) as KeyVaultSignResponse;
+    } finally {
+      clearTimeout(timeout);
     }
-
-    return (await res.json()) as KeyVaultSignResponse;
-  }
-
-  /**
-   * Retrieve the gas tank private key from Key Vault for transaction signing.
-   * The key is decrypted in memory and must be zeroed after use.
-   *
-   * Calls POST /keys/:clientId/decrypt-gas-tank with { chainId }.
-   */
-  private async getGasTankPrivateKey(
-    clientId: number,
-    chainId: number,
-  ): Promise<{ privateKeyHex: string; zero: () => void }> {
-    const url = `${this.keyVaultUrl}/keys/${clientId}/decrypt-gas-tank`;
-
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Internal-Service-Key': this.internalServiceKey,
-      },
-      body: JSON.stringify({
-        chainId,
-        requestedBy: 'withdrawal-executor',
-      }),
-    });
-
-    if (!res.ok) {
-      const body = await res.text();
-      throw new Error(
-        `Key Vault decrypt-gas-tank failed (${res.status}): ${body}`,
-      );
-    }
-
-    const data = (await res.json()) as {
-      success: boolean;
-      privateKey: string;
-    };
-
-    // Store in a mutable buffer so we can zero it
-    const keyBuffer = Buffer.from(data.privateKey.replace(/^0x/, ''), 'hex');
-    const privateKeyHex = '0x' + keyBuffer.toString('hex');
-
-    return {
-      privateKeyHex,
-      zero: () => keyBuffer.fill(0),
-    };
   }
 }

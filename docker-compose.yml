@@ -77,6 +77,8 @@ services:
       - "traefik.http.routers.traefik-dashboard.entrypoints=websecure"
       - "traefik.http.routers.traefik-dashboard.tls.certresolver=letsencrypt"
       - "traefik.http.routers.traefik-dashboard.service=api@internal"
+      - "traefik.http.routers.traefik-dashboard.middlewares=traefik-auth"
+      - "traefik.http.middlewares.traefik-auth.basicauth.users=${TRAEFIK_DASHBOARD_USERS}"
     restart: unless-stopped
 
   # ─── MySQL (temporary local — remove when migrating to cluster) ──
@@ -127,12 +129,13 @@ services:
       KONG_ADMIN_ACCESS_LOG: /dev/stdout
       KONG_PROXY_ERROR_LOG: /dev/stderr
       KONG_ADMIN_ERROR_LOG: /dev/stderr
-      KONG_ADMIN_LISTEN: "127.0.0.1:8001"
+      KONG_ADMIN_LISTEN: "0.0.0.0:8001"
     volumes:
       - ./infra/kong/kong.yml:/etc/kong/kong.yml
     networks:
       - public-net
       - internal-net
+      - monitoring-net
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.api.rule=Host(`api.${BASE_DOMAIN:-vaulthub.live}`)"
@@ -269,6 +272,7 @@ services:
         condition: service_healthy
     networks:
       - internal-net
+      - monitoring-net
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
@@ -290,6 +294,7 @@ services:
       - MYSQL_PORT=${MYSQL_PORT}
       - MYSQL_USER=${MYSQL_USER}
       - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - ADMIN_DATABASE_URL=mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@${MYSQL_HOST}:${MYSQL_PORT}/cvh_admin
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD}
@@ -309,6 +314,7 @@ services:
         condition: service_healthy
     networks:
       - internal-net
+      - monitoring-net
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3002/client/v1/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
@@ -348,6 +354,7 @@ services:
         condition: service_healthy
     networks:
       - internal-net
+      - monitoring-net
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3003/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
@@ -394,6 +401,7 @@ services:
     networks:
       - internal-net
       - vault-net
+      - monitoring-net
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3004/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
@@ -434,6 +442,7 @@ services:
         condition: service_healthy
     networks:
       - vault-net
+      - monitoring-net
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "node", "-e", "const tls=process.env.VAULT_TLS_ENABLED==='true'; const mod=tls?require('https'):require('http'); const proto=tls?'https':'http'; const opts=tls?{rejectUnauthorized:false}:{}; mod.get(`${proto}://localhost:3005/health`,opts,r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
@@ -480,6 +489,7 @@ services:
         condition: service_healthy
     networks:
       - internal-net
+      - monitoring-net
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3006/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
@@ -520,6 +530,7 @@ services:
         condition: service_healthy
     networks:
       - internal-net
+      - monitoring-net
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3007/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
@@ -566,6 +577,7 @@ services:
         condition: service_healthy
     networks:
       - internal-net
+      - monitoring-net
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3008/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
@@ -606,6 +618,7 @@ services:
         condition: service_healthy
     networks:
       - internal-net
+      - monitoring-net
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3009/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]

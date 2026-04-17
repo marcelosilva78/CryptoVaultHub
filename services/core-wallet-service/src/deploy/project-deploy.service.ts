@@ -324,6 +324,43 @@ export class ProjectDeployService {
     };
   }
 
+  /**
+   * Register a project_chain row with deploy_status='pending'.
+   * Idempotent: if the row already exists, returns its current state.
+   */
+  async registerProjectChain(
+    projectId: number,
+    chainId: number,
+  ): Promise<{ projectId: number; chainId: number; deployStatus: string }> {
+    let pc = await this.prisma.projectChain.findUnique({
+      where: {
+        uq_project_chain: {
+          projectId: BigInt(projectId),
+          chainId,
+        },
+      },
+    });
+
+    if (!pc) {
+      pc = await this.prisma.projectChain.create({
+        data: {
+          projectId: BigInt(projectId),
+          chainId,
+          deployStatus: 'pending',
+        },
+      });
+      this.logger.log(
+        `Registered project_chain: project=${projectId} chain=${chainId} status=pending`,
+      );
+    }
+
+    return {
+      projectId: Number(pc.projectId),
+      chainId: pc.chainId,
+      deployStatus: pc.deployStatus,
+    };
+  }
+
   // ---------------------------------------------------------------------------
   // Private helpers
   // ---------------------------------------------------------------------------

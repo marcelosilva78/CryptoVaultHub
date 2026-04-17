@@ -46,6 +46,25 @@ export class DeployController {
   }
 
   /**
+   * POST /deploy/project/:projectId/register-chain
+   *
+   * Register a project_chain row with deploy_status='pending'.
+   * Called by client-api at project creation to ensure the row exists
+   * before deploy is triggered. Idempotent: if the row already exists, returns it.
+   */
+  @Post('project/:projectId/register-chain')
+  async registerProjectChain(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Body() body: { chainId: number },
+  ) {
+    const result = await this.projectDeployService.registerProjectChain(
+      projectId,
+      body.chainId,
+    );
+    return { success: true, ...result };
+  }
+
+  /**
    * GET /deploy/project/:projectId/traces
    *
    * Get all deploy traces for a project.

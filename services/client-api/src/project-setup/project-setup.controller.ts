@@ -35,8 +35,9 @@ export class ProjectSetupController {
     description: `Creates a new project for the authenticated client with the specified chains and custody mode.
 
 **Custody modes:**
-- \`platform\` — CryptoVaultHub manages all signing keys
-- \`co-sign\` — Client co-signs withdrawal transactions
+- \`full_custody\` — CryptoVaultHub manages all signing keys (auto-signs both platform and client keys)
+- \`co_sign\` — Platform key managed by CVH, client key managed by client (needs co-sign for withdrawals)
+- \`client_only\` — Both keys managed by the client
 
 After creation, use the \`/keys\`, \`/gas-check\`, and \`/deploy\` endpoints to complete project setup.
 
@@ -56,7 +57,7 @@ After creation, use the \`/keys\`, \`/gas-check\`, and \`/deploy\` endpoints to 
             name: { type: 'string', example: 'My DeFi Gateway' },
             slug: { type: 'string', example: 'my-defi-gateway' },
             description: { type: 'string', nullable: true },
-            custodyMode: { type: 'string', example: 'platform' },
+            custodyMode: { type: 'string', example: 'full_custody' },
             status: { type: 'string', example: 'active' },
             chains: {
               type: 'array',
@@ -89,9 +90,10 @@ After creation, use the \`/keys\`, \`/gas-check\`, and \`/deploy\` endpoints to 
   @ClientAuth('write')
   @ApiOperation({
     summary: 'Initialize project keys (key ceremony)',
-    description: `Generates the HD seed (24-word mnemonic), derives platform/client/backup keys, marks the seed as shown, and returns the mnemonic + public keys.
+    description: `Generates the HD seed (24-word mnemonic), derives platform/client/backup keys, and returns the mnemonic + public keys.
 
 **IMPORTANT:** The mnemonic is shown exactly **once**. Store it securely. It will not be returned again.
+After storing the mnemonic, call \`POST /projects/:id/confirm-seed\` to confirm receipt.
 
 **Required scope:** \`write\``,
   })
@@ -136,6 +138,47 @@ After creation, use the \`/keys\`, \`/gas-check\`, and \`/deploy\` endpoints to 
   ) {
     const clientId = (req as any).clientId;
     const result = await this.setupService.initializeKeys(clientId, id);
+    return { success: true, ...result };
+  }
+
+  // ---------------------------------------------------------------------------
+  // POST /client/v1/projects/:id/confirm-seed
+  // ---------------------------------------------------------------------------
+  @Post(':id/confirm-seed')
+  @ClientAuth('write')
+  @ApiOperation({
+    summary: 'Confirm seed phrase has been saved',
+    description: `Marks the seed phrase as shown to the client. Call this endpoint **after** the user has confirmed they have securely stored their mnemonic.
+
+This is a one-way flag and cannot be undone.
+
+**Required scope:** \`write\``,
+  })
+  @ApiParam({
+    name: 'id',
+    type: Number,
+    description: 'The project ID.',
+    example: 42,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Seed confirmed as shown.',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        confirmed: { type: 'boolean', example: true },
+      },
+    },
+  })
+  @ApiResponse({ status: 401, description: 'Missing or invalid API key.' })
+  @ApiResponse({ status: 403, description: 'Project does not belong to client.' })
+  async confirmSeed(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: Request,
+  ) {
+    const clientId = (req as any).clientId;
+    const result = await this.setupService.confirmSeedShown(clientId, id);
     return { success: true, ...result };
   }
 

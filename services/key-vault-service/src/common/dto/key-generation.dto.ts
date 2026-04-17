@@ -170,8 +170,8 @@ export class GenerateProjectKeysDto {
   clientId!: number;
 
   @IsString()
-  @IsIn(['platform', 'client_only'], {
-    message: 'custodyMode must be one of: platform, client_only',
+  @IsIn(['full_custody', 'co_sign', 'client_only'], {
+    message: 'custodyMode must be one of: full_custody, co_sign, client_only',
   })
   custodyMode!: string;
 

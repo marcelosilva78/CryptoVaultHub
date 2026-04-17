@@ -19,6 +19,8 @@ import {
   FolderKanban,
   Rocket,
   PackageOpen,
+  Droplets,
+  Group,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useClientAuth } from "@/lib/auth-context";
@@ -58,6 +60,8 @@ const navSections: NavSection[] = [
     items: [
       { label: "Deposits", href: "/deposits", icon: ArrowDownToLine },
       { label: "Withdrawals", href: "/withdrawals", icon: ArrowUpFromLine },
+      { label: "Flush", href: "/flush", icon: Droplets },
+      { label: "Address Groups", href: "/address-groups", icon: Group },
       { label: "Exports", href: "/exports", icon: Download },
     ],
   },

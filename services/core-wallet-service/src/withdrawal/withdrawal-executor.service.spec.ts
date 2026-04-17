@@ -84,18 +84,27 @@ describe('WithdrawalExecutorService', () => {
     address: '0xSignerAddress',
   };
 
-  const mockGasTankDecrypt = {
+  const mockSignTransactionResponse = {
     success: true,
-    // Use a deterministic test private key (DO NOT use in production)
-    privateKey: '0x' + '11'.repeat(32),
+    signedTransaction: '0x' + 'ff'.repeat(100),
+    txHash: '0xtxhash123',
+    from: '0xGasTankAddress',
   };
 
   beforeEach(async () => {
     jest.clearAllMocks();
 
-    // Mock provider with getNextSequenceId
+    // Mock provider with methods needed for withdrawal execution
     mockProvider = {
       getNetwork: jest.fn().mockResolvedValue({ chainId: 1n }),
+      getTransactionCount: jest.fn().mockResolvedValue(42),
+      estimateGas: jest.fn().mockResolvedValue(200_000n),
+      getFeeData: jest.fn().mockResolvedValue({
+        maxFeePerGas: 30_000_000_000n,
+        maxPriorityFeePerGas: 1_000_000_000n,
+        gasPrice: 25_000_000_000n,
+      }),
+      broadcastTransaction: jest.fn().mockResolvedValue({ hash: '0xtxhash123' }),
     };
 
     mockPrisma = {
@@ -127,18 +136,18 @@ describe('WithdrawalExecutorService', () => {
       resetNonce: jest.fn().mockResolvedValue(undefined),
     };
 
-    // Default mock for fetch (Key Vault sign + decrypt)
+    // Default mock for fetch (Key Vault sign + sign-transaction)
     mockFetch.mockImplementation((url: string) => {
+      if (url.includes('/sign-transaction')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve(mockSignTransactionResponse),
+        });
+      }
       if (url.includes('/sign')) {
         return Promise.resolve({
           ok: true,
           json: () => Promise.resolve(mockSignResponse),
-        });
-      }
-      if (url.includes('/decrypt-gas-tank')) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve(mockGasTankDecrypt),
         });
       }
       return Promise.resolve({ ok: false, status: 404, text: () => 'Not found' });
@@ -432,22 +441,22 @@ describe('WithdrawalExecutorService', () => {
       const signCalls: Array<{ url: string; options: any }> = [];
       mockFetch.mockImplementation((url: string, options: any) => {
         signCalls.push({ url, options });
+        if (url.includes('/sign-transaction')) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve(mockSignTransactionResponse),
+          });
+        }
         if (url.includes('/sign')) {
           return Promise.resolve({
             ok: true,
             json: () => Promise.resolve(mockSignResponse),
           });
         }
-        if (url.includes('/decrypt-gas-tank')) {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve(mockGasTankDecrypt),
-          });
-        }
         return Promise.resolve({ ok: false, status: 404, text: () => 'Not found' });
       });
 
-      // We need to mock getNextSequenceId and the transaction send
+      // We need to mock getNextSequenceId and the contract interface
       const mockContract = {
         getNextSequenceId: jest.fn().mockResolvedValue(BigInt(5)),
         interface: {
@@ -455,11 +464,6 @@ describe('WithdrawalExecutorService', () => {
         },
       };
       jest.spyOn(ethers, 'Contract').mockReturnValue(mockContract as any);
-
-      const mockWallet = {
-        sendTransaction: jest.fn().mockResolvedValue({ hash: '0xtxhash123' }),
-      };
-      jest.spyOn(ethers, 'Wallet').mockReturnValue(mockWallet as any);
 
       await service.executeWithdrawal('1');
 
@@ -484,10 +488,10 @@ describe('WithdrawalExecutorService', () => {
             text: () => Promise.resolve('HSM timeout'),
           });
         }
-        if (url.includes('/decrypt-gas-tank')) {
+        if (url.includes('/sign-transaction')) {
           return Promise.resolve({
             ok: true,
-            json: () => Promise.resolve(mockGasTankDecrypt),
+            json: () => Promise.resolve(mockSignTransactionResponse),
           });
         }
         return Promise.resolve({ ok: false, status: 404, text: () => 'Not found' });

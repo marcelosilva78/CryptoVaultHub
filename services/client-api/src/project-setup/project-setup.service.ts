@@ -115,7 +115,7 @@ export class ProjectSetupService {
       name: string;
       description?: string;
       chains: number[];
-      custodyMode: 'platform' | 'co-sign';
+      custodyMode: 'full_custody' | 'co_sign' | 'client_only';
     },
   ) {
     const slug = data.name
@@ -156,28 +156,27 @@ export class ProjectSetupService {
     data: { name: string; description?: string; chains: number[]; custodyMode: string },
     slug: string,
   ) {
-    // Insert project_chains into cvh_wallets via core-wallet,
-    // but project_chains lives in cvh_wallets DB which client-api cannot reach directly.
-    // We insert into cvh_admin DB cross-reference or call core-wallet.
-    // Actually, per the schema (031-project-chains.sql), project_chains is in cvh_wallets.
-    // client-api only has AdminDatabaseService. We call core-wallet to create the chain records.
-    // However, if the deploy controller only deploys (POST /deploy/project/:projectId/chain/:chainId),
-    // we can call that endpoint later. For now, register chains via core-wallet.
+    // Insert project_chains rows via core-wallet service.
+    // This ensures the cvh_wallets.project_chains table is populated at project creation time,
+    // so downstream services (deploy, gas-check, etc.) can find the chains.
     const chainResults: Array<{ chainId: number; status: string }> = [];
 
     for (const chainId of data.chains) {
       try {
-        // Call core-wallet to upsert project_chain record (the deploy endpoint handles upsert)
-        // We use the status endpoint to seed the record; if not found, the deploy will create it.
-        // Instead, call the deploy status endpoint first - if 404, the record will be created on deploy.
-        // Simplest approach: call core-wallet to register the chain (POST deploy triggers create)
-        // For now, just record the intent - the actual project_chain row is created when deploy starts.
-        chainResults.push({ chainId, status: 'pending' });
-      } catch (error) {
-        this.logger.warn(
-          `Failed to register chain ${chainId} for project ${projectId}: ${error}`,
+        await axios.post(
+          `${this.coreWalletUrl}/deploy/project/${projectId}/register-chain`,
+          { chainId },
+          { headers: this.headers, timeout: 10000 },
         );
-        chainResults.push({ chainId, status: 'error' });
+        chainResults.push({ chainId, status: 'pending' });
+      } catch (error: any) {
+        // If core-wallet rejects (e.g. duplicate), still record as pending.
+        // The deploy step will upsert the row if needed.
+        const errMsg = error.response?.data?.message ?? (error instanceof Error ? error.message : String(error));
+        this.logger.warn(
+          `Failed to create project_chain for project ${projectId}, chain ${chainId}: ${errMsg}`,
+        );
+        chainResults.push({ chainId, status: 'pending' });
       }
     }
 
@@ -216,7 +215,7 @@ export class ProjectSetupService {
         // ignore parse error
       }
     }
-    resolvedCustodyMode = resolvedCustodyMode || 'platform';
+    resolvedCustodyMode = resolvedCustodyMode || 'full_custody';
 
     try {
       // Step 1: Generate seed (24-word mnemonic)
@@ -237,15 +236,7 @@ export class ProjectSetupService {
         { headers: this.headers, timeout: 30000 },
       );
 
-      // Step 3: Mark seed as shown
-      this.logger.log(`Marking seed shown for project ${projectId}`);
-      await axios.post(
-        `${this.keyVaultUrl}/projects/${projectId}/mark-seed-shown`,
-        {},
-        { headers: this.headers, timeout: 10000 },
-      );
-
-      // Step 4: Get public keys
+      // Step 3: Get public keys (mark-seed-shown is deferred to POST /confirm-seed)
       this.logger.log(`Fetching public keys for project ${projectId}`);
       const { data: pubKeysData } = await axios.get(
         `${this.keyVaultUrl}/projects/${projectId}/public-keys`,
@@ -260,6 +251,34 @@ export class ProjectSetupService {
         mnemonic,
         publicKeys: pubKeysData.keys ?? [],
       };
+    } catch (error: any) {
+      if (error.response) {
+        throw new HttpException(
+          error.response.data?.message || 'Key Vault error',
+          error.response.status,
+        );
+      }
+      throw new InternalServerErrorException('Key Vault service unavailable');
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // 2b. confirmSeedShown
+  // ---------------------------------------------------------------------------
+
+  async confirmSeedShown(clientId: number, projectId: number) {
+    await this.verifyOwnership(clientId, projectId);
+
+    try {
+      await axios.post(
+        `${this.keyVaultUrl}/projects/${projectId}/mark-seed-shown`,
+        {},
+        { headers: this.headers, timeout: 10000 },
+      );
+
+      this.logger.log(`Seed confirmed as shown for project ${projectId}`);
+
+      return { confirmed: true };
     } catch (error: any) {
       if (error.response) {
         throw new HttpException(
@@ -295,7 +314,7 @@ export class ProjectSetupService {
         : [];
 
       if (gasTanks.length === 0) {
-        return { chains: [], allSufficient: true };
+        return { chains: [], allSufficient: false };
       }
 
       // Get chain info from admin DB
@@ -417,6 +436,13 @@ export class ProjectSetupService {
 
     // Check gas balances first
     const gasCheck = await this.checkGasBalance(clientId, projectId);
+
+    if (gasCheck.chains.length === 0) {
+      throw new BadRequestException(
+        'No gas tanks configured. Please deposit gas before deploying.',
+      );
+    }
+
     const insufficientChains = gasCheck.chains.filter((c) => !c.sufficient);
     if (insufficientChains.length > 0) {
       throw new BadRequestException({
@@ -646,14 +672,14 @@ export class ProjectSetupService {
     const project = await this.verifyOwnership(clientId, projectId);
 
     // Resolve custodyMode from project settings
-    let custodyMode = 'platform';
+    let custodyMode = 'full_custody';
     if (project.settings) {
       try {
         const settings =
           typeof project.settings === 'string'
             ? JSON.parse(project.settings)
             : project.settings;
-        custodyMode = settings.custodyMode ?? 'platform';
+        custodyMode = settings.custodyMode ?? 'full_custody';
       } catch {
         // ignore parse error
       }

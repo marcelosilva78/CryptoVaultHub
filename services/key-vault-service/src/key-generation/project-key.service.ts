@@ -130,6 +130,10 @@ export class ProjectKeyService {
     // the strong reference so GC can collect it sooner.
     mnemonic = null;
 
+    // Custody mode semantics:
+    // - full_custody: platform key by CVH, client key also by CVH (auto-sign both)
+    // - co_sign: platform key by CVH, client key by client (needs co-sign)
+    // - client_only: both keys by client
     const isClientOnly = custodyMode === 'client_only';
 
     const keyDefs: Array<{

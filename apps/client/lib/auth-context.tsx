@@ -149,7 +149,7 @@ export function ClientAuthProvider({ children }: { children: ReactNode }) {
   };
 
   const verify2FA = async (code: string) => {
-    const res = await fetch(`${AUTH_API_URL}/2fa/verify`, {
+    const res = await fetch('/api/auth/2fa-verify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code }),

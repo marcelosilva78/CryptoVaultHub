@@ -131,7 +131,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const verify2FA = async (code: string) => {
-    const res = await fetch(`${AUTH_API_URL}/2fa/verify`, {
+    const res = await fetch('/api/auth/2fa-verify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code }),
@@ -142,9 +142,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error(err.message || '2FA verification failed');
     }
     const data = await res.json();
-    // 2FA verify response still needs to set cookies server-side.
-    // For now, if the auth service returns tokens, the middleware cookie
-    // will be updated on next refresh cycle.
     initSdk();
     setUser(data.user);
   };
