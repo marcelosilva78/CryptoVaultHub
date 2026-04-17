@@ -5,10 +5,8 @@ import {
   Param,
   Body,
   Query,
-  Req,
   ParseIntPipe,
 } from '@nestjs/common';
-import { Request } from 'express';
 import {
   ApiTags,
   ApiSecurity,
@@ -18,7 +16,7 @@ import {
   ApiQuery,
   ApiBody,
 } from '@nestjs/swagger';
-import { ClientAuth } from '../common/decorators';
+import { ClientAuth, CurrentClientId } from '../common/decorators';
 import { DepositService } from './deposit.service';
 import {
   GenerateDepositAddressDto,
@@ -111,9 +109,8 @@ export class DepositController {
   async generateDepositAddress(
     @Param('chainId', ParseIntPipe) chainId: number,
     @Body() dto: GenerateDepositAddressDto,
-    @Req() req: Request,
+    @CurrentClientId() clientId: number,
   ) {
-    const clientId = (req as any).clientId;
     const result = await this.depositService.generateDepositAddress(
       clientId,
       chainId,
@@ -194,9 +191,8 @@ export class DepositController {
   async batchGenerateAddresses(
     @Param('chainId', ParseIntPipe) chainId: number,
     @Body() dto: BatchDepositAddressDto,
-    @Req() req: Request,
+    @CurrentClientId() clientId: number,
   ) {
-    const clientId = (req as any).clientId;
     const result = await this.depositService.batchGenerateAddresses(
       clientId,
       chainId,
@@ -267,11 +263,14 @@ export class DepositController {
   })
   @ApiResponse({ status: 401, description: 'Missing or invalid API key.' })
   @ApiResponse({ status: 403, description: 'API key does not have the `read` scope.' })
-  async listDepositAddresses(@Req() req: Request) {
-    const clientId = (req as any).clientId;
-    const result = await this.depositService.listDepositAddresses(clientId, {
-      page: parseInt(req.query.page as string) || 1,
-      limit: parseInt(req.query.limit as string) || 20,
+  async listDepositAddresses(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @CurrentClientId() clientId?: number,
+  ) {
+    const result = await this.depositService.listDepositAddresses(clientId!, {
+      page: parseInt(page as string) || 1,
+      limit: parseInt(limit as string) || 20,
     });
     return { success: true, ...result };
   }
@@ -339,9 +338,8 @@ export class DepositController {
   @ApiResponse({ status: 403, description: 'API key does not have the `read` scope.' })
   async listDeposits(
     @Query() query: ListDepositsQueryDto,
-    @Req() req: Request,
+    @CurrentClientId() clientId: number,
   ) {
-    const clientId = (req as any).clientId;
     const result = await this.depositService.listDeposits(clientId, {
       page: query.page ?? 1,
       limit: query.limit ?? 20,
@@ -418,8 +416,7 @@ export class DepositController {
   @ApiResponse({ status: 401, description: 'Missing or invalid API key.' })
   @ApiResponse({ status: 403, description: 'API key does not have the `read` scope.' })
   @ApiResponse({ status: 404, description: 'Deposit not found or does not belong to the authenticated client.' })
-  async getDeposit(@Param('id') id: string, @Req() req: Request) {
-    const clientId = (req as any).clientId;
+  async getDeposit(@Param('id') id: string, @CurrentClientId() clientId: number) {
     const deposit = await this.depositService.getDeposit(clientId, id);
     return { success: true, deposit };
   }

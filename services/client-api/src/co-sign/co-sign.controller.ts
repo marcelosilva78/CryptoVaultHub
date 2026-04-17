@@ -3,11 +3,9 @@ import {
   Post,
   Param,
   Body,
-  Req,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { Request } from 'express';
 import {
   ApiTags,
   ApiSecurity,
@@ -16,7 +14,7 @@ import {
   ApiParam,
   ApiBody,
 } from '@nestjs/swagger';
-import { ClientAuth } from '../common/decorators';
+import { ClientAuth, CurrentClientId } from '../common/decorators';
 import { CoSignService } from './co-sign.service';
 
 @ApiTags('Co-Sign')
@@ -89,8 +87,7 @@ In co-sign mode, CryptoVaultHub manages one key share and the client manages the
   })
   @ApiResponse({ status: 401, description: 'Missing or invalid API key.' })
   @ApiResponse({ status: 403, description: 'API key does not have the `read` scope, or client is not in co-sign custody mode.' })
-  async listPending(@Req() req: Request) {
-    const clientId = (req as any).clientId;
+  async listPending(@CurrentClientId() clientId: number) {
     const operations = await this.coSignService.listPending(clientId);
     return { success: true, operations };
   }
@@ -191,9 +188,8 @@ The signature must be a valid ECDSA signature in hex format (130 characters: r +
   async submitSignature(
     @Param('operationId') operationId: string,
     @Body() body: { signature: string; publicKey?: string },
-    @Req() req: Request,
+    @CurrentClientId() clientId: number,
   ) {
-    const clientId = (req as any).clientId;
     const result = await this.coSignService.submitSignature(
       clientId,
       operationId,

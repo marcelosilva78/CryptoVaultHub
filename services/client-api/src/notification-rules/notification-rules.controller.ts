@@ -6,10 +6,8 @@ import {
   Delete,
   Param,
   Body,
-  Req,
   ParseIntPipe,
 } from '@nestjs/common';
-import { Request } from 'express';
 import {
   ApiTags,
   ApiSecurity,
@@ -18,7 +16,7 @@ import {
   ApiParam,
   ApiBody,
 } from '@nestjs/swagger';
-import { ClientAuth } from '../common/decorators';
+import { ClientAuth, CurrentClientId } from '../common/decorators';
 import { NotificationRulesService } from './notification-rules.service';
 
 @ApiTags('Notification Rules')
@@ -36,8 +34,7 @@ export class NotificationRulesController {
   })
   @ApiResponse({ status: 200, description: 'Notification rules list' })
   @ApiResponse({ status: 401, description: 'Missing or invalid API key.' })
-  async listRules(@Req() req: Request) {
-    const clientId = (req as any).clientId;
+  async listRules(@CurrentClientId() clientId: number) {
     const result = await this.service.listRules(clientId);
     return { success: true, ...result };
   }
@@ -97,9 +94,8 @@ export class NotificationRulesController {
       deliveryMethod?: string;
       deliveryTarget?: string;
     },
-    @Req() req: Request,
+    @CurrentClientId() clientId: number,
   ) {
-    const clientId = (req as any).clientId;
     const result = await this.service.createRule(clientId, dto);
     return { success: true, ...result };
   }
@@ -127,9 +123,8 @@ export class NotificationRulesController {
       deliveryTarget?: string;
       isEnabled?: boolean;
     },
-    @Req() req: Request,
+    @CurrentClientId() clientId: number,
   ) {
-    const clientId = (req as any).clientId;
     const result = await this.service.updateRule(clientId, id, dto);
     return { success: true, ...result };
   }
@@ -146,9 +141,8 @@ export class NotificationRulesController {
   @ApiResponse({ status: 401, description: 'Missing or invalid API key.' })
   async deleteRule(
     @Param('id', ParseIntPipe) id: number,
-    @Req() req: Request,
+    @CurrentClientId() clientId: number,
   ) {
-    const clientId = (req as any).clientId;
     await this.service.deleteRule(clientId, id);
     return { success: true, message: 'Notification rule deleted' };
   }

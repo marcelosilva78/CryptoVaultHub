@@ -38,6 +38,14 @@ export class ProjectKeyService {
     projectId: number,
     requestedBy: string,
   ): Promise<{ mnemonic: string; projectId: number }> {
+    // L-1: Cross-DB FK validation — verify project exists in cvh_admin
+    const projectExists = await this.prisma.$queryRaw<any[]>`
+      SELECT 1 FROM cvh_admin.projects WHERE id = ${BigInt(projectId)} LIMIT 1
+    `;
+    if (!projectExists?.length) {
+      throw new NotFoundException(`Project ${projectId} not found`);
+    }
+
     // Check if seed already exists for this project
     const existing = await this.prisma.projectSeed.findUnique({
       where: { projectId: BigInt(projectId) },
@@ -134,27 +142,30 @@ export class ProjectKeyService {
     // - full_custody: platform key by CVH, client key also by CVH (auto-sign both)
     // - co_sign: platform key by CVH, client key by client (needs co-sign)
     // - client_only: both keys by client
-    const isClientOnly = custodyMode === 'client_only';
+    //
+    // M-3: co_sign mode generates the same 3 derived keys as full_custody.
+    // The difference is purely operational: in co_sign mode, the withdrawal
+    // and sweep services check the project's custodyMode and require an
+    // external co-signature from the client key holder before executing
+    // on-chain transactions. Key generation is intentionally identical —
+    // all 3 keys (platform, client, backup) are derived from the project
+    // seed regardless of custody mode.
 
     const keyDefs: Array<{
       keyType: 'platform' | 'client' | 'backup';
       path: string;
-      label: string;
     }> = [
       {
         keyType: 'platform',
         path: `m/44'/60'/0'/0/0`,
-        label: isClientOnly ? 'clientKey1' : 'platform',
       },
       {
         keyType: 'client',
         path: `m/44'/60'/1'/0/0`,
-        label: isClientOnly ? 'clientKey2' : 'client',
       },
       {
         keyType: 'backup',
         path: `m/44'/60'/2'/0/0`,
-        label: 'backup',
       },
     ];
 
@@ -218,9 +229,11 @@ export class ProjectKeyService {
     // object graph sooner.
     masterNode = null;
 
-    // Apply Shamir 3-of-5 splitting to the backup key
+    // Apply Shamir 3-of-5 splitting to the project's backup key.
+    // H-1/L-4: Use project-scoped Shamir so each project gets its own share set.
     await this.shamirService.splitBackupKey(
       clientId,
+      projectId,
       undefined,
       undefined,
       undefined,

@@ -5,9 +5,7 @@ import {
   Param,
   Body,
   Query,
-  Req,
 } from '@nestjs/common';
-import { Request } from 'express';
 import {
   ApiTags,
   ApiSecurity,
@@ -16,7 +14,7 @@ import {
   ApiParam,
   ApiBody,
 } from '@nestjs/swagger';
-import { ClientAuth } from '../common/decorators';
+import { ClientAuth, CurrentClientId } from '../common/decorators';
 import { WithdrawalService } from './withdrawal.service';
 import {
   CreateWithdrawalDto,
@@ -155,9 +153,8 @@ The amount should be provided as a decimal string in the token's standard unit (
   })
   async createWithdrawal(
     @Body() dto: CreateWithdrawalDto,
-    @Req() req: Request,
+    @CurrentClientId() clientId: number,
   ) {
-    const clientId = (req as any).clientId;
     const result = await this.withdrawalService.createWithdrawal(clientId, dto);
     return { success: true, ...result };
   }
@@ -217,9 +214,8 @@ The amount should be provided as a decimal string in the token's standard unit (
   @ApiResponse({ status: 403, description: 'API key does not have the `read` scope.' })
   async listWithdrawals(
     @Query() query: ListWithdrawalsQueryDto,
-    @Req() req: Request,
+    @CurrentClientId() clientId: number,
   ) {
-    const clientId = (req as any).clientId;
     const result = await this.withdrawalService.listWithdrawals(clientId, {
       page: query.page ?? 1,
       limit: query.limit ?? 20,
@@ -299,8 +295,7 @@ The amount should be provided as a decimal string in the token's standard unit (
   @ApiResponse({ status: 401, description: 'Missing or invalid API key.' })
   @ApiResponse({ status: 403, description: 'API key does not have the `read` scope.' })
   @ApiResponse({ status: 404, description: 'Withdrawal not found or does not belong to the authenticated client.' })
-  async getWithdrawal(@Param('id') id: string, @Req() req: Request) {
-    const clientId = (req as any).clientId;
+  async getWithdrawal(@Param('id') id: string, @CurrentClientId() clientId: number) {
     const withdrawal = await this.withdrawalService.getWithdrawal(clientId, id);
     return { success: true, withdrawal };
   }

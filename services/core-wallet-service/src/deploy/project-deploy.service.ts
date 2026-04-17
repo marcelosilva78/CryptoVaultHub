@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ethers } from 'ethers';
 import { PrismaService } from '../prisma/prisma.service';
@@ -90,6 +90,14 @@ export class ProjectDeployService {
     forwarderFactoryAddress: string;
     hotWalletAddress: string;
   }> {
+    // L-1: Cross-DB FK validation — verify project exists in cvh_admin
+    const projectExists = await this.prisma.$queryRaw<any[]>`
+      SELECT 1 FROM cvh_admin.projects WHERE id = ${BigInt(projectId)} LIMIT 1
+    `;
+    if (!projectExists?.length) {
+      throw new NotFoundException(`Project ${projectId} not found`);
+    }
+
     // Upsert or find the project_chain record
     let projectChain = await this.prisma.projectChain.findUnique({
       where: {
@@ -839,14 +847,16 @@ export class ProjectDeployService {
       }
 
       if (!hotWalletAddress) {
-        // Fallback: try receipt.contractAddress (unlikely for factory call)
-        // or compute from the factory view function
+        // Fallback: compute the address via the factory's view function.
+        // M-4: CvhWalletFactory.computeWalletAddress takes 3 args:
+        //   (address deployer, address[] allowedSigners, bytes32 salt)
+        // The deployer is the gas tank address (msg.sender of createWallet).
         const factoryContract = new ethers.Contract(
           walletFactoryAddress,
-          ['function computeWalletAddress(address[] calldata allowedSigners, bytes32 salt) external view returns (address)'],
+          ['function computeWalletAddress(address deployer, address[] calldata allowedSigners, bytes32 salt) external view returns (address)'],
           provider,
         );
-        hotWalletAddress = await factoryContract.computeWalletAddress(signers, salt);
+        hotWalletAddress = await factoryContract.computeWalletAddress(gasTankAddress, signers, salt);
       }
 
       const gasUsed = receipt.gasUsed.toString();

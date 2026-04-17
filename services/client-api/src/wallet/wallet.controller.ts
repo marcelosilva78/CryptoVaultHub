@@ -2,10 +2,8 @@ import {
   Controller,
   Get,
   Param,
-  Req,
   ParseIntPipe,
 } from '@nestjs/common';
-import { Request } from 'express';
 import {
   ApiTags,
   ApiSecurity,
@@ -13,7 +11,7 @@ import {
   ApiResponse,
   ApiParam,
 } from '@nestjs/swagger';
-import { ClientAuth } from '../common/decorators';
+import { ClientAuth, CurrentClientId } from '../common/decorators';
 import { WalletService } from './wallet.service';
 
 @ApiTags('Wallets')
@@ -63,8 +61,7 @@ Each wallet includes its on-chain address, associated chain, wallet type, active
   })
   @ApiResponse({ status: 401, description: 'Missing or invalid API key.' })
   @ApiResponse({ status: 403, description: 'API key does not have the `read` scope.' })
-  async listWallets(@Req() req: Request) {
-    const clientId = (req as any).clientId;
+  async listWallets(@CurrentClientId() clientId: number) {
     const wallets = await this.walletService.listWallets(clientId);
     return { success: true, wallets };
   }
@@ -119,9 +116,8 @@ Each wallet includes its on-chain address, associated chain, wallet type, active
   @ApiResponse({ status: 404, description: 'No wallet found for the specified chain.' })
   async getBalances(
     @Param('chainId', ParseIntPipe) chainId: number,
-    @Req() req: Request,
+    @CurrentClientId() clientId: number,
   ) {
-    const clientId = (req as any).clientId;
     const balances = await this.walletService.getBalances(clientId, chainId);
     return { success: true, balances };
   }

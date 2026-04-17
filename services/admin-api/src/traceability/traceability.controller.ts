@@ -31,6 +31,39 @@ export class TraceabilityController {
     return this.traceabilityService.getWalletsByClient(clientId);
   }
 
+  @Get('deploy-traces')
+  @AdminAuth()
+  @ApiOperation({
+    summary: 'List deploy traces (legacy + project) for a client/project',
+    description: 'Combines both legacy deploy_traces (cvh_transactions) and project_deploy_traces (cvh_wallets) into a unified timeline.',
+  })
+  @ApiQuery({ name: 'clientId', type: Number, required: false })
+  @ApiQuery({ name: 'projectId', type: Number, required: false })
+  @ApiQuery({ name: 'chainId', type: Number, required: false })
+  @ApiQuery({ name: 'limit', type: Number, required: false })
+  @ApiResponse({
+    status: 200,
+    description: 'Deploy traces from both legacy and project pipelines',
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  getDeployTraces(
+    @Query('clientId') clientId?: string,
+    @Query('projectId') projectId?: string,
+    @Query('chainId') chainId?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const parsedClientId = clientId ? parseInt(clientId, 10) : undefined;
+    const parsedProjectId = projectId ? parseInt(projectId, 10) : undefined;
+    const parsedChainId = chainId ? parseInt(chainId, 10) : undefined;
+    const parsedLimit = parseInt(limit ?? '50', 10);
+    return this.traceabilityService.getDeployTraces({
+      clientId: isNaN(parsedClientId as number) ? undefined : parsedClientId,
+      projectId: isNaN(parsedProjectId as number) ? undefined : parsedProjectId,
+      chainId: isNaN(parsedChainId as number) ? undefined : parsedChainId,
+      limit: isNaN(parsedLimit) ? 50 : parsedLimit,
+    });
+  }
+
   @Get('transactions')
   @AdminAuth()
   @ApiOperation({

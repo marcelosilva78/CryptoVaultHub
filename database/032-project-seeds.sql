@@ -14,6 +14,11 @@ USE `cvh_keyvault`;
 -- Encryption: AES-256-GCM with a DEK wrapped by the platform KEK.
 -- -----------------------------------------------------------------------------
 
+-- NOTE: encrypted columns use TEXT (not BLOB) because EncryptionService
+-- hex-encodes all ciphertext, IV, auth tag, and salt values. This is
+-- intentional and differs from master_seeds which uses BLOB for legacy reasons.
+-- The master_seeds table stores raw binary data, whereas project_seeds stores
+-- hex-encoded strings produced by the V2 envelope encryption pipeline.
 CREATE TABLE IF NOT EXISTS `project_seeds` (
   `id`                   BIGINT       NOT NULL AUTO_INCREMENT,
   `project_id`           BIGINT       NOT NULL,

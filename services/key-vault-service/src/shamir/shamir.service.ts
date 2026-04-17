@@ -37,15 +37,21 @@ export class ShamirService {
 
   /**
    * Split a client's backup key into Shamir shares.
+   *
+   * L-4/H-1: Accepts an optional projectId. When provided, shares are scoped
+   * to the project so each project gets its own independent share set.
+   * For legacy (pre-project) keys, projectId may be omitted.
    */
   async splitBackupKey(
     clientId: number,
+    projectId?: number,
     totalShares: number = DEFAULT_TOTAL_SHARES,
     threshold: number = DEFAULT_THRESHOLD,
     custodians: string[] = DEFAULT_CUSTODIANS,
     requestedBy: string = 'system',
   ): Promise<{
     clientId: number;
+    projectId?: number;
     totalShares: number;
     threshold: number;
     custodians: string[];
@@ -63,21 +69,51 @@ export class ShamirService {
       );
     }
 
-    // Check if shares already exist
+    // Check if shares already exist for this client+project combo
     const existingShares = await this.prisma.shamirShare.findMany({
-      where: { clientId: BigInt(clientId) },
+      where: {
+        clientId: BigInt(clientId),
+        ...(projectId != null ? { projectId: BigInt(projectId) } : { projectId: null }),
+      },
     });
     if (existingShares.length > 0) {
+      const scope = projectId != null ? `client ${clientId}, project ${projectId}` : `client ${clientId}`;
       throw new BadRequestException(
-        `Shares already exist for client ${clientId}. Delete existing shares first.`,
+        `Shares already exist for ${scope}. Delete existing shares first.`,
       );
     }
 
-    // Decrypt the backup private key
-    const { privateKey } = await this.keyGenService.decryptPrivateKey(
-      clientId,
-      'backup',
-    );
+    // H-1: When a projectId is provided, decrypt the project-scoped backup key.
+    // For legacy (pre-project) clients, fall back to the client-scoped key.
+    let privateKey: Buffer;
+    if (projectId != null) {
+      // Import dynamically to avoid circular dependency at module init time
+      const { ProjectKeyService } = await import('../key-generation/project-key.service');
+      // The project key service is injected alongside keyGenService.
+      // We use a raw query fallback: decrypt the project-scoped backup key.
+      const projectKey = await this.prisma.derivedKey.findFirst({
+        where: {
+          projectId: BigInt(projectId),
+          keyType: 'backup',
+          isActive: true,
+        },
+      });
+      if (!projectKey) {
+        throw new NotFoundException(
+          `Active backup key not found for project ${projectId}`,
+        );
+      }
+      privateKey = this.encryption.decrypt({
+        ciphertext: projectKey.encryptedKey,
+        iv: projectKey.iv,
+        authTag: projectKey.authTag,
+        salt: projectKey.salt,
+        encryptedDek: projectKey.encryptedDek,
+      });
+    } else {
+      const result = await this.keyGenService.decryptPrivateKey(clientId, 'backup');
+      privateKey = result.privateKey;
+    }
 
     // SECURITY NOTE (V8 string immutability limitation):
     // The secrets.js-grempe library requires hex string input. JavaScript strings
@@ -115,6 +151,7 @@ export class ShamirService {
         await this.prisma.shamirShare.create({
           data: {
             clientId: BigInt(clientId),
+            ...(projectId != null ? { projectId: BigInt(projectId) } : {}),
             shareIndex: i + 1,
             custodian: custodians[i],
             encryptedShare: encrypted.ciphertext,
@@ -134,14 +171,17 @@ export class ShamirService {
         clientId,
         keyType: 'backup',
         requestedBy,
-        metadata: { totalShares, threshold, custodians },
+        metadata: { projectId, totalShares, threshold, custodians },
       });
 
+      const scope = projectId != null
+        ? `client ${clientId}, project ${projectId}`
+        : `client ${clientId}`;
       this.logger.log(
-        `Split backup key for client ${clientId} into ${totalShares} shares (threshold: ${threshold})`,
+        `Split backup key for ${scope} into ${totalShares} shares (threshold: ${threshold})`,
       );
 
-      return { clientId, totalShares, threshold, custodians };
+      return { clientId, projectId, totalShares, threshold, custodians };
     } finally {
       // CRITICAL: zero private key
       privateKey.fill(0);
@@ -149,12 +189,16 @@ export class ShamirService {
   }
 
   /**
-   * Get share distribution status for a client.
+   * Get share distribution status for a client (optionally scoped to a project).
    */
-  async getShareStatus(clientId: number) {
+  async getShareStatus(clientId: number, projectId?: number) {
     const shares = await this.prisma.shamirShare.findMany({
-      where: { clientId: BigInt(clientId) },
+      where: {
+        clientId: BigInt(clientId),
+        ...(projectId != null ? { projectId: BigInt(projectId) } : {}),
+      },
       select: {
+        projectId: true,
         shareIndex: true,
         custodian: true,
         isDistributed: true,
@@ -165,13 +209,17 @@ export class ShamirService {
     });
 
     if (shares.length === 0) {
+      const scope = projectId != null
+        ? `client ${clientId}, project ${projectId}`
+        : `client ${clientId}`;
       throw new NotFoundException(
-        `No shares found for client ${clientId}`,
+        `No shares found for ${scope}`,
       );
     }
 
     return {
       clientId,
+      projectId,
       totalShares: shares.length,
       distributedCount: shares.filter((s) => s.isDistributed).length,
       shares,
@@ -180,11 +228,13 @@ export class ShamirService {
 
   /**
    * Reconstruct the backup key from K shares.
+   * L-4: Accepts an optional projectId to reconstruct project-scoped shares.
    */
   async reconstructBackupKey(
     clientId: number,
     shareIndices: number[],
     requestedBy: string = 'system',
+    projectId?: number,
   ): Promise<{ address: string; publicKey: string }> {
     // Enforce minimum share threshold to prevent garbage reconstruction
     if (shareIndices.length < DEFAULT_THRESHOLD) {
@@ -193,10 +243,11 @@ export class ShamirService {
       );
     }
 
-    // Fetch the specified shares
+    // Fetch the specified shares (project-scoped when projectId provided)
     const shares = await this.prisma.shamirShare.findMany({
       where: {
         clientId: BigInt(clientId),
+        ...(projectId != null ? { projectId: BigInt(projectId) } : { projectId: null }),
         shareIndex: { in: shareIndices },
       },
     });
@@ -254,17 +305,21 @@ export class ShamirService {
       const publicKey = '0x' + pubKeyUncompressed.toString('hex');
 
       // Verify reconstructed key matches stored backup address
+      // L-4: Use project-scoped lookup when projectId is provided
       const storedBackupKey = await this.prisma.derivedKey.findFirst({
         where: {
-          clientId: BigInt(clientId),
+          ...(projectId != null
+            ? { projectId: BigInt(projectId) }
+            : { clientId: BigInt(clientId) }),
           keyType: 'backup',
           isActive: true,
         },
         select: { address: true },
       });
       if (!storedBackupKey) {
+        const scope = projectId != null ? `project ${projectId}` : `client ${clientId}`;
         throw new NotFoundException(
-          `No stored backup key found for client ${clientId}`,
+          `No stored backup key found for ${scope}`,
         );
       }
       if (address.toLowerCase() !== storedBackupKey.address.toLowerCase()) {
@@ -279,11 +334,14 @@ export class ShamirService {
         keyType: 'backup',
         address,
         requestedBy,
-        metadata: { shareIndices, shareCount: shares.length },
+        metadata: { projectId, shareIndices, shareCount: shares.length },
       });
 
+      const scope = projectId != null
+        ? `client ${clientId}, project ${projectId}`
+        : `client ${clientId}`;
       this.logger.warn(
-        `Backup key reconstructed for client ${clientId} by ${requestedBy}`,
+        `Backup key reconstructed for ${scope} by ${requestedBy}`,
       );
 
       // Return only public info — never expose the private key via API

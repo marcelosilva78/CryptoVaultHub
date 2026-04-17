@@ -50,6 +50,7 @@ model DerivedKey {
 model ShamirShare {
   id              BigInt    @id @default(autoincrement())
   clientId        BigInt    @map("client_id")
+  projectId       BigInt?   @map("project_id")
   shareIndex      Int       @map("share_index") @db.TinyInt
   custodian       String    @db.VarChar(50)
   encryptedShare  Bytes     @map("encrypted_share") @db.Blob
@@ -61,7 +62,8 @@ model ShamirShare {
   distributedAt   DateTime? @map("distributed_at")
   createdAt       DateTime  @default(now()) @map("created_at")
 
-  @@unique([clientId, shareIndex], name: "uq_client_share")
+  @@unique([clientId, projectId, shareIndex], name: "uq_client_project_share")
+  @@index([projectId], name: "idx_project_shares")
   @@map("shamir_shares")
 }
 
@@ -81,6 +83,11 @@ model KeyVaultAudit {
   @@map("key_vault_audit")
 }
 
+// M-8: The SQL DDL for project_seeds uses TEXT (not BLOB) for encrypted columns
+// because EncryptionService hex-encodes all ciphertext, IV, auth tag, and salt
+// values. This is intentional and differs from master_seeds which uses BLOB for
+// legacy binary storage. Prisma maps Bytes to the underlying column type; the
+// actual storage format is hex-encoded strings in TEXT columns.
 model ProjectSeed {
   id              BigInt   @id @default(autoincrement())
   projectId       BigInt   @unique @map("project_id")

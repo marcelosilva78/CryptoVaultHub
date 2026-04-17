@@ -9,7 +9,7 @@ import {
 } from '@nestjs/common';
 import { Request } from 'express';
 import { ApiTags, ApiSecurity } from '@nestjs/swagger';
-import { ClientAuth } from '../common/decorators';
+import { ClientAuth, CurrentClientId } from '../common/decorators';
 import { FlushService } from './flush.service';
 
 @ApiTags('Flush')
@@ -23,8 +23,8 @@ export class FlushController {
   async createFlush(
     @Body() dto: { chainId: number; tokenAddress?: string; destinationAddress: string },
     @Req() req: Request,
+    @CurrentClientId() clientId: number,
   ) {
-    const clientId = (req as any).clientId;
     /**
      * CRIT-3: Use projectId from the request (set by ProjectScopeGuard),
      * never a hardcoded value.
@@ -36,8 +36,7 @@ export class FlushController {
 
   @Get(':id')
   @ClientAuth('read')
-  async getFlushStatus(@Param('id') id: string, @Req() req: Request) {
-    const clientId = (req as any).clientId;
+  async getFlushStatus(@Param('id') id: string, @Req() req: Request, @CurrentClientId() clientId: number) {
     const projectId = (req as any).projectId;
     const result = await this.flushService.getFlushStatus(clientId, projectId, id);
     return { success: true, ...result };
@@ -48,8 +47,8 @@ export class FlushController {
   async listFlushes(
     @Query() query: { page?: number; limit?: number; status?: string },
     @Req() req: Request,
+    @CurrentClientId() clientId: number,
   ) {
-    const clientId = (req as any).clientId;
     const projectId = (req as any).projectId;
     const result = await this.flushService.listFlushes(clientId, projectId, query);
     return { success: true, ...result };

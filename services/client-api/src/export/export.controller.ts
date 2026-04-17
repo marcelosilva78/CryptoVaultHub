@@ -5,10 +5,9 @@ import {
   Param,
   Body,
   Query,
-  Req,
   Res,
 } from '@nestjs/common';
-import { Request, Response } from 'express';
+import { Response } from 'express';
 import {
   ApiTags,
   ApiSecurity,
@@ -16,7 +15,7 @@ import {
   ApiResponse,
   ApiParam,
 } from '@nestjs/swagger';
-import { ClientAuth } from '../common/decorators';
+import { ClientAuth, CurrentClientId } from '../common/decorators';
 import { ExportApiService } from './export.service';
 import { CreateExportDto, ListExportsQueryDto } from '../common/dto/export.dto';
 
@@ -72,8 +71,7 @@ Each export can be downloaded up to 10 times.
   })
   @ApiResponse({ status: 400, description: 'No data matches the specified filters.' })
   @ApiResponse({ status: 401, description: 'Missing or invalid API key.' })
-  async createExport(@Body() dto: CreateExportDto, @Req() req: Request) {
-    const clientId = (req as any).clientId;
+  async createExport(@Body() dto: CreateExportDto, @CurrentClientId() clientId: number) {
     const result = await this.exportService.createExportRequest(clientId, {
       exportType: dto.exportType,
       format: dto.format,
@@ -110,8 +108,7 @@ Each export can be downloaded up to 10 times.
     },
   })
   @ApiResponse({ status: 401, description: 'Missing or invalid API key.' })
-  async listExports(@Query() query: ListExportsQueryDto, @Req() req: Request) {
-    const clientId = (req as any).clientId;
+  async listExports(@Query() query: ListExportsQueryDto, @CurrentClientId() clientId: number) {
     const result = await this.exportService.listExportRequests(clientId, {
       page: query.page ?? 1,
       limit: query.limit ?? 20,
@@ -145,8 +142,7 @@ Each export can be downloaded up to 10 times.
     },
   })
   @ApiResponse({ status: 404, description: 'Export request not found.' })
-  async getExport(@Param('id') id: string, @Req() req: Request) {
-    const clientId = (req as any).clientId;
+  async getExport(@Param('id') id: string, @CurrentClientId() clientId: number) {
     const request = await this.exportService.getExportRequest(clientId, id);
     return { success: true, request };
   }
@@ -173,10 +169,9 @@ Each export can be downloaded up to 10 times.
   @ApiResponse({ status: 404, description: 'Export file not found or expired.' })
   async downloadExport(
     @Param('id') id: string,
-    @Req() req: Request,
+    @CurrentClientId() clientId: number,
     @Res() res: Response,
   ) {
-    const clientId = (req as any).clientId;
     const stream = await this.exportService.downloadExport(clientId, id);
     stream.pipe(res);
   }

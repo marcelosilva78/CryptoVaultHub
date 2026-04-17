@@ -4,9 +4,8 @@ import {
   Patch,
   Post,
   Body,
-  Req,
 } from '@nestjs/common';
-import { Request } from 'express';
+
 import {
   ApiTags,
   ApiSecurity,
@@ -14,7 +13,7 @@ import {
   ApiResponse,
   ApiBody,
 } from '@nestjs/swagger';
-import { ClientAuth } from '../common/decorators';
+import { ClientAuth, CurrentClientId } from '../common/decorators';
 import { SecurityService } from './security.service';
 
 @ApiTags('Security')
@@ -36,8 +35,7 @@ export class SecurityController {
   })
   @ApiResponse({ status: 200, description: 'Security settings' })
   @ApiResponse({ status: 401, description: 'Missing or invalid API key.' })
-  async getSettings(@Req() req: Request) {
-    const clientId = (req as any).clientId;
+  async getSettings(@CurrentClientId() clientId: number) {
     const result = await this.securityService.getSettings(clientId);
     return { success: true, ...result };
   }
@@ -55,8 +53,7 @@ export class SecurityController {
   })
   @ApiResponse({ status: 200, description: '2FA status' })
   @ApiResponse({ status: 401, description: 'Missing or invalid API key.' })
-  async get2faStatus(@Req() req: Request) {
-    const clientId = (req as any).clientId;
+  async get2faStatus(@CurrentClientId() clientId: number) {
     const result = await this.securityService.get2faStatus(clientId);
     return { success: true, ...result };
   }
@@ -93,9 +90,8 @@ export class SecurityController {
   @ApiResponse({ status: 401, description: 'Missing or invalid API key.' })
   async updateCustodyMode(
     @Body() dto: { mode: 'full_custody' | 'co_sign' | 'client_initiated' },
-    @Req() req: Request,
+    @CurrentClientId() clientId: number,
   ) {
-    const clientId = (req as any).clientId;
     const result = await this.securityService.updateCustodyMode(
       clientId,
       dto.mode,
@@ -138,9 +134,8 @@ export class SecurityController {
   @ApiResponse({ status: 401, description: 'Missing or invalid API key.' })
   async activateSafeMode(
     @Body() dto: { totpCode: string },
-    @Req() req: Request,
+    @CurrentClientId() clientId: number,
   ) {
-    const clientId = (req as any).clientId;
     const result = await this.securityService.activateSafeMode(
       clientId,
       dto.totpCode,
@@ -164,8 +159,7 @@ export class SecurityController {
     description: 'Shamir share status',
   })
   @ApiResponse({ status: 401, description: 'Missing or invalid API key.' })
-  async getShamirShares(@Req() req: Request) {
-    const clientId = (req as any).clientId;
+  async getShamirShares(@CurrentClientId() clientId: number) {
     const result = await this.securityService.getShamirShares(clientId);
     return { success: true, ...result };
   }

@@ -3,9 +3,7 @@ import {
   Get,
   Param,
   Query,
-  Req,
 } from '@nestjs/common';
-import { Request } from 'express';
 import {
   ApiTags,
   ApiSecurity,
@@ -13,7 +11,7 @@ import {
   ApiResponse,
   ApiParam,
 } from '@nestjs/swagger';
-import { ClientAuth } from '../common/decorators';
+import { ClientAuth, CurrentClientId } from '../common/decorators';
 import { DeployTraceService } from './deploy-trace.service';
 import { ListDeployTracesQueryDto } from '../common/dto/address-group.dto';
 
@@ -43,9 +41,8 @@ export class DeployTraceController {
   })
   async listTraces(
     @Query() query: ListDeployTracesQueryDto,
-    @Req() req: Request,
+    @CurrentClientId() clientId: number,
   ) {
-    const clientId = (req as any).clientId;
     const result = await this.deployTraceService.listTraces(clientId, {
       page: query.page ?? 1,
       limit: query.limit ?? 20,
@@ -84,9 +81,8 @@ export class DeployTraceController {
   @ApiResponse({ status: 404, description: 'Deploy trace not found.' })
   async getTrace(
     @Param('id') id: string,
-    @Req() req: Request,
+    @CurrentClientId() clientId: number,
   ) {
-    const clientId = (req as any).clientId;
     const result = await this.deployTraceService.getTrace(
       clientId,
       parseInt(id, 10),

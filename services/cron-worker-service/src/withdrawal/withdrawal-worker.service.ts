@@ -84,10 +84,10 @@ export class WithdrawalWorkerService extends WorkerHost implements OnModuleInit 
     private readonly evmProvider: EvmProviderService,
   ) {
     super();
-    this.keyVaultUrl = this.config.get<string>(
-      'KEY_VAULT_URL',
-      'http://localhost:3005',
-    );
+    // L-3: Use getOrThrow to fail fast if KEY_VAULT_URL is missing,
+    // matching the pattern in TransactionSubmitterService and ProjectDeployService.
+    // A broken localhost fallback would silently fail in production.
+    this.keyVaultUrl = this.config.getOrThrow<string>('KEY_VAULT_URL');
     this.internalServiceKey = this.config.get<string>(
       'INTERNAL_SERVICE_KEY',
       '',

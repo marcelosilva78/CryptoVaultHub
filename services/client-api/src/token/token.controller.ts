@@ -2,10 +2,8 @@ import {
   Controller,
   Get,
   Param,
-  Req,
   ParseIntPipe,
 } from '@nestjs/common';
-import { Request } from 'express';
 import {
   ApiTags,
   ApiSecurity,
@@ -13,7 +11,7 @@ import {
   ApiResponse,
   ApiParam,
 } from '@nestjs/swagger';
-import { ClientAuth } from '../common/decorators';
+import { ClientAuth, CurrentClientId } from '../common/decorators';
 import { TokenService } from './token.service';
 
 @ApiTags('Tokens')
@@ -58,8 +56,7 @@ export class TokenController {
   })
   @ApiResponse({ status: 401, description: 'Missing or invalid API key.' })
   @ApiResponse({ status: 403, description: 'API key does not have the `read` scope.' })
-  async listTokens(@Req() req: Request) {
-    const clientId = (req as any).clientId;
+  async listTokens(@CurrentClientId() clientId: number) {
     const tokens = await this.tokenService.listTokens(clientId);
     return { success: true, tokens };
   }
@@ -111,9 +108,8 @@ export class TokenController {
   @ApiResponse({ status: 404, description: 'No tokens found for the specified chain.' })
   async listTokensByChain(
     @Param('chainId', ParseIntPipe) chainId: number,
-    @Req() req: Request,
+    @CurrentClientId() clientId: number,
   ) {
-    const clientId = (req as any).clientId;
     const tokens = await this.tokenService.listTokensByChain(clientId, chainId);
     return { success: true, tokens };
   }

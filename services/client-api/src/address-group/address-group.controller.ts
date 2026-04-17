@@ -9,7 +9,7 @@ import {
 } from '@nestjs/common';
 import { Request } from 'express';
 import { ApiTags, ApiSecurity } from '@nestjs/swagger';
-import { ClientAuth } from '../common/decorators';
+import { ClientAuth, CurrentClientId } from '../common/decorators';
 import { AddressGroupService } from './address-group.service';
 import { CreateAddressGroupDto } from '../common/dto/address-group.dto';
 
@@ -24,8 +24,8 @@ export class AddressGroupController {
   async createAddressGroup(
     @Body() dto: CreateAddressGroupDto,
     @Req() req: Request,
+    @CurrentClientId() clientId: number,
   ) {
-    const clientId = (req as any).clientId;
     /**
      * CRIT-3: Use projectId from the request (set by ProjectScopeGuard),
      * never a hardcoded value.
@@ -44,8 +44,8 @@ export class AddressGroupController {
   async listAddressGroups(
     @Query() query: { page?: number; limit?: number },
     @Req() req: Request,
+    @CurrentClientId() clientId: number,
   ) {
-    const clientId = (req as any).clientId;
     const projectId = (req as any).projectId;
     const result = await this.addressGroupService.listAddressGroups(
       clientId,
@@ -57,8 +57,7 @@ export class AddressGroupController {
 
   @Get(':id')
   @ClientAuth('read')
-  async getAddressGroup(@Param('id') id: string, @Req() req: Request) {
-    const clientId = (req as any).clientId;
+  async getAddressGroup(@Param('id') id: string, @Req() req: Request, @CurrentClientId() clientId: number) {
     const projectId = (req as any).projectId;
     const result = await this.addressGroupService.getAddressGroup(
       clientId,

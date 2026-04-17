@@ -4,10 +4,8 @@ import {
   Get,
   Param,
   Body,
-  Req,
   ParseIntPipe,
 } from '@nestjs/common';
-import { Request } from 'express';
 import {
   ApiTags,
   ApiSecurity,
@@ -15,7 +13,7 @@ import {
   ApiResponse,
   ApiParam,
 } from '@nestjs/swagger';
-import { ClientAuth } from '../common/decorators';
+import { ClientAuth, CurrentClientId } from '../common/decorators';
 import { CreateProjectDto } from '../common/dto/project-setup.dto';
 import { ProjectSetupService } from './project-setup.service';
 
@@ -77,8 +75,10 @@ After creation, use the \`/keys\`, \`/gas-check\`, and \`/deploy\` endpoints to 
   @ApiResponse({ status: 400, description: 'Invalid request body.' })
   @ApiResponse({ status: 401, description: 'Missing or invalid API key.' })
   @ApiResponse({ status: 403, description: 'API key does not have the `write` scope.' })
-  async createProject(@Body() dto: CreateProjectDto, @Req() req: Request) {
-    const clientId = (req as any).clientId;
+  async createProject(
+    @Body() dto: CreateProjectDto,
+    @CurrentClientId() clientId: number,
+  ) {
     const project = await this.setupService.createProject(clientId, dto);
     return { success: true, project };
   }
@@ -134,9 +134,8 @@ After storing the mnemonic, call \`POST /projects/:id/confirm-seed\` to confirm 
   @ApiResponse({ status: 404, description: 'Project not found.' })
   async initializeKeys(
     @Param('id', ParseIntPipe) id: number,
-    @Req() req: Request,
+    @CurrentClientId() clientId: number,
   ) {
-    const clientId = (req as any).clientId;
     const result = await this.setupService.initializeKeys(clientId, id);
     return { success: true, ...result };
   }
@@ -175,9 +174,8 @@ This is a one-way flag and cannot be undone.
   @ApiResponse({ status: 403, description: 'Project does not belong to client.' })
   async confirmSeed(
     @Param('id', ParseIntPipe) id: number,
-    @Req() req: Request,
+    @CurrentClientId() clientId: number,
   ) {
-    const clientId = (req as any).clientId;
     const result = await this.setupService.confirmSeedShown(clientId, id);
     return { success: true, ...result };
   }
@@ -232,9 +230,8 @@ Estimated gas per chain: ~5.65M gas units (5 contract deployments).
   @ApiResponse({ status: 403, description: 'Project does not belong to client.' })
   async checkGas(
     @Param('id', ParseIntPipe) id: number,
-    @Req() req: Request,
+    @CurrentClientId() clientId: number,
   ) {
-    const clientId = (req as any).clientId;
     const result = await this.setupService.checkGasBalance(clientId, id);
     return { success: true, ...result };
   }
@@ -291,9 +288,8 @@ Deployment may take several minutes per chain. Use \`GET /projects/:id/deploy/st
   @ApiResponse({ status: 403, description: 'Project does not belong to client.' })
   async startDeploy(
     @Param('id', ParseIntPipe) id: number,
-    @Req() req: Request,
+    @CurrentClientId() clientId: number,
   ) {
-    const clientId = (req as any).clientId;
     const result = await this.setupService.startDeploy(clientId, id);
     return { success: true, ...result };
   }
@@ -360,9 +356,8 @@ Deployment may take several minutes per chain. Use \`GET /projects/:id/deploy/st
   @ApiResponse({ status: 403, description: 'Project does not belong to client.' })
   async getDeployStatus(
     @Param('id', ParseIntPipe) id: number,
-    @Req() req: Request,
+    @CurrentClientId() clientId: number,
   ) {
-    const clientId = (req as any).clientId;
     const result = await this.setupService.getDeployStatus(clientId, id);
     return { success: true, ...result };
   }
@@ -415,9 +410,8 @@ Deployment may take several minutes per chain. Use \`GET /projects/:id/deploy/st
   @ApiResponse({ status: 403, description: 'Project does not belong to client.' })
   async getDeployTraces(
     @Param('id', ParseIntPipe) id: number,
-    @Req() req: Request,
+    @CurrentClientId() clientId: number,
   ) {
-    const clientId = (req as any).clientId;
     const result = await this.setupService.getDeployTraces(clientId, id);
     return { success: true, ...result };
   }
@@ -469,9 +463,8 @@ The response is a JSON object suitable for download.
   @ApiResponse({ status: 403, description: 'Project does not belong to client.' })
   async exportProject(
     @Param('id', ParseIntPipe) id: number,
-    @Req() req: Request,
+    @CurrentClientId() clientId: number,
   ) {
-    const clientId = (req as any).clientId;
     const result = await this.setupService.exportProject(clientId, id);
     return { success: true, export: result };
   }
@@ -517,9 +510,8 @@ The response is a JSON object suitable for download.
   async getDeployTracesForChain(
     @Param('id', ParseIntPipe) id: number,
     @Param('chainId', ParseIntPipe) chainId: number,
-    @Req() req: Request,
+    @CurrentClientId() clientId: number,
   ) {
-    const clientId = (req as any).clientId;
     const result = await this.setupService.getDeployTraces(clientId, id, chainId);
     return { success: true, ...result };
   }

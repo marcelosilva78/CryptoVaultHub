@@ -14,7 +14,7 @@ import {
   ApiParam,
   ApiHeader,
 } from '@nestjs/swagger';
-import { ClientAuth, ClientAuthWithProject } from '../common/decorators';
+import { ClientAuth, ClientAuthWithProject, CurrentClientId } from '../common/decorators';
 import { ProjectService } from './project.service';
 
 @ApiTags('Projects')
@@ -65,8 +65,7 @@ export class ProjectController {
   })
   @ApiResponse({ status: 401, description: 'Missing or invalid API key.' })
   @ApiResponse({ status: 403, description: 'API key does not have the `read` scope.' })
-  async listProjects(@Req() req: Request) {
-    const clientId = (req as any).clientId;
+  async listProjects(@CurrentClientId() clientId: number) {
     const projects = await this.projectService.listProjects(clientId);
     return { success: true, projects };
   }
@@ -114,8 +113,7 @@ If the client has only one active project, it is auto-selected and no header is 
   @ApiResponse({ status: 400, description: 'Multiple projects found — specify X-Project-Id header.' })
   @ApiResponse({ status: 401, description: 'Missing or invalid API key.' })
   @ApiResponse({ status: 403, description: 'Project does not belong to client or is not active.' })
-  async getCurrentProject(@Req() req: Request) {
-    const clientId = (req as any).clientId;
+  async getCurrentProject(@Req() req: Request, @CurrentClientId() clientId: number) {
     const projectId = (req as any).projectId;
     const cachedProject = (req as any).__projectCache;
     const project = await this.projectService.getCurrentProject(
@@ -169,9 +167,8 @@ If the client has only one active project, it is auto-selected and no header is 
   @ApiResponse({ status: 404, description: 'Project not found.' })
   async getProject(
     @Param('id', ParseIntPipe) id: number,
-    @Req() req: Request,
+    @CurrentClientId() clientId: number,
   ) {
-    const clientId = (req as any).clientId;
     const project = await this.projectService.getProject(clientId, id);
     return { success: true, project };
   }

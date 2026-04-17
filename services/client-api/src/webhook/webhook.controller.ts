@@ -7,11 +7,9 @@ import {
   Param,
   Body,
   Query,
-  Req,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { Request } from 'express';
 import {
   ApiTags,
   ApiSecurity,
@@ -20,7 +18,7 @@ import {
   ApiParam,
   ApiBody,
 } from '@nestjs/swagger';
-import { ClientAuth } from '../common/decorators';
+import { ClientAuth, CurrentClientId } from '../common/decorators';
 import { WebhookService } from './webhook.service';
 import {
   CreateWebhookDto,
@@ -127,8 +125,7 @@ if (expectedSignature !== req.headers['x-cvh-signature']) {
   @ApiResponse({ status: 401, description: 'Missing or invalid API key.' })
   @ApiResponse({ status: 403, description: 'API key does not have the `write` scope.' })
   @ApiResponse({ status: 422, description: 'Maximum webhook limit (10) reached for this client.' })
-  async createWebhook(@Body() dto: CreateWebhookDto, @Req() req: Request) {
-    const clientId = (req as any).clientId;
+  async createWebhook(@Body() dto: CreateWebhookDto, @CurrentClientId() clientId: number) {
     const result = await this.webhookService.createWebhook(clientId, dto);
     return { success: true, ...result };
   }
@@ -180,9 +177,8 @@ if (expectedSignature !== req.headers['x-cvh-signature']) {
   @ApiResponse({ status: 403, description: 'API key does not have the `read` scope.' })
   async listWebhooks(
     @Query() query: ListWebhooksQueryDto,
-    @Req() req: Request,
+    @CurrentClientId() clientId: number,
   ) {
-    const clientId = (req as any).clientId;
     const result = await this.webhookService.listWebhooks(clientId, {
       page: query.page ?? 1,
       limit: query.limit ?? 20,
@@ -254,9 +250,8 @@ if (expectedSignature !== req.headers['x-cvh-signature']) {
   async updateWebhook(
     @Param('id') id: string,
     @Body() dto: UpdateWebhookDto,
-    @Req() req: Request,
+    @CurrentClientId() clientId: number,
   ) {
-    const clientId = (req as any).clientId;
     const result = await this.webhookService.updateWebhook(clientId, id, dto);
     return { success: true, ...result };
   }
@@ -295,8 +290,7 @@ if (expectedSignature !== req.headers['x-cvh-signature']) {
   @ApiResponse({ status: 401, description: 'Missing or invalid API key.' })
   @ApiResponse({ status: 403, description: 'API key does not have the `write` scope.' })
   @ApiResponse({ status: 404, description: 'Webhook not found or does not belong to the authenticated client.' })
-  async deleteWebhook(@Param('id') id: string, @Req() req: Request) {
-    const clientId = (req as any).clientId;
+  async deleteWebhook(@Param('id') id: string, @CurrentClientId() clientId: number) {
     await this.webhookService.deleteWebhook(clientId, id);
     return { success: true, message: 'Webhook deleted' };
   }
@@ -355,8 +349,7 @@ The response includes the HTTP status code and response time from your endpoint.
   @ApiResponse({ status: 401, description: 'Missing or invalid API key.' })
   @ApiResponse({ status: 403, description: 'API key does not have the `write` scope.' })
   @ApiResponse({ status: 404, description: 'Webhook not found or does not belong to the authenticated client.' })
-  async testWebhook(@Param('id') id: string, @Req() req: Request) {
-    const clientId = (req as any).clientId;
+  async testWebhook(@Param('id') id: string, @CurrentClientId() clientId: number) {
     const result = await this.webhookService.testWebhook(clientId, id);
     return { success: true, ...result };
   }
@@ -428,9 +421,8 @@ The response includes the HTTP status code and response time from your endpoint.
   async listDeliveries(
     @Param('id') id: string,
     @Query() query: ListDeliveriesQueryDto,
-    @Req() req: Request,
+    @CurrentClientId() clientId: number,
   ) {
-    const clientId = (req as any).clientId;
     const result = await this.webhookService.listDeliveries(clientId, id, {
       page: query.page ?? 1,
       limit: query.limit ?? 20,
@@ -485,8 +477,7 @@ The response includes the HTTP status code and response time from your endpoint.
   @ApiResponse({ status: 403, description: 'API key does not have the `write` scope.' })
   @ApiResponse({ status: 404, description: 'Delivery not found or does not belong to the authenticated client.' })
   @ApiResponse({ status: 422, description: 'Delivery is not in `failed` status and cannot be retried.' })
-  async retryDelivery(@Param('id') id: string, @Req() req: Request) {
-    const clientId = (req as any).clientId;
+  async retryDelivery(@Param('id') id: string, @CurrentClientId() clientId: number) {
     const result = await this.webhookService.retryDelivery(clientId, id);
     return { success: true, ...result };
   }
@@ -552,9 +543,8 @@ The response includes the HTTP status code and response time from your endpoint.
   @ApiResponse({ status: 404, description: 'Delivery not found or does not belong to the authenticated client.' })
   async getDeliveryDetail(
     @Param('deliveryId') deliveryId: string,
-    @Req() req: Request,
+    @CurrentClientId() clientId: number,
   ) {
-    const clientId = (req as any).clientId;
     const result = await this.webhookService.getDeliveryDetail(
       clientId,
       deliveryId,
@@ -607,9 +597,8 @@ Unlike retry (which re-attempts the same delivery), resend creates a brand new d
   @ApiResponse({ status: 404, description: 'Delivery not found or does not belong to the authenticated client.' })
   async resendDelivery(
     @Param('deliveryId') deliveryId: string,
-    @Req() req: Request,
+    @CurrentClientId() clientId: number,
   ) {
-    const clientId = (req as any).clientId;
     const result = await this.webhookService.resendDelivery(
       clientId,
       deliveryId,
@@ -669,9 +658,8 @@ Unlike retry (which re-attempts the same delivery), resend creates a brand new d
   @ApiResponse({ status: 403, description: 'API key does not have the `read` scope.' })
   async listDeadLetters(
     @Query() query: ListDeliveriesQueryDto,
-    @Req() req: Request,
+    @CurrentClientId() clientId: number,
   ) {
-    const clientId = (req as any).clientId;
     const result = await this.webhookService.listDeadLetters(clientId, {
       page: query.page ?? 1,
       limit: query.limit ?? 20,

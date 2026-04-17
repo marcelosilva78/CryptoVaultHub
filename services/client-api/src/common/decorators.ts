@@ -67,3 +67,29 @@ export const ProjectId = createParamDecorator(
     return request.projectId;
   },
 );
+
+/**
+ * M-5: Type-safe param decorator that extracts clientId from the request.
+ * Replaces the `(req as any).clientId` pattern with a validated decorator.
+ *
+ * The ApiKeyAuthGuard sets `req.clientId` after successful authentication.
+ * This decorator extracts that value and throws UnauthorizedException if
+ * it is missing (which would indicate a guard ordering bug).
+ *
+ * Usage:
+ *   @Post()
+ *   @ClientAuth('write')
+ *   async create(@CurrentClientId() clientId: number) { ... }
+ */
+export const CurrentClientId = createParamDecorator(
+  (_data: unknown, ctx: ExecutionContext): number => {
+    const request = ctx.switchToHttp().getRequest();
+    const clientId = request.clientId;
+    if (!clientId) {
+      // This import is deferred to avoid circular dependency issues at module load time
+      const { UnauthorizedException } = require('@nestjs/common');
+      throw new UnauthorizedException('No client ID in request');
+    }
+    return Number(clientId);
+  },
+);

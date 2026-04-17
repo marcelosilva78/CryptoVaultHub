@@ -8,6 +8,114 @@ export class TraceabilityService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
+   * Deploy traces for a specific project (or all projects of a client).
+   *
+   * Combines both legacy deploy_traces (cvh_transactions) and the newer
+   * project_deploy_traces (cvh_wallets) via UNION ALL so the admin panel
+   * shows a single unified timeline regardless of which pipeline created
+   * the record.
+   */
+  async getDeployTraces(params: {
+    clientId?: number;
+    projectId?: number;
+    chainId?: number;
+    limit: number;
+  }) {
+    const { clientId, projectId, chainId, limit } = params;
+    const safeLimit = Math.min(Math.max(limit, 1), 200);
+
+    try {
+      // Build conditions for the legacy table (cvh_transactions.deploy_traces)
+      // and the new table (cvh_wallets.project_deploy_traces)
+      const rows: {
+        trace_source: string;
+        trace_id: bigint;
+        project_id: bigint;
+        chain_id: number;
+        contract_type: string;
+        contract_address: string | null;
+        tx_hash: string | null;
+        block_number: bigint | null;
+        gas_used: string | null;
+        gas_cost_wei: string | null;
+        deployer_address: string | null;
+        explorer_url: string | null;
+        status: string;
+        created_at: Date;
+      }[] = await this.prisma.$queryRaw`
+        (
+          SELECT
+            'legacy'            AS trace_source,
+            dt.id               AS trace_id,
+            dt.project_id,
+            dt.chain_id,
+            dt.resource_type    AS contract_type,
+            dt.address          AS contract_address,
+            dt.tx_hash,
+            dt.block_number,
+            CAST(dt.gas_used AS CHAR)      AS gas_used,
+            CAST(dt.gas_cost_wei AS CHAR)  AS gas_cost_wei,
+            dt.deployer_address,
+            dt.explorer_url,
+            'confirmed'         AS status,
+            dt.created_at
+          FROM cvh_transactions.deploy_traces dt
+          WHERE (${clientId} IS NULL OR dt.client_id = ${clientId})
+            AND (${projectId} IS NULL OR dt.project_id = ${projectId})
+            AND (${chainId} IS NULL OR dt.chain_id = ${chainId})
+        )
+        UNION ALL
+        (
+          SELECT
+            'project'           AS trace_source,
+            pdt.id              AS trace_id,
+            pdt.project_id,
+            pdt.chain_id,
+            pdt.contract_type,
+            pdt.contract_address,
+            pdt.tx_hash,
+            pdt.block_number,
+            pdt.gas_used,
+            pdt.gas_cost_wei,
+            pdt.deployer_address,
+            pdt.explorer_url,
+            pdt.status,
+            pdt.created_at
+          FROM cvh_wallets.project_deploy_traces pdt
+          WHERE (${projectId} IS NULL OR pdt.project_id = ${projectId})
+            AND (${chainId} IS NULL OR pdt.chain_id = ${chainId})
+        )
+        ORDER BY created_at DESC
+        LIMIT ${safeLimit}
+      `;
+
+      return {
+        deployTraces: rows.map((r) => ({
+          traceSource: r.trace_source,
+          id: Number(r.trace_id),
+          projectId: Number(r.project_id),
+          chainId: r.chain_id,
+          contractType: r.contract_type,
+          contractAddress: r.contract_address,
+          txHash: r.tx_hash,
+          blockNumber: r.block_number ? Number(r.block_number) : null,
+          gasUsed: r.gas_used,
+          gasCostWei: r.gas_cost_wei,
+          deployerAddress: r.deployer_address,
+          explorerUrl: r.explorer_url,
+          status: r.status,
+          createdAt: r.created_at,
+        })),
+      };
+    } catch (err) {
+      this.logger.error(
+        `Failed to fetch deploy traces: ${(err as Error).message}`,
+      );
+      return { deployTraces: [] };
+    }
+  }
+
+  /**
    * Wallets for a specific client, grouped by chain.
    * Cross-database query: cvh_wallets.wallets + cvh_admin.chains.
    */

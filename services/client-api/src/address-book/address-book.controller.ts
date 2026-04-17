@@ -22,7 +22,7 @@ import {
   ApiBody,
   ApiHeader,
 } from '@nestjs/swagger';
-import { ClientAuth } from '../common/decorators';
+import { ClientAuth, CurrentClientId } from '../common/decorators';
 import { AddressBookService } from './address-book.service';
 import {
   AddAddressDto,
@@ -163,9 +163,8 @@ Newly added addresses enter a mandatory 24-hour cooldown period. During this win
   @ApiResponse({ status: 401, description: 'Missing or invalid API key.' })
   @ApiResponse({ status: 403, description: 'API key does not have the `write` scope.' })
   @ApiResponse({ status: 409, description: 'Address+chain combination already exists and is active or in cooldown.' })
-  async addAddress(@Body() dto: AddAddressDto, @Req() req: Request) {
+  async addAddress(@Body() dto: AddAddressDto, @Req() req: Request, @CurrentClientId() clientId: number) {
     await this.verify2fa(req);
-    const clientId = (req as any).clientId;
     const result = await this.addressBookService.addAddress(clientId, dto);
     return { success: true, ...result };
   }
@@ -225,9 +224,8 @@ Newly added addresses enter a mandatory 24-hour cooldown period. During this win
   @ApiResponse({ status: 403, description: 'API key does not have the `read` scope.' })
   async listAddresses(
     @Query() query: ListAddressesQueryDto,
-    @Req() req: Request,
+    @CurrentClientId() clientId: number,
   ) {
-    const clientId = (req as any).clientId;
     const result = await this.addressBookService.listAddresses(clientId, {
       page: query.page ?? 1,
       limit: query.limit ?? 50,
@@ -297,9 +295,8 @@ Newly added addresses enter a mandatory 24-hour cooldown period. During this win
   async updateAddress(
     @Param('id') id: string,
     @Body() dto: UpdateAddressDto,
-    @Req() req: Request,
+    @CurrentClientId() clientId: number,
   ) {
-    const clientId = (req as any).clientId;
     const result = await this.addressBookService.updateAddress(
       clientId,
       id,
@@ -351,9 +348,8 @@ This endpoint requires a valid TOTP code in the \`X-2FA-Code\` header.
   @ApiResponse({ status: 401, description: 'Missing or invalid API key.' })
   @ApiResponse({ status: 403, description: 'API key does not have the `write` scope.' })
   @ApiResponse({ status: 404, description: 'Address not found, already disabled, or does not belong to the authenticated client.' })
-  async disableAddress(@Param('id') id: string, @Req() req: Request) {
+  async disableAddress(@Param('id') id: string, @Req() req: Request, @CurrentClientId() clientId: number) {
     await this.verify2fa(req);
-    const clientId = (req as any).clientId;
     await this.addressBookService.disableAddress(clientId, id);
     return { success: true, message: 'Address disabled' };
   }
