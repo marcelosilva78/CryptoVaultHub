@@ -1211,7 +1211,7 @@ export default function SetupWizardPage() {
               </div>
               <div className="space-y-3">
                 {deployChains.map((chain) => {
-                  const chainConfig = CHAINS.find((c) => c.id === chain.chainId);
+                  const chainConfig = CHAINS.find((c) => c.chainId === chain.chainId);
 
                   return (
                     <div
@@ -1229,17 +1229,17 @@ export default function SetupWizardPage() {
                       </div>
                       <div className="flex-1">
                         <div className="text-body font-display font-semibold text-text-primary">
-                          {chain.chainName}
+                          {chainConfig?.name || `Chain ${chain.chainId}`}
                         </div>
-                        {chain.hotWalletAddress && (
+                        {chain.contracts?.hotWallet && (
                           <div className="flex items-center gap-2 mt-0.5">
                             <span className="text-[9px] text-text-muted uppercase tracking-wider font-display">
                               Hot Wallet:
                             </span>
                             <code className="text-[10px] font-mono text-accent-primary truncate">
-                              {chain.hotWalletAddress}
+                              {chain.contracts!.hotWallet}
                             </code>
-                            <CopyIconButton value={chain.hotWalletAddress} />
+                            <CopyIconButton value={chain.contracts!.hotWallet!} />
                           </div>
                         )}
                       </div>
