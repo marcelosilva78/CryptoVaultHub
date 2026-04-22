@@ -78,9 +78,10 @@ interface DeployStatusChain {
 
 // ─── Constants ──────────────────────────────────────────────────
 
-const CHAINS: ChainConfig[] = [
+const CHAINS: (ChainConfig & { chainId: number })[] = [
   {
     id: "ethereum",
+    chainId: 1,
     name: "Ethereum",
     symbol: "ETH",
     icon: "\u039E",
@@ -89,6 +90,7 @@ const CHAINS: ChainConfig[] = [
   },
   {
     id: "bsc",
+    chainId: 56,
     name: "BNB Smart Chain",
     symbol: "BNB",
     icon: "\u25C6",
@@ -97,6 +99,7 @@ const CHAINS: ChainConfig[] = [
   },
   {
     id: "polygon",
+    chainId: 137,
     name: "Polygon",
     symbol: "POL",
     icon: "\u2B21",
@@ -105,6 +108,7 @@ const CHAINS: ChainConfig[] = [
   },
   {
     id: "arbitrum",
+    chainId: 42161,
     name: "Arbitrum",
     symbol: "ETH",
     icon: "\u25B2",
@@ -113,6 +117,7 @@ const CHAINS: ChainConfig[] = [
   },
   {
     id: "optimism",
+    chainId: 10,
     name: "Optimism",
     symbol: "ETH",
     icon: "\u2B24",
@@ -121,6 +126,7 @@ const CHAINS: ChainConfig[] = [
   },
   {
     id: "avalanche",
+    chainId: 43114,
     name: "Avalanche",
     symbol: "AVAX",
     icon: "\u25B3",
@@ -129,6 +135,7 @@ const CHAINS: ChainConfig[] = [
   },
   {
     id: "base",
+    chainId: 8453,
     name: "Base",
     symbol: "ETH",
     icon: "B",
@@ -226,13 +233,18 @@ export default function SetupWizardPage() {
     setKeyCeremonyError(null);
 
     try {
+      // Convert string chain IDs to numeric chain IDs for the backend
+      const numericChainIds = selectedChains
+        .map((id) => CHAINS.find((c) => c.id === id)?.chainId)
+        .filter((id): id is number => id !== undefined);
+
       // Create project
       const projectRes = await clientFetch<{ id: string; projectId?: string }>("/v1/projects/setup", {
         method: "POST",
         body: JSON.stringify({
           name: projectName,
           description: projectDescription,
-          chains: selectedChains,
+          chains: numericChainIds,
           custodyMode,
         }),
       });
