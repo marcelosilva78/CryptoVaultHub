@@ -45,7 +45,7 @@ export function KbSidebar({
         {categories.map((cat) => {
           const isExpanded = expanded[cat.slug] ?? false;
           const IconComponent = (
-            LucideIcons as Record<string, React.ElementType>
+            LucideIcons as unknown as Record<string, React.ElementType>
           )[cat.icon];
           return (
             <div key={cat.slug} className="mb-1">
