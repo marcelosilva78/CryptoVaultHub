@@ -64,6 +64,8 @@ export class ProjectSetupService {
   private readonly logger = new Logger(ProjectSetupService.name);
   private readonly keyVaultUrl: string;
   private readonly coreWalletUrl: string;
+  private readonly notificationUrl: string;
+  private readonly authServiceUrl: string;
 
   constructor(
     private readonly configService: ConfigService,
@@ -76,6 +78,14 @@ export class ProjectSetupService {
     this.coreWalletUrl = this.configService.get<string>(
       'CORE_WALLET_SERVICE_URL',
       'http://localhost:3004',
+    );
+    this.notificationUrl = this.configService.get<string>(
+      'NOTIFICATION_SERVICE_URL',
+      'http://localhost:3007',
+    );
+    this.authServiceUrl = this.configService.get<string>(
+      'AUTH_SERVICE_URL',
+      'http://localhost:3003',
     );
   }
 
@@ -855,6 +865,244 @@ export class ProjectSetupService {
     );
 
     return exportData;
+  }
+
+  // ---------------------------------------------------------------------------
+  // 8. getDeletionImpact
+  // ---------------------------------------------------------------------------
+
+  async getDeletionImpact(clientId: number, projectId: number) {
+    const project = await this.verifyOwnership(clientId, projectId);
+
+    // 1. Query wallets from core-wallet-service, filtered by projectId
+    let wallets: any[] = [];
+    try {
+      const { data: walletsData } = await axios.get(
+        `${this.coreWalletUrl}/wallets/${clientId}`,
+        { headers: this.headers, timeout: 10000 },
+      );
+      const allWallets = walletsData.wallets ?? walletsData ?? [];
+      wallets = Array.isArray(allWallets)
+        ? allWallets.filter(
+            (w: any) =>
+              (w.projectId ?? w.project_id) === projectId,
+          )
+        : [];
+    } catch (error: any) {
+      this.logger.warn(
+        `Failed to fetch wallets for deletion impact (project ${projectId}): ${error.message ?? error}`,
+      );
+    }
+
+    // 2. Count deposits from transaction-service (via admin DB cross-schema query)
+    let depositCount = 0;
+    try {
+      const depositRows = await this.adminDb.query<{ cnt: number }>(
+        `SELECT COUNT(*) AS cnt FROM cvh_transactions.deposits WHERE client_id = ? AND project_id = ?`,
+        [clientId, projectId],
+      );
+      depositCount = Number(depositRows[0]?.cnt ?? 0);
+    } catch {
+      this.logger.warn(`Failed to count deposits for project ${projectId}, defaulting to 0`);
+    }
+
+    // 3. Count withdrawals from transaction-service (via admin DB cross-schema query)
+    let withdrawalCount = 0;
+    try {
+      const withdrawalRows = await this.adminDb.query<{ cnt: number }>(
+        `SELECT COUNT(*) AS cnt FROM cvh_transactions.withdrawals WHERE client_id = ? AND project_id = ?`,
+        [clientId, projectId],
+      );
+      withdrawalCount = Number(withdrawalRows[0]?.cnt ?? 0);
+    } catch {
+      this.logger.warn(`Failed to count withdrawals for project ${projectId}, defaulting to 0`);
+    }
+
+    // 4. Count webhooks from notification-service
+    let webhookCount = 0;
+    try {
+      const { data: webhooksData } = await axios.get(
+        `${this.notificationUrl}/webhooks?clientId=${clientId}`,
+        { headers: this.headers, timeout: 10000 },
+      );
+      const allWebhooks = webhooksData.webhooks ?? webhooksData ?? [];
+      webhookCount = Array.isArray(allWebhooks) ? allWebhooks.length : 0;
+    } catch {
+      this.logger.warn(`Failed to count webhooks for project ${projectId}, defaulting to 0`);
+    }
+
+    // 5. Count API keys from auth-service
+    let apiKeyCount = 0;
+    try {
+      const { data: keysData } = await axios.get(
+        `${this.authServiceUrl}/auth/api-keys?clientId=${clientId}`,
+        { headers: this.headers, timeout: 10000 },
+      );
+      const allKeys = keysData.apiKeys ?? keysData ?? [];
+      apiKeyCount = Array.isArray(allKeys) ? allKeys.length : 0;
+    } catch {
+      this.logger.warn(`Failed to count API keys for project ${projectId}, defaulting to 0`);
+    }
+
+    // 6. Get balances for each wallet chain
+    const balances: Array<{ chainId: number; address: string; balanceFormatted: string }> = [];
+    let hasNonZeroBalance = false;
+
+    for (const wallet of wallets) {
+      const chainId = wallet.chainId ?? wallet.chain_id;
+      const address = wallet.address;
+      if (!chainId || !address) continue;
+
+      try {
+        const { data: balanceData } = await axios.get(
+          `${this.coreWalletUrl}/wallets/${clientId}/${chainId}/balances`,
+          { headers: this.headers, timeout: 15000 },
+        );
+
+        const nativeBalance = Array.isArray(balanceData.balances)
+          ? balanceData.balances.find(
+              (b: any) =>
+                b.tokenAddress === '0x0000000000000000000000000000000000000000' ||
+                b.isNative === true,
+            )
+          : null;
+
+        const balStr = nativeBalance?.balance ?? '0';
+        if (parseFloat(balStr) > 0) {
+          hasNonZeroBalance = true;
+        }
+
+        balances.push({
+          chainId,
+          address,
+          balanceFormatted: balStr,
+        });
+      } catch {
+        this.logger.warn(`Failed to get balance for wallet ${address} on chain ${chainId}`);
+        balances.push({ chainId, address, balanceFormatted: 'unknown' });
+      }
+    }
+
+    const transactionCount = depositCount + withdrawalCount;
+
+    return {
+      projectId,
+      projectName: project.name,
+      status: project.status,
+      walletCount: wallets.length,
+      depositCount,
+      withdrawalCount,
+      transactionCount,
+      webhookCount,
+      apiKeyCount,
+      hasNonZeroBalance,
+      balances,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // 9. requestDeletion
+  // ---------------------------------------------------------------------------
+
+  async requestDeletion(clientId: number, projectId: number) {
+    const project = await this.verifyOwnership(clientId, projectId);
+
+    if (project.status === 'pending_deletion') {
+      throw new BadRequestException(
+        `Project ${projectId} already has a pending deletion request`,
+      );
+    }
+    if (project.status === 'deleted') {
+      throw new BadRequestException(`Project ${projectId} is already deleted`);
+    }
+    if (project.status !== 'active') {
+      throw new BadRequestException(
+        `Project ${projectId} must be active to request deletion (current status: ${project.status})`,
+      );
+    }
+
+    const impactSummary = await this.getDeletionImpact(clientId, projectId);
+
+    // Decision logic:
+    // - Zero transactions AND zero wallets → immediate hard-delete
+    // - Has wallets but no transactions and no balance → 7-day grace period
+    // - Has transactions or has balance → 30-day grace period
+
+    if (impactSummary.transactionCount === 0 && impactSummary.walletCount === 0) {
+      // Immediate hard-delete: remove from DB completely
+      await this.adminDb.query(
+        `DELETE FROM projects WHERE id = ? AND client_id = ?`,
+        [projectId, clientId],
+      );
+
+      this.logger.log(
+        `Project ${projectId} hard-deleted immediately (no wallets, no transactions)`,
+      );
+
+      return {
+        immediate: true,
+        deleted: true,
+        impactSummary,
+      };
+    }
+
+    const now = new Date();
+    let graceDays: number;
+
+    if (impactSummary.transactionCount > 0 || impactSummary.hasNonZeroBalance) {
+      graceDays = 30;
+    } else {
+      graceDays = 7;
+    }
+
+    const scheduledFor = new Date(now.getTime() + graceDays * 24 * 60 * 60 * 1000);
+
+    await this.adminDb.query(
+      `UPDATE projects
+         SET status = 'pending_deletion',
+             deletion_requested_at = ?,
+             deletion_scheduled_for = ?
+       WHERE id = ? AND client_id = ?`,
+      [now, scheduledFor, projectId, clientId],
+    );
+
+    this.logger.log(
+      `Project ${projectId} scheduled for deletion on ${scheduledFor.toISOString()} (${graceDays}-day grace period)`,
+    );
+
+    return {
+      immediate: false,
+      scheduledFor: scheduledFor.toISOString(),
+      graceDays,
+      impactSummary,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // 10. cancelDeletion
+  // ---------------------------------------------------------------------------
+
+  async cancelDeletion(clientId: number, projectId: number) {
+    const project = await this.verifyOwnership(clientId, projectId);
+
+    if (project.status !== 'pending_deletion') {
+      throw new BadRequestException(
+        `Project ${projectId} is not pending deletion (current status: ${project.status})`,
+      );
+    }
+
+    await this.adminDb.query(
+      `UPDATE projects
+         SET status = 'active',
+             deletion_requested_at = NULL,
+             deletion_scheduled_for = NULL
+       WHERE id = ? AND client_id = ?`,
+      [projectId, clientId],
+    );
+
+    this.logger.log(`Project ${projectId} deletion cancelled, status restored to active`);
+
+    return { success: true };
   }
 
   // ---------------------------------------------------------------------------

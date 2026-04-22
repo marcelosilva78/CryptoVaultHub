@@ -2,6 +2,7 @@ import {
   Controller,
   Post,
   Get,
+  Delete,
   Param,
   Body,
   ParseIntPipe,
@@ -514,5 +515,152 @@ The response is a JSON object suitable for download.
   ) {
     const result = await this.setupService.getDeployTraces(clientId, id, chainId);
     return { success: true, ...result };
+  }
+
+  // ---------------------------------------------------------------------------
+  // GET /client/v1/projects/:id/deletion-impact
+  // ---------------------------------------------------------------------------
+  @Get(':id/deletion-impact')
+  @ClientAuth('read')
+  @ApiOperation({
+    summary: 'Get deletion impact summary for a project',
+    description: `Returns a summary of all resources that would be affected by deleting this project: wallets, deposits, withdrawals, webhooks, API keys, and balances.
+
+Use this endpoint to preview the impact before initiating deletion.
+
+**Required scope:** \`read\``,
+  })
+  @ApiParam({
+    name: 'id',
+    type: Number,
+    description: 'The project ID.',
+    example: 42,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Deletion impact summary.',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        projectId: { type: 'integer', example: 42 },
+        projectName: { type: 'string', example: 'My DeFi Gateway' },
+        status: { type: 'string', example: 'active' },
+        walletCount: { type: 'integer', example: 3 },
+        depositCount: { type: 'integer', example: 15 },
+        withdrawalCount: { type: 'integer', example: 5 },
+        transactionCount: { type: 'integer', example: 20 },
+        webhookCount: { type: 'integer', example: 2 },
+        apiKeyCount: { type: 'integer', example: 1 },
+        hasNonZeroBalance: { type: 'boolean', example: true },
+        balances: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              chainId: { type: 'integer', example: 56 },
+              address: { type: 'string', example: '0x...' },
+              balanceFormatted: { type: 'string', example: '0.5000' },
+            },
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 401, description: 'Missing or invalid API key.' })
+  @ApiResponse({ status: 403, description: 'Project does not belong to client.' })
+  async getDeletionImpact(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentClientId() clientId: number,
+  ) {
+    const result = await this.setupService.getDeletionImpact(clientId, id);
+    return { success: true, ...result };
+  }
+
+  // ---------------------------------------------------------------------------
+  // DELETE /client/v1/projects/:id
+  // ---------------------------------------------------------------------------
+  @Delete(':id')
+  @ClientAuth('write')
+  @ApiOperation({
+    summary: 'Request project deletion',
+    description: `Initiates the deletion process for a project. The behavior depends on the project's resources:
+
+- **No wallets and no transactions:** Immediate hard-delete (removed from database).
+- **Has wallets but no transactions and no balance:** 7-day grace period. Status set to \`pending_deletion\`.
+- **Has transactions or non-zero balance:** 30-day grace period. Status set to \`pending_deletion\`.
+
+During the grace period, deletion can be cancelled via \`POST /projects/:id/cancel-deletion\`.
+
+**Required scope:** \`write\``,
+  })
+  @ApiParam({
+    name: 'id',
+    type: Number,
+    description: 'The project ID.',
+    example: 42,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Deletion initiated (immediate or grace period).',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        immediate: { type: 'boolean', example: false },
+        deleted: { type: 'boolean', example: false, nullable: true },
+        scheduledFor: { type: 'string', format: 'date-time', nullable: true },
+        graceDays: { type: 'integer', example: 30, nullable: true },
+        impactSummary: { type: 'object' },
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'Project is not in a deletable state.' })
+  @ApiResponse({ status: 401, description: 'Missing or invalid API key.' })
+  @ApiResponse({ status: 403, description: 'Project does not belong to client.' })
+  async requestDeletion(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentClientId() clientId: number,
+  ) {
+    const result = await this.setupService.requestDeletion(clientId, id);
+    return { success: true, ...result };
+  }
+
+  // ---------------------------------------------------------------------------
+  // POST /client/v1/projects/:id/cancel-deletion
+  // ---------------------------------------------------------------------------
+  @Post(':id/cancel-deletion')
+  @ClientAuth('write')
+  @ApiOperation({
+    summary: 'Cancel a pending project deletion',
+    description: `Cancels a pending deletion request and restores the project to \`active\` status. Only works if the project is currently in \`pending_deletion\` status.
+
+**Required scope:** \`write\``,
+  })
+  @ApiParam({
+    name: 'id',
+    type: Number,
+    description: 'The project ID.',
+    example: 42,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Deletion cancelled, project restored to active.',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'Project is not pending deletion.' })
+  @ApiResponse({ status: 401, description: 'Missing or invalid API key.' })
+  @ApiResponse({ status: 403, description: 'Project does not belong to client.' })
+  async cancelDeletion(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentClientId() clientId: number,
+  ) {
+    await this.setupService.cancelDeletion(clientId, id);
+    return { success: true };
   }
 }
