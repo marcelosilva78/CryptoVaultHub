@@ -36,7 +36,10 @@ export class InviteService {
       },
     });
 
-    const portalUrl = this.config.get<string>('PORTAL_URL', 'http://localhost:3002');
+    const portalUrl = this.config.get<string>('PORTAL_URL', 'http://localhost:3011');
+    if (process.env.NODE_ENV === 'production' && portalUrl.includes('localhost')) {
+      throw new Error('PORTAL_URL must be set to a public URL in production');
+    }
     const inviteUrl = `${portalUrl}/register?token=${token}`;
 
     return { token, inviteUrl };
