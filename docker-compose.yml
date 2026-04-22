@@ -345,6 +345,7 @@ services:
       - JWT_EXPIRES_IN_SECONDS=${JWT_EXPIRES_IN_SECONDS}
       - REFRESH_TOKEN_TTL_DAYS=${REFRESH_TOKEN_TTL_DAYS}
       - TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY}
+      - PORTAL_URL=${PORTAL_URL:-https://portal.vaulthub.live}
       - TRACING_ENABLED=true
       - JAEGER_ENDPOINT=http://jaeger:4318/v1/traces
     depends_on:
