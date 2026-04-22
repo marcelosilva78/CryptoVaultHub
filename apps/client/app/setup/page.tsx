@@ -45,35 +45,29 @@ type CustodyMode = "full_custody" | "co_sign" | "client_only";
 
 interface KeyCeremonyResult {
   mnemonic: string[];
-  publicKeys: {
-    platform: string;
-    client: string;
-    backup: string;
-  };
+  publicKeys: Array<{
+    keyType: string;
+    publicKey: string;
+    address?: string;
+  }>;
 }
 
 interface GasCheckChain {
-  chainId: string;
+  chainId: number;
   chainName: string;
   gasTankAddress: string;
-  currentBalance: string;
-  requiredAmount: string;
+  balanceFormatted: string;
+  requiredFormatted: string;
   sufficient: boolean;
 }
 
 interface DeployStatusChain {
-  chainId: string;
-  chainName: string;
-  status: "pending" | "deploying" | "ready" | "failed";
-  steps: {
-    name: string;
-    status: "pending" | "deploying" | "confirmed" | "failed";
-    txHash?: string;
-    contractAddress?: string;
-    error?: string;
-  }[];
-  hotWalletAddress?: string;
-  error?: string;
+  chainId: number;
+  status: string;
+  deployStartedAt?: string | null;
+  deployCompletedAt?: string | null;
+  deployError?: string | null;
+  contracts?: Record<string, string | null>;
 }
 
 // ─── Constants ──────────────────────────────────────────────────
@@ -238,26 +232,30 @@ export default function SetupWizardPage() {
         .map((id) => CHAINS.find((c) => c.id === id)?.chainId)
         .filter((id): id is number => id !== undefined);
 
-      // Create project
-      const projectRes = await clientFetch<{ id: string; projectId?: string }>("/v1/projects/setup", {
-        method: "POST",
-        body: JSON.stringify({
-          name: projectName,
-          description: projectDescription,
-          chains: numericChainIds,
-          custodyMode,
-        }),
-      });
+      // Create project (skip if already created on a previous attempt)
+      let currentProjectId = projectId;
+      if (!currentProjectId) {
+        const projectRes = await clientFetch<{ project?: { id: number }; id?: number }>("/v1/projects/setup", {
+          method: "POST",
+          body: JSON.stringify({
+            name: projectName,
+            description: projectDescription,
+            chains: numericChainIds,
+            custodyMode,
+          }),
+        });
 
-      const newProjectId = projectRes.id || projectRes.projectId;
-      if (!newProjectId) throw new Error("No project ID returned");
-      setProjectId(newProjectId);
+        const newProjectId = projectRes.project?.id ?? projectRes.id;
+        if (!newProjectId) throw new Error("No project ID returned");
+        currentProjectId = String(newProjectId);
+        setProjectId(currentProjectId);
+      }
 
       // Initialize keys
       const keysRes = await clientFetch<{
         mnemonic: string[] | string;
-        publicKeys: { platform: string; client: string; backup: string };
-      }>(`/v1/projects/${newProjectId}/keys`, {
+        publicKeys: Array<{ keyType: string; publicKey: string; address?: string }>;
+      }>(`/v1/projects/${currentProjectId}/keys`, {
         method: "POST",
       });
 
@@ -322,8 +320,8 @@ export default function SetupWizardPage() {
       );
       setDeployChains(res.chains || []);
 
-      // Auto-advance if all chains are "ready"
-      const allReady = (res.chains || []).every((c: DeployStatusChain) => c.status === "ready");
+      // Auto-advance if all chains are deployed/ready
+      const allReady = (res.chains || []).every((c: DeployStatusChain) => c.status === "ready" || c.status === "deployed");
       if (allReady && (res.chains || []).length > 0) {
         setCurrentStep(7);
       }
@@ -373,7 +371,17 @@ export default function SetupWizardPage() {
 
   // ─── Navigation ─────────────────────────────────────────────
 
-  const nextStep = () => setCurrentStep((s) => Math.min(s + 1, 7));
+  const nextStep = async () => {
+    // Confirm seed when advancing from step 4 (Key Ceremony) to step 5
+    if (currentStep === 4 && projectId && mnemonicAcknowledged) {
+      try {
+        await clientFetch(`/v1/projects/${projectId}/confirm-seed`, { method: "POST" });
+      } catch {
+        // Non-blocking — seed confirmation is an audit record
+      }
+    }
+    setCurrentStep((s) => Math.min(s + 1, 7));
+  };
   const prevStep = () => setCurrentStep((s) => Math.max(s - 1, 1));
 
   const toggleChain = (chainId: string) => {
@@ -802,19 +810,15 @@ export default function SetupWizardPage() {
                   <div className="text-micro font-display font-bold uppercase tracking-wider text-text-muted">
                     Generated Public Keys
                   </div>
-                  {[
-                    { label: "Platform Key", value: keyCeremony.publicKeys.platform },
-                    { label: "Client Key", value: keyCeremony.publicKeys.client },
-                    { label: "Backup Key", value: keyCeremony.publicKeys.backup },
-                  ].map((key) => (
-                    <div key={key.label} className="flex items-center gap-3">
+                  {(keyCeremony.publicKeys || []).map((key) => (
+                    <div key={key.keyType} className="flex items-center gap-3">
                       <span className="text-[10px] font-display font-bold uppercase tracking-wider text-text-muted w-[100px] flex-shrink-0">
-                        {key.label}
+                        {key.keyType} Key
                       </span>
                       <code className="text-[10px] font-mono text-accent-primary flex-1 truncate">
-                        {key.value}
+                        {key.publicKey}
                       </code>
-                      <CopyIconButton value={key.value} />
+                      <CopyIconButton value={key.publicKey} />
                     </div>
                   ))}
                 </div>
@@ -932,7 +936,7 @@ export default function SetupWizardPage() {
                           "text-[14px] font-mono font-semibold",
                           chain.sufficient ? "text-status-success" : "text-text-primary"
                         )}>
-                          {chain.currentBalance}
+                          {chain.balanceFormatted}
                         </div>
                       </div>
                       <div>
@@ -940,7 +944,7 @@ export default function SetupWizardPage() {
                           Required
                         </div>
                         <div className="text-[14px] font-mono font-semibold text-text-secondary">
-                          {chain.requiredAmount}
+                          {chain.requiredFormatted}
                         </div>
                       </div>
                     </div>
@@ -1032,19 +1036,29 @@ export default function SetupWizardPage() {
             {deployStarted && (
               <div className="space-y-5">
                 {deployChains.map((chain) => {
-                  const chainConfig = CHAINS.find((c) => c.id === chain.chainId);
+                  const chainConfig = CHAINS.find((c) => c.chainId === chain.chainId);
+                  const explorerBase = chainConfig?.explorerBase || "https://etherscan.io";
 
-                  // Map chain steps to DeploymentStep format for the existing component
-                  const deploymentSteps: DeploymentStep[] = chain.steps.map((s) => ({
-                    name: s.name,
-                    status: s.status === "deploying" ? "deploying" : s.status === "confirmed" ? "confirmed" : s.status === "failed" ? "failed" : "pending",
-                    txHash: s.txHash,
-                    contractAddress: s.contractAddress,
-                    explorerUrl: s.contractAddress
-                      ? `${chainConfig?.explorerBase || "https://etherscan.io"}/address/${s.contractAddress}`
-                      : undefined,
-                    error: s.error,
-                  }));
+                  // Build steps from contracts object returned by backend
+                  const contractNames = ["walletImpl", "forwarderImpl", "walletFactory", "forwarderFactory", "hotWallet"];
+                  const contractLabels: Record<string, string> = {
+                    walletImpl: "Wallet Implementation",
+                    forwarderImpl: "Forwarder Implementation",
+                    walletFactory: "Wallet Factory",
+                    forwarderFactory: "Forwarder Factory",
+                    hotWallet: "Hot Wallet",
+                  };
+                  const deploymentSteps: DeploymentStep[] = contractNames.map((name) => {
+                    const addr = chain.contracts?.[name] ?? null;
+                    const deployed = chain.status === "ready" || chain.status === "deployed";
+                    return {
+                      name: contractLabels[name] || name,
+                      status: addr ? "confirmed" : deployed ? "confirmed" : chain.status === "failed" ? "failed" : chain.status === "deploying" ? "deploying" : "pending",
+                      contractAddress: addr ?? undefined,
+                      explorerUrl: addr ? `${explorerBase}/address/${addr}` : undefined,
+                      error: chain.status === "failed" ? chain.deployError ?? undefined : undefined,
+                    };
+                  });
 
                   return (
                     <div
@@ -1063,10 +1077,10 @@ export default function SetupWizardPage() {
                             {chainConfig?.icon || "?"}
                           </div>
                           <span className="text-body font-display font-semibold text-text-primary">
-                            {chain.chainName}
+                            {chainConfig?.name || `Chain ${chain.chainId}`}
                           </span>
                         </div>
-                        {chain.status === "ready" && (
+                        {(chain.status === "ready" || chain.status === "deployed") && (
                           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-badge bg-status-success-subtle text-status-success text-[10px] font-display font-semibold">
                             <CheckCircle className="w-3 h-3" />
                             Ready
@@ -1078,7 +1092,7 @@ export default function SetupWizardPage() {
                             Failed
                           </span>
                         )}
-                        {(chain.status === "deploying" || chain.status === "pending") && (
+                        {(chain.status === "deploying" || chain.status === "pending" || chain.status === "not_started") && (
                           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-badge bg-accent-subtle text-accent-primary text-[10px] font-display font-semibold">
                             <Loader2 className="w-3 h-3 animate-spin" />
                             Deploying
@@ -1088,9 +1102,9 @@ export default function SetupWizardPage() {
 
                       <ContractDeploymentStatus steps={deploymentSteps} />
 
-                      {chain.status === "failed" && chain.error && (
+                      {chain.status === "failed" && chain.deployError && (
                         <div className="mt-3 p-3 bg-status-error-subtle border border-status-error/15 rounded-input text-caption text-status-error font-display">
-                          {chain.error}
+                          {chain.deployError}
                         </div>
                       )}
                     </div>
