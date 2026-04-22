@@ -135,26 +135,38 @@ export class ProjectSetupService {
 
     const settings = JSON.stringify({ custodyMode: data.custodyMode });
 
-    // Insert into cvh_admin.projects
-    const insertRows = await this.adminDb.query<InsertResult>(
-      `INSERT INTO projects (client_id, name, slug, description, status, settings)
-       VALUES (?, ?, ?, ?, 'active', ?)`,
-      [clientId, data.name, slug, data.description ?? null, settings],
+    // Check if project with this slug already exists for this client
+    const existing = await this.adminDb.query<ProjectRow>(
+      `SELECT id, status FROM projects WHERE client_id = ? AND slug = ? LIMIT 1`,
+      [clientId, slug],
     );
 
-    // mysql2 returns the insertId on the ResultSetHeader (first element)
-    const projectId = (insertRows as any).insertId ?? (insertRows as any)[0]?.insertId;
+    let projectId: number;
 
-    if (!projectId) {
-      // Fallback: query by slug + client_id
-      const fallback = await this.adminDb.query<ProjectRow>(
-        `SELECT id FROM projects WHERE client_id = ? AND slug = ? ORDER BY id DESC LIMIT 1`,
-        [clientId, slug],
+    if (existing.length > 0) {
+      // Reuse existing project (from a previous failed wizard attempt)
+      projectId = existing[0].id;
+      this.logger.log(`Reusing existing project ${projectId} (slug=${slug}) for client ${clientId}`);
+    } else {
+      // Insert new project
+      const insertRows = await this.adminDb.query<InsertResult>(
+        `INSERT INTO projects (client_id, name, slug, description, status, settings)
+         VALUES (?, ?, ?, ?, 'active', ?)`,
+        [clientId, data.name, slug, data.description ?? null, settings],
       );
-      if (fallback.length === 0) {
-        throw new InternalServerErrorException('Failed to retrieve newly created project');
+
+      projectId = (insertRows as any).insertId ?? (insertRows as any)[0]?.insertId;
+
+      if (!projectId) {
+        const fallback = await this.adminDb.query<ProjectRow>(
+          `SELECT id FROM projects WHERE client_id = ? AND slug = ? ORDER BY id DESC LIMIT 1`,
+          [clientId, slug],
+        );
+        if (fallback.length === 0) {
+          throw new InternalServerErrorException('Failed to retrieve newly created project');
+        }
+        projectId = fallback[0].id;
       }
-      return this.buildCreatedProjectResponse(fallback[0].id, clientId, data, slug);
     }
 
     return this.buildCreatedProjectResponse(projectId, clientId, data, slug);
