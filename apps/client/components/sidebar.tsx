@@ -21,6 +21,10 @@ import {
   PackageOpen,
   Droplets,
   Group,
+  BookOpen,
+  HelpCircle,
+  FileText,
+  Activity,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useClientAuth } from "@/lib/auth-context";
@@ -78,6 +82,15 @@ const navSections: NavSection[] = [
     items: [
       { label: "Notifications", href: "/notifications", icon: Bell },
       { label: "Security", href: "/security", icon: ShieldCheck },
+    ],
+  },
+  {
+    title: "Suporte",
+    items: [
+      { label: "Knowledge Base", href: "/support/kb", icon: BookOpen },
+      { label: "FAQ", href: "/support/faq", icon: HelpCircle },
+      { label: "Changelog", href: "/support/changelog", icon: FileText },
+      { label: "Status", href: "/support/status", icon: Activity },
     ],
   },
 ];

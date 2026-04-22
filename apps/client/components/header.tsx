@@ -32,16 +32,24 @@ const pageMeta: Record<string, { title: string; breadcrumb: string }> = {
   },
   "/setup": { title: "Setup Wizard", breadcrumb: "Portal / Setup" },
   "/exports": { title: "Exports", breadcrumb: "Portal / Operations / Exports" },
+  "/support": { title: "Suporte", breadcrumb: "Portal / Suporte" },
+  "/support/kb": { title: "Knowledge Base", breadcrumb: "Portal / Suporte / Knowledge Base" },
+  "/support/faq": { title: "FAQ", breadcrumb: "Portal / Suporte / FAQ" },
+  "/support/changelog": { title: "Changelog", breadcrumb: "Portal / Suporte / Changelog" },
+  "/support/status": { title: "Status", breadcrumb: "Portal / Suporte / Status do Sistema" },
 };
 
 export function Header() {
   const pathname = usePathname();
   const { isDark, toggleTheme } = useTheme();
   const { user } = useClientAuth();
-  const meta = pageMeta[pathname] || {
-    title: "Dashboard",
-    breadcrumb: "Portal",
-  };
+  let meta = pageMeta[pathname];
+  if (!meta && pathname.startsWith("/support/kb/")) {
+    meta = { title: "Knowledge Base", breadcrumb: "Portal / Suporte / Knowledge Base / Artigo" };
+  }
+  if (!meta) {
+    meta = { title: "Dashboard", breadcrumb: "Portal" };
+  }
 
   const userName = user?.name ?? "User";
   const initials = userName

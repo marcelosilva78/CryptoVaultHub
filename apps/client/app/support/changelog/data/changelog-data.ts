@@ -1,0 +1,14 @@
+import type { ChangelogEntry } from "../../kb/components/types";
+
+export const changelogData: ChangelogEntry[] = [
+  { version: "2.4.0", date: "2026-04-22", type: "feature", title: "Knowledge Base & Support Center", description: "Nova Central de Suporte com Knowledge Base completa, FAQ, Changelog e Status do Sistema. Documentação rica com busca full-text, diagramas interativos e guias passo a passo." },
+  { version: "2.3.1", date: "2026-04-15", type: "fix", title: "Correção no Key Vault com projectId", description: "Corrigido bug onde projectId não era passado corretamente nas chamadas legacy do Shamir controller, causando falhas em operações de co-sign em projetos isolados." },
+  { version: "2.3.0", date: "2026-04-13", type: "feature", title: "Chains Feature Evolution — Phase 1", description: "Backend completo para gestão de chains: Prisma models, CRUD API, controladores, validação de RPC, health checks, e admin UI com DataGrid, modais e sync health dashboard." },
+  { version: "2.2.0", date: "2026-04-12", type: "improvement", title: "Client Management Revamp", description: "Refatoração completa da gestão de clientes: novo DataGrid com filtros avançados, detail page com tabs, impersonation melhorada, e BI widgets integrados." },
+  { version: "2.1.0", date: "2026-04-09", type: "feature", title: "Jaeger Tracing & Integration Tests", description: "Habilitado distributed tracing com Jaeger para todas as operações. Adicionadas 3 suites de testes de integração cobrindo fluxos de deposit, withdrawal e co-sign." },
+  { version: "2.0.0", date: "2026-04-09", type: "breaking", title: "Security Overhaul v2", description: "Reestruturação completa de segurança: resolvidos 8 issues CRITICAL e 6 HIGH. Novas validações de input, sanitização de queries, RBAC reforçado, e rate limiting por tier." },
+  { version: "1.9.0", date: "2026-04-08", type: "feature", title: "Co-Sign E2E Tests & Reconciliation", description: "40 testes E2E para fluxo de co-sign. Otimização de performance no reconciliation engine com batch processing e parallel chain scanning." },
+  { version: "1.8.0", date: "2026-04-05", type: "improvement", title: "Dashboard Transactions DataGrid", description: "Novo DataGrid de transações com sorting multi-coluna, filtros persistentes, export inline, e traceability links diretos. Performance otimizada para 100k+ registros." },
+  { version: "1.7.0", date: "2026-03-28", type: "feature", title: "Analytics Module", description: "Módulo completo de analytics com 3 dashboards: Overview (KPIs e tendências), Operations (depósitos vs withdrawals), e Compliance (flags e aprovações). Charts interativos com Recharts." },
+  { version: "1.6.1", date: "2026-03-20", type: "fix", title: "Webhook delivery retry", description: "Corrigido bug onde webhooks falhados não eram retentados corretamente. Implementado exponential backoff com jitter e dead letter queue para falhas persistentes." },
+];
