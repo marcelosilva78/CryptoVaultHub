@@ -13,6 +13,7 @@ import { SanctionsListSyncModule } from './sanctions-list-sync/sanctions-list-sy
 import { WithdrawalModule } from './withdrawal/withdrawal.module';
 import { ChainListenerModule } from './chain-listener/chain-listener.module';
 import { ClientDeletionModule } from './client-deletion/client-deletion.module';
+import { ProjectDeletionModule } from './project-deletion/project-deletion.module';
 import { HealthController } from './common/health.controller';
 
 @Module({
@@ -50,6 +51,7 @@ import { HealthController } from './common/health.controller';
     WithdrawalModule,
     ChainListenerModule,
     ClientDeletionModule,
+    ProjectDeletionModule,
   ],
   controllers: [HealthController],
 })
