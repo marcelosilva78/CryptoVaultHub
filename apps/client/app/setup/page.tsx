@@ -392,7 +392,7 @@ export default function SetupWizardPage() {
     );
   };
 
-  const allGasSufficient = gasChains.length > 0 && gasChains.every((c) => c.sufficient);
+  const allGasSufficient = gasChains.length === 0 || gasChains.every((c) => c.sufficient);
   const anyDeployFailed = deployChains.some((c) => c.status === "failed");
 
   // ─── Copy Mnemonic ──────────────────────────────────────────
@@ -875,10 +875,22 @@ export default function SetupWizardPage() {
               </div>
             )}
 
-            {gasLoading && gasChains.length === 0 && (
+            {gasLoading && gasChains.length === 0 && !gasError && (
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="w-5 h-5 animate-spin text-accent-primary" />
                 <span className="ml-2 text-text-muted font-display">Loading gas tank details...</span>
+              </div>
+            )}
+
+            {!gasLoading && gasChains.length === 0 && !gasError && (
+              <div className="flex flex-col items-center justify-center py-12 gap-3">
+                <div className="w-12 h-12 flex items-center justify-center rounded-full bg-accent-subtle">
+                  <CheckCircle className="w-6 h-6 text-accent-primary" />
+                </div>
+                <div className="text-body font-display font-semibold text-text-primary">No gas tanks required yet</div>
+                <div className="text-caption text-text-muted font-display text-center max-w-[400px]">
+                  Gas tanks will be created during contract deployment. You can proceed to the deployment step.
+                </div>
               </div>
             )}
 
