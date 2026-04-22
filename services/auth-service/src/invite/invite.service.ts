@@ -16,17 +16,31 @@ export class InviteService {
   ) {}
 
   async generateInvite(email: string, clientId: number) {
-    // Prevent multiple active invites for the same email
-    const existing = await this.prisma.inviteToken.findFirst({
-      where: { email, usedAt: null, expiresAt: { gt: new Date() } },
-    });
-    if (existing) {
-      throw new ConflictException('An active invite already exists for this email');
+    const portalUrl = this.config.get<string>('PORTAL_URL', 'http://localhost:3011');
+    if (process.env.NODE_ENV === 'production' && portalUrl.includes('localhost')) {
+      throw new Error('PORTAL_URL must be set to a public URL in production');
     }
 
-    const token = randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000); // 48h
 
+    // Check for existing unused invite (active or expired)
+    const existing = await this.prisma.inviteToken.findFirst({
+      where: { email, clientId: BigInt(clientId), usedAt: null },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (existing) {
+      // Reuse existing token — reset expiration
+      await this.prisma.inviteToken.update({
+        where: { id: existing.id },
+        data: { expiresAt },
+      });
+      const inviteUrl = `${portalUrl}/register?token=${existing.token}`;
+      return { token: existing.token, inviteUrl };
+    }
+
+    // No existing invite — create a new one
+    const token = randomBytes(32).toString('hex');
     await this.prisma.inviteToken.create({
       data: {
         email,
@@ -36,12 +50,7 @@ export class InviteService {
       },
     });
 
-    const portalUrl = this.config.get<string>('PORTAL_URL', 'http://localhost:3011');
-    if (process.env.NODE_ENV === 'production' && portalUrl.includes('localhost')) {
-      throw new Error('PORTAL_URL must be set to a public URL in production');
-    }
     const inviteUrl = `${portalUrl}/register?token=${token}`;
-
     return { token, inviteUrl };
   }
 

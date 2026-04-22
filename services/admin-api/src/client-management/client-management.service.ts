@@ -382,23 +382,15 @@ export class ClientManagementService {
 
     const internalKey = this.configService.get<string>('INTERNAL_SERVICE_KEY', '');
 
-    // 1. Generate invite token via auth-service
-    let authRes;
-    try {
-      authRes = await axios.post(
-        `${this.authServiceUrl}/auth/invite/generate`,
-        { email: client.email, clientId: id },
-        {
-          timeout: 10000,
-          headers: { 'X-Internal-Service-Key': internalKey },
-        },
-      );
-    } catch (err: any) {
-      if (err.response?.status === 409) {
-        throw new ConflictException('An active invite already exists for this client. Wait for it to expire or ask the client to use the existing link.');
-      }
-      throw err;
-    }
+    // 1. Generate (or reuse) invite token via auth-service
+    const authRes = await axios.post(
+      `${this.authServiceUrl}/auth/invite/generate`,
+      { email: client.email, clientId: id },
+      {
+        timeout: 10000,
+        headers: { 'X-Internal-Service-Key': internalKey },
+      },
+    );
     const { inviteUrl } = authRes.data as { token: string; inviteUrl: string };
 
     // 2. Send invite email — try direct SMTP first, fall back to notification-service
