@@ -43,8 +43,14 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const queryClient = useQueryClient();
 
-  // Fetch projects on mount
+  // Fetch projects on mount (skip on public pages)
   useEffect(() => {
+    const path = window.location.pathname;
+    if (path === '/login' || path.startsWith('/register')) {
+      setIsLoading(false);
+      return;
+    }
+
     const fetchProjects = async () => {
       try {
         const res = await clientFetch<{ projects?: Project[]; data?: Project[] }>('/v1/projects');
