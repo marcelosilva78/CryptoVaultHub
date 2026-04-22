@@ -32,7 +32,8 @@ export class WalletService {
           timeout: 10000,
         },
       );
-      return data;
+      // core-wallet returns { wallets: [...] } — extract the array
+      return data.wallets ?? data ?? [];
     } catch (error: any) {
       if (error.response) {
         throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
