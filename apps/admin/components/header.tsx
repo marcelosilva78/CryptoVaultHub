@@ -46,6 +46,11 @@ const pageMeta: Record<string, { title: string; crumbs: string[] }> = {
     title: "Job Queue",
     crumbs: ["Admin", "System", "Job Queue"],
   },
+  "/support": { title: "Suporte", crumbs: ["Admin", "Suporte"] },
+  "/support/kb": { title: "Knowledge Base", crumbs: ["Admin", "Suporte", "Knowledge Base"] },
+  "/support/faq": { title: "FAQ", crumbs: ["Admin", "Suporte", "FAQ"] },
+  "/support/changelog": { title: "Changelog", crumbs: ["Admin", "Suporte", "Changelog"] },
+  "/support/status": { title: "Status", crumbs: ["Admin", "Suporte", "Status do Sistema"] },
 };
 
 /* ── Hexagonal clip for mini avatar ── */
@@ -61,6 +66,9 @@ export function Header() {
   let meta = pageMeta[pathname];
   if (!meta && pathname.startsWith("/clients/")) {
     meta = { title: "Client Detail", crumbs: ["Admin", "Clients", "Detail"] };
+  }
+  if (!meta && pathname.startsWith("/support/kb/")) {
+    meta = { title: "Knowledge Base", crumbs: ["Admin", "Suporte", "Knowledge Base", "Artigo"] };
   }
   if (!meta) {
     meta = { title: "Admin", crumbs: ["Admin"] };

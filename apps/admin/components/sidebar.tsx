@@ -21,6 +21,8 @@ import {
   Download,
   RefreshCw,
   Settings,
+  BookOpen,
+  HelpCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
@@ -65,6 +67,15 @@ const navSections: Array<{ title: string; items: Array<{ label: string; href: st
       { label: "Settings", href: "/settings", icon: "Settings" },
     ],
   },
+  {
+    title: "Suporte",
+    items: [
+      { label: "Knowledge Base", href: "/support/kb", icon: "BookOpen" },
+      { label: "FAQ", href: "/support/faq", icon: "HelpCircle" },
+      { label: "Changelog", href: "/support/changelog", icon: "FileText" },
+      { label: "Status", href: "/support/status", icon: "Activity" },
+    ],
+  },
 ];
 
 const iconMap: Record<string, React.ElementType> = {
@@ -85,6 +96,8 @@ const iconMap: Record<string, React.ElementType> = {
   Download,
   RefreshCw,
   Settings,
+  BookOpen,
+  HelpCircle,
 };
 
 /* ── Inline SVG: Hexagon with keyhole cutout ── */
