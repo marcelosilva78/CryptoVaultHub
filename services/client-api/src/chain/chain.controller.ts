@@ -46,6 +46,8 @@ Chains with \`rpcConfigured: false\` have no active RPC nodes and cannot be used
       },
     },
   })
+  @ApiResponse({ status: 401, description: 'Missing or invalid API key.' })
+  @ApiResponse({ status: 403, description: 'API key does not have the `read` scope.' })
   async getAvailableChains() {
     const chains = await this.chainService.getAvailableChains();
     return { success: true, chains };
