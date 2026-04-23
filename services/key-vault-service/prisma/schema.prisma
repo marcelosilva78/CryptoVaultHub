@@ -42,8 +42,9 @@ model DerivedKey {
   signCount      BigInt    @default(0) @map("sign_count")
   createdAt      DateTime  @default(now()) @map("created_at")
 
-  @@unique([clientId, keyType, chainScope], name: "uq_client_keytype_chain")
+  @@unique([projectId, keyType, chainScope], name: "uq_project_keytype_chain")
   @@index([address], name: "idx_address")
+  @@index([clientId, keyType], name: "idx_client_keytype")
   @@map("derived_keys")
 }
 
