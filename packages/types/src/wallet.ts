@@ -32,7 +32,7 @@ export interface WhitelistedAddress {
   createdAt: Date;
 }
 
-export type CustodyMode = 'full_custody' | 'co_sign' | 'client_initiated';
+export type CustodyMode = 'full_custody' | 'co_sign' | 'client_initiated' | 'self_managed';
 export type MonitoringMode = 'realtime' | 'polling' | 'hybrid';
 export type KytLevel = 'off' | 'basic' | 'full';
 
@@ -98,13 +98,11 @@ export interface GasCheckResult {
   sufficient: boolean;
 }
 
-export type ProjectCustodyMode = 'full_custody' | 'co_sign' | 'client_only';
-
 export interface ProjectSetupResult {
   projectId: number;
   name: string;
   chains: ProjectChain[];
-  custodyMode: ProjectCustodyMode;
+  custodyMode: CustodyMode;
   status: 'created' | 'keys_generated' | 'deploying' | 'ready';
 }
 

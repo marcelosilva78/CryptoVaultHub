@@ -3,7 +3,7 @@
  * These augment @cvh/types with DTO shapes used in API requests.
  */
 
-import type { PaginatedResponse, DepositStatus, WithdrawalStatus } from '@cvh/types';
+import type { PaginatedResponse, DepositStatus, WithdrawalStatus, CustodyMode, MonitoringMode, KytLevel } from '@cvh/types';
 
 // ── Pagination ───────────────────────────────────────────
 export interface PaginationParams {
@@ -16,9 +16,9 @@ export interface CreateClientDto {
   name: string;
   tierId: number;
   chainIds: number[];
-  custodyMode?: 'full_custody' | 'co_sign' | 'client_initiated';
-  monitoringMode?: 'realtime' | 'polling' | 'hybrid';
-  kytLevel?: 'off' | 'basic' | 'full';
+  custodyMode?: CustodyMode;
+  monitoringMode?: MonitoringMode;
+  kytLevel?: KytLevel;
   dailyWithdrawalLimit?: string;
 }
 
@@ -26,9 +26,9 @@ export interface UpdateClientDto {
   name?: string;
   tierId?: number;
   chainIds?: number[];
-  custodyMode?: 'full_custody' | 'co_sign' | 'client_initiated';
-  monitoringMode?: 'realtime' | 'polling' | 'hybrid';
-  kytLevel?: 'off' | 'basic' | 'full';
+  custodyMode?: CustodyMode;
+  monitoringMode?: MonitoringMode;
+  kytLevel?: KytLevel;
   dailyWithdrawalLimit?: string;
   isActive?: boolean;
 }
@@ -431,5 +431,5 @@ export interface WebhookDeadLetter {
   deadLetteredAt: string;
 }
 
-// ── Re-export PaginatedResponse for convenience ──────────
-export type { PaginatedResponse };
+// ── Re-export core types for convenience ──────────
+export type { PaginatedResponse, CustodyMode, MonitoringMode, KytLevel };

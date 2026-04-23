@@ -33,6 +33,7 @@ import {
   Fuel,
 } from "lucide-react";
 import { ethers } from "ethers";
+import type { CustodyMode } from "@cvh/api-client";
 
 // ─── Types ──────────────────────────────────────────────────────
 
@@ -48,7 +49,7 @@ interface AvailableChain {
   activeNodeCount: number;
 }
 
-type CustodyMode = "full_custody" | "co_sign" | "client_only";
+// CustodyMode imported from @cvh/types
 
 interface KeyCeremonyResult {
   mnemonic: string[];
@@ -110,8 +111,8 @@ const CUSTODY_OPTIONS: {
     icon: Users,
   },
   {
-    id: "client_only",
-    title: "Client Only",
+    id: "client_initiated",
+    title: "Client Initiated",
     description:
       "You control everything. Best for full sovereignty over your funds.",
     icon: Lock,
@@ -394,7 +395,7 @@ export default function SetupWizardPage() {
 
   const toggleChain = (chainId: number) => {
     const chain = availableChains.find((c) => c.chainId === chainId);
-    if (!chain?.rpcConfigured) return;
+    if (!chain?.rpcConfigured || chain.activeNodeCount === 0) return;
     setSelectedChains((prev) =>
       prev.includes(chainId)
         ? prev.filter((c) => c !== chainId)
@@ -533,14 +534,14 @@ export default function SetupWizardPage() {
                 {availableChains.map((chain) => {
                   const isSelected = selectedChains.includes(chain.chainId);
                   const meta = CHAIN_UI_META[chain.chainId];
-                  const disabled = !chain.rpcConfigured;
+                  const disabled = !chain.rpcConfigured || chain.activeNodeCount === 0;
 
                   return (
                     <button
                       key={chain.chainId}
                       onClick={() => toggleChain(chain.chainId)}
                       disabled={disabled}
-                      title={disabled ? "No RPC nodes configured for this chain" : undefined}
+                      title={disabled ? "This chain is not available — no active RPC nodes" : undefined}
                       className={cn(
                         "relative p-4 rounded-card border-2 text-left transition-all duration-fast group",
                         disabled
@@ -576,7 +577,7 @@ export default function SetupWizardPage() {
                             {disabled ? (
                               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-badge text-[9px] font-display font-semibold bg-status-error-subtle text-status-error border border-status-error/15">
                                 <Lock className="w-2.5 h-2.5" />
-                                No RPC nodes configured
+                                Not available
                               </span>
                             ) : (
                               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-badge text-[9px] font-display font-semibold bg-status-success-subtle text-status-success border border-status-success/15">

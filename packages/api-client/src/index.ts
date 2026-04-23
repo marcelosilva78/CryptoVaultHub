@@ -45,6 +45,9 @@ export type {
   ImpersonationSession,
   WebhookDeliveryAttempt,
   WebhookDeadLetter,
+  CustodyMode,
+  MonitoringMode,
+  KytLevel,
 } from './types';
 
 // Auth types
