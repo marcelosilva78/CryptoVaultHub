@@ -11,6 +11,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ContractService } from '../blockchain/contract.service';
 import { NonceService } from '../blockchain/nonce.service';
 import { ComplianceService } from '../compliance/compliance.service';
+import { CoSignOrchestratorService } from '../co-sign/co-sign-orchestrator.service';
 
 /**
  * Processes withdrawal requests:
@@ -31,6 +32,7 @@ export class WithdrawalService {
     private readonly contractService: ContractService,
     private readonly nonceService: NonceService,
     private readonly complianceService: ComplianceService,
+    private readonly coSignOrchestrator: CoSignOrchestratorService,
   ) {}
 
   /**
@@ -248,6 +250,20 @@ export class WithdrawalService {
       where: { id: BigInt(withdrawalId) },
       data: { status: 'approved' },
     });
+
+    // Check if this project uses co-sign custody
+    const [project] = await this.prisma.$queryRaw<any[]>`
+      SELECT custody_mode FROM cvh_admin.projects
+      WHERE id = ${BigInt(withdrawal.projectId)} AND client_id = ${BigInt(clientId)}
+    `;
+
+    if (project?.custody_mode === 'co_sign') {
+      await this.coSignOrchestrator.createCoSignOperation(
+        withdrawalId,
+        clientId,
+        Number(withdrawal.projectId),
+      );
+    }
 
     this.logger.log(
       `Withdrawal ${withdrawalId} approved — will be picked up by the withdrawal worker`,
