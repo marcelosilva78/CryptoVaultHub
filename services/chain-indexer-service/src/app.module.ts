@@ -17,6 +17,7 @@ import { SyncHealthModule } from './sync-health/sync-health.module';
 import { GapDetectorModule } from './gap-detector/gap-detector.module';
 import { BackfillModule } from './backfill/backfill.module';
 import { FinalityTrackerModule } from './finality/finality-tracker.module';
+import { AddressRegistrationModule } from './address-registration/address-registration.module';
 
 @Module({
   imports: [
@@ -55,6 +56,7 @@ import { FinalityTrackerModule } from './finality/finality-tracker.module';
     GapDetectorModule,
     BackfillModule,
     FinalityTrackerModule,
+    AddressRegistrationModule,
   ],
   controllers: [HealthController],
 })
