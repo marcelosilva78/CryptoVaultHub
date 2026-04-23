@@ -42,26 +42,49 @@ export class PollingDetectorService extends WorkerHost implements OnModuleInit {
   }
 
   /**
-   * Initialize repeatable polling jobs for each active chain.
+   * Initialize repeatable polling jobs for each active chain that has at least
+   * one active monitored address.
    */
-  async initPollingJobs(intervalMs: number = 15_000): Promise<void> {
-    const chains = await this.prisma.chain.findMany({
-      where: { isActive: true },
-    });
+  private async initPollingJobs(intervalMs: number = 15_000): Promise<void> {
+    const chainsWithAddresses = await this.prisma.$queryRaw<Array<{ chain_id: number; name: string }>>`
+      SELECT DISTINCT c.chain_id, c.name
+      FROM chains c
+      INNER JOIN monitored_addresses ma ON ma.chain_id = c.chain_id AND ma.is_active = 1
+      WHERE c.is_active = 1
+    `;
 
-    for (const chain of chains) {
+    if (chainsWithAddresses.length === 0) {
+      this.logger.log('No chains with monitored addresses — skipping polling job creation');
+      return;
+    }
+
+    for (const chain of chainsWithAddresses) {
       await this.pollingQueue.add(
         'poll-chain',
-        { chainId: chain.id },
+        { chainId: chain.chain_id },
         {
           repeat: { every: intervalMs },
-          jobId: `poll-chain-${chain.id}`,
+          jobId: `poll-chain-${chain.chain_id}`,
         },
       );
       this.logger.log(
-        `Polling job created for chain ${chain.id} (${chain.name}) every ${intervalMs}ms`,
+        `Polling job created for chain ${chain.chain_id} (${chain.name}) every ${intervalMs}ms`,
       );
     }
+  }
+
+  /**
+   * Remove all existing repeatable polling jobs and re-initialise them based
+   * on the current set of chains that have monitored addresses.  Call this
+   * whenever a monitored address is added or removed so the polling schedule
+   * stays in sync.
+   */
+  async refreshPollingJobs(): Promise<void> {
+    const repeatableJobs = await this.pollingQueue.getRepeatableJobs();
+    for (const job of repeatableJobs) {
+      await this.pollingQueue.removeRepeatableByKey(job.key);
+    }
+    await this.initPollingJobs();
   }
 
   /**
