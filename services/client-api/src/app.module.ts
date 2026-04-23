@@ -18,6 +18,7 @@ import { DeployTraceModule } from './deploy-trace/deploy-trace.module';
 import { AddressGroupModule } from './address-group/address-group.module';
 import { ExportModule } from './export/export.module';
 import { TokenModule } from './token/token.module';
+import { ChainModule } from './chain/chain.module';
 import { NotificationRulesModule } from './notification-rules/notification-rules.module';
 import { SecurityModule } from './security/security.module';
 import { HealthController } from './common/health.controller';
@@ -47,6 +48,7 @@ import { PostHogInterceptor } from './common/interceptors/posthog.interceptor';
     AddressGroupModule,
     ExportModule,
     TokenModule,
+    ChainModule,
     NotificationRulesModule,
     SecurityModule,
   ],
