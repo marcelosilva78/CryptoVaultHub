@@ -4,6 +4,7 @@ initTracing('key-vault-service');
 import * as fs from 'fs';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
+import { Logger as PinoLogger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
@@ -11,7 +12,7 @@ async function bootstrap() {
 
   const tlsEnabled = process.env.VAULT_TLS_ENABLED === 'true';
   let appOptions: Record<string, unknown> = {
-    logger: ['error', 'warn', 'log'],
+    bufferLogs: true,
   };
 
   if (tlsEnabled) {
@@ -50,6 +51,7 @@ async function bootstrap() {
   }
 
   const app = await NestFactory.create(AppModule, appOptions);
+  app.useLogger(app.get(PinoLogger));
 
   app.useGlobalPipes(
     new ValidationPipe({

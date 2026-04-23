@@ -3,13 +3,15 @@ initTracing('chain-indexer-service');
 
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
+import { Logger as PinoLogger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const logger = new Logger('ChainIndexerService');
   const app = await NestFactory.create(AppModule, {
-    logger: ['error', 'warn', 'log'],
+    bufferLogs: true,
   });
+  app.useLogger(app.get(PinoLogger));
 
   app.useGlobalPipes(
     new ValidationPipe({

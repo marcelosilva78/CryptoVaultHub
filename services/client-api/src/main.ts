@@ -3,14 +3,16 @@ initTracing('client-api');
 
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
+import { Logger as PinoLogger } from 'nestjs-pino';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const logger = new Logger('ClientApi');
   const app = await NestFactory.create(AppModule, {
-    logger: ['error', 'warn', 'log'],
+    bufferLogs: true,
   });
+  app.useLogger(app.get(PinoLogger));
 
   app.useGlobalPipes(
     new ValidationPipe({
@@ -127,25 +129,29 @@ const isValid = signature === request.headers['x-cvh-signature'];
     .build();
 
   const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('client/api/docs', app, document, {
-    customSiteTitle: 'CryptoVaultHub Client API Documentation',
-    customCss: `
-      .swagger-ui .topbar { background-color: #0D0F14; }
-      .swagger-ui .info .title { color: #E2A828; }
-    `,
-    swaggerOptions: {
-      persistAuthorization: true,
-      docExpansion: 'list',
-      filter: true,
-      showRequestDuration: true,
-      syntaxHighlight: { theme: 'monokai' },
-      tagsSorter: 'alpha',
-    },
-  });
+  if (process.env.NODE_ENV !== 'production') {
+    SwaggerModule.setup('client/api/docs', app, document, {
+      customSiteTitle: 'CryptoVaultHub Client API Documentation',
+      customCss: `
+        .swagger-ui .topbar { background-color: #0D0F14; }
+        .swagger-ui .info .title { color: #E2A828; }
+      `,
+      swaggerOptions: {
+        persistAuthorization: true,
+        docExpansion: 'list',
+        filter: true,
+        showRequestDuration: true,
+        syntaxHighlight: { theme: 'monokai' },
+        tagsSorter: 'alpha',
+      },
+    });
+  }
 
   const port = process.env.PORT || 3002;
   await app.listen(port);
   logger.log(`Client API running on port ${port}`);
-  logger.log(`Swagger docs available at http://localhost:${port}/client/api/docs`);
+  if (process.env.NODE_ENV !== 'production') {
+    logger.log(`Swagger docs available at http://localhost:${port}/client/api/docs`);
+  }
 }
 bootstrap();

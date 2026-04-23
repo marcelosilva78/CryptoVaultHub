@@ -3,14 +3,16 @@ initTracing('admin-api');
 
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
+import { Logger as PinoLogger } from 'nestjs-pino';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const logger = new Logger('AdminApi');
   const app = await NestFactory.create(AppModule, {
-    logger: ['error', 'warn', 'log'],
+    bufferLogs: true,
   });
+  app.useLogger(app.get(PinoLogger));
 
   app.useGlobalPipes(
     new ValidationPipe({
@@ -84,26 +86,30 @@ All responses follow the standard envelope:
     .build();
 
   const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('admin/api/docs', app, document, {
-    customSiteTitle: 'CryptoVaultHub Admin API Documentation',
-    customCss: `
-      .swagger-ui .topbar { background-color: #0D0F14; }
-      .swagger-ui .topbar .link { content: url(''); }
-      .swagger-ui .info .title { color: #E2A828; }
-      .swagger-ui .scheme-container { background-color: #111318; }
-    `,
-    swaggerOptions: {
-      persistAuthorization: true,
-      docExpansion: 'list',
-      filter: true,
-      showRequestDuration: true,
-      syntaxHighlight: { theme: 'monokai' },
-    },
-  });
+  if (process.env.NODE_ENV !== 'production') {
+    SwaggerModule.setup('admin/api/docs', app, document, {
+      customSiteTitle: 'CryptoVaultHub Admin API Documentation',
+      customCss: `
+        .swagger-ui .topbar { background-color: #0D0F14; }
+        .swagger-ui .topbar .link { content: url(''); }
+        .swagger-ui .info .title { color: #E2A828; }
+        .swagger-ui .scheme-container { background-color: #111318; }
+      `,
+      swaggerOptions: {
+        persistAuthorization: true,
+        docExpansion: 'list',
+        filter: true,
+        showRequestDuration: true,
+        syntaxHighlight: { theme: 'monokai' },
+      },
+    });
+  }
 
   const port = process.env.PORT || 3001;
   await app.listen(port);
   logger.log(`Admin API running on port ${port}`);
-  logger.log(`Swagger docs available at http://localhost:${port}/admin/api/docs`);
+  if (process.env.NODE_ENV !== 'production') {
+    logger.log(`Swagger docs available at http://localhost:${port}/admin/api/docs`);
+  }
 }
 bootstrap();
