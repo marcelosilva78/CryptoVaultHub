@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { WalletService } from './wallet.service';
 import { BalanceService } from '../balance/balance.service';
-import { CreateWalletDto } from '../common/dto/wallet.dto';
+import { CreateWalletDto, RegisterWalletDto } from '../common/dto/wallet.dto';
 
 @Controller('wallets')
 export class WalletController {
@@ -31,6 +31,21 @@ export class WalletController {
     };
   }
 
+  @Post('register')
+  async registerWallet(@Body() dto: RegisterWalletDto) {
+    const result = await this.walletService.registerWallet(
+      dto.clientId,
+      dto.projectId ?? 0,
+      dto.chainId,
+      dto.address,
+      dto.walletType,
+    );
+    return {
+      success: true,
+      wallet: result,
+    };
+  }
+
   @Get(':clientId')
   async listWallets(
     @Param('clientId', ParseIntPipe) clientId: number,
@@ -41,6 +56,7 @@ export class WalletController {
       clientId,
       wallets: wallets.map((w) => ({
         id: Number(w.id),
+        projectId: Number(w.projectId),
         chainId: w.chainId,
         address: w.address,
         walletType: w.walletType,

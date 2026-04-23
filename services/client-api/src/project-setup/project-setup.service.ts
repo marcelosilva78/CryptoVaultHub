@@ -221,7 +221,7 @@ export class ProjectSetupService {
   // 2. initializeKeys
   // ---------------------------------------------------------------------------
 
-  async initializeKeys(clientId: number, projectId: number, custodyMode?: string) {
+  async initializeKeys(clientId: number, projectId: number, custodyMode?: string, chains?: number[]) {
     const project = await this.verifyOwnership(clientId, projectId);
 
     // Resolve custodyMode from project settings if not explicitly passed
@@ -260,7 +260,7 @@ export class ProjectSetupService {
         }
       }
 
-      // Step 2: Generate keys (platform, client, backup, gas_tank)
+      // Step 2: Generate keys (platform, client, backup)
       // Skip if seed already existed (keys were already generated)
       if (mnemonic) {
         this.logger.log(`Generating keys for project ${projectId} (custodyMode=${resolvedCustodyMode})`);
@@ -282,7 +282,65 @@ export class ProjectSetupService {
         }
       }
 
-      // Step 3: Get public keys
+      // Step 3: Derive gas tank keys and register wallets for each chain
+      const gasTanks: Array<{ chainId: number; address: string }> = [];
+
+      if (chains && chains.length > 0) {
+        this.logger.log(
+          `Deriving gas tank keys for project ${projectId}, chains: ${chains.join(',')}`,
+        );
+
+        for (const chainId of chains) {
+          try {
+            // 3a: Derive gas tank key in key-vault
+            const { data: gasTankData } = await axios.post(
+              `${this.keyVaultUrl}/projects/${projectId}/derive-gas-tank-key`,
+              { clientId, chainId, requestedBy: 'project-setup' },
+              { headers: this.headers, timeout: 30000 },
+            );
+
+            const gasTankAddress = gasTankData.key?.address;
+            if (!gasTankAddress) {
+              this.logger.warn(
+                `No address returned for gas tank key on chain ${chainId}`,
+              );
+              continue;
+            }
+
+            // 3b: Register gas tank wallet in core-wallet
+            try {
+              await axios.post(
+                `${this.coreWalletUrl}/wallets/register`,
+                {
+                  clientId,
+                  projectId,
+                  chainId,
+                  address: gasTankAddress,
+                  walletType: 'gas_tank',
+                },
+                { headers: this.headers, timeout: 10000 },
+              );
+            } catch (regErr: any) {
+              // Wallet may already exist (idempotent)
+              this.logger.warn(
+                `Failed to register gas tank wallet for chain ${chainId}: ${regErr.response?.data?.message ?? regErr.message}`,
+              );
+            }
+
+            gasTanks.push({ chainId, address: gasTankAddress });
+
+            this.logger.log(
+              `Gas tank created for project ${projectId}, chain ${chainId}: ${gasTankAddress}`,
+            );
+          } catch (err: any) {
+            this.logger.warn(
+              `Failed to derive gas tank key for chain ${chainId}: ${err.response?.data?.message ?? err.message}`,
+            );
+          }
+        }
+      }
+
+      // Step 4: Get public keys
       this.logger.log(`Fetching public keys for project ${projectId}`);
       const { data: pubKeysData } = await axios.get(
         `${this.keyVaultUrl}/projects/${projectId}/public-keys`,
@@ -290,12 +348,13 @@ export class ProjectSetupService {
       );
 
       this.logger.log(
-        `Key ceremony complete for project ${projectId}: ${pubKeysData.keys?.length ?? 0} keys generated`,
+        `Key ceremony complete for project ${projectId}: ${pubKeysData.keys?.length ?? 0} keys generated, ${gasTanks.length} gas tanks created`,
       );
 
       return {
         mnemonic: mnemonic ?? '(seed already generated — mnemonic was shown previously)',
         publicKeys: pubKeysData.keys ?? [],
+        gasTanks,
       };
     } catch (error: any) {
       if (error.response) {
@@ -356,7 +415,11 @@ export class ProjectSetupService {
 
       const wallets = walletsData.wallets ?? walletsData ?? [];
       const gasTanks = Array.isArray(wallets)
-        ? wallets.filter((w: any) => w.walletType === 'gas_tank' || w.wallet_type === 'gas_tank')
+        ? wallets.filter(
+            (w: any) =>
+              (w.walletType === 'gas_tank' || w.wallet_type === 'gas_tank') &&
+              Number(w.projectId ?? w.project_id) === projectId,
+          )
         : [];
 
       if (gasTanks.length === 0) {
@@ -610,7 +673,11 @@ export class ProjectSetupService {
 
       const wallets = walletsData.wallets ?? walletsData ?? [];
       const gasTanks = Array.isArray(wallets)
-        ? wallets.filter((w: any) => w.walletType === 'gas_tank' || w.wallet_type === 'gas_tank')
+        ? wallets.filter(
+            (w: any) =>
+              (w.walletType === 'gas_tank' || w.wallet_type === 'gas_tank') &&
+              Number(w.projectId ?? w.project_id) === projectId,
+          )
         : [];
 
       const chainIds = [...new Set(gasTanks.map((g: any) => g.chainId ?? g.chain_id))];
@@ -767,7 +834,11 @@ export class ProjectSetupService {
       );
       const wallets = walletsData.wallets ?? walletsData ?? [];
       gasTanks = Array.isArray(wallets)
-        ? wallets.filter((w: any) => w.walletType === 'gas_tank' || w.wallet_type === 'gas_tank')
+        ? wallets.filter(
+            (w: any) =>
+              (w.walletType === 'gas_tank' || w.wallet_type === 'gas_tank') &&
+              Number(w.projectId ?? w.project_id) === projectId,
+          )
         : [];
     } catch (error: any) {
       this.logger.warn(

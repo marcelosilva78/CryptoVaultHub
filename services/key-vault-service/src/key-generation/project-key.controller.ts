@@ -9,6 +9,7 @@ import {
 import { ProjectKeyService } from './project-key.service';
 import {
   GenerateProjectKeysDto,
+  DeriveProjectGasTankDto,
 } from '../common/dto/key-generation.dto';
 
 @Controller('projects')
@@ -47,6 +48,26 @@ export class ProjectKeyController {
       projectId,
       clientId: dto.clientId,
       keys,
+    };
+  }
+
+  @Post(':projectId/derive-gas-tank-key')
+  async deriveGasTankKey(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Body() dto: DeriveProjectGasTankDto,
+  ) {
+    const key = await this.projectKeyService.deriveProjectGasTankKey(
+      projectId,
+      dto.clientId,
+      dto.chainId,
+      dto.requestedBy ?? 'system',
+    );
+    return {
+      success: true,
+      projectId,
+      clientId: dto.clientId,
+      chainId: dto.chainId,
+      key,
     };
   }
 

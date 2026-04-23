@@ -164,6 +164,20 @@ export class SplitSharesDto {
   requestedBy?: string;
 }
 
+export class DeriveProjectGasTankDto {
+  @IsNumber()
+  @IsPositive()
+  clientId!: number;
+
+  @IsNumber()
+  @Min(1)
+  chainId!: number;
+
+  @IsString()
+  @IsOptional()
+  requestedBy?: string;
+}
+
 export class GenerateProjectKeysDto {
   @IsNumber()
   @IsPositive()

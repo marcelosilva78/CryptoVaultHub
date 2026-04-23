@@ -269,6 +269,123 @@ export class ProjectKeyService {
   }
 
   /**
+   * Derive a gas tank key for a specific project and chain.
+   * Path: m/44'/60'/1000'/chainId/0
+   *
+   * Uses the project seed (not master seed) — each project has its own
+   * gas tank key per chain, deterministically derived.
+   *
+   * See SECURITY NOTE in generateProjectKeys regarding V8 string immutability.
+   */
+  async deriveProjectGasTankKey(
+    projectId: number,
+    clientId: number,
+    chainId: number,
+    requestedBy: string,
+  ): Promise<DerivedKeyInfo> {
+    // Load project seed
+    const projectSeed = await this.prisma.projectSeed.findUnique({
+      where: { projectId: BigInt(projectId) },
+    });
+    if (!projectSeed) {
+      throw new NotFoundException(
+        `No seed found for project ${projectId}. Generate a project seed first.`,
+      );
+    }
+
+    // Check if gas_tank key already exists for this project + chain
+    const existing = await this.prisma.derivedKey.findFirst({
+      where: {
+        projectId: BigInt(projectId),
+        keyType: 'gas_tank',
+        chainScope: `evm:${chainId}`,
+      },
+    });
+    if (existing) {
+      // Return existing key info instead of creating duplicate
+      return {
+        publicKey: existing.publicKey,
+        address: existing.address,
+        derivationPath: existing.derivationPath,
+        keyType: 'gas_tank',
+      };
+    }
+
+    // Decrypt mnemonic
+    let mnemonic: string | null = this.encryption.decryptToString(
+      {
+        ciphertext: projectSeed.encryptedSeed,
+        iv: projectSeed.iv,
+        authTag: projectSeed.authTag,
+        salt: projectSeed.salt,
+        encryptedDek: projectSeed.encryptedDek,
+      },
+      projectSeed.kdfIterations,
+    );
+
+    const mnemonicObj = ethers.Mnemonic.fromPhrase(mnemonic);
+    const seed = mnemonicObj.computeSeed();
+    let masterNode: ethers.HDNodeWallet | null =
+      ethers.HDNodeWallet.fromSeed(seed);
+
+    // Drop mnemonic string reference immediately
+    mnemonic = null;
+
+    const derivationPath = `m/44'/60'/1000'/${chainId}/0`;
+    const childNode = masterNode.derivePath(derivationPath);
+
+    // Drop masterNode reference
+    masterNode = null;
+
+    const privateKeyBuf = Buffer.from(
+      childNode.privateKey.slice(2),
+      'hex',
+    );
+
+    const encrypted = this.encryption.encrypt(privateKeyBuf);
+    // Zero the private key buffer
+    privateKeyBuf.fill(0);
+
+    await this.prisma.derivedKey.create({
+      data: {
+        clientId: BigInt(clientId),
+        projectId: BigInt(projectId),
+        keyType: 'gas_tank',
+        chainScope: `evm:${chainId}`,
+        publicKey: childNode.publicKey,
+        address: childNode.address,
+        derivationPath,
+        encryptedKey: encrypted.ciphertext,
+        encryptedDek: encrypted.encryptedDek,
+        iv: encrypted.iv,
+        authTag: encrypted.authTag,
+        salt: encrypted.salt,
+      },
+    });
+
+    await this.audit.log({
+      operation: 'project_gas_tank_key_derived',
+      clientId,
+      keyType: 'gas_tank',
+      address: childNode.address,
+      chainId,
+      requestedBy,
+      metadata: { projectId, derivationPath },
+    });
+
+    this.logger.log(
+      `Derived gas tank key for project ${projectId}, chain ${chainId}: ${childNode.address}`,
+    );
+
+    return {
+      publicKey: childNode.publicKey,
+      address: childNode.address,
+      derivationPath,
+      keyType: 'gas_tank',
+    };
+  }
+
+  /**
    * Mark the project seed as shown to the client.
    * This is a one-way flag — once set, it cannot be unset.
    */

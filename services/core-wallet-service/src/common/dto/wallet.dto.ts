@@ -17,6 +17,27 @@ export class CreateWalletDto {
   chainId: number;
 }
 
+export class RegisterWalletDto {
+  @IsInt()
+  @IsPositive()
+  clientId: number;
+
+  @IsInt()
+  @IsPositive()
+  @IsOptional()
+  projectId?: number;
+
+  @IsInt()
+  @Min(1)
+  chainId: number;
+
+  @IsString()
+  address: string;
+
+  @IsString()
+  walletType: string;
+}
+
 export class ListWalletsDto {
   @IsInt()
   @IsPositive()

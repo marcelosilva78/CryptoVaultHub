@@ -251,6 +251,62 @@ export class WalletService implements OnModuleInit {
     });
   }
 
+  /**
+   * Register a wallet record directly (used by client-api after project key ceremony).
+   * Skips the full createWallets flow — just saves the wallet record.
+   */
+  async registerWallet(
+    clientId: number,
+    projectId: number,
+    chainId: number,
+    address: string,
+    walletType: string,
+  ) {
+    // Check if wallet already exists (idempotent)
+    const existing = await this.prisma.wallet.findFirst({
+      where: {
+        clientId: BigInt(clientId),
+        chainId,
+        walletType,
+        projectId: BigInt(projectId),
+      },
+    });
+    if (existing) {
+      this.logger.log(
+        `Wallet already registered: client=${clientId} chain=${chainId} type=${walletType}`,
+      );
+      return {
+        id: Number(existing.id),
+        address: existing.address,
+        walletType: existing.walletType,
+        chainId: existing.chainId,
+        isActive: existing.isActive,
+      };
+    }
+
+    const wallet = await this.prisma.wallet.create({
+      data: {
+        clientId: BigInt(clientId),
+        projectId: BigInt(projectId),
+        chainId,
+        address,
+        walletType,
+      },
+    });
+
+    this.logger.log(
+      `Wallet registered: client=${clientId} project=${projectId} chain=${chainId} type=${walletType} address=${address}`,
+    );
+
+    return {
+      id: Number(wallet.id),
+      address: wallet.address,
+      walletType: wallet.walletType,
+      chainId: wallet.chainId,
+      isActive: wallet.isActive,
+    };
+  }
+
   // ----------- Key Vault HTTP Calls -----------
 
   /**

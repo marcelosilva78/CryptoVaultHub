@@ -136,8 +136,14 @@ After storing the mnemonic, call \`POST /projects/:id/confirm-seed\` to confirm 
   async initializeKeys(
     @Param('id', ParseIntPipe) id: number,
     @CurrentClientId() clientId: number,
+    @Body() body?: { chains?: number[] },
   ) {
-    const result = await this.setupService.initializeKeys(clientId, id);
+    const result = await this.setupService.initializeKeys(
+      clientId,
+      id,
+      undefined,
+      body?.chains,
+    );
     return { success: true, ...result };
   }
 
