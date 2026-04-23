@@ -66,6 +66,9 @@ services:
       - "--metrics.prometheus=true"
       - "--metrics.prometheus.entryPoint=metrics"
       - "--entrypoints.metrics.address=:8082"
+      - "--entrypoints.websecure.http.tls.options=default@file"
+      - "--providers.file.directory=/etc/traefik/dynamic"
+      - "--providers.file.watch=true"
     environment:
       - CF_DNS_API_TOKEN=${CLOUDFLARE_DNS_API_TOKEN}
     ports:
@@ -73,6 +76,7 @@ services:
       - "443:443"
     volumes:
       - /docker/data/traefik/letsencrypt:/letsencrypt
+      - ./infra/traefik/tls.yml:/etc/traefik/dynamic/tls.yml:ro
     networks:
       - public-net
       - internal-net

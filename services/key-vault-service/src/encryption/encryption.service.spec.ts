@@ -41,7 +41,7 @@ describe('EncryptionService', () => {
 
       expect(encrypted.ciphertext).toBeInstanceOf(Buffer);
       expect(encrypted.iv).toBeInstanceOf(Buffer);
-      expect(encrypted.iv.length).toBe(16);
+      expect(encrypted.iv.length).toBe(12);
       expect(encrypted.authTag).toBeInstanceOf(Buffer);
       expect(encrypted.authTag.length).toBe(16);
       expect(encrypted.salt).toBeInstanceOf(Buffer);

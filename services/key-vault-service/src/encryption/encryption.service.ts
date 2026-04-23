@@ -58,7 +58,7 @@ export class EncryptionService {
     const kek = this.deriveKEK(salt);
 
     // Encrypt plaintext with DEK
-    const iv = randomBytes(16);
+    const iv = randomBytes(12);
     const cipher = createCipheriv('aes-256-gcm', dek, iv);
     const ciphertext = Buffer.concat([
       cipher.update(plaintext),
@@ -67,7 +67,7 @@ export class EncryptionService {
     const authTag = cipher.getAuthTag();
 
     // Wrap DEK with KEK
-    const dekIv = randomBytes(16);
+    const dekIv = randomBytes(12);
     const dekCipher = createCipheriv('aes-256-gcm', kek, dekIv);
     const encryptedDek = Buffer.concat([
       dekIv,
@@ -99,9 +99,12 @@ export class EncryptionService {
     // Derive KEK (use caller-supplied iterations when available, e.g. from masterSeed.kdfIterations)
     const kek = this.deriveKEK(salt, iterations);
 
-    // Unwrap DEK
-    const dekIv = encryptedDek.subarray(0, 16);
-    const dekCiphertext = encryptedDek.subarray(16, encryptedDek.length - 16);
+    // Unwrap DEK — detect IV length for backward compatibility
+    // Old records used 16-byte IV; new records use 12-byte (NIST-recommended).
+    // encryptedDek layout: [iv | ciphertext(32) | authTag(16)]
+    const dekIvLen = encryptedDek.length === 64 ? 16 : 12;
+    const dekIv = encryptedDek.subarray(0, dekIvLen);
+    const dekCiphertext = encryptedDek.subarray(dekIvLen, encryptedDek.length - 16);
     const dekAuthTag = encryptedDek.subarray(encryptedDek.length - 16);
 
     const dekDecipher = createDecipheriv('aes-256-gcm', kek, dekIv);
