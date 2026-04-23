@@ -42,7 +42,7 @@ interface AvailableChain {
   shortName: string;
   nativeCurrencySymbol: string;
   nativeCurrencyDecimals: number;
-  explorerUrl: string;
+  explorerUrl: string | null;
   isActive: boolean;
   rpcConfigured: boolean;
   activeNodeCount: number;
@@ -546,7 +546,7 @@ export default function SetupWizardPage() {
                         disabled
                           ? "opacity-40 cursor-not-allowed"
                           : "cursor-pointer",
-                        isSelected
+                        isSelected && !disabled
                           ? "bg-accent-subtle border-accent-primary/30"
                           : !disabled
                             ? "bg-surface-elevated border-border-default hover:border-border-focus hover:bg-surface-hover"
