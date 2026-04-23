@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { ethers } from "ethers";
 import { Loader2, PenTool, AlertTriangle, CheckCircle2, Clock, X } from "lucide-react";
 import { StatCard } from "@/components/stat-card";
 import { Badge } from "@/components/badge";
@@ -10,17 +11,25 @@ import { clientFetch } from "@/lib/api";
 /* ── Types ─────────────────────────────────────────────────────── */
 interface CoSignOperation {
   operationId: string;
-  type: "withdrawal" | "sweep";
-  txHash: string;
+  type: "withdrawal";
+  status: string;
   chainId: number;
   chainName: string;
   toAddress: string;
   amount: string;
   tokenSymbol: string;
-  status: string;
-  relatedId: string;
   createdAt: string;
   expiresAt: string;
+  // Raw params for hash verification
+  operationHash: string;
+  hotWalletAddress: string;
+  amountRaw: string;
+  tokenContractAddress: string | null;
+  expireTime: number;
+  sequenceId: number;
+  networkId: string;
+  clientAddress: string;
+  relatedWithdrawalId: string;
 }
 
 type TabKey = "pending" | "signed" | "all";
@@ -58,13 +67,17 @@ function isExpired(expiresAt: string): boolean {
 function SignModal({
   operation,
   onClose,
-  onSign,
+  onExecuteSign,
   signing,
+  signingError,
+  mnemonicRef,
 }: {
   operation: CoSignOperation;
   onClose: () => void;
-  onSign: () => void;
+  onExecuteSign: () => void;
   signing: boolean;
+  signingError: string | null;
+  mnemonicRef: React.MutableRefObject<string>;
 }) {
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center">
@@ -107,7 +120,7 @@ function SignModal({
             <DetailRow
               label="Type"
               value={
-                <Badge variant={operation.type === "withdrawal" ? "warning" : "accent"}>
+                <Badge variant="warning">
                   {operation.type.charAt(0).toUpperCase() + operation.type.slice(1)}
                 </Badge>
               }
@@ -119,8 +132,7 @@ function SignModal({
               mono
             />
             <DetailRow label="Destination" value={operation.toAddress} mono />
-            <DetailRow label="TX Hash" value={truncateAddress(operation.txHash)} mono />
-            <DetailRow label="Related ID" value={operation.relatedId} mono />
+            <DetailRow label="Related Withdrawal" value={operation.relatedWithdrawalId} mono />
             <DetailRow label="Created" value={formatDate(operation.createdAt)} />
             <DetailRow
               label="Expires"
@@ -131,6 +143,31 @@ function SignModal({
               }
             />
           </div>
+
+          {/* Mnemonic input */}
+          <div>
+            <label className="block text-caption font-display font-medium mb-1">
+              Recovery Phrase (24 words)
+            </label>
+            <textarea
+              rows={3}
+              className="w-full p-3 rounded-input bg-surface-elevated border border-border-default font-mono text-code text-text-primary placeholder:text-text-muted focus:border-accent-primary focus:outline-none transition-colors duration-fast"
+              placeholder="Enter your 24-word mnemonic phrase..."
+              autoComplete="off"
+              spellCheck={false}
+              onChange={(e) => { mnemonicRef.current = e.target.value; }}
+            />
+          </div>
+
+          {/* Signing error */}
+          {signingError && (
+            <div className="flex items-start gap-2.5 p-3 bg-status-error-subtle rounded-input border border-status-error/20">
+              <AlertTriangle className="w-4 h-4 text-status-error mt-0.5 shrink-0" />
+              <div className="text-caption text-status-error font-display">
+                {signingError}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Footer */}
@@ -142,7 +179,7 @@ function SignModal({
             Cancel
           </button>
           <button
-            onClick={onSign}
+            onClick={onExecuteSign}
             disabled={signing || isExpired(operation.expiresAt)}
             className="inline-flex items-center gap-1.5 px-4 py-2 rounded-button font-display text-caption font-semibold cursor-pointer transition-colors duration-fast bg-accent-primary text-accent-text border-none hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed"
           >
@@ -154,7 +191,7 @@ function SignModal({
             ) : (
               <>
                 <PenTool className="w-4 h-4" />
-                Sign with Client Key
+                Verify & Sign
               </>
             )}
           </button>
@@ -201,6 +238,8 @@ export default function CoSignPage() {
   const [signing, setSigning] = useState(false);
   const [signError, setSignError] = useState<string | null>(null);
   const [signSuccess, setSignSuccess] = useState<string | null>(null);
+  const [signingError, setSigningError] = useState<string | null>(null);
+  const mnemonicRef = useRef<string>("");
 
   const fetchPending = useCallback(async () => {
     try {
@@ -208,7 +247,7 @@ export default function CoSignPage() {
       const res = await clientFetch<{
         success: boolean;
         operations: CoSignOperation[];
-      }>("/v1/co-sign/pending", { method: "POST" });
+      }>("/v1/co-sign/pending", { method: "GET" });
       const ops = res.operations ?? [];
 
       // Separate pending vs signed/completed
@@ -242,38 +281,105 @@ export default function CoSignPage() {
     fetchPending();
   }, [fetchPending]);
 
-  async function handleSign(operation: CoSignOperation) {
-    try {
-      setSigning(true);
-      setSignError(null);
-      setSignSuccess(null);
+  function handleSign(operation: CoSignOperation) {
+    setSignModal(operation);
+    setSigningError(null);
+  }
 
-      await clientFetch(`/v1/co-sign/${operation.operationId}/sign`, {
+  async function executeSign() {
+    if (!signModal) return;
+    setSigning(true);
+    setSigningError(null);
+
+    try {
+      const phrase = mnemonicRef.current.trim();
+      if (!phrase) throw new Error("Please enter your mnemonic phrase");
+
+      // 1. Derive client key
+      const mnemonic = ethers.Mnemonic.fromPhrase(phrase);
+      const wallet = ethers.HDNodeWallet.fromMnemonic(mnemonic, "m/44'/60'/1'/0/0");
+
+      // 2. Verify key matches project
+      if (wallet.address.toLowerCase() !== signModal.clientAddress.toLowerCase()) {
+        throw new Error("Wrong mnemonic \u2014 does not match this project's client key");
+      }
+
+      // 3. Reconstruct and verify operationHash
+      const abiCoder = ethers.AbiCoder.defaultAbiCoder();
+      let reconstructed: string;
+
+      if (signModal.tokenContractAddress) {
+        reconstructed = ethers.keccak256(
+          abiCoder.encode(
+            ["string", "address", "address", "uint256", "address", "uint256", "uint256"],
+            [
+              signModal.networkId + "-ERC20",
+              signModal.hotWalletAddress,
+              signModal.toAddress,
+              BigInt(signModal.amountRaw),
+              signModal.tokenContractAddress,
+              signModal.expireTime,
+              signModal.sequenceId,
+            ],
+          ),
+        );
+      } else {
+        reconstructed = ethers.keccak256(
+          abiCoder.encode(
+            ["string", "address", "address", "uint256", "bytes", "uint256", "uint256"],
+            [
+              signModal.networkId,
+              signModal.hotWalletAddress,
+              signModal.toAddress,
+              BigInt(signModal.amountRaw),
+              "0x",
+              signModal.expireTime,
+              signModal.sequenceId,
+            ],
+          ),
+        );
+      }
+
+      if (reconstructed !== signModal.operationHash) {
+        throw new Error(
+          "SECURITY: Hash mismatch \u2014 the operation may have been tampered with. Do NOT proceed."
+        );
+      }
+
+      // 4. Sign with Ethereum message prefix
+      const signature = await wallet.signMessage(ethers.getBytes(signModal.operationHash));
+
+      // 5. Zero key material
+      mnemonicRef.current = "";
+
+      // 6. Submit
+      await clientFetch(`/v1/co-sign/${signModal.operationId}/sign`, {
         method: "POST",
-        body: JSON.stringify({
-          signature: "client_signature_placeholder",
-        }),
+        body: JSON.stringify({ signature }),
       });
 
-      // Move to signed list
+      // 7. Success — move to signed list
       setOperations((prev) =>
-        prev.filter((op) => op.operationId !== operation.operationId)
+        prev.filter((op) => op.operationId !== signModal.operationId)
       );
       setSignedOps((prev) => [
-        { ...operation, status: "signed" },
+        { ...signModal, status: "signed" },
         ...prev,
       ]);
 
       setSignSuccess(
-        `Operation ${operation.operationId} signed successfully. Transaction queued for broadcast.`
+        `Operation ${signModal.operationId} signed successfully. Transaction queued for broadcast.`
       );
       setSignModal(null);
+      setSigningError(null);
+      fetchPending();
 
       // Clear success message after 5 seconds
       setTimeout(() => setSignSuccess(null), 5000);
     } catch (err: any) {
-      setSignError(err.message || "Failed to submit signature");
+      setSigningError(err.message || "Signing failed");
     } finally {
+      mnemonicRef.current = "";
       setSigning(false);
     }
   }
@@ -551,10 +657,7 @@ export default function CoSignPage() {
                       <td className="px-[14px] py-2.5 border-b border-border-subtle">
                         {isPending && !expired ? (
                           <button
-                            onClick={() => {
-                              setSignError(null);
-                              setSignModal(op);
-                            }}
+                            onClick={() => handleSign(op)}
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-button font-display text-caption font-semibold cursor-pointer transition-colors duration-fast bg-accent-primary text-accent-text border-none hover:bg-accent-hover"
                           >
                             <PenTool className="w-3.5 h-3.5" />
@@ -581,9 +684,11 @@ export default function CoSignPage() {
       {signModal && (
         <SignModal
           operation={signModal}
-          onClose={() => setSignModal(null)}
-          onSign={() => handleSign(signModal)}
+          onClose={() => { setSignModal(null); mnemonicRef.current = ""; }}
+          onExecuteSign={executeSign}
           signing={signing}
+          signingError={signingError}
+          mnemonicRef={mnemonicRef}
         />
       )}
     </div>
