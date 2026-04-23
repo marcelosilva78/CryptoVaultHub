@@ -172,6 +172,86 @@ describe('EncryptionService', () => {
     });
   });
 
+  describe('encryptWithPassword/decryptWithPassword', () => {
+    it('should encrypt and decrypt with an explicit password', () => {
+      const plaintext = Buffer.from('secret data for rotation');
+      const password = 'explicit-password-for-test';
+      const encrypted = service.encryptWithPassword(plaintext, password);
+      const decrypted = service.decryptWithPassword(encrypted, password);
+      expect(decrypted.toString('utf-8')).toBe('secret data for rotation');
+    });
+
+    it('should fail to decrypt with wrong password', () => {
+      const plaintext = Buffer.from('secret data');
+      const encrypted = service.encryptWithPassword(plaintext, 'correct-password-here');
+      expect(() =>
+        service.decryptWithPassword(encrypted, 'wrong-password-here!!'),
+      ).toThrow();
+    });
+  });
+
+  describe('rotateEncryption', () => {
+    it('should rotate encryption from old password to new password', () => {
+      const plaintext = Buffer.from('private key material to rotate');
+      const oldPassword = 'old-master-password-value';
+      const newPassword = 'new-master-password-value';
+
+      // Encrypt with old password
+      const original = service.encryptWithPassword(plaintext, oldPassword);
+
+      // Rotate to new password
+      const rotated = service.rotateEncryption(original, oldPassword, newPassword);
+
+      // Verify key version incremented
+      expect(rotated.keyVersion).toBe(2);
+
+      // Verify data can be decrypted with new password
+      const decrypted = service.decryptWithPassword(rotated, newPassword);
+      expect(decrypted.toString('utf-8')).toBe('private key material to rotate');
+    });
+
+    it('should fail to decrypt rotated data with old password', () => {
+      const plaintext = Buffer.from('sensitive key data');
+      const oldPassword = 'old-password-for-rotation';
+      const newPassword = 'new-password-for-rotation';
+
+      const original = service.encryptWithPassword(plaintext, oldPassword);
+      const rotated = service.rotateEncryption(original, oldPassword, newPassword);
+
+      expect(() =>
+        service.decryptWithPassword(rotated, oldPassword),
+      ).toThrow();
+    });
+
+    it('should increment key version from custom starting version', () => {
+      const plaintext = Buffer.from('data at version 3');
+      const oldPassword = 'old-pass-version-test!';
+      const newPassword = 'new-pass-version-test!';
+
+      const original = service.encryptWithPassword(plaintext, oldPassword);
+      const rotated = service.rotateEncryption(original, oldPassword, newPassword, 3);
+
+      expect(rotated.keyVersion).toBe(4);
+    });
+
+    it('should preserve plaintext through multiple rotations', () => {
+      const plaintext = Buffer.from('data surviving multiple rotations');
+      const pass1 = 'password-generation-one!';
+      const pass2 = 'password-generation-two!';
+      const pass3 = 'password-generation-three';
+
+      const enc1 = service.encryptWithPassword(plaintext, pass1);
+      const enc2 = service.rotateEncryption(enc1, pass1, pass2, 1);
+      expect(enc2.keyVersion).toBe(2);
+
+      const enc3 = service.rotateEncryption(enc2, pass2, pass3, 2);
+      expect(enc3.keyVersion).toBe(3);
+
+      const decrypted = service.decryptWithPassword(enc3, pass3);
+      expect(decrypted.toString('utf-8')).toBe('data surviving multiple rotations');
+    });
+  });
+
   describe('deriveKEK', () => {
     it('should produce deterministic output for same salt', () => {
       const salt = randomBytes(32);
