@@ -110,6 +110,46 @@ describe('EncryptionService', () => {
     });
   });
 
+  describe('AAD (Additional Authenticated Data)', () => {
+    it('should encrypt and decrypt correctly with AAD', () => {
+      const plaintext = Buffer.from('private key with AAD binding');
+      const aad = 'client-123:master-seed';
+      const encrypted = service.encrypt(plaintext, aad);
+      const decrypted = service.decrypt(encrypted, undefined, aad);
+      expect(decrypted.toString('utf-8')).toBe('private key with AAD binding');
+    });
+
+    it('should fail to decrypt when AAD does not match', () => {
+      const plaintext = Buffer.from('private key bound to context');
+      const encrypted = service.encrypt(plaintext, 'client-123:master-seed');
+      expect(() =>
+        service.decrypt(encrypted, undefined, 'client-999:master-seed'),
+      ).toThrow();
+    });
+
+    it('should fail to decrypt AAD-encrypted data without AAD', () => {
+      const plaintext = Buffer.from('aad-protected data');
+      const encrypted = service.encrypt(plaintext, 'project-1:hd-key');
+      // Decrypting without AAD should fail because the auth tag won't verify
+      expect(() => service.decrypt(encrypted)).toThrow();
+    });
+
+    it('should decrypt non-AAD data without AAD (backward compat)', () => {
+      const plaintext = Buffer.from('legacy data without AAD');
+      const encrypted = service.encrypt(plaintext);
+      const decrypted = service.decrypt(encrypted);
+      expect(decrypted.toString('utf-8')).toBe('legacy data without AAD');
+    });
+
+    it('should work with encryptString/decryptToString and AAD', () => {
+      const input = 'mnemonic phrase with context binding';
+      const aad = 'tenant-42:mnemonic';
+      const encrypted = service.encryptString(input, aad);
+      const result = service.decryptToString(encrypted, undefined, aad);
+      expect(result).toBe(input);
+    });
+  });
+
   describe('encryptString/decryptToString', () => {
     it('should encrypt and decrypt a string', () => {
       const input = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';

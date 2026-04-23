@@ -3,3 +3,4 @@ export { DEFAULT_TOKENS } from './tokens';
 export { initTracing } from './tracing';
 export { MetricsModule, MetricsInterceptor, httpRequestsTotal, httpRequestDuration } from './metrics';
 export { StructuredLoggerModule } from './logger';
+export { injectTraceContext, extractTraceContext, createWorkerSpan } from './bullmq-tracing';
