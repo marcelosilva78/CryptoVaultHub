@@ -11,6 +11,7 @@ import { ConfigService } from '@nestjs/config';
 import { ethers } from 'ethers';
 import { PrismaService } from '../prisma/prisma.service';
 import { ContractService } from '../blockchain/contract.service';
+import { RedisService } from '../redis/redis.service';
 
 export interface KeyVaultPublicKey {
   keyType: string;
@@ -45,6 +46,7 @@ export class WalletService implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
     private readonly contractService: ContractService,
+    private readonly redis: RedisService,
   ) {
     this.tlsEnabled =
       this.config.get<string>('VAULT_TLS_ENABLED', 'false') === 'true';
@@ -210,6 +212,14 @@ export class WalletService implements OnModuleInit {
       },
     });
 
+    // Publish to address:registered stream for chain-indexer monitoring
+    try {
+      await this.publishAddressRegistered(chainId, hotWalletAddress, clientId, defaultProjectId, 'hot');
+      await this.publishAddressRegistered(chainId, gasTankKey.address, clientId, defaultProjectId, 'gas_tank');
+    } catch (err) {
+      this.logger.warn(`Failed to publish address:registered events: ${err}`);
+    }
+
     this.logger.log(
       `Wallets created for client ${clientId} on chain ${chainId}: hot=${hotWalletAddress}, gas_tank=${gasTankKey.address}`,
     );
@@ -294,6 +304,13 @@ export class WalletService implements OnModuleInit {
       },
     });
 
+    // Publish to address:registered stream for chain-indexer monitoring
+    try {
+      await this.publishAddressRegistered(chainId, address, clientId, BigInt(projectId), walletType);
+    } catch (err) {
+      this.logger.warn(`Failed to publish address:registered event: ${err}`);
+    }
+
     this.logger.log(
       `Wallet registered: client=${clientId} project=${projectId} chain=${chainId} type=${walletType} address=${address}`,
     );
@@ -305,6 +322,25 @@ export class WalletService implements OnModuleInit {
       chainId: wallet.chainId,
       isActive: wallet.isActive,
     };
+  }
+
+  // ----------- Redis Stream Helpers -----------
+
+  private async publishAddressRegistered(
+    chainId: number,
+    address: string,
+    clientId: number,
+    projectId: bigint | number,
+    walletType: string,
+  ): Promise<void> {
+    await this.redis.publishToStream('address:registered', {
+      chainId: String(chainId),
+      address,
+      clientId: String(clientId),
+      projectId: String(projectId),
+      walletId: '0',
+      addressType: walletType,
+    });
   }
 
   // ----------- Key Vault HTTP Calls -----------
