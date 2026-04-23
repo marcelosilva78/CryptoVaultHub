@@ -15,6 +15,7 @@ import { ContractService } from '../blockchain/contract.service';
 import { NonceService } from '../blockchain/nonce.service';
 import { EvmProviderService } from '../blockchain/evm-provider.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { CoSignOrchestratorService } from '../co-sign/co-sign-orchestrator.service';
 import { POSTHOG_SERVICE } from '@cvh/posthog';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -213,6 +214,7 @@ describe('Withdrawal Flow Integration', () => {
         { provide: NonceService, useValue: mockNonceService },
         { provide: EvmProviderService, useValue: mockEvmProvider },
         { provide: ComplianceService, useValue: mockComplianceService },
+        { provide: CoSignOrchestratorService, useValue: { createCoSignOperation: jest.fn().mockResolvedValue(undefined) } },
         { provide: POSTHOG_SERVICE, useValue: null },
       ],
     }).compile();
@@ -376,6 +378,7 @@ describe('Withdrawal Flow Integration', () => {
         id: BigInt(1001),
         status: 'pending_approval',
         clientId: BigInt(CLIENT_ID),
+        projectId: BigInt(1),
       });
 
       const result = await withdrawalService.approveWithdrawal(1001, CLIENT_ID);
@@ -702,6 +705,7 @@ describe('Withdrawal Flow Integration', () => {
           id: withdrawalIdCounter + 1n,
           status: 'pending_approval',
           clientId: BigInt(CLIENT_ID),
+          projectId: BigInt(1),
           chainId: CHAIN_ID,
           tokenId: BigInt(TOKEN_ID),
           fromWallet: HOT_WALLET_ADDRESS,

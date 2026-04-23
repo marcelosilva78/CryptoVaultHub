@@ -53,7 +53,7 @@ describe('WalletController', () => {
 
       mockService.listWallets.mockResolvedValueOnce(mockWallets);
 
-      const result = await controller.listWallets(mockReq);
+      const result = await controller.listWallets(mockReq.clientId);
 
       expect(result).toEqual({ success: true, wallets: mockWallets });
       expect(mockService.listWallets).toHaveBeenCalledWith(42);
@@ -69,7 +69,7 @@ describe('WalletController', () => {
 
       mockService.getBalances.mockResolvedValueOnce(mockBalances);
 
-      const result = await controller.getBalances(1, mockReq);
+      const result = await controller.getBalances(1, mockReq.clientId);
 
       expect(result).toEqual({ success: true, balances: mockBalances });
       expect(mockService.getBalances).toHaveBeenCalledWith(42, 1);

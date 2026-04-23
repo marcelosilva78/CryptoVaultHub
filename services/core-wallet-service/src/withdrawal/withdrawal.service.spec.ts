@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ContractService } from '../blockchain/contract.service';
 import { NonceService } from '../blockchain/nonce.service';
 import { ComplianceService } from '../compliance/compliance.service';
+import { CoSignOrchestratorService } from '../co-sign/co-sign-orchestrator.service';
 
 describe('WithdrawalService', () => {
   let service: WithdrawalService;
@@ -16,6 +17,7 @@ describe('WithdrawalService', () => {
   let mockContractService: any;
   let mockNonceService: any;
   let mockComplianceService: any;
+  let mockCoSignOrchestrator: any;
 
   const baseParams = {
     clientId: 1,
@@ -52,6 +54,7 @@ describe('WithdrawalService', () => {
   const mockWithdrawalRecord = {
     id: BigInt(1),
     clientId: BigInt(1),
+    projectId: BigInt(1),
     chainId: 137,
     tokenId: BigInt(1),
     fromWallet: '0xHotWalletAddress',
@@ -90,6 +93,7 @@ describe('WithdrawalService', () => {
       wallet: {
         findUnique: jest.fn().mockResolvedValue(mockHotWallet),
       },
+      $queryRaw: jest.fn().mockResolvedValue([]),
     };
 
     mockContractService = {
@@ -108,6 +112,10 @@ describe('WithdrawalService', () => {
       }),
     };
 
+    mockCoSignOrchestrator = {
+      createCoSignOperation: jest.fn().mockResolvedValue(undefined),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         WithdrawalService,
@@ -115,6 +123,7 @@ describe('WithdrawalService', () => {
         { provide: ContractService, useValue: mockContractService },
         { provide: NonceService, useValue: mockNonceService },
         { provide: ComplianceService, useValue: mockComplianceService },
+        { provide: CoSignOrchestratorService, useValue: mockCoSignOrchestrator },
       ],
     }).compile();
 
