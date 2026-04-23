@@ -24,9 +24,9 @@ const CLIENT_ID = 100;
 const CHAIN_ID = 1;
 const TOKEN_ID = 1;
 const WHITELISTED_ADDRESS_ID = 50;
-const HOT_WALLET_ADDRESS = '0xHotWallet1234567890abcdef1234567890abcdef';
-const GAS_TANK_ADDRESS = '0xGasTank1234567890abcdef1234567890abcdef';
-const DESTINATION_ADDRESS = '0xDest1234567890abcdef1234567890abcdef1234';
+const HOT_WALLET_ADDRESS = '0x70997970C51812dc3A010C7d01b50e0d17dc79C8';
+const GAS_TANK_ADDRESS = '0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC';
+const DESTINATION_ADDRESS = '0x90F79bf6EB2c4f870365E785982E1f101E93b906';
 const USDC_CONTRACT = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48';
 
 // ─── Test Suite ─────────────────────────────────────────────────────────────
@@ -435,6 +435,7 @@ describe('Withdrawal Flow Integration', () => {
     it('should build correct native operationHash', () => {
       const hash = withdrawalExecutor.buildNativeOperationHash({
         networkId: '1',
+        hotWalletAddress: HOT_WALLET_ADDRESS,
         toAddress: DESTINATION_ADDRESS,
         value: 1_000_000_000_000_000_000n, // 1 ETH
         data: '0x',
@@ -448,6 +449,7 @@ describe('Withdrawal Flow Integration', () => {
       // Should be deterministic
       const hash2 = withdrawalExecutor.buildNativeOperationHash({
         networkId: '1',
+        hotWalletAddress: HOT_WALLET_ADDRESS,
         toAddress: DESTINATION_ADDRESS,
         value: 1_000_000_000_000_000_000n,
         data: '0x',
@@ -460,6 +462,7 @@ describe('Withdrawal Flow Integration', () => {
     it('should build correct ERC-20 operationHash', () => {
       const hash = withdrawalExecutor.buildTokenOperationHash({
         tokenNetworkId: '1-ERC20',
+        hotWalletAddress: HOT_WALLET_ADDRESS,
         toAddress: DESTINATION_ADDRESS,
         value: 100_000_000n, // 100 USDC
         tokenContractAddress: USDC_CONTRACT,
@@ -473,6 +476,7 @@ describe('Withdrawal Flow Integration', () => {
     it('should produce different hashes for native vs ERC-20 operations', () => {
       const nativeHash = withdrawalExecutor.buildNativeOperationHash({
         networkId: '1',
+        hotWalletAddress: HOT_WALLET_ADDRESS,
         toAddress: DESTINATION_ADDRESS,
         value: 100_000_000n,
         data: '0x',
@@ -482,6 +486,7 @@ describe('Withdrawal Flow Integration', () => {
 
       const tokenHash = withdrawalExecutor.buildTokenOperationHash({
         tokenNetworkId: '1-ERC20',
+        hotWalletAddress: HOT_WALLET_ADDRESS,
         toAddress: DESTINATION_ADDRESS,
         value: 100_000_000n,
         tokenContractAddress: USDC_CONTRACT,
@@ -495,6 +500,7 @@ describe('Withdrawal Flow Integration', () => {
     it('should produce different hashes for different sequence IDs', () => {
       const hash1 = withdrawalExecutor.buildTokenOperationHash({
         tokenNetworkId: '1-ERC20',
+        hotWalletAddress: HOT_WALLET_ADDRESS,
         toAddress: DESTINATION_ADDRESS,
         value: 100_000_000n,
         tokenContractAddress: USDC_CONTRACT,
@@ -504,6 +510,7 @@ describe('Withdrawal Flow Integration', () => {
 
       const hash2 = withdrawalExecutor.buildTokenOperationHash({
         tokenNetworkId: '1-ERC20',
+        hotWalletAddress: HOT_WALLET_ADDRESS,
         toAddress: DESTINATION_ADDRESS,
         value: 100_000_000n,
         tokenContractAddress: USDC_CONTRACT,

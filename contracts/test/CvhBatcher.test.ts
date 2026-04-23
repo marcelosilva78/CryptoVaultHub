@@ -236,11 +236,9 @@ describe('CvhBatcher', () => {
       expect(batcherBalance).to.equal(0n);
     });
 
-    it('Reverts with insufficient ETH (TransferFailed on individual call)', async () => {
-      // The contract forwards ETH per-transfer via low-level call. When
-      // msg.value < sum of values, an individual call fails because the
-      // batcher does not hold enough ETH, producing TransferFailed before
-      // the totalSent check can produce InsufficientETH.
+    it('Reverts with insufficient ETH', async () => {
+      // The contract pre-checks totalRequired > msg.value before any
+      // transfers, so it reverts with InsufficientETH.
       const recipients = [s.signer1.address, s.signer2.address];
       const values = [ethers.parseEther('5'), ethers.parseEther('5')];
       const insufficientValue = ethers.parseEther('3');
@@ -249,7 +247,7 @@ describe('CvhBatcher', () => {
         batcher.connect(s.deployer).batchTransfer(recipients, values, {
           value: insufficientValue,
         })
-      ).to.be.revertedWithCustomError(batcher, 'TransferFailed');
+      ).to.be.revertedWithCustomError(batcher, 'InsufficientETH');
     });
 
     it('Reverts with empty arrays', async () => {

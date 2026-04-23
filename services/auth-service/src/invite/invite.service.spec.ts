@@ -21,6 +21,7 @@ describe('InviteService', () => {
         create: jest.fn(),
         findUnique: jest.fn(),
         findFirst: jest.fn(),
+        update: jest.fn(),
       },
     };
 
@@ -61,13 +62,25 @@ describe('InviteService', () => {
       );
     });
 
-    it('should throw ConflictException if active invite already exists for email', async () => {
+    it('should reuse existing invite and reset expiration if active invite already exists for email', async () => {
       (prisma.inviteToken.findFirst as jest.Mock).mockResolvedValue({
         id: BigInt(1), email: 'client@example.com', clientId: BigInt(42),
-        token: 'existing', expiresAt: new Date(Date.now() + 60_000), usedAt: null, createdAt: new Date(),
+        token: 'existing_token_hex', expiresAt: new Date(Date.now() + 60_000), usedAt: null, createdAt: new Date(),
       });
+      (prisma.inviteToken.update as jest.Mock).mockResolvedValue({});
 
-      await expect(service.generateInvite('client@example.com', 42)).rejects.toThrow(ConflictException);
+      const result = await service.generateInvite('client@example.com', 42);
+
+      expect(result.token).toBe('existing_token_hex');
+      expect(result.inviteUrl).toContain('existing_token_hex');
+      expect(prisma.inviteToken.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: BigInt(1) },
+          data: expect.objectContaining({ expiresAt: expect.any(Date) }),
+        }),
+      );
+      // Should NOT create a new token
+      expect(prisma.inviteToken.create).not.toHaveBeenCalled();
     });
   });
 

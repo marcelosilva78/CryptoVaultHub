@@ -1,21 +1,15 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { NotFoundException } from '@nestjs/common';
 import { DryRunService } from './dry-run.service';
 import { ContractService } from '../blockchain/contract.service';
-import { EvmProviderService } from '../blockchain/evm-provider.service';
+import { PrismaService } from '../prisma/prisma.service';
 
 describe('DryRunService', () => {
   let service: DryRunService;
   let contractService: any;
-  let evmProvider: any;
-  let mockProvider: any;
+  let prisma: any;
 
   beforeEach(async () => {
-    mockProvider = {
-      getFeeData: jest.fn().mockResolvedValue({
-        gasPrice: 20000000000n, // 20 Gwei
-      }),
-    };
-
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         DryRunService,
@@ -23,12 +17,18 @@ describe('DryRunService', () => {
           provide: ContractService,
           useValue: {
             getNativeBalance: jest.fn(),
+            getERC20Balance: jest.fn(),
           },
         },
         {
-          provide: EvmProviderService,
+          provide: PrismaService,
           useValue: {
-            getProvider: jest.fn().mockResolvedValue(mockProvider),
+            depositAddress: {
+              findMany: jest.fn(),
+            },
+            token: {
+              findUnique: jest.fn(),
+            },
           },
         },
       ],
@@ -36,89 +36,130 @@ describe('DryRunService', () => {
 
     service = module.get<DryRunService>(DryRunService);
     contractService = module.get(ContractService);
-    evmProvider = module.get(EvmProviderService);
+    prisma = module.get(PrismaService);
   });
 
   afterEach(() => {
     jest.clearAllMocks();
   });
 
-  it('should estimate gas cost correctly', async () => {
+  it('should estimate gas per address for sweep_native', async () => {
+    prisma.depositAddress.findMany.mockResolvedValue([
+      { id: 1n, address: '0xAddr1', clientId: 100n, chainId: 1 },
+    ]);
     contractService.getNativeBalance.mockResolvedValue(
       1000000000000000000n, // 1 ETH
     );
 
-    const result = await service.dryRun(1, ['0xAddr1']);
+    const result = await service.simulate({
+      clientId: 100,
+      chainId: 1,
+      operationType: 'sweep_native',
+      addressIds: [1],
+    });
 
-    // Gas cost = 21000 * 20 Gwei = 420000 Gwei = 420000000000000 wei
-    const expectedGasCost = (21000n * 20000000000n).toString();
-
-    expect(result.estimates).toHaveLength(1);
-    expect(result.estimates[0].estimatedGasCost).toBe(expectedGasCost);
-    expect(result.estimates[0].estimatedGas).toBe('21000');
-    expect(result.totalGasCost).toBe(expectedGasCost);
+    expect(result.estimatedItems).toHaveLength(1);
+    expect(result.estimatedItems[0].estimatedGas).toBe('21000');
+    expect(result.estimatedItems[0].estimatedBalance).toBe('1000000000000000000');
+    expect(result.totalEstimatedGas).toBe('21000');
   });
 
   it('should return balance for each address', async () => {
+    prisma.depositAddress.findMany.mockResolvedValue([
+      { id: 1n, address: '0xAddr1', clientId: 100n, chainId: 1 },
+      { id: 2n, address: '0xAddr2', clientId: 100n, chainId: 1 },
+    ]);
     contractService.getNativeBalance
       .mockResolvedValueOnce(2000000000000000000n) // 2 ETH
       .mockResolvedValueOnce(500000000000000000n); // 0.5 ETH
 
-    const result = await service.dryRun(1, ['0xAddr1', '0xAddr2']);
+    const result = await service.simulate({
+      clientId: 100,
+      chainId: 1,
+      operationType: 'sweep_native',
+      addressIds: [1, 2],
+    });
 
-    expect(result.estimates).toHaveLength(2);
-    expect(result.estimates[0].address).toBe('0xAddr1');
-    expect(result.estimates[0].balance).toBe('2000000000000000000');
-    expect(result.estimates[1].address).toBe('0xAddr2');
-    expect(result.estimates[1].balance).toBe('500000000000000000');
+    expect(result.estimatedItems).toHaveLength(2);
+    expect(result.estimatedItems[0].address).toBe('0xAddr1');
+    expect(result.estimatedItems[0].estimatedBalance).toBe('2000000000000000000');
+    expect(result.estimatedItems[1].address).toBe('0xAddr2');
+    expect(result.estimatedItems[1].estimatedBalance).toBe('500000000000000000');
   });
 
-  it('should return total estimated flush amount', async () => {
+  it('should return total estimated amount across addresses', async () => {
+    prisma.depositAddress.findMany.mockResolvedValue([
+      { id: 1n, address: '0xAddr1', clientId: 100n, chainId: 1 },
+      { id: 2n, address: '0xAddr2', clientId: 100n, chainId: 1 },
+    ]);
     contractService.getNativeBalance
       .mockResolvedValueOnce(1000000000000000000n) // 1 ETH
       .mockResolvedValueOnce(2000000000000000000n); // 2 ETH
 
-    const result = await service.dryRun(1, ['0xAddr1', '0xAddr2']);
+    const result = await service.simulate({
+      clientId: 100,
+      chainId: 1,
+      operationType: 'sweep_native',
+      addressIds: [1, 2],
+    });
 
     // Total balance = 3 ETH
-    expect(result.totalBalance).toBe('3000000000000000000');
-
-    // Total gas = 2 * 21000 * 20Gwei = 840000 Gwei = 840000000000000 wei
-    const totalGas = (2n * 21000n * 20000000000n).toString();
-    expect(result.totalGasCost).toBe(totalGas);
-
-    // Net = 3 ETH - gas
-    const expectedNet = (3000000000000000000n - 2n * 21000n * 20000000000n).toString();
-    expect(result.netAmount).toBe(expectedNet);
+    expect(result.totalEstimatedAmount).toBe('3000000000000000000');
+    // Total gas = 2 addresses with balance * 21000
+    expect(result.totalEstimatedGas).toBe('42000');
   });
 
-  it('should use custom gas price when provided', async () => {
-    contractService.getNativeBalance.mockResolvedValue(
-      1000000000000000000n,
-    );
+  it('should use higher gas estimate for flush_tokens', async () => {
+    prisma.depositAddress.findMany.mockResolvedValue([
+      { id: 1n, address: '0xAddr1', clientId: 100n, chainId: 1 },
+    ]);
+    prisma.token.findUnique.mockResolvedValue({
+      id: 1n,
+      contractAddress: '0xTokenContract',
+    });
+    contractService.getERC20Balance.mockResolvedValue(1000000n);
 
-    const customGasPrice = 50000000000n; // 50 Gwei
-    const result = await service.dryRun(1, ['0xAddr1'], customGasPrice);
+    const result = await service.simulate({
+      clientId: 100,
+      chainId: 1,
+      operationType: 'flush_tokens',
+      addressIds: [1],
+      tokenId: 1,
+    });
 
-    const expectedGasCost = (21000n * customGasPrice).toString();
-    expect(result.estimates[0].estimatedGasCost).toBe(expectedGasCost);
+    expect(result.estimatedItems[0].estimatedGas).toBe('65000');
+    expect(result.totalEstimatedGas).toBe('65000');
   });
 
-  it('should return net amount of 0 when gas cost exceeds balance', async () => {
-    // Very small balance: 100 wei
-    contractService.getNativeBalance.mockResolvedValue(100n);
+  it('should report zero gas for addresses with no balance', async () => {
+    prisma.depositAddress.findMany.mockResolvedValue([
+      { id: 1n, address: '0xAddr1', clientId: 100n, chainId: 1 },
+    ]);
+    contractService.getNativeBalance.mockResolvedValue(0n);
 
-    const result = await service.dryRun(1, ['0xAddr1']);
+    const result = await service.simulate({
+      clientId: 100,
+      chainId: 1,
+      operationType: 'sweep_native',
+      addressIds: [1],
+    });
 
-    expect(result.netAmount).toBe('0');
+    expect(result.estimatedItems[0].estimatedGas).toBe('0');
+    expect(result.estimatedItems[0].hasBalance).toBe(false);
+    expect(result.addressesEmpty).toBe(1);
+    expect(result.addressesWithBalance).toBe(0);
   });
 
-  it('should handle empty address list', async () => {
-    const result = await service.dryRun(1, []);
+  it('should throw NotFoundException when no valid deposit addresses found', async () => {
+    prisma.depositAddress.findMany.mockResolvedValue([]);
 
-    expect(result.estimates).toHaveLength(0);
-    expect(result.totalBalance).toBe('0');
-    expect(result.totalGasCost).toBe('0');
-    expect(result.netAmount).toBe('0');
+    await expect(
+      service.simulate({
+        clientId: 100,
+        chainId: 1,
+        operationType: 'sweep_native',
+        addressIds: [999],
+      }),
+    ).rejects.toThrow(NotFoundException);
   });
 });
