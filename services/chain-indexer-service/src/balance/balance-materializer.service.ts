@@ -50,163 +50,198 @@ export class BalanceMaterializerService {
     await this.redis.setCache(this.watermarkKey(chainId), blockNumber.toString());
   }
 
+  /** Batch size for cursor-based pagination through indexed_events. */
+  private static readonly BATCH_SIZE = 1000;
+
   /**
    * Materialize balances for a chain up to a given finalized block number.
-   * Only processes events since the last materialized block (watermark).
+   * Uses cursor-based pagination (LIMIT + ORDER BY) to process events in
+   * fixed-size batches, avoiding memory spikes and long-running queries
+   * when the gap between watermark and upToBlock is large.
    */
   async materializeForChain(
     chainId: number,
     upToBlock: number,
   ): Promise<number> {
-    const watermark = await this.getWatermark(chainId);
+    let currentWatermark = await this.getWatermark(chainId);
+    let totalUpdated = 0;
+    let totalEventsProcessed = 0;
 
-    // Build the query with watermark filter when available
-    let query: string;
-    let queryParams: any[];
+    while (true) {
+      // Build the query with watermark filter when available
+      let query: string;
+      let queryParams: any[];
 
-    if (watermark !== null) {
-      // Incremental: only process events after the watermark
-      query = `SELECT to_address, from_address, token_id, amount, client_id, project_id,
-                      wallet_id, is_inbound, block_number
-               FROM indexed_events
-               WHERE chain_id = ?
-                 AND block_number > ?
-                 AND block_number <= ?
-                 AND processed_at IS NOT NULL
-                 AND event_type IN ('erc20_transfer', 'native_transfer')`;
-      queryParams = [chainId, BigInt(watermark), BigInt(upToBlock)];
-    } else {
-      // First run: process everything up to upToBlock
-      query = `SELECT to_address, from_address, token_id, amount, client_id, project_id,
-                      wallet_id, is_inbound, block_number
-               FROM indexed_events
-               WHERE chain_id = ?
-                 AND block_number <= ?
-                 AND processed_at IS NOT NULL
-                 AND event_type IN ('erc20_transfer', 'native_transfer')`;
-      queryParams = [chainId, BigInt(upToBlock)];
-    }
-
-    // Get all finalized events that need balance computation via raw SQL
-    const events = await this.prisma.$queryRawUnsafe<
-      Array<{
-        to_address: string | null;
-        from_address: string | null;
-        token_id: bigint | null;
-        amount: string | null;
-        client_id: bigint | null;
-        project_id: bigint | null;
-        wallet_id: bigint | null;
-        is_inbound: boolean | null;
-        block_number: bigint;
-      }>
-    >(query, ...queryParams);
-
-    if (events.length === 0) {
-      // Even with no events, advance the watermark to avoid re-scanning empty ranges
-      if (watermark === null || upToBlock > watermark) {
-        await this.setWatermark(chainId, upToBlock);
+      if (currentWatermark !== null) {
+        // Incremental: only process events after the watermark
+        query = `SELECT to_address, from_address, token_id, amount, client_id, project_id,
+                        wallet_id, is_inbound, block_number
+                 FROM indexed_events
+                 WHERE chain_id = ?
+                   AND block_number > ?
+                   AND block_number <= ?
+                   AND processed_at IS NOT NULL
+                   AND event_type IN ('erc20_transfer', 'native_transfer')
+                 ORDER BY block_number ASC, log_index ASC
+                 LIMIT ?`;
+        queryParams = [chainId, BigInt(currentWatermark), BigInt(upToBlock), BalanceMaterializerService.BATCH_SIZE];
+      } else {
+        // First run: process everything up to upToBlock
+        query = `SELECT to_address, from_address, token_id, amount, client_id, project_id,
+                        wallet_id, is_inbound, block_number
+                 FROM indexed_events
+                 WHERE chain_id = ?
+                   AND block_number <= ?
+                   AND processed_at IS NOT NULL
+                   AND event_type IN ('erc20_transfer', 'native_transfer')
+                 ORDER BY block_number ASC, log_index ASC
+                 LIMIT ?`;
+        queryParams = [chainId, BigInt(upToBlock), BalanceMaterializerService.BATCH_SIZE];
       }
-      return 0;
-    }
 
-    // Group events by (address, tokenId) to compute net balance changes
-    const balanceMap = new Map<
-      string,
-      {
-        address: string;
-        tokenId: bigint | null;
-        clientId: bigint;
-        projectId: bigint | null;
-        walletId: bigint | null;
-        netAmount: bigint;
-        lastBlock: bigint;
+      // Fetch the next batch of finalized events via raw SQL
+      const events = await this.prisma.$queryRawUnsafe<
+        Array<{
+          to_address: string | null;
+          from_address: string | null;
+          token_id: bigint | null;
+          amount: string | null;
+          client_id: bigint | null;
+          project_id: bigint | null;
+          wallet_id: bigint | null;
+          is_inbound: boolean | null;
+          block_number: bigint;
+        }>
+      >(query, ...queryParams);
+
+      if (events.length === 0) {
+        // No events in this range — advance watermark to avoid re-scanning
+        if (currentWatermark === null || upToBlock > currentWatermark) {
+          await this.setWatermark(chainId, upToBlock);
+        }
+        break;
       }
-    >();
 
-    for (const event of events) {
-      if (!event.amount) continue;
+      // Track the highest block_number in this batch for the cursor advance
+      let batchMaxBlock = events[0].block_number;
 
-      const amount = BigInt(event.amount);
+      // Group events by (address, tokenId) to compute net balance changes
+      const balanceMap = new Map<
+        string,
+        {
+          address: string;
+          tokenId: bigint | null;
+          clientId: bigint;
+          projectId: bigint | null;
+          walletId: bigint | null;
+          netAmount: bigint;
+          lastBlock: bigint;
+        }
+      >();
 
-      // Process inbound (to_address receives)
-      if (event.to_address && event.is_inbound) {
-        const key = `${event.to_address.toLowerCase()}:${event.token_id ?? 'native'}`;
-        const existing = balanceMap.get(key);
-        if (existing) {
-          existing.netAmount += amount;
-          if (event.block_number > existing.lastBlock) {
-            existing.lastBlock = event.block_number;
+      for (const event of events) {
+        if (event.block_number > batchMaxBlock) {
+          batchMaxBlock = event.block_number;
+        }
+
+        if (!event.amount) continue;
+
+        const amount = BigInt(event.amount);
+
+        // Process inbound (to_address receives)
+        if (event.to_address && event.is_inbound) {
+          const key = `${event.to_address.toLowerCase()}:${event.token_id ?? 'native'}`;
+          const existing = balanceMap.get(key);
+          if (existing) {
+            existing.netAmount += amount;
+            if (event.block_number > existing.lastBlock) {
+              existing.lastBlock = event.block_number;
+            }
+          } else {
+            balanceMap.set(key, {
+              address: event.to_address.toLowerCase(),
+              tokenId: event.token_id,
+              clientId: event.client_id!,
+              projectId: event.project_id,
+              walletId: event.wallet_id,
+              netAmount: amount,
+              lastBlock: event.block_number,
+            });
           }
-        } else {
-          balanceMap.set(key, {
-            address: event.to_address.toLowerCase(),
-            tokenId: event.token_id,
-            clientId: event.client_id!,
-            projectId: event.project_id,
-            walletId: event.wallet_id,
-            netAmount: amount,
-            lastBlock: event.block_number,
-          });
+        }
+
+        // Process outbound (from_address sends)
+        if (event.from_address && !event.is_inbound) {
+          const key = `${event.from_address.toLowerCase()}:${event.token_id ?? 'native'}`;
+          const existing = balanceMap.get(key);
+          if (existing) {
+            existing.netAmount -= amount;
+            if (event.block_number > existing.lastBlock) {
+              existing.lastBlock = event.block_number;
+            }
+          } else if (event.client_id) {
+            balanceMap.set(key, {
+              address: event.from_address.toLowerCase(),
+              tokenId: event.token_id,
+              clientId: event.client_id,
+              projectId: event.project_id,
+              walletId: event.wallet_id,
+              netAmount: -amount,
+              lastBlock: event.block_number,
+            });
+          }
         }
       }
 
-      // Process outbound (from_address sends)
-      if (event.from_address && !event.is_inbound) {
-        const key = `${event.from_address.toLowerCase()}:${event.token_id ?? 'native'}`;
-        const existing = balanceMap.get(key);
-        if (existing) {
-          existing.netAmount -= amount;
-          if (event.block_number > existing.lastBlock) {
-            existing.lastBlock = event.block_number;
-          }
-        } else if (event.client_id) {
-          balanceMap.set(key, {
-            address: event.from_address.toLowerCase(),
-            tokenId: event.token_id,
-            clientId: event.client_id,
-            projectId: event.project_id,
-            walletId: event.wallet_id,
-            netAmount: -amount,
-            lastBlock: event.block_number,
-          });
-        }
+      // Upsert materialized balances via raw SQL
+      let batchUpdated = 0;
+      for (const entry of balanceMap.values()) {
+        if (!entry.clientId) continue;
+
+        await this.prisma.$executeRawUnsafe(
+          `INSERT INTO materialized_balances
+             (chain_id, address, token_id, client_id, project_id, wallet_id, balance, last_updated_block, last_updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
+           ON DUPLICATE KEY UPDATE
+             balance = balance + VALUES(balance),
+             last_updated_block = VALUES(last_updated_block),
+             last_updated_at = NOW()`,
+          chainId,
+          entry.address,
+          entry.tokenId,
+          entry.clientId,
+          entry.projectId ?? BigInt(0),
+          entry.walletId,
+          entry.netAmount.toString(),
+          entry.lastBlock,
+        );
+        batchUpdated++;
       }
-    }
 
-    // Upsert materialized balances via raw SQL
-    let updated = 0;
-    for (const entry of balanceMap.values()) {
-      if (!entry.clientId) continue;
+      // Advance the watermark to the highest block in this batch
+      const newWatermark = Number(batchMaxBlock);
+      await this.setWatermark(chainId, newWatermark);
+      currentWatermark = newWatermark;
 
-      await this.prisma.$executeRawUnsafe(
-        `INSERT INTO materialized_balances
-           (chain_id, address, token_id, client_id, project_id, wallet_id, balance, last_updated_block, last_updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
-         ON DUPLICATE KEY UPDATE
-           balance = balance + VALUES(balance),
-           last_updated_block = VALUES(last_updated_block),
-           last_updated_at = NOW()`,
-        chainId,
-        entry.address,
-        entry.tokenId,
-        entry.clientId,
-        entry.projectId ?? BigInt(0),
-        entry.walletId,
-        entry.netAmount.toString(),
-        entry.lastBlock,
+      totalUpdated += batchUpdated;
+      totalEventsProcessed += events.length;
+
+      this.logger.debug(
+        `Batch complete: ${events.length} events, ${batchUpdated} balances upserted, ` +
+          `watermark advanced to block ${newWatermark}`,
       );
-      updated++;
+
+      // If fewer than BATCH_SIZE results, we've caught up — no more pages
+      if (events.length < BalanceMaterializerService.BATCH_SIZE) break;
     }
 
-    // Advance the watermark after successful materialization
-    await this.setWatermark(chainId, upToBlock);
+    if (totalEventsProcessed > 0) {
+      this.logger.log(
+        `Materialized ${totalUpdated} balances from ${totalEventsProcessed} events ` +
+          `for chain ${chainId} up to block ${upToBlock}`,
+      );
+    }
 
-    this.logger.log(
-      `Materialized ${updated} balances for chain ${chainId} up to block ${upToBlock}` +
-        (watermark !== null ? ` (from block ${watermark + 1})` : ' (initial run)'),
-    );
-
-    return updated;
+    return totalUpdated;
   }
 }
