@@ -23,5 +23,17 @@ PREPARE stmt FROM @add_col;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
--- Index (safe to create if not exists)
-CREATE INDEX IF NOT EXISTS `idx_monitored_start_block` ON `monitored_addresses` (`chain_id`, `start_block`);
+-- Index (check before creating — MySQL 8.0 lacks CREATE INDEX IF NOT EXISTS)
+SET @idx_exists = (
+  SELECT COUNT(*) FROM information_schema.STATISTICS
+  WHERE TABLE_SCHEMA = 'cvh_indexer'
+    AND TABLE_NAME = 'monitored_addresses'
+    AND INDEX_NAME = 'idx_monitored_start_block'
+);
+
+SET @add_idx = IF(@idx_exists = 0,
+  'CREATE INDEX `idx_monitored_start_block` ON `cvh_indexer`.`monitored_addresses` (`chain_id`, `start_block`)',
+  'SELECT 1');
+PREPARE stmt FROM @add_idx;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
