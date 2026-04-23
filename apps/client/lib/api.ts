@@ -71,6 +71,10 @@ export async function clientFetch<T = any>(
     const e = await res.json().catch(() => ({ message: 'Request failed' }));
     throw new Error(e.message || `HTTP ${res.status}`);
   }
+  // 304 Not Modified has no body — return empty object to avoid JSON parse error
+  if (res.status === 304) {
+    return {} as T;
+  }
   return res.json();
 }
 

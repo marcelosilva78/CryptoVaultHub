@@ -282,7 +282,8 @@ export default function SetupWizardPage() {
 
     try {
       const res = await clientFetch<{ chains: GasCheckChain[] }>(
-        `/v1/projects/${projectId}/gas-check`
+        `/v1/projects/${projectId}/gas-check`,
+        { cache: 'no-store' }
       );
       setGasChains(res.chains || []);
     } catch (err: any) {
