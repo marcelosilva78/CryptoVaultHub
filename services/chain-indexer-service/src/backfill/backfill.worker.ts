@@ -3,6 +3,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 import { BlockProcessorService } from '../block-processor/block-processor.service';
+import { RedisService } from '../redis/redis.service';
 
 interface BackfillJobData {
   gapId: number;
@@ -26,6 +27,7 @@ export class BackfillWorker extends WorkerHost {
   constructor(
     private readonly prisma: PrismaService,
     private readonly blockProcessor: BlockProcessorService,
+    private readonly redis: RedisService,
   ) {
     super();
   }
@@ -92,11 +94,20 @@ export class BackfillWorker extends WorkerHost {
         const promises: Promise<any>[] = [];
         for (let block = batchStart; block <= batchEnd; block++) {
           promises.push(
-            this.blockProcessor.processBlock(chainId, block).catch((err: any) => {
-              this.logger.warn(
-                `Failed to process block ${block} during backfill: ${err.message}`,
-              );
-            }),
+            this.blockProcessor.processBlock(chainId, block)
+              .then(async () => {
+                // Mark block as scanned in Redis (prevents gap detector from re-detecting empty blocks)
+                await this.redis.setCache(
+                  `scanned:${chainId}:${block}`,
+                  '1',
+                  86400, // 24h TTL
+                );
+              })
+              .catch((err: any) => {
+                this.logger.warn(
+                  `Failed to process block ${block} during backfill: ${err.message}`,
+                );
+              }),
           );
         }
 
