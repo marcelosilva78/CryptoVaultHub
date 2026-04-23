@@ -6,6 +6,7 @@ export const TOPICS = {
   DEPOSITS_CONFIRMED: 'cvh.deposits.confirmed',
   DEPOSITS_SWEPT: 'cvh.deposits.swept',
   WITHDRAWALS_LIFECYCLE: 'cvh.withdrawals.lifecycle',
+  CO_SIGN_LIFECYCLE: 'cvh.cosign.lifecycle',
 
   // Operational (7-day retention)
   CHAIN_STATUS: 'cvh.chain.status',
@@ -32,6 +33,9 @@ export const STREAM_TO_TOPIC: Record<string, TopicName> = {
   'withdrawals:submitted': TOPICS.WITHDRAWALS_LIFECYCLE,
   'withdrawals:confirmed': TOPICS.WITHDRAWALS_LIFECYCLE,
   'withdrawals:failed': TOPICS.WITHDRAWALS_LIFECYCLE,
+  'cosign:pending': TOPICS.CO_SIGN_LIFECYCLE,
+  'cosign:signed': TOPICS.CO_SIGN_LIFECYCLE,
+  'cosign:expired': TOPICS.CO_SIGN_LIFECYCLE,
 
   // Operational streams
   'gas_tank:alerts': TOPICS.GAS_TANK_ALERTS,

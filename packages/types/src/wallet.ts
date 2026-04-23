@@ -107,3 +107,25 @@ export interface ProjectSetupResult {
   custodyMode: ProjectCustodyMode;
   status: 'created' | 'keys_generated' | 'deploying' | 'ready';
 }
+
+export interface CoSignOperationResponse {
+  operationId: string;
+  type: 'withdrawal';
+  status: 'pending' | 'signed' | 'expired' | 'cancelled';
+  chainId: number;
+  chainName: string;
+  toAddress: string;
+  amount: string;
+  tokenSymbol: string;
+  operationHash: string;
+  hotWalletAddress: string;
+  amountRaw: string;
+  tokenContractAddress: string | null;
+  expireTime: number;
+  sequenceId: number;
+  networkId: string;
+  clientAddress: string;
+  relatedWithdrawalId: string;
+  expiresAt: string;
+  createdAt: string;
+}
