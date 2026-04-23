@@ -285,10 +285,9 @@ export class SanctionsListSyncService extends WorkerHost implements OnModuleInit
    * Crypto addresses are rare but may appear in <identification> elements
    * with regulationType containing digital/crypto references.
    *
-   * NOTE: Full XML parser implementation is stubbed — the EU schema requires
-   * dedicated parsing logic. This method downloads the XML, attempts to extract
-   * crypto addresses, and logs results. If parsing yields no results, it still
-   * updates the sync event for audit trail.
+   * This method downloads the XML, extracts crypto addresses from
+   * sanctionEntity/identification elements, and logs results.
+   * If parsing yields no results, it still updates the sync event for audit trail.
    */
   async syncEuSanctionsList(): Promise<SanctionsSyncResult> {
     const result: SanctionsSyncResult = {
