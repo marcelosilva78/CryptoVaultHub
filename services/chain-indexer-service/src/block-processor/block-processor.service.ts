@@ -1,117 +1,242 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ethers } from 'ethers';
 import { PrismaService } from '../prisma/prisma.service';
-import { RedisService } from '../redis/redis.service';
 import { EvmProviderService } from '../blockchain/evm-provider.service';
+import { RedisService } from '../redis/redis.service';
 
 const TRANSFER_TOPIC = ethers.id('Transfer(address,address,uint256)');
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
-interface ProcessedTransfer {
-  txHash: string;
-  logIndex: number;
-  blockNumber: number;
-  fromAddress: string;
-  toAddress: string;
-  contractAddress: string | null;
-  amount: string;
-  isNative: boolean;
+interface MonitoredAddr {
+  clientId: bigint;
+  projectId: bigint;
+  walletId: bigint;
 }
 
-/**
- * Processes individual blocks to extract transfer events.
- * Handles both ERC20 Transfer events and native ETH transfers.
- */
 @Injectable()
 export class BlockProcessorService {
   private readonly logger = new Logger(BlockProcessorService.name);
+  private addrCache = new Map<number, { map: Map<string, MonitoredAddr>; expiresAt: number }>();
+  private readonly CACHE_TTL_MS = 60_000;
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly redis: RedisService,
     private readonly evmProvider: EvmProviderService,
+    private readonly redis: RedisService,
   ) {}
 
-  /**
-   * Process a single block: extract all transfers (ERC20 + native).
-   */
-  async processBlock(
-    chainId: number,
-    blockNumber: number,
-  ): Promise<ProcessedTransfer[]> {
-    const provider = await this.evmProvider.getProvider(chainId);
-    const transfers: ProcessedTransfer[] = [];
+  private async getMonitoredAddresses(chainId: number): Promise<Map<string, MonitoredAddr>> {
+    const cached = this.addrCache.get(chainId);
+    if (cached && cached.expiresAt > Date.now()) return cached.map;
 
-    // 1. Get ERC20 Transfer logs
-    const logs = await provider.getLogs({
-      fromBlock: blockNumber,
-      toBlock: blockNumber,
-      topics: [TRANSFER_TOPIC],
+    const rows = await this.prisma.monitoredAddress.findMany({
+      where: { chainId, isActive: true },
+      select: { address: true, clientId: true, projectId: true, walletId: true },
     });
 
-    for (const log of logs) {
-      if (log.topics.length < 3) continue;
-
-      const fromAddress = ethers.getAddress('0x' + log.topics[1].slice(26));
-      const toAddress = ethers.getAddress('0x' + log.topics[2].slice(26));
-      const amount =
-        log.data && log.data !== '0x' ? BigInt(log.data).toString() : '0';
-
-      transfers.push({
-        txHash: log.transactionHash,
-        logIndex: log.index,
-        blockNumber,
-        fromAddress,
-        toAddress,
-        contractAddress: log.address,
-        amount,
-        isNative: false,
+    const map = new Map<string, MonitoredAddr>();
+    for (const row of rows) {
+      map.set(row.address.toLowerCase(), {
+        clientId: row.clientId,
+        projectId: row.projectId,
+        walletId: row.walletId,
       });
     }
 
-    // 2. Scan native ETH transfers
-    const block = await provider.getBlock(blockNumber, true);
-    if (block && block.prefetchedTransactions) {
-      for (const tx of block.prefetchedTransactions) {
-        if (!tx.to || tx.value === 0n) continue;
+    this.addrCache.set(chainId, { map, expiresAt: Date.now() + this.CACHE_TTL_MS });
+    return map;
+  }
 
-        transfers.push({
-          txHash: tx.hash,
-          logIndex: -1, // Sentinel: native transfers have no real log index
-          blockNumber,
-          fromAddress: tx.from,
-          toAddress: tx.to,
-          contractAddress: null,
-          amount: tx.value.toString(),
-          isNative: true,
-        });
+  async processBlock(
+    chainId: number,
+    blockNumber: number,
+  ): Promise<{ eventsFound: number; blockHash: string }> {
+    const provider = await this.evmProvider.getProvider(chainId);
+    const monitored = await this.getMonitoredAddresses(chainId);
+
+    if (monitored.size === 0) {
+      return { eventsFound: 0, blockHash: '' };
+    }
+
+    const block = await provider.getBlock(blockNumber, true);
+    if (!block) {
+      this.logger.warn(`Block ${blockNumber} not found on chain ${chainId}`);
+      return { eventsFound: 0, blockHash: '' };
+    }
+
+    const relevantEvents: Array<{
+      txHash: string;
+      logIndex: number;
+      contractAddress: string;
+      eventType: 'native_transfer' | 'erc20_transfer';
+      fromAddress: string;
+      toAddress: string;
+      amount: bigint;
+      clientId: bigint;
+      projectId: bigint;
+      walletId: bigint;
+      isInbound: boolean;
+    }> = [];
+
+    // 1. Scan native transfers
+    if (block.prefetchedTransactions) {
+      for (const tx of block.prefetchedTransactions) {
+        if (!tx.value || tx.value === 0n) continue;
+        const from = tx.from?.toLowerCase();
+        const to = tx.to?.toLowerCase();
+
+        const fromMonitored = from ? monitored.get(from) : undefined;
+        const toMonitored = to ? monitored.get(to) : undefined;
+
+        if (toMonitored) {
+          relevantEvents.push({
+            txHash: tx.hash,
+            logIndex: 0,
+            contractAddress: ZERO_ADDRESS,
+            eventType: 'native_transfer',
+            fromAddress: tx.from,
+            toAddress: tx.to!,
+            amount: tx.value,
+            clientId: toMonitored.clientId,
+            projectId: toMonitored.projectId,
+            walletId: toMonitored.walletId,
+            isInbound: true,
+          });
+        }
+        if (fromMonitored && !toMonitored) {
+          relevantEvents.push({
+            txHash: tx.hash,
+            logIndex: 0,
+            contractAddress: ZERO_ADDRESS,
+            eventType: 'native_transfer',
+            fromAddress: tx.from,
+            toAddress: tx.to ?? ZERO_ADDRESS,
+            amount: tx.value,
+            clientId: fromMonitored.clientId,
+            projectId: fromMonitored.projectId,
+            walletId: fromMonitored.walletId,
+            isInbound: false,
+          });
+        }
       }
     }
 
-    // 3. Mark block as indexed (include block hash for reorg detection)
-    const blockHash = block?.hash ?? '';
-    const parentHash = block?.parentHash ?? '';
-    const blockTimestamp = block?.timestamp ?? 0;
-    const txCount = block?.prefetchedTransactions?.length ?? 0;
+    // 2. Scan ERC20 Transfer events
+    try {
+      const logs = await provider.getLogs({
+        fromBlock: blockNumber,
+        toBlock: blockNumber,
+        topics: [TRANSFER_TOPIC],
+      });
 
-    await this.prisma.$executeRawUnsafe(
-      `INSERT IGNORE INTO indexed_blocks
-         (chain_id, block_number, block_hash, parent_hash, block_timestamp, transaction_count, events_detected, indexed_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
-      chainId,
-      blockNumber,
-      blockHash,
-      parentHash,
-      BigInt(blockTimestamp),
-      txCount,
-      transfers.length,
-    );
+      for (let i = 0; i < logs.length; i++) {
+        const log = logs[i];
+        if (log.topics.length < 3) continue;
 
-    // 4. Cache block hash in Redis for fast reorg detection lookups
-    if (blockHash) {
-      const cacheKey = `block:${chainId}:${blockNumber}:hash`;
-      await this.redis.setCache(cacheKey, blockHash, 86_400); // 24h TTL
+        const from = ethers.getAddress('0x' + log.topics[1].slice(26)).toLowerCase();
+        const to = ethers.getAddress('0x' + log.topics[2].slice(26)).toLowerCase();
+        const amount = BigInt(log.data);
+
+        const fromMonitored = monitored.get(from);
+        const toMonitored = monitored.get(to);
+
+        if (toMonitored) {
+          relevantEvents.push({
+            txHash: log.transactionHash,
+            logIndex: log.index,
+            contractAddress: log.address,
+            eventType: 'erc20_transfer',
+            fromAddress: ethers.getAddress('0x' + log.topics[1].slice(26)),
+            toAddress: ethers.getAddress('0x' + log.topics[2].slice(26)),
+            amount,
+            clientId: toMonitored.clientId,
+            projectId: toMonitored.projectId,
+            walletId: toMonitored.walletId,
+            isInbound: true,
+          });
+        }
+        if (fromMonitored && !toMonitored) {
+          relevantEvents.push({
+            txHash: log.transactionHash,
+            logIndex: log.index,
+            contractAddress: log.address,
+            eventType: 'erc20_transfer',
+            fromAddress: ethers.getAddress('0x' + log.topics[1].slice(26)),
+            toAddress: ethers.getAddress('0x' + log.topics[2].slice(26)),
+            amount,
+            clientId: fromMonitored.clientId,
+            projectId: fromMonitored.projectId,
+            walletId: fromMonitored.walletId,
+            isInbound: false,
+          });
+        }
+      }
+    } catch (err) {
+      this.logger.warn(`Failed to get ERC20 logs for block ${blockNumber} on chain ${chainId}: ${err}`);
     }
 
-    return transfers;
+    // 3. Write to DB only if relevant events found
+    if (relevantEvents.length > 0) {
+      for (const evt of relevantEvents) {
+        await this.prisma.indexedEvent.upsert({
+          where: {
+            uq_chain_tx_log: {
+              chainId,
+              txHash: evt.txHash,
+              logIndex: evt.logIndex,
+            },
+          },
+          update: {},
+          create: {
+            chainId,
+            blockNumber: BigInt(blockNumber),
+            txHash: evt.txHash,
+            logIndex: evt.logIndex,
+            contractAddress: evt.contractAddress,
+            eventType: evt.eventType,
+            fromAddress: evt.fromAddress,
+            toAddress: evt.toAddress,
+            amount: evt.amount.toString(),
+            clientId: evt.clientId,
+            projectId: evt.projectId,
+            walletId: evt.walletId,
+            isInbound: evt.isInbound,
+          },
+        });
+      }
+
+      await this.prisma.indexedBlock.upsert({
+        where: {
+          uq_chain_block: { chainId, blockNumber: BigInt(blockNumber) },
+        },
+        update: { eventsDetected: relevantEvents.length },
+        create: {
+          chainId,
+          blockNumber: BigInt(blockNumber),
+          blockHash: block.hash!,
+          parentHash: block.parentHash,
+          blockTimestamp: BigInt(block.timestamp),
+          transactionCount: block.transactions.length,
+          eventsDetected: relevantEvents.length,
+        },
+      });
+
+      this.logger.log(
+        `Block ${blockNumber} on chain ${chainId}: ${relevantEvents.length} relevant events stored`,
+      );
+    }
+
+    // 4. Cache block hash in Redis for reorg detection
+    await this.redis.setCache(
+      `block:${chainId}:${blockNumber}:hash`,
+      block.hash!,
+      86400,
+    );
+
+    return { eventsFound: relevantEvents.length, blockHash: block.hash! };
+  }
+
+  invalidateCache(chainId: number): void {
+    this.addrCache.delete(chainId);
   }
 }
