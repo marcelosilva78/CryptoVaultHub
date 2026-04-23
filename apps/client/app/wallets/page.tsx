@@ -71,8 +71,10 @@ export default function WalletsPage() {
 
         // Fetch deposit addresses and wallets in parallel
         const [addressesRes, walletsRes] = await Promise.all([
-          clientFetch<{ success: boolean; addresses: ApiDepositAddress[]; meta: { total: number } }>('/v1/deposit-addresses?limit=100'),
-          clientFetch<{ success: boolean; wallets: ApiWallet[] }>('/v1/wallets'),
+          clientFetch<{ success: boolean; addresses: ApiDepositAddress[]; meta: { total: number } }>('/v1/deposit-addresses?limit=100')
+            .catch(() => ({ success: false, addresses: [] as ApiDepositAddress[], meta: { total: 0 } })),
+          clientFetch<{ success: boolean; wallets: ApiWallet[] }>('/v1/wallets')
+            .catch(() => ({ success: false, wallets: [] as ApiWallet[] })),
         ]);
 
         if (cancelled) return;
@@ -100,7 +102,8 @@ export default function WalletsPage() {
         let withBalanceCount = 0;
         let pendingSweepCount = 0;
 
-        const transformed: WalletAddress[] = addressesRes.addresses.map((addr) => {
+        const addresses = addressesRes?.addresses ?? [];
+        const transformed: WalletAddress[] = addresses.map((addr) => {
           const chain = chainNames[addr.chainId] || `Chain ${addr.chainId}`;
           chains.add(chain);
           const isDeployed = addr.status === 'deployed';

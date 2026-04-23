@@ -46,8 +46,8 @@ export class ExportApiService {
       );
       return response.data;
     } catch (error: any) {
-      this.logger.error(`Failed to list exports: ${error?.message}`);
-      throw error;
+      this.logger.warn(`Failed to list exports: ${error?.message}`);
+      return { exports: [], meta: { total: 0, page: 1, limit: params.limit ?? 100 } };
     }
   }
 

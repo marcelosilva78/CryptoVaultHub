@@ -127,9 +127,12 @@ export default function WithdrawalsPage() {
 
         // Fetch withdrawals, address book, and wallets in parallel
         const [withdrawalsRes, addressesRes, walletsRes] = await Promise.all([
-          clientFetch<{ success: boolean; withdrawals: ApiWithdrawal[]; meta: { total: number } }>('/v1/withdrawals?limit=100'),
-          clientFetch<{ success: boolean; addresses: ApiAddressBookEntry[]; meta: { total: number } }>('/v1/addresses?limit=100'),
-          clientFetch<{ success: boolean; wallets: ApiWallet[] }>('/v1/wallets'),
+          clientFetch<{ success: boolean; withdrawals: ApiWithdrawal[]; meta: { total: number } }>('/v1/withdrawals?limit=100')
+            .catch(() => ({ success: false, withdrawals: [] as ApiWithdrawal[], meta: { total: 0 } })),
+          clientFetch<{ success: boolean; addresses: ApiAddressBookEntry[]; meta: { total: number } }>('/v1/addresses?limit=100')
+            .catch(() => ({ success: false, addresses: [] as ApiAddressBookEntry[], meta: { total: 0 } })),
+          clientFetch<{ success: boolean; wallets: ApiWallet[] }>('/v1/wallets')
+            .catch(() => ({ success: false, wallets: [] as ApiWallet[] })),
         ]);
 
         if (cancelled) return;
