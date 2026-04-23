@@ -1,40 +1,39 @@
 -- =============================================================================
--- CryptoVaultHub — Migration 037: Standardize custody_mode column
--- Resolves conflict between SQL (custody_mode) and Prisma mapping.
--- admin-api Prisma previously mapped to custody_policy (wrong column name).
--- core-wallet-service Prisma correctly maps to custody_mode.
--- This migration ensures the column is named custody_mode with all required
--- ENUM values (adds self_managed used by admin-api CustodyPolicy enum).
+-- CryptoVaultHub — Migration 037: Standardize custody column name
+-- The Prisma migration created 'custody_policy' but the codebase services
+-- (core-wallet, client-api) expect 'custody_mode'. This migration renames
+-- the column and ensures all ENUM values are present.
 -- =============================================================================
 
 USE `cvh_admin`;
 
--- Add self_managed to the custody_mode ENUM if not already present.
--- The original ENUM was ('full_custody','co_sign','client_initiated').
--- The admin-api CustodyPolicy enum also uses 'self_managed'.
-ALTER TABLE `clients`
-  MODIFY COLUMN `custody_mode` ENUM('full_custody','co_sign','client_initiated','self_managed') NOT NULL DEFAULT 'full_custody';
-
--- If a previous Prisma migration accidentally created a custody_policy column,
--- migrate its data to custody_mode and drop it.
--- This is a safety net — skip if the column doesn't exist.
-SET @col_exists = (
+-- Check which column name currently exists
+SET @has_policy = (
   SELECT COUNT(*) FROM information_schema.COLUMNS
   WHERE TABLE_SCHEMA = 'cvh_admin'
     AND TABLE_NAME = 'clients'
     AND COLUMN_NAME = 'custody_policy'
 );
 
-SET @migrate_sql = IF(@col_exists > 0,
-  'UPDATE `cvh_admin`.`clients` SET `custody_mode` = `custody_policy` WHERE `custody_policy` IS NOT NULL',
+SET @has_mode = (
+  SELECT COUNT(*) FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = 'cvh_admin'
+    AND TABLE_NAME = 'clients'
+    AND COLUMN_NAME = 'custody_mode'
+);
+
+-- If custody_policy exists but custody_mode does not: rename it
+SET @rename_sql = IF(@has_policy > 0 AND @has_mode = 0,
+  'ALTER TABLE `cvh_admin`.`clients` CHANGE COLUMN `custody_policy` `custody_mode` ENUM(''full_custody'',''co_sign'',''client_initiated'',''self_managed'') NOT NULL DEFAULT ''full_custody''',
   'SELECT 1');
-PREPARE stmt FROM @migrate_sql;
+PREPARE stmt FROM @rename_sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
-SET @drop_sql = IF(@col_exists > 0,
-  'ALTER TABLE `cvh_admin`.`clients` DROP COLUMN `custody_policy`',
+-- If custody_mode already exists: ensure it has all ENUM values
+SET @modify_sql = IF(@has_mode > 0 AND @has_policy = 0,
+  'ALTER TABLE `cvh_admin`.`clients` MODIFY COLUMN `custody_mode` ENUM(''full_custody'',''co_sign'',''client_initiated'',''self_managed'') NOT NULL DEFAULT ''full_custody''',
   'SELECT 1');
-PREPARE stmt FROM @drop_sql;
+PREPARE stmt FROM @modify_sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
