@@ -240,25 +240,46 @@ export class ProjectSetupService {
     resolvedCustodyMode = resolvedCustodyMode || 'full_custody';
 
     try {
-      // Step 1: Generate seed (24-word mnemonic)
-      this.logger.log(`Generating seed for project ${projectId}`);
-      const { data: seedData } = await axios.post(
-        `${this.keyVaultUrl}/projects/${projectId}/generate-seed`,
-        { requestedBy: 'project-setup' },
-        { headers: this.headers, timeout: 30000 },
-      );
+      let mnemonic: string | null = null;
 
-      const mnemonic: string = seedData.mnemonic;
+      // Step 1: Generate seed (24-word mnemonic)
+      // If seed already exists (409), skip to fetching existing keys
+      this.logger.log(`Generating seed for project ${projectId}`);
+      try {
+        const { data: seedData } = await axios.post(
+          `${this.keyVaultUrl}/projects/${projectId}/generate-seed`,
+          { requestedBy: 'project-setup' },
+          { headers: this.headers, timeout: 30000 },
+        );
+        mnemonic = seedData.mnemonic;
+      } catch (seedErr: any) {
+        if (seedErr.response?.status === 409) {
+          this.logger.log(`Seed already exists for project ${projectId}, fetching existing keys`);
+        } else {
+          throw seedErr;
+        }
+      }
 
       // Step 2: Generate keys (platform, client, backup, gas_tank)
-      this.logger.log(`Generating keys for project ${projectId} (custodyMode=${resolvedCustodyMode})`);
-      const { data: keysData } = await axios.post(
-        `${this.keyVaultUrl}/projects/${projectId}/generate-keys`,
-        { clientId, custodyMode: resolvedCustodyMode, requestedBy: 'project-setup' },
-        { headers: this.headers, timeout: 30000 },
-      );
+      // Skip if seed already existed (keys were already generated)
+      if (mnemonic) {
+        this.logger.log(`Generating keys for project ${projectId} (custodyMode=${resolvedCustodyMode})`);
+        try {
+          await axios.post(
+            `${this.keyVaultUrl}/projects/${projectId}/generate-keys`,
+            { clientId, custodyMode: resolvedCustodyMode, requestedBy: 'project-setup' },
+            { headers: this.headers, timeout: 30000 },
+          );
+        } catch (keysErr: any) {
+          if (keysErr.response?.status === 409) {
+            this.logger.log(`Keys already exist for project ${projectId}`);
+          } else {
+            throw keysErr;
+          }
+        }
+      }
 
-      // Step 3: Get public keys (mark-seed-shown is deferred to POST /confirm-seed)
+      // Step 3: Get public keys
       this.logger.log(`Fetching public keys for project ${projectId}`);
       const { data: pubKeysData } = await axios.get(
         `${this.keyVaultUrl}/projects/${projectId}/public-keys`,
@@ -270,7 +291,7 @@ export class ProjectSetupService {
       );
 
       return {
-        mnemonic,
+        mnemonic: mnemonic ?? '(seed already generated — mnemonic was shown previously)',
         publicKeys: pubKeysData.keys ?? [],
       };
     } catch (error: any) {

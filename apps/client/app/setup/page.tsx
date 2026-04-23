@@ -334,8 +334,10 @@ export default function SetupWizardPage() {
   // ─── Step Transition Effects ────────────────────────────────
 
   // Step 4: Trigger key ceremony on entry
+  const keyCeremonyTriggered = useRef(false);
   useEffect(() => {
-    if (currentStep === 4 && !keyCeremony && !keyCeremonyLoading) {
+    if (currentStep === 4 && !keyCeremony && !keyCeremonyLoading && !keyCeremonyTriggered.current) {
+      keyCeremonyTriggered.current = true;
       createProjectAndKeys();
     }
   }, [currentStep, keyCeremony, keyCeremonyLoading, createProjectAndKeys]);
@@ -739,6 +741,7 @@ export default function SetupWizardPage() {
                   onClick={() => {
                     setKeyCeremonyError(null);
                     setKeyCeremony(null);
+                    keyCeremonyTriggered.current = false;
                     createProjectAndKeys();
                   }}
                   className="inline-flex items-center gap-2 px-4 py-2 rounded-button text-caption font-display font-semibold bg-accent-primary text-accent-text hover:bg-accent-hover transition-all duration-fast cursor-pointer"
