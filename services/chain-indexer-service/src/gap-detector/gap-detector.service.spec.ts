@@ -1,10 +1,14 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { getQueueToken } from '@nestjs/bullmq';
 import { GapDetectorService } from './gap-detector.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../redis/redis.service';
 
 describe('GapDetectorService', () => {
   let service: GapDetectorService;
   let prisma: any;
+  let redis: any;
+  let backfillQueue: any;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -13,12 +17,32 @@ describe('GapDetectorService', () => {
         {
           provide: PrismaService,
           useValue: {
+            $queryRaw: jest.fn(),
+            syncCursor: {
+              findUnique: jest.fn(),
+            },
+            monitoredAddress: {
+              findFirst: jest.fn(),
+            },
             indexedBlock: {
               findMany: jest.fn(),
             },
             syncGap: {
+              findFirst: jest.fn(),
               create: jest.fn(),
             },
+          },
+        },
+        {
+          provide: RedisService,
+          useValue: {
+            getCache: jest.fn().mockResolvedValue(null),
+          },
+        },
+        {
+          provide: getQueueToken('backfill'),
+          useValue: {
+            add: jest.fn().mockResolvedValue({ id: '1' }),
           },
         },
       ],
@@ -26,123 +50,173 @@ describe('GapDetectorService', () => {
 
     service = module.get<GapDetectorService>(GapDetectorService);
     prisma = module.get(PrismaService);
+    redis = module.get(RedisService);
+    backfillQueue = module.get(getQueueToken('backfill'));
   });
 
   afterEach(() => {
     jest.clearAllMocks();
   });
 
-  it('should detect a gap in indexed blocks', async () => {
-    // Blocks 100, 101, 102, 105, 106 => gap at 103-104
-    prisma.indexedBlock.findMany.mockResolvedValue([
-      { blockNumber: 100n },
-      { blockNumber: 101n },
-      { blockNumber: 102n },
-      { blockNumber: 105n },
-      { blockNumber: 106n },
-    ]);
-    prisma.syncGap.create.mockResolvedValue({} as any);
+  describe('detectAllGaps', () => {
+    it('should only check chains with monitored addresses', async () => {
+      prisma.$queryRaw.mockResolvedValue([{ chain_id: 1 }, { chain_id: 56 }]);
+      prisma.syncCursor.findUnique.mockResolvedValue(null);
 
-    const gaps = await service.detectGaps(1);
+      await service.detectAllGaps();
 
-    expect(gaps).toHaveLength(1);
-    expect(gaps[0]).toEqual({
-      chainId: 1,
-      fromBlock: 103,
-      toBlock: 104,
-      gapSize: 2,
+      expect(prisma.$queryRaw).toHaveBeenCalled();
     });
 
-    expect(prisma.syncGap.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        chainId: 1,
-        fromBlock: 103n,
-        toBlock: 104n,
-        gapSize: 2,
-        status: 'pending',
-      }),
+    it('should handle errors per chain without aborting', async () => {
+      prisma.$queryRaw.mockResolvedValue([{ chain_id: 1 }, { chain_id: 56 }]);
+      prisma.syncCursor.findUnique
+        .mockRejectedValueOnce(new Error('db fail'))
+        .mockResolvedValueOnce(null);
+
+      await expect(service.detectAllGaps()).resolves.not.toThrow();
     });
   });
 
-  it('should create sync_gaps record for missing range', async () => {
-    prisma.indexedBlock.findMany.mockResolvedValue([
-      { blockNumber: 10n },
-      { blockNumber: 20n },
-    ]);
-    prisma.syncGap.create.mockResolvedValue({} as any);
+  describe('detectAndEnqueueGaps', () => {
+    it('should return 0 when no sync cursor exists', async () => {
+      prisma.syncCursor.findUnique.mockResolvedValue(null);
 
-    const gaps = await service.detectGaps(1);
-
-    expect(gaps).toHaveLength(1);
-    expect(gaps[0].fromBlock).toBe(11);
-    expect(gaps[0].toBlock).toBe(19);
-    expect(gaps[0].gapSize).toBe(9);
-
-    expect(prisma.syncGap.create).toHaveBeenCalledTimes(1);
-  });
-
-  it('should return no gaps when fully synced', async () => {
-    // Consecutive blocks: 100, 101, 102, 103
-    prisma.indexedBlock.findMany.mockResolvedValue([
-      { blockNumber: 100n },
-      { blockNumber: 101n },
-      { blockNumber: 102n },
-      { blockNumber: 103n },
-    ]);
-
-    const gaps = await service.detectGaps(1);
-
-    expect(gaps).toHaveLength(0);
-    expect(prisma.syncGap.create).not.toHaveBeenCalled();
-  });
-
-  it('should handle multiple gaps', async () => {
-    // Blocks 1, 2, 5, 6, 10 => gaps at 3-4 and 7-9
-    prisma.indexedBlock.findMany.mockResolvedValue([
-      { blockNumber: 1n },
-      { blockNumber: 2n },
-      { blockNumber: 5n },
-      { blockNumber: 6n },
-      { blockNumber: 10n },
-    ]);
-    prisma.syncGap.create.mockResolvedValue({} as any);
-
-    const gaps = await service.detectGaps(1);
-
-    expect(gaps).toHaveLength(2);
-
-    expect(gaps[0]).toEqual({
-      chainId: 1,
-      fromBlock: 3,
-      toBlock: 4,
-      gapSize: 2,
+      const result = await service.detectAndEnqueueGaps(1);
+      expect(result).toBe(0);
     });
 
-    expect(gaps[1]).toEqual({
-      chainId: 1,
-      fromBlock: 7,
-      toBlock: 9,
-      gapSize: 3,
+    it('should return 0 when no monitored address exists', async () => {
+      prisma.syncCursor.findUnique.mockResolvedValue({ chainId: 1, lastBlock: 100n });
+      prisma.monitoredAddress.findFirst.mockResolvedValue(null);
+
+      const result = await service.detectAndEnqueueGaps(1);
+      expect(result).toBe(0);
     });
 
-    expect(prisma.syncGap.create).toHaveBeenCalledTimes(2);
+    it('should detect gaps, insert sync_gaps, and enqueue backfill jobs', async () => {
+      prisma.syncCursor.findUnique.mockResolvedValue({ chainId: 1, lastBlock: 110n });
+      prisma.monitoredAddress.findFirst.mockResolvedValue({ startBlock: 100n });
+
+      // Blocks 100-109 range, only 100, 101, 102, 105, 106, 107, 108, 109 indexed
+      // Missing: 103, 104 => gap 103-104
+      prisma.indexedBlock.findMany.mockResolvedValue([
+        { blockNumber: 100n },
+        { blockNumber: 101n },
+        { blockNumber: 102n },
+        { blockNumber: 105n },
+        { blockNumber: 106n },
+        { blockNumber: 107n },
+        { blockNumber: 108n },
+        { blockNumber: 109n },
+      ]);
+
+      redis.getCache.mockResolvedValue(null); // nothing scanned in Redis
+
+      prisma.syncGap.findFirst.mockResolvedValue(null); // no existing gap
+      prisma.syncGap.create.mockResolvedValue({ id: 42n, chainId: 1 });
+
+      const result = await service.detectAndEnqueueGaps(1);
+
+      expect(result).toBe(1);
+      expect(prisma.syncGap.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          chainId: 1,
+          gapStartBlock: 103n,
+          gapEndBlock: 104n,
+          status: 'detected',
+        }),
+      });
+      expect(backfillQueue.add).toHaveBeenCalledWith(
+        'backfill-gap',
+        expect.objectContaining({
+          gapId: 42,
+          chainId: 1,
+          fromBlock: 103,
+          toBlock: 104,
+        }),
+        expect.objectContaining({
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 30_000 },
+        }),
+      );
+    });
+
+    it('should skip gaps already marked as scanned in Redis', async () => {
+      prisma.syncCursor.findUnique.mockResolvedValue({ chainId: 1, lastBlock: 106n });
+      prisma.monitoredAddress.findFirst.mockResolvedValue({ startBlock: 100n });
+
+      // Only 100, 101, 102 indexed; 103, 104, 105 missing from DB
+      prisma.indexedBlock.findMany.mockResolvedValue([
+        { blockNumber: 100n },
+        { blockNumber: 101n },
+        { blockNumber: 102n },
+      ]);
+
+      // But 103, 104, 105 are all scanned in Redis
+      redis.getCache.mockImplementation(async (key: string) => {
+        if (key.startsWith('scanned:1:')) return '1';
+        return null;
+      });
+
+      const result = await service.detectAndEnqueueGaps(1);
+      expect(result).toBe(0);
+      expect(prisma.syncGap.create).not.toHaveBeenCalled();
+    });
+
+    it('should skip gaps that already exist with detected or backfilling status', async () => {
+      prisma.syncCursor.findUnique.mockResolvedValue({ chainId: 1, lastBlock: 106n });
+      prisma.monitoredAddress.findFirst.mockResolvedValue({ startBlock: 100n });
+
+      prisma.indexedBlock.findMany.mockResolvedValue([
+        { blockNumber: 100n },
+        { blockNumber: 101n },
+        { blockNumber: 102n },
+      ]);
+      redis.getCache.mockResolvedValue(null);
+
+      // Existing gap already in DB
+      prisma.syncGap.findFirst.mockResolvedValue({ id: 99n, status: 'detected' });
+
+      const result = await service.detectAndEnqueueGaps(1);
+      expect(result).toBe(0);
+      expect(prisma.syncGap.create).not.toHaveBeenCalled();
+      expect(backfillQueue.add).not.toHaveBeenCalled();
+    });
+
+    it('should handle multiple gaps in a single batch', async () => {
+      prisma.syncCursor.findUnique.mockResolvedValue({ chainId: 1, lastBlock: 111n });
+      prisma.monitoredAddress.findFirst.mockResolvedValue({ startBlock: 100n });
+
+      // Blocks 100, 101, 105, 106, 110 indexed => gaps at 102-104 and 107-109
+      prisma.indexedBlock.findMany.mockResolvedValue([
+        { blockNumber: 100n },
+        { blockNumber: 101n },
+        { blockNumber: 105n },
+        { blockNumber: 106n },
+        { blockNumber: 110n },
+      ]);
+      redis.getCache.mockResolvedValue(null);
+      prisma.syncGap.findFirst.mockResolvedValue(null);
+      prisma.syncGap.create
+        .mockResolvedValueOnce({ id: 1n })
+        .mockResolvedValueOnce({ id: 2n });
+
+      const result = await service.detectAndEnqueueGaps(1);
+
+      expect(result).toBe(2);
+      expect(prisma.syncGap.create).toHaveBeenCalledTimes(2);
+      expect(backfillQueue.add).toHaveBeenCalledTimes(2);
+    });
   });
 
-  it('should return empty array for fewer than 2 indexed blocks', async () => {
-    prisma.indexedBlock.findMany.mockResolvedValue([
-      { blockNumber: 100n },
-    ]);
+  describe('coalesceGaps (via detectAndEnqueueGaps)', () => {
+    it('should return 0 for startBlock >= endBlock', async () => {
+      prisma.syncCursor.findUnique.mockResolvedValue({ chainId: 1, lastBlock: 50n });
+      prisma.monitoredAddress.findFirst.mockResolvedValue({ startBlock: 100n });
 
-    const gaps = await service.detectGaps(1);
-
-    expect(gaps).toHaveLength(0);
-  });
-
-  it('should return empty array when no blocks are indexed', async () => {
-    prisma.indexedBlock.findMany.mockResolvedValue([]);
-
-    const gaps = await service.detectGaps(1);
-
-    expect(gaps).toHaveLength(0);
+      const result = await service.detectAndEnqueueGaps(1);
+      expect(result).toBe(0);
+    });
   });
 });

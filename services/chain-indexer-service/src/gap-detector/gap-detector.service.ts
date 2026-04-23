@@ -1,84 +1,179 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../redis/redis.service';
 
-/**
- * Detects gaps in the indexed block sequence for a chain.
- * Uses a SQL-based approach to avoid loading all block numbers into memory,
- * which would cause OOM on mature chains with millions of blocks.
- */
+interface GapRange {
+  gapStart: number;
+  gapEnd: number;
+}
+
 @Injectable()
 export class GapDetectorService {
   private readonly logger = new Logger(GapDetectorService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly redis: RedisService,
+    @InjectQueue('backfill') private readonly backfillQueue: Queue,
+  ) {}
 
   /**
-   * Detect gaps for all active chains every 5 minutes.
+   * Run every 5 minutes. Only checks chains with monitored addresses.
    */
   @Cron('0 */5 * * * *')
   async detectAllGaps(): Promise<void> {
-    const chains = await this.prisma.chain.findMany({
-      where: { isActive: true },
-    });
+    // Only process chains that have monitored addresses
+    const activeChains = await this.prisma.$queryRaw<Array<{ chain_id: number }>>`
+      SELECT DISTINCT ma.chain_id
+      FROM monitored_addresses ma
+      WHERE ma.is_active = 1
+    `;
 
-    await Promise.all(
-      chains.map((chain) =>
-        this.detectGaps(chain.id).catch((err: any) => {
-          const msg = err instanceof Error ? err.message : String(err);
-          this.logger.error(
-            `Gap detection failed for chain ${chain.id}: ${msg}`,
-          );
-        }),
-      ),
-    );
+    for (const { chain_id: chainId } of activeChains) {
+      try {
+        await this.detectAndEnqueueGaps(chainId);
+      } catch (err) {
+        this.logger.error(`Gap detection failed for chain ${chainId}: ${err}`);
+      }
+    }
   }
 
   /**
-   * Detect gaps in the indexed block sequence for a given chain.
-   * Returns up to 100 gaps to avoid processing too many at once.
+   * Detect gaps for a single chain and enqueue backfill jobs.
    */
-  async detectGaps(
-    chainId: number,
-  ): Promise<{ gapStart: number; gapEnd: number }[]> {
+  async detectAndEnqueueGaps(chainId: number): Promise<number> {
     const cursor = await this.prisma.syncCursor.findUnique({
       where: { chainId },
     });
-    if (!cursor) return [];
+    if (!cursor || cursor.lastBlock <= 0) return 0;
 
-    const lastBlock = Number(cursor.lastBlock);
+    // Find the earliest monitored address start_block for this chain
+    const earliest = await this.prisma.monitoredAddress.findFirst({
+      where: { chainId, isActive: true },
+      orderBy: { startBlock: 'asc' },
+      select: { startBlock: true },
+    });
+    if (!earliest) return 0;
 
-    // SQL-based gap detection using self-join
-    const gaps = await this.prisma.$queryRawUnsafe<
-      Array<{ gap_start: bigint; gap_end: bigint }>
-    >(
-      `SELECT
-         b1.block_number + 1 AS gap_start,
-         MIN(b2.block_number) - 1 AS gap_end
-       FROM indexed_blocks b1
-       LEFT JOIN indexed_blocks b2
-         ON b2.chain_id = b1.chain_id AND b2.block_number > b1.block_number
-       WHERE b1.chain_id = ?
-         AND b1.block_number < ?
-       GROUP BY b1.block_number
-       HAVING MIN(b2.block_number) > b1.block_number + 1
-       ORDER BY gap_start
-       LIMIT 100`,
-      chainId,
-      lastBlock,
-    );
+    const startBlock = Number(earliest.startBlock);
+    const endBlock = Number(cursor.lastBlock);
 
-    const result = gaps.map((g) => ({
-      gapStart: Number(g.gap_start),
-      gapEnd: Number(g.gap_end),
-    }));
+    if (startBlock >= endBlock) return 0;
 
-    if (result.length > 0) {
-      this.logger.warn(
-        `Detected ${result.length} gaps for chain ${chainId}, first gap: ${result[0].gapStart}-${result[0].gapEnd}`,
-      );
+    // Find blocks in range that are NOT in indexed_blocks and NOT in Redis scanned set
+    // We check in batches of 1000 to avoid huge queries
+    let gapsFound = 0;
+    const BATCH_SIZE = 1000;
+
+    for (let batchStart = startBlock; batchStart < endBlock; batchStart += BATCH_SIZE) {
+      const batchEnd = Math.min(batchStart + BATCH_SIZE - 1, endBlock);
+
+      // Get indexed blocks in this range
+      const indexedBlocks = await this.prisma.indexedBlock.findMany({
+        where: {
+          chainId,
+          blockNumber: {
+            gte: BigInt(batchStart),
+            lte: BigInt(batchEnd),
+          },
+        },
+        select: { blockNumber: true },
+      });
+
+      const indexedSet = new Set(indexedBlocks.map(b => Number(b.blockNumber)));
+
+      // Check Redis scanned set for blocks that were scanned but had no events
+      const scannedKey = `scanned:${chainId}`;
+
+      // Find missing blocks (not indexed AND not in Redis scanned set)
+      const missingBlocks: number[] = [];
+      for (let bn = batchStart; bn <= batchEnd; bn++) {
+        if (indexedSet.has(bn)) continue;
+        // Check Redis
+        const wasScanned = await this.redis.getCache(`${scannedKey}:${bn}`);
+        if (wasScanned) continue;
+        missingBlocks.push(bn);
+      }
+
+      if (missingBlocks.length === 0) continue;
+
+      // Coalesce consecutive missing blocks into gap ranges
+      const gaps = this.coalesceGaps(missingBlocks);
+
+      for (const gap of gaps) {
+        // Check if this gap already exists and is pending/backfilling
+        const existing = await this.prisma.syncGap.findFirst({
+          where: {
+            chainId,
+            gapStartBlock: BigInt(gap.gapStart),
+            gapEndBlock: BigInt(gap.gapEnd),
+            status: { in: ['detected', 'backfilling'] },
+          },
+        });
+        if (existing) continue;
+
+        // Insert gap record
+        const syncGap = await this.prisma.syncGap.create({
+          data: {
+            chainId,
+            gapStartBlock: BigInt(gap.gapStart),
+            gapEndBlock: BigInt(gap.gapEnd),
+            status: 'detected',
+          },
+        });
+
+        // Enqueue backfill job
+        await this.backfillQueue.add(
+          'backfill-gap',
+          {
+            gapId: Number(syncGap.id),
+            chainId,
+            fromBlock: gap.gapStart,
+            toBlock: gap.gapEnd,
+          },
+          {
+            attempts: 3,
+            backoff: { type: 'exponential', delay: 30_000 },
+            removeOnComplete: 100,
+            removeOnFail: 200,
+          },
+        );
+
+        gapsFound++;
+        this.logger.log(
+          `Gap detected on chain ${chainId}: blocks ${gap.gapStart}-${gap.gapEnd} (${gap.gapEnd - gap.gapStart + 1} blocks) — backfill job enqueued`,
+        );
+      }
     }
 
-    return result;
+    return gapsFound;
+  }
+
+  /**
+   * Coalesce an array of block numbers into contiguous gap ranges.
+   */
+  private coalesceGaps(blocks: number[]): GapRange[] {
+    if (blocks.length === 0) return [];
+    blocks.sort((a, b) => a - b);
+
+    const ranges: GapRange[] = [];
+    let start = blocks[0];
+    let end = blocks[0];
+
+    for (let i = 1; i < blocks.length; i++) {
+      if (blocks[i] === end + 1) {
+        end = blocks[i];
+      } else {
+        ranges.push({ gapStart: start, gapEnd: end });
+        start = blocks[i];
+        end = blocks[i];
+      }
+    }
+    ranges.push({ gapStart: start, gapEnd: end });
+
+    return ranges;
   }
 }
