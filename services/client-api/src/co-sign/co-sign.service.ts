@@ -1,64 +1,67 @@
-import {
-  Injectable,
-  Logger,
-  HttpException,
-  InternalServerErrorException,
-} from '@nestjs/common';
+import { Injectable, Logger, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 
 @Injectable()
 export class CoSignService {
   private readonly logger = new Logger(CoSignService.name);
-  private readonly keyVaultUrl: string;
+  private readonly coreWalletUrl: string;
 
-  constructor(private readonly configService: ConfigService) {
-    this.keyVaultUrl = this.configService.get<string>(
-      'KEY_VAULT_SERVICE_URL',
-      'http://localhost:3005',
+  constructor(private readonly config: ConfigService) {
+    this.coreWalletUrl = this.config.get<string>(
+      'CORE_WALLET_URL',
+      'http://core-wallet-service:3004',
     );
   }
 
   private get headers() {
-    return { 'X-Internal-Service-Key': process.env.INTERNAL_SERVICE_KEY || '' };
+    return {
+      'X-Internal-Service-Key': this.config.get<string>('INTERNAL_SERVICE_KEY', ''),
+    };
   }
 
-  async listPending(clientId: number) {
+  async listPending(clientId: number, projectId: number) {
     try {
-      const { data } = await axios.get(
-        `${this.keyVaultUrl}/co-sign/pending`,
-        {
-          headers: this.headers,
-          params: { clientId },
-          timeout: 10000,
-        },
-      );
+      const { data } = await axios.get(`${this.coreWalletUrl}/co-sign/pending`, {
+        headers: this.headers,
+        params: { clientId, projectId },
+        timeout: 10000,
+      });
       return data;
     } catch (error: any) {
-      if (error.response) {
-        throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
-      }
-      throw new InternalServerErrorException('Downstream service unavailable');
+      this.logger.error(`Failed to list pending co-sign operations: ${error.message}`);
+      if (error.response) throw error;
+      throw new InternalServerErrorException('Co-sign service unavailable');
     }
   }
 
-  async submitSignature(
-    clientId: number,
-    operationId: string,
-    data: { signature: string; publicKey?: string },
-  ) {
+  async getOperation(operationId: string, clientId: number) {
+    try {
+      const { data } = await axios.get(`${this.coreWalletUrl}/co-sign/${operationId}`, {
+        headers: this.headers,
+        params: { clientId },
+        timeout: 10000,
+      });
+      return data;
+    } catch (error: any) {
+      this.logger.error(`Failed to get co-sign operation: ${error.message}`);
+      if (error.response) throw error;
+      throw new InternalServerErrorException('Co-sign service unavailable');
+    }
+  }
+
+  async submitSignature(clientId: number, operationId: string, data: { signature: string }) {
     try {
       const { data: result } = await axios.post(
-        `${this.keyVaultUrl}/co-sign/${operationId}/sign`,
-        { clientId, ...data },
-        { headers: this.headers, timeout: 30000 },
+        `${this.coreWalletUrl}/co-sign/${operationId}/sign`,
+        { clientId, signature: data.signature },
+        { headers: this.headers, timeout: 10000 },
       );
       return result;
     } catch (error: any) {
-      if (error.response) {
-        throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
-      }
-      throw new InternalServerErrorException('Downstream service unavailable');
+      this.logger.error(`Failed to submit co-sign signature: ${error.message}`);
+      if (error.response) throw error;
+      throw new InternalServerErrorException('Co-sign service unavailable');
     }
   }
 }

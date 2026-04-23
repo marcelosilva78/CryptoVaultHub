@@ -1,5 +1,6 @@
 import {
   Controller,
+  Get,
   Post,
   Param,
   Body,
@@ -14,7 +15,7 @@ import {
   ApiParam,
   ApiBody,
 } from '@nestjs/swagger';
-import { ClientAuth, CurrentClientId } from '../common/decorators';
+import { ClientAuth, ClientAuthWithProject, CurrentClientId, ProjectId } from '../common/decorators';
 import { CoSignService } from './co-sign.service';
 
 @ApiTags('Co-Sign')
@@ -24,7 +25,7 @@ export class CoSignController {
   constructor(private readonly coSignService: CoSignService) {}
 
   @Post('pending')
-  @ClientAuth('read')
+  @ClientAuthWithProject('read')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'List pending co-sign operations',
@@ -87,8 +88,11 @@ In co-sign mode, CryptoVaultHub manages one key share and the client manages the
   })
   @ApiResponse({ status: 401, description: 'Missing or invalid API key.' })
   @ApiResponse({ status: 403, description: 'API key does not have the `read` scope, or client is not in co-sign custody mode.' })
-  async listPending(@CurrentClientId() clientId: number) {
-    const operations = await this.coSignService.listPending(clientId);
+  async listPending(
+    @CurrentClientId() clientId: number,
+    @ProjectId() projectId: number,
+  ) {
+    const operations = await this.coSignService.listPending(clientId, projectId);
     return { success: true, operations };
   }
 
