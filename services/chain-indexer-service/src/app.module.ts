@@ -15,6 +15,7 @@ import { ReconciliationModule } from './reconciliation/reconciliation.module';
 import { HealthController } from './common/health.controller';
 import { SyncHealthModule } from './sync-health/sync-health.module';
 import { GapDetectorModule } from './gap-detector/gap-detector.module';
+import { BackfillModule } from './backfill/backfill.module';
 import { FinalityTrackerModule } from './finality/finality-tracker.module';
 
 @Module({
@@ -52,6 +53,7 @@ import { FinalityTrackerModule } from './finality/finality-tracker.module';
     ReconciliationModule,
     SyncHealthModule,
     GapDetectorModule,
+    BackfillModule,
     FinalityTrackerModule,
   ],
   controllers: [HealthController],
