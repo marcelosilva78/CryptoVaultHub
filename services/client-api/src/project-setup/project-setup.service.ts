@@ -463,27 +463,16 @@ export class ProjectSetupService {
         const address = gasTank.address;
         const decimals = chain.native_currency_decimals;
 
-        // Get balance via core-wallet balances endpoint
+        // Get native balance for the gas tank address directly
         let balanceWei = 0n;
         try {
           const { data: balanceData } = await axios.get(
-            `${this.coreWalletUrl}/wallets/${clientId}/${chainId}/balances`,
+            `${this.coreWalletUrl}/wallets/balance/${chainId}/${address}`,
             { headers: this.headers, timeout: 15000 },
           );
 
-          // The balances endpoint returns native balance
-          const nativeBalance = Array.isArray(balanceData.balances)
-            ? balanceData.balances.find(
-                (b: any) =>
-                  b.tokenAddress === '0x0000000000000000000000000000000000000000' ||
-                  b.isNative === true,
-              )
-            : null;
-
-          if (nativeBalance) {
-            // Balance is returned in standard units; convert back to wei
-            const balStr = nativeBalance.balance ?? '0';
-            balanceWei = this.parseUnits(balStr, decimals);
+          if (balanceData.balanceWei) {
+            balanceWei = BigInt(balanceData.balanceWei);
           }
         } catch (err) {
           this.logger.warn(

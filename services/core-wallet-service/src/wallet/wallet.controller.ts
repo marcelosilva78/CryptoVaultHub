@@ -80,6 +80,18 @@ export class WalletController {
       balances: result.balances,
     };
   }
+  @Get('balance/:chainId/:address')
+  async getNativeBalance(
+    @Param('chainId', ParseIntPipe) chainId: number,
+    @Param('address') address: string,
+  ) {
+    const result = await this.balanceService.getNativeBalanceByAddress(chainId, address);
+    return {
+      success: true,
+      chainId,
+      ...result,
+    };
+  }
 }
 
 /**

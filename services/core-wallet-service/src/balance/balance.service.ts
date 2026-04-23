@@ -142,4 +142,18 @@ export class BalanceService {
 
     return result;
   }
+
+  /**
+   * Get native balance for any address on a chain (no wallet lookup needed).
+   */
+  async getNativeBalanceByAddress(
+    chainId: number,
+    address: string,
+  ): Promise<{ address: string; balanceWei: string }> {
+    const balance = await this.contractService.getNativeBalance(chainId, address);
+    return {
+      address,
+      balanceWei: balance.toString(),
+    };
+  }
 }
