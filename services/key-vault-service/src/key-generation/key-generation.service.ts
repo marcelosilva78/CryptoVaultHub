@@ -316,13 +316,12 @@ export class KeyGenerationService {
     chainId: number,
   ): Promise<{ privateKey: Buffer; address: string; keyId: bigint }> {
     const chainScope = `evm:${chainId}`;
-    const key = await this.prisma.derivedKey.findUnique({
+    const key = await this.prisma.derivedKey.findFirst({
       where: {
-        uq_client_keytype_chain: {
-          clientId: BigInt(clientId),
-          keyType: keyType as any,
-          chainScope,
-        },
+        clientId: BigInt(clientId),
+        keyType: keyType as any,
+        chainScope,
+        isActive: true,
       },
     });
 
