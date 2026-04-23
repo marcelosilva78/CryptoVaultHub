@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ethers } from 'ethers';
+import axios from 'axios';
 import { PrismaService } from '../prisma/prisma.service';
 import { ContractService } from '../blockchain/contract.service';
 import { RedisService } from '../redis/redis.service';
@@ -40,7 +41,7 @@ export class WalletService implements OnModuleInit {
   private readonly logger = new Logger(WalletService.name);
   private readonly keyVaultUrl: string;
   private readonly tlsEnabled: boolean;
-  private dispatcher: import('undici').Agent | undefined;
+  private httpsAgent: import('https').Agent | undefined;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -86,17 +87,14 @@ export class WalletService implements OnModuleInit {
     this.logger.log(`  Client key:  ${keyPath}`);
     this.logger.log(`  CA cert:     ${caPath}`);
 
-    // Node.js native fetch uses undici under the hood.
-    // To pass TLS client certs we create an undici Agent with the mTLS config
-    // and supply it as the `dispatcher` option on every fetch call.
-    const { Agent } = await import('undici');
-    this.dispatcher = new Agent({
-      connect: {
-        cert: fs.readFileSync(certPath, 'utf-8'),
-        key: fs.readFileSync(keyPath, 'utf-8'),
-        ca: fs.readFileSync(caPath, 'utf-8'),
-        rejectUnauthorized: true,
-      },
+    // Create an https.Agent with mTLS client certificates.
+    // Used by axios for all Key Vault HTTP calls when TLS is enabled.
+    const https = await import('https');
+    this.httpsAgent = new https.Agent({
+      cert: fs.readFileSync(certPath, 'utf-8'),
+      key: fs.readFileSync(keyPath, 'utf-8'),
+      ca: fs.readFileSync(caPath, 'utf-8'),
+      rejectUnauthorized: true,
     });
 
     this.logger.log('mTLS client certificates loaded for Key Vault communication');
@@ -346,87 +344,49 @@ export class WalletService implements OnModuleInit {
   // ----------- Key Vault HTTP Calls -----------
 
   /**
-   * Build fetch options, injecting the mTLS dispatcher when TLS is enabled.
+   * Build axios config, injecting the mTLS httpsAgent when TLS is enabled.
    */
-  private vaultFetchOptions(init?: RequestInit): RequestInit {
-    if (this.dispatcher) {
-      return { ...init, dispatcher: this.dispatcher } as unknown as RequestInit;
+  private get vaultAxiosConfig(): Record<string, any> {
+    const config: Record<string, any> = {
+      headers: { 'X-Internal-Service-Key': this.config.get<string>('INTERNAL_SERVICE_KEY', '') },
+      timeout: 30000,
+    };
+    if (this.httpsAgent) {
+      config.httpsAgent = this.httpsAgent;
     }
-    return init ?? {};
+    return config;
   }
 
   private async getKeysFromVault(
     clientId: number,
   ): Promise<KeyVaultPublicKey[]> {
-    const res = await fetch(
+    const { data } = await axios.get<KeyVaultResponse>(
       `${this.keyVaultUrl}/keys/${clientId}/public`,
-      this.vaultFetchOptions({
-        headers: {
-          'X-Internal-Service-Key':
-            this.config.get<string>('INTERNAL_SERVICE_KEY', ''),
-        },
-      }),
+      this.vaultAxiosConfig,
     );
-    if (!res.ok) {
-      throw new Error(`Key Vault returned ${res.status}`);
-    }
-    const body = (await res.json()) as KeyVaultResponse;
-    return body.keys ?? [];
+    return data.keys ?? [];
   }
 
   async generateKeysInVault(
     clientId: number,
   ): Promise<KeyVaultPublicKey[]> {
-    const res = await fetch(
+    const { data } = await axios.post<KeyVaultResponse>(
       `${this.keyVaultUrl}/keys/generate`,
-      this.vaultFetchOptions({
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Internal-Service-Key':
-            this.config.get<string>('INTERNAL_SERVICE_KEY', ''),
-        },
-        body: JSON.stringify({
-          clientId,
-          requestedBy: 'core-wallet-service',
-        }),
-      }),
+      { clientId, requestedBy: 'core-wallet-service' },
+      this.vaultAxiosConfig,
     );
-    if (!res.ok) {
-      throw new Error(
-        `Key Vault key generation failed: ${res.status}`,
-      );
-    }
-    const body = (await res.json()) as KeyVaultResponse;
-    return body.keys ?? [];
+    return data.keys ?? [];
   }
 
   private async deriveGasTankKey(
     clientId: number,
     chainId: number,
   ): Promise<KeyVaultPublicKey> {
-    const res = await fetch(
+    const { data } = await axios.post<KeyVaultResponse>(
       `${this.keyVaultUrl}/keys/derive-gas-tank`,
-      this.vaultFetchOptions({
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Internal-Service-Key':
-            this.config.get<string>('INTERNAL_SERVICE_KEY', ''),
-        },
-        body: JSON.stringify({
-          clientId,
-          chainId,
-          requestedBy: 'core-wallet-service',
-        }),
-      }),
+      { clientId, chainId, requestedBy: 'core-wallet-service' },
+      this.vaultAxiosConfig,
     );
-    if (!res.ok) {
-      throw new Error(
-        `Key Vault gas tank derivation failed: ${res.status}`,
-      );
-    }
-    const body = (await res.json()) as KeyVaultResponse;
-    return body.key!;
+    return data.key!;
   }
 }
