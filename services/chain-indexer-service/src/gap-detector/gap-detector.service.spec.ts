@@ -98,7 +98,7 @@ describe('GapDetectorService', () => {
       prisma.syncCursor.findUnique.mockResolvedValue({ chainId: 1, lastBlock: 110n });
       prisma.monitoredAddress.findFirst.mockResolvedValue({ startBlock: 100n });
 
-      // Blocks 100-109 range, only 100, 101, 102, 105, 106, 107, 108, 109 indexed
+      // Blocks 100-110 range, only 100, 101, 102, 105, 106, 107, 108, 109, 110 indexed
       // Missing: 103, 104 => gap 103-104
       prisma.indexedBlock.findMany.mockResolvedValue([
         { blockNumber: 100n },
@@ -109,6 +109,7 @@ describe('GapDetectorService', () => {
         { blockNumber: 107n },
         { blockNumber: 108n },
         { blockNumber: 109n },
+        { blockNumber: 110n },
       ]);
 
       redis.getCache.mockResolvedValue(null); // nothing scanned in Redis
@@ -132,8 +133,8 @@ describe('GapDetectorService', () => {
         expect.objectContaining({
           gapId: 42,
           chainId: 1,
-          fromBlock: 103,
-          toBlock: 104,
+          startBlock: 103,
+          endBlock: 104,
         }),
         expect.objectContaining({
           attempts: 3,
@@ -188,13 +189,14 @@ describe('GapDetectorService', () => {
       prisma.syncCursor.findUnique.mockResolvedValue({ chainId: 1, lastBlock: 111n });
       prisma.monitoredAddress.findFirst.mockResolvedValue({ startBlock: 100n });
 
-      // Blocks 100, 101, 105, 106, 110 indexed => gaps at 102-104 and 107-109
+      // Blocks 100, 101, 105, 106, 110, 111 indexed => gaps at 102-104 and 107-109
       prisma.indexedBlock.findMany.mockResolvedValue([
         { blockNumber: 100n },
         { blockNumber: 101n },
         { blockNumber: 105n },
         { blockNumber: 106n },
         { blockNumber: 110n },
+        { blockNumber: 111n },
       ]);
       redis.getCache.mockResolvedValue(null);
       prisma.syncGap.findFirst.mockResolvedValue(null);

@@ -1,25 +1,29 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BalanceMaterializerService } from './balance-materializer.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../redis/redis.service';
 
 describe('BalanceMaterializerService', () => {
   let service: BalanceMaterializerService;
   let prisma: any;
+  let redis: any;
 
   beforeEach(async () => {
     prisma = {
-      indexedEvent: {
-        findMany: jest.fn().mockResolvedValue([]),
-      },
-      materializedBalance: {
-        upsert: jest.fn().mockResolvedValue({}),
-      },
+      $queryRawUnsafe: jest.fn().mockResolvedValue([]),
+      $executeRawUnsafe: jest.fn().mockResolvedValue(1),
+    };
+
+    redis = {
+      getCache: jest.fn().mockResolvedValue(null),
+      setCache: jest.fn().mockResolvedValue(undefined),
     };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         BalanceMaterializerService,
         { provide: PrismaService, useValue: prisma },
+        { provide: RedisService, useValue: redis },
       ],
     }).compile();
 
@@ -31,163 +35,152 @@ describe('BalanceMaterializerService', () => {
   afterEach(() => jest.clearAllMocks());
 
   it('should increase balance for inbound events', async () => {
-    prisma.indexedEvent.findMany.mockResolvedValue([
+    prisma.$queryRawUnsafe.mockResolvedValue([
       {
-        toAddress: '0xWallet',
-        fromAddress: '0xSender',
-        tokenId: 1n,
+        to_address: '0xWallet',
+        from_address: '0xSender',
+        token_id: 1n,
         amount: '500',
-        clientId: 1n,
-        projectId: 10n,
-        walletId: 100n,
-        isInbound: true,
-        blockNumber: 1000n,
+        client_id: 1n,
+        project_id: 10n,
+        wallet_id: 100n,
+        is_inbound: true,
+        block_number: 1000n,
       },
     ]);
 
     const count = await service.materializeForChain(1, 1000);
 
     expect(count).toBe(1);
-    expect(prisma.materializedBalance.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: {
-          uq_chain_addr_token: {
-            chainId: 1,
-            address: '0xwallet',
-            tokenId: 1n,
-          },
-        },
-        create: expect.objectContaining({
-          address: '0xwallet',
-        }),
-      }),
+    expect(prisma.$executeRawUnsafe).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO materialized_balances'),
+      1,
+      '0xwallet',
+      1n,
+      1n,
+      10n,
+      100n,
+      '500',
+      1000n,
     );
   });
 
   it('should decrease balance for outbound events', async () => {
-    prisma.indexedEvent.findMany.mockResolvedValue([
+    prisma.$queryRawUnsafe.mockResolvedValue([
       {
-        toAddress: '0xReceiver',
-        fromAddress: '0xWallet',
-        tokenId: 1n,
+        to_address: '0xReceiver',
+        from_address: '0xWallet',
+        token_id: 1n,
         amount: '300',
-        clientId: 1n,
-        projectId: 10n,
-        walletId: 100n,
-        isInbound: false,
-        blockNumber: 1000n,
+        client_id: 1n,
+        project_id: 10n,
+        wallet_id: 100n,
+        is_inbound: false,
+        block_number: 1000n,
       },
     ]);
 
     const count = await service.materializeForChain(1, 1000);
 
     expect(count).toBe(1);
-    // The upsert should be called with a negative net amount for the from address
-    expect(prisma.materializedBalance.upsert).toHaveBeenCalled();
-    const call = prisma.materializedBalance.upsert.mock.calls[0][0];
-    expect(call.where.uq_chain_addr_token.address).toBe('0xwallet');
-    // Net amount should be negative (outbound)
-    expect(call.create.balance.toString()).toContain('-300');
+    // The $executeRawUnsafe should be called with a negative net amount for the from address
+    expect(prisma.$executeRawUnsafe).toHaveBeenCalled();
+    const call = prisma.$executeRawUnsafe.mock.calls[0];
+    // call[2] is the address argument
+    expect(call[2]).toBe('0xwallet');
+    // call[7] is the balance/netAmount argument (should be negative string)
+    expect(call[7]).toBe('-300');
   });
 
   it('should compute net balance correctly for same (address, token)', async () => {
-    prisma.indexedEvent.findMany.mockResolvedValue([
+    prisma.$queryRawUnsafe.mockResolvedValue([
       {
-        toAddress: '0xWallet',
-        fromAddress: '0xExternal',
-        tokenId: 1n,
+        to_address: '0xWallet',
+        from_address: '0xExternal',
+        token_id: 1n,
         amount: '1000',
-        clientId: 1n,
-        projectId: 10n,
-        walletId: 100n,
-        isInbound: true,
-        blockNumber: 100n,
+        client_id: 1n,
+        project_id: 10n,
+        wallet_id: 100n,
+        is_inbound: true,
+        block_number: 100n,
       },
       {
-        toAddress: '0xOther',
-        fromAddress: '0xWallet',
-        tokenId: 1n,
+        to_address: '0xOther',
+        from_address: '0xWallet',
+        token_id: 1n,
         amount: '400',
-        clientId: 1n,
-        projectId: 10n,
-        walletId: 100n,
-        isInbound: false,
-        blockNumber: 200n,
+        client_id: 1n,
+        project_id: 10n,
+        wallet_id: 100n,
+        is_inbound: false,
+        block_number: 200n,
       },
     ]);
 
     const count = await service.materializeForChain(1, 200);
 
-    // Should have one upsert for 0xwallet (net: 1000 - 400 = 600)
+    // Should have one $executeRawUnsafe for 0xwallet (net: 1000 - 400 = 600)
     // Both events map to key "0xwallet:1"
     expect(count).toBe(1);
-    const call = prisma.materializedBalance.upsert.mock.calls[0][0];
-    expect(call.where.uq_chain_addr_token.address).toBe('0xwallet');
-    expect(call.create.balance.toString()).toBe('600');
+    const call = prisma.$executeRawUnsafe.mock.calls[0];
+    expect(call[2]).toBe('0xwallet');
+    expect(call[7]).toBe('600');
   });
 
   it('should skip events with null amount', async () => {
-    prisma.indexedEvent.findMany.mockResolvedValue([
+    prisma.$queryRawUnsafe.mockResolvedValue([
       {
-        toAddress: '0xWallet',
-        fromAddress: '0xSender',
-        tokenId: 1n,
+        to_address: '0xWallet',
+        from_address: '0xSender',
+        token_id: 1n,
         amount: null,
-        clientId: 1n,
-        projectId: 10n,
-        walletId: 100n,
-        isInbound: true,
-        blockNumber: 100n,
+        client_id: 1n,
+        project_id: 10n,
+        wallet_id: 100n,
+        is_inbound: true,
+        block_number: 100n,
       },
     ]);
 
     const count = await service.materializeForChain(1, 100);
 
     expect(count).toBe(0);
-    expect(prisma.materializedBalance.upsert).not.toHaveBeenCalled();
+    expect(prisma.$executeRawUnsafe).not.toHaveBeenCalled();
   });
 
   it('should upsert existing balance records', async () => {
-    prisma.indexedEvent.findMany.mockResolvedValue([
+    prisma.$queryRawUnsafe.mockResolvedValue([
       {
-        toAddress: '0xWallet',
-        fromAddress: '0xSender',
-        tokenId: 5n,
+        to_address: '0xWallet',
+        from_address: '0xSender',
+        token_id: 5n,
         amount: '750',
-        clientId: 2n,
-        projectId: 20n,
-        walletId: 200n,
-        isInbound: true,
-        blockNumber: 500n,
+        client_id: 2n,
+        project_id: 20n,
+        wallet_id: 200n,
+        is_inbound: true,
+        block_number: 500n,
       },
     ]);
 
     await service.materializeForChain(137, 500);
 
-    expect(prisma.materializedBalance.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: {
-          uq_chain_addr_token: {
-            chainId: 137,
-            address: '0xwallet',
-            tokenId: 5n,
-          },
-        },
-        update: expect.objectContaining({
-          lastUpdatedBlock: 500n,
-        }),
-        create: expect.objectContaining({
-          chainId: 137,
-          address: '0xwallet',
-          tokenId: 5n,
-          clientId: 2n,
-        }),
-      }),
+    expect(prisma.$executeRawUnsafe).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO materialized_balances'),
+      137,
+      '0xwallet',
+      5n,
+      2n,
+      20n,
+      200n,
+      '750',
+      500n,
     );
   });
 
   it('should return 0 when no events exist', async () => {
-    prisma.indexedEvent.findMany.mockResolvedValue([]);
+    prisma.$queryRawUnsafe.mockResolvedValue([]);
 
     const count = await service.materializeForChain(1, 100);
 
@@ -195,55 +188,57 @@ describe('BalanceMaterializerService', () => {
   });
 
   it('should use native key when tokenId is null', async () => {
-    prisma.indexedEvent.findMany.mockResolvedValue([
+    prisma.$queryRawUnsafe.mockResolvedValue([
       {
-        toAddress: '0xWallet',
-        fromAddress: '0xSender',
-        tokenId: null,
+        to_address: '0xWallet',
+        from_address: '0xSender',
+        token_id: null,
         amount: '1000',
-        clientId: 1n,
-        projectId: 10n,
-        walletId: 100n,
-        isInbound: true,
-        blockNumber: 100n,
+        client_id: 1n,
+        project_id: 10n,
+        wallet_id: 100n,
+        is_inbound: true,
+        block_number: 100n,
       },
     ]);
 
     await service.materializeForChain(1, 100);
 
-    const call = prisma.materializedBalance.upsert.mock.calls[0][0];
-    expect(call.where.uq_chain_addr_token.tokenId).toBeNull();
+    const call = prisma.$executeRawUnsafe.mock.calls[0];
+    // call[3] is tokenId — should be null
+    expect(call[3]).toBeNull();
   });
 
   it('should track lastBlock as the highest block number seen', async () => {
-    prisma.indexedEvent.findMany.mockResolvedValue([
+    prisma.$queryRawUnsafe.mockResolvedValue([
       {
-        toAddress: '0xWallet',
-        fromAddress: '0xA',
-        tokenId: 1n,
+        to_address: '0xWallet',
+        from_address: '0xA',
+        token_id: 1n,
         amount: '100',
-        clientId: 1n,
-        projectId: 10n,
-        walletId: 100n,
-        isInbound: true,
-        blockNumber: 50n,
+        client_id: 1n,
+        project_id: 10n,
+        wallet_id: 100n,
+        is_inbound: true,
+        block_number: 50n,
       },
       {
-        toAddress: '0xWallet',
-        fromAddress: '0xB',
-        tokenId: 1n,
+        to_address: '0xWallet',
+        from_address: '0xB',
+        token_id: 1n,
         amount: '200',
-        clientId: 1n,
-        projectId: 10n,
-        walletId: 100n,
-        isInbound: true,
-        blockNumber: 150n,
+        client_id: 1n,
+        project_id: 10n,
+        wallet_id: 100n,
+        is_inbound: true,
+        block_number: 150n,
       },
     ]);
 
     await service.materializeForChain(1, 200);
 
-    const call = prisma.materializedBalance.upsert.mock.calls[0][0];
-    expect(call.update.lastUpdatedBlock).toBe(150n);
+    const call = prisma.$executeRawUnsafe.mock.calls[0];
+    // call[8] is lastBlock — should be the highest block number seen
+    expect(call[8]).toBe(150n);
   });
 });

@@ -18,9 +18,9 @@ import { POSTHOG_SERVICE } from '@cvh/posthog';
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 const CHAIN_ID = 1;
-const MONITORED_ADDRESS = '0x742d35Cc6634C0532925a3b844Bc9e7595f2bD0e';
-const SENDER_ADDRESS = '0x1234567890AbcdEF1234567890aBcdef12345678';
-const USDC_CONTRACT = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48';
+const MONITORED_ADDRESS = ethers.getAddress('0x742d35cc6634c0532925a3b844bc9e7595f2bd0e');
+const SENDER_ADDRESS = ethers.getAddress('0x1234567890abcdef1234567890abcdef12345678');
+const USDC_CONTRACT = ethers.getAddress('0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48');
 const TRANSFER_TOPIC = ethers.id('Transfer(address,address,uint256)');
 const CLIENT_ID = 10n;
 const WALLET_ID = 100n;

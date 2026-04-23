@@ -14,7 +14,7 @@ describe('BlockProcessorService', () => {
 
   const TRANSFER_TOPIC = ethers.id('Transfer(address,address,uint256)');
 
-  const MONITORED_ADDRESS = '0x742d35Cc6634C0532925a3b844Bc9e7595f2bD0e';
+  const MONITORED_ADDRESS = ethers.getAddress('0x742d35cc6634c0532925a3b844bc9e7595f2bd0e');
   const MONITORED_ADDRESS_LOWER = MONITORED_ADDRESS.toLowerCase();
 
   const mockMonitoredRow = {
@@ -200,7 +200,8 @@ describe('BlockProcessorService', () => {
 
     expect(result.eventsFound).toBe(0);
     expect(prisma.indexedEvent.upsert).not.toHaveBeenCalled();
-    expect(prisma.indexedBlock.upsert).not.toHaveBeenCalled();
+    // The service now always records indexed blocks (even with 0 events)
+    expect(prisma.indexedBlock.upsert).toHaveBeenCalledTimes(1);
   });
 
   it('should handle empty blocks with monitored addresses', async () => {
@@ -222,7 +223,8 @@ describe('BlockProcessorService', () => {
     expect(result.eventsFound).toBe(0);
     expect(result.blockHash).toBe('0xblockhash500');
     expect(prisma.indexedEvent.upsert).not.toHaveBeenCalled();
-    expect(prisma.indexedBlock.upsert).not.toHaveBeenCalled();
+    // The service now always records indexed blocks (even with 0 events)
+    expect(prisma.indexedBlock.upsert).toHaveBeenCalledTimes(1);
   });
 
   it('should cache monitored addresses and reuse within TTL', async () => {
