@@ -42,7 +42,7 @@ export class ChainService {
          LEFT JOIN rpc_nodes rn
            ON rn.chain_id = c.chain_id
            AND rn.is_active = 1
-           AND rn.status = 'active'
+           AND rn.status NOT IN ('disabled', 'standby')
          WHERE c.is_active = 1
          GROUP BY c.chain_id
          ORDER BY c.chain_id`,
