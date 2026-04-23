@@ -43,9 +43,9 @@ export class SecurityService {
   // ────────────────────────────────────────────────────────────
 
   async getSettings(clientId: number) {
-    // Fetch client record from cvh_admin for custody_policy
+    // Fetch client record from cvh_admin for custody_mode
     const [client] = await this.db.query(
-      `SELECT id, custody_policy, status FROM cvh_admin.clients WHERE id = ?`,
+      `SELECT id, custody_mode, status FROM cvh_admin.clients WHERE id = ?`,
       [clientId],
     );
 
@@ -76,7 +76,7 @@ export class SecurityService {
     }
 
     return {
-      custodyMode: client?.custody_policy ?? 'full_custody',
+      custodyMode: client?.custody_mode ?? 'full_custody',
       safeModeActive,
       twoFactorEnabled,
       clientStatus: client?.status ?? 'unknown',
@@ -128,7 +128,7 @@ export class SecurityService {
     const dbMode = mode === 'client_initiated' ? 'self_managed' : mode;
 
     await this.db.query(
-      `UPDATE cvh_admin.clients SET custody_policy = ? WHERE id = ?`,
+      `UPDATE cvh_admin.clients SET custody_mode = ? WHERE id = ?`,
       [dbMode, clientId],
     );
 

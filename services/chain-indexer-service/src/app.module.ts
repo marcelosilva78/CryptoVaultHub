@@ -1,8 +1,9 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { BullModule } from '@nestjs/bullmq';
 import { ScheduleModule } from '@nestjs/schedule';
-import { MetricsModule, StructuredLoggerModule } from '@cvh/config';
+import { MetricsModule, MetricsInterceptor, StructuredLoggerModule } from '@cvh/config';
 import { EventBusModule } from '@cvh/event-bus';
 import { PostHogModule } from '@cvh/posthog';
 import { PrismaModule } from './prisma/prisma.module';
@@ -18,6 +19,8 @@ import { GapDetectorModule } from './gap-detector/gap-detector.module';
 import { BackfillModule } from './backfill/backfill.module';
 import { FinalityTrackerModule } from './finality/finality-tracker.module';
 import { AddressRegistrationModule } from './address-registration/address-registration.module';
+import { ReorgDetectorModule } from './reorg/reorg-detector.module';
+import { InternalServiceGuard } from './common/guards/internal-service.guard';
 
 @Module({
   imports: [
@@ -57,7 +60,18 @@ import { AddressRegistrationModule } from './address-registration/address-regist
     BackfillModule,
     FinalityTrackerModule,
     AddressRegistrationModule,
+    ReorgDetectorModule,
   ],
   controllers: [HealthController],
+  providers: [
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: MetricsInterceptor,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: InternalServiceGuard,
+    },
+  ],
 })
 export class AppModule {}

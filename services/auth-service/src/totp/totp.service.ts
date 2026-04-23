@@ -3,6 +3,8 @@ import {
   Logger,
   BadRequestException,
   NotFoundException,
+  UnauthorizedException,
+  OnModuleDestroy,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { generateSecret, generateURI, verify as otpVerify } from 'otplib';
@@ -13,14 +15,19 @@ import {
   randomBytes,
   scryptSync,
 } from 'crypto';
+import Redis from 'ioredis';
 import { PrismaService } from '../prisma/prisma.service';
 
+/** TTL in seconds for the TOTP replay-prevention nonce (matches tolerance window). */
+const TOTP_USED_CODE_TTL = 90;
+
 @Injectable()
-export class TotpService {
+export class TotpService implements OnModuleDestroy {
   private readonly logger = new Logger(TotpService.name);
   private readonly issuer = 'CryptoVaultHub';
   private readonly rawEncryptionKey: string;
   private readonly encryptionKey: Buffer;
+  private readonly redis: Redis;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -30,6 +37,40 @@ export class TotpService {
     this.rawEncryptionKey = this.configService.getOrThrow<string>('TOTP_ENCRYPTION_KEY');
     // Legacy: keep a static-derived key for decrypting old 3-part records
     this.encryptionKey = scryptSync(this.rawEncryptionKey, 'totp-secret-salt', 32);
+
+    this.redis = new Redis({
+      host: this.configService.get<string>('REDIS_HOST', 'localhost'),
+      port: parseInt(this.configService.get<string>('REDIS_PORT', '6379'), 10),
+      password: this.configService.get<string>('REDIS_PASSWORD') || undefined,
+      db: parseInt(this.configService.get<string>('REDIS_DB', '0'), 10),
+      keyPrefix: 'cvh:totp:',
+      lazyConnect: true,
+    });
+    this.redis.connect().catch((err) =>
+      this.logger.error(`Redis connection failed: ${err.message}`),
+    );
+  }
+
+  async onModuleDestroy() {
+    await this.redis.quit();
+  }
+
+  /**
+   * Check whether a TOTP code has already been consumed for this user.
+   */
+  private async isCodeUsed(userId: bigint, code: string): Promise<boolean> {
+    const key = `used:${userId}:${code}`;
+    const exists = await this.redis.exists(key);
+    return exists === 1;
+  }
+
+  /**
+   * Mark a TOTP code as consumed so it cannot be replayed within the
+   * tolerance window.
+   */
+  private async markCodeUsed(userId: bigint, code: string): Promise<void> {
+    const key = `used:${userId}:${code}`;
+    await this.redis.set(key, '1', 'EX', TOTP_USED_CODE_TTL);
   }
 
   /** Derive a 32-byte key from the raw key + a random salt using scrypt. */
@@ -147,6 +188,11 @@ export class TotpService {
       );
     }
 
+    // Replay prevention: reject codes already consumed within the tolerance window
+    if (await this.isCodeUsed(userId, code)) {
+      throw new UnauthorizedException('TOTP code already used');
+    }
+
     const secret = this.decryptSecret(user.totpSecret);
     const result = await otpVerify({
       token: code,
@@ -158,6 +204,8 @@ export class TotpService {
     if (!result.valid) {
       throw new BadRequestException('Invalid TOTP code');
     }
+
+    await this.markCodeUsed(userId, code);
 
     // Enable 2FA
     if (!user.totpEnabled) {
@@ -182,6 +230,11 @@ export class TotpService {
       throw new BadRequestException('2FA is not enabled for this user');
     }
 
+    // Replay prevention: reject codes already consumed within the tolerance window
+    if (await this.isCodeUsed(userId, code)) {
+      throw new UnauthorizedException('TOTP code already used');
+    }
+
     const secret = this.decryptSecret(user.totpSecret);
     const result = await otpVerify({
       token: code,
@@ -189,6 +242,11 @@ export class TotpService {
       period: 30,
       epochTolerance: 30,
     });
+
+    if (result.valid) {
+      await this.markCodeUsed(userId, code);
+    }
+
     return result.valid;
   }
 
@@ -203,6 +261,11 @@ export class TotpService {
       throw new BadRequestException('2FA is not enabled');
     }
 
+    // Replay prevention: reject codes already consumed within the tolerance window
+    if (await this.isCodeUsed(userId, code)) {
+      throw new UnauthorizedException('TOTP code already used');
+    }
+
     const secret = this.decryptSecret(user.totpSecret);
     const result = await otpVerify({
       token: code,
@@ -213,6 +276,8 @@ export class TotpService {
     if (!result.valid) {
       throw new BadRequestException('Invalid TOTP code');
     }
+
+    await this.markCodeUsed(userId, code);
 
     await this.prisma.user.update({
       where: { id: userId },

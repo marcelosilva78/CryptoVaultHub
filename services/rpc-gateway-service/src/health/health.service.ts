@@ -3,10 +3,25 @@ import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { JsonRpcProvider, FetchRequest } from 'ethers';
 import { createDecipheriv } from 'crypto';
+import * as promClient from 'prom-client';
 import { EventBusService, TOPICS } from '@cvh/event-bus';
 import { PrismaService } from '../prisma/prisma.service';
 import { RateLimiterService } from '../rate-limiter/rate-limiter.service';
 import { Decimal } from '../generated/prisma-client/runtime/library';
+
+/* ── Prometheus metrics for RPC provider health ─────────────────────── */
+const rpcHealthScore = new promClient.Gauge({
+  name: 'rpc_provider_health_score',
+  help: 'RPC provider health score 0-100',
+  labelNames: ['provider', 'chain_id'],
+});
+
+const rpcRequestDuration = new promClient.Histogram({
+  name: 'rpc_request_duration_seconds',
+  help: 'RPC request duration',
+  labelNames: ['provider', 'chain_id'],
+  buckets: [0.1, 0.25, 0.5, 1, 2.5, 5, 10],
+});
 
 /**
  * Periodic health checker for RPC nodes.
@@ -150,7 +165,8 @@ export class HealthService implements OnModuleInit {
     timeoutMs: number;
     consecutiveFailures: number;
     healthScore: Decimal | number;
-    provider?: { authMethod: string; authHeaderName: string | null; apiKeyEncrypted: string | null };
+    chainId?: number;
+    provider?: { name?: string; authMethod: string; authHeaderName: string | null; apiKeyEncrypted: string | null };
   }): Promise<void> {
     const start = Date.now();
     let latencyMs: number;
@@ -226,6 +242,12 @@ export class HealthService implements OnModuleInit {
         ...(newStatus ? { status: newStatus } : {}),
       },
     });
+
+    // Push Prometheus metrics
+    const providerLabel = node.provider?.name ?? 'unknown';
+    const chainLabel = String(node.chainId ?? 0);
+    rpcHealthScore.set({ provider: providerLabel, chain_id: chainLabel }, Math.round(newScore * 100) / 100);
+    rpcRequestDuration.observe({ provider: providerLabel, chain_id: chainLabel }, latencyMs / 1000);
   }
 
   /**

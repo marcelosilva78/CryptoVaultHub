@@ -14,6 +14,8 @@ import { AuthGuard } from '@nestjs/passport';
 import { Request } from 'express';
 import { ImpersonationService } from './impersonation.service';
 import { InternalServiceGuard } from '../common/guards/internal-service.guard';
+import { RolesGuard } from '../rbac/roles.guard';
+import { Roles } from '../rbac/roles.decorator';
 import {
   StartImpersonationDto,
   ListSessionsQueryDto,
@@ -24,7 +26,8 @@ export class ImpersonationController {
   constructor(private readonly impersonationService: ImpersonationService) {}
 
   @Post('start')
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('super_admin', 'admin')
   async startSession(@Body() dto: StartImpersonationDto, @Req() req: Request) {
     const adminUserId = (req as any).user.userId;
     const result = await this.impersonationService.startSession({
@@ -50,7 +53,8 @@ export class ImpersonationController {
   }
 
   @Post('end/:sessionId')
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('super_admin', 'admin')
   @HttpCode(HttpStatus.OK)
   async endSession(@Param('sessionId') sessionId: string, @Req() req: Request) {
     const adminUserId = (req as any).user.userId;
@@ -59,7 +63,8 @@ export class ImpersonationController {
   }
 
   @Get('sessions')
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('super_admin', 'admin')
   @HttpCode(HttpStatus.OK)
   async listSessions(@Query() query: ListSessionsQueryDto, @Req() req: Request) {
     const adminUserId = (req as any).user.userId;

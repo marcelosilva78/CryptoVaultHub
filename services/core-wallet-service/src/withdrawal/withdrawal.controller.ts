@@ -34,9 +34,10 @@ export class WithdrawalController {
   @Post(':withdrawalId/approve')
   async approveWithdrawal(
     @Param('withdrawalId', ParseIntPipe) withdrawalId: number,
+    @Body('clientId', ParseIntPipe) clientId: number,
   ) {
     const result =
-      await this.withdrawalService.approveWithdrawal(withdrawalId);
+      await this.withdrawalService.approveWithdrawal(withdrawalId, clientId);
     return {
       success: true,
       withdrawal: result.withdrawal,
@@ -46,9 +47,10 @@ export class WithdrawalController {
   @Post(':withdrawalId/cancel')
   async cancelWithdrawal(
     @Param('withdrawalId', ParseIntPipe) withdrawalId: number,
+    @Body('clientId', ParseIntPipe) clientId: number,
   ) {
     const result =
-      await this.withdrawalService.cancelWithdrawal(withdrawalId);
+      await this.withdrawalService.cancelWithdrawal(withdrawalId, clientId);
     return {
       success: true,
       withdrawal: result.withdrawal,
@@ -58,9 +60,10 @@ export class WithdrawalController {
   @Get('detail/:withdrawalId')
   async getWithdrawal(
     @Param('withdrawalId', ParseIntPipe) withdrawalId: number,
+    @Query('clientId', ParseIntPipe) clientId: number,
   ) {
     const withdrawal =
-      await this.withdrawalService.getWithdrawal(withdrawalId);
+      await this.withdrawalService.getWithdrawal(withdrawalId, clientId);
     return {
       success: true,
       withdrawal,

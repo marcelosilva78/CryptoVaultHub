@@ -251,11 +251,11 @@ contract CvhForwarder is IERC721Receiver, IERC1155Receiver, ERC165, ReentrancyGu
 
     // --- Receive / Fallback ---
 
-    receive() external payable {
+    receive() external payable nonReentrant {
         _flush();
     }
 
-    fallback() external payable {
+    fallback() external payable nonReentrant {
         _flush();
     }
 }

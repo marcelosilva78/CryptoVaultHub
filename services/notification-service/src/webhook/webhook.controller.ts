@@ -10,6 +10,7 @@ import {
   ParseIntPipe,
   HttpCode,
   HttpStatus,
+  NotFoundException,
 } from '@nestjs/common';
 import { WebhookService } from './webhook.service';
 import { WebhookDeliveryService } from './webhook-delivery.service';
@@ -76,6 +77,7 @@ export class WebhookController {
       BigInt(dto.clientId),
       dto.eventType,
       dto.payload,
+      dto.projectId ? BigInt(dto.projectId) : undefined,
     );
     return {
       success: true,
@@ -101,9 +103,13 @@ export class WebhookController {
     @Param('id', ParseIntPipe) id: number,
     @Body() body: { clientId: number },
   ) {
+    const delivery = await this.deliveryService.getDeliveryDetail(BigInt(id));
+    if (!delivery) {
+      throw new NotFoundException('Delivery not found');
+    }
     const result = await this.deliveryService.deliverWebhook(
       BigInt(id),
-      BigInt(0), // Will be resolved from delivery record
+      BigInt(delivery.webhookId),
     );
     return { success: true, delivery: result };
   }

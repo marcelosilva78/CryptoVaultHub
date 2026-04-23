@@ -16,7 +16,7 @@ model Client {
   status        ClientStatus   @default(active)
   tierId        BigInt?        @map("tier_id")
   email         String?        @db.VarChar(255)
-  custodyPolicy CustodyPolicy  @default(full_custody) @map("custody_policy")
+  custodyPolicy CustodyPolicy  @default(full_custody) @map("custody_mode")
   kytEnabled    Boolean        @default(false) @map("kyt_enabled")
   kytLevel      KytLevel       @default(basic) @map("kyt_level")
   createdAt     DateTime       @default(now()) @map("created_at")

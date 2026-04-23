@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { MetricsModule, StructuredLoggerModule } from '@cvh/config';
+import { APP_INTERCEPTOR } from '@nestjs/core';
+import { MetricsModule, MetricsInterceptor, StructuredLoggerModule } from '@cvh/config';
 import { PrismaModule } from './prisma/prisma.module';
 import { JwtAuthModule } from './jwt/jwt-auth.module';
 import { ApiKeyModule } from './api-key/api-key.module';
@@ -28,5 +29,11 @@ import { HealthController } from './common/health.controller';
     InviteModule,
   ],
   controllers: [AuthController, HealthController],
+  providers: [
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: MetricsInterceptor,
+    },
+  ],
 })
 export class AppModule {}

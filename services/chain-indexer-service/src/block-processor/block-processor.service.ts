@@ -175,7 +175,7 @@ export class BlockProcessorService {
       this.logger.warn(`Failed to get ERC20 logs for block ${blockNumber} on chain ${chainId}: ${err}`);
     }
 
-    // 3. Write to DB only if relevant events found
+    // 3. Write events to DB if any found
     if (relevantEvents.length > 0) {
       for (const evt of relevantEvents) {
         await this.prisma.indexedEvent.upsert({
@@ -205,28 +205,30 @@ export class BlockProcessorService {
         });
       }
 
-      await this.prisma.indexedBlock.upsert({
-        where: {
-          uq_chain_block: { chainId, blockNumber: BigInt(blockNumber) },
-        },
-        update: { eventsDetected: relevantEvents.length },
-        create: {
-          chainId,
-          blockNumber: BigInt(blockNumber),
-          blockHash: block.hash!,
-          parentHash: block.parentHash,
-          blockTimestamp: BigInt(block.timestamp),
-          transactionCount: block.transactions.length,
-          eventsDetected: relevantEvents.length,
-        },
-      });
-
       this.logger.log(
         `Block ${blockNumber} on chain ${chainId}: ${relevantEvents.length} relevant events stored`,
       );
     }
 
-    // 4. Cache block hash in Redis for reorg detection
+    // 4. Always record the block as indexed (even with 0 events) so the
+    //    gap detector knows it was processed and does not re-flag it.
+    await this.prisma.indexedBlock.upsert({
+      where: {
+        uq_chain_block: { chainId, blockNumber: BigInt(blockNumber) },
+      },
+      update: { eventsDetected: relevantEvents.length },
+      create: {
+        chainId,
+        blockNumber: BigInt(blockNumber),
+        blockHash: block.hash!,
+        parentHash: block.parentHash,
+        blockTimestamp: BigInt(block.timestamp),
+        transactionCount: block.transactions.length,
+        eventsDetected: relevantEvents.length,
+      },
+    });
+
+    // 5. Cache block hash in Redis for reorg detection
     await this.redis.setCache(
       `block:${chainId}:${blockNumber}:hash`,
       block.hash!,

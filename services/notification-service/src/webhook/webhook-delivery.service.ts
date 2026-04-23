@@ -4,12 +4,25 @@ import { Queue } from 'bullmq';
 import * as crypto from 'crypto';
 import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
+import * as promClient from 'prom-client';
 import { PostHogService, POSTHOG_SERVICE } from '@cvh/posthog';
 import { PrismaService } from '../prisma/prisma.service';
 import { WebhookService } from './webhook.service';
 import { ConfigurableRetryService } from './configurable-retry.service';
 import { DeliveryAttemptRecorderService } from './delivery-attempt-recorder.service';
 import { DeadLetterService } from './dead-letter.service';
+
+/* ── Prometheus metrics for webhook deliveries ─────────────────────── */
+const webhookDeliveriesTotal = new promClient.Counter({
+  name: 'webhook_deliveries_total',
+  help: 'Total webhook deliveries attempted',
+  labelNames: ['status'],
+});
+
+const webhookDeliveriesSuccess = new promClient.Counter({
+  name: 'webhook_deliveries_success_total',
+  help: 'Successful webhook deliveries',
+});
 
 @Injectable()
 export class WebhookDeliveryService {
@@ -33,6 +46,7 @@ export class WebhookDeliveryService {
     clientId: bigint,
     eventType: string,
     payload: Record<string, any>,
+    projectId?: bigint,
   ) {
     const webhooks = await this.webhookService.findMatchingWebhooks(
       clientId,
@@ -48,6 +62,17 @@ export class WebhookDeliveryService {
 
     const deliveries = [];
 
+    // Resolve projectId from payload if not explicitly provided
+    const resolvedProjectId =
+      projectId ??
+      BigInt(
+        payload?.data?.projectId ??
+          payload?.data?.project_id ??
+          payload?.projectId ??
+          payload?.project_id ??
+          0,
+      );
+
     for (const webhook of webhooks) {
       const deliveryCode = `dlv_${uuidv4().replace(/-/g, '')}`;
       const idempotencyKey = `idem_${uuidv4().replace(/-/g, '')}`;
@@ -58,6 +83,7 @@ export class WebhookDeliveryService {
           deliveryCode,
           webhookId: webhook.id,
           clientId,
+          projectId: resolvedProjectId,
           eventType,
           payload: payload as any,
           status: 'queued',
@@ -204,6 +230,9 @@ export class WebhookDeliveryService {
       });
 
       if (isSuccess) {
+        webhookDeliveriesTotal.inc({ status: 'success' });
+        webhookDeliveriesSuccess.inc();
+
         const updated = await this.prisma.webhookDelivery.update({
           where: { id: deliveryId },
           data: {
@@ -243,6 +272,8 @@ export class WebhookDeliveryService {
       }
 
       // Non-success — determine retry or dead-letter
+      webhookDeliveriesTotal.inc({ status: 'failure' });
+
       return this.handleFailure(
         delivery,
         webhook,
@@ -272,6 +303,8 @@ export class WebhookDeliveryService {
         errorMessage,
         errorCode: error.code ?? null,
       });
+
+      webhookDeliveriesTotal.inc({ status: 'error' });
 
       return this.handleFailure(
         delivery,

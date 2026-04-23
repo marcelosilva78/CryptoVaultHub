@@ -1,8 +1,28 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import * as promClient from 'prom-client';
 import { PrismaService } from '../prisma/prisma.service';
 import { EvmProviderService } from '../blockchain/evm-provider.service';
 import { RedisService } from '../redis/redis.service';
+
+/* ── Prometheus metrics for chain indexer sync health ───────────────── */
+const syncBlocksBehind = new promClient.Gauge({
+  name: 'sync_blocks_behind',
+  help: 'Number of blocks the indexer is behind',
+  labelNames: ['chain_id'],
+});
+
+const syncGapsOpen = new promClient.Gauge({
+  name: 'sync_gaps_open',
+  help: 'Number of open sync gaps',
+  labelNames: ['chain_id'],
+});
+
+const syncIndexerStatus = new promClient.Gauge({
+  name: 'sync_indexer_status',
+  help: 'Indexer status: 0=stopped, 1=running',
+  labelNames: ['chain_id'],
+});
 
 export interface ChainSyncHealth {
   chainId: number;
@@ -108,6 +128,12 @@ export class SyncHealthService {
         );
       }
 
+      // Push Prometheus metrics for error state
+      const chainLabel = String(chainId);
+      syncBlocksBehind.set({ chain_id: chainLabel }, 0);
+      syncGapsOpen.set({ chain_id: chainLabel }, 0);
+      syncIndexerStatus.set({ chain_id: chainLabel }, 0);
+
       return {
         chainId,
         chainName,
@@ -209,6 +235,15 @@ export class SyncHealthService {
         600,
       );
     }
+
+    // Push Prometheus metrics
+    const chainLabel = String(chainId);
+    syncBlocksBehind.set({ chain_id: chainLabel }, blocksBehind);
+    syncGapsOpen.set({ chain_id: chainLabel }, gapCount);
+    syncIndexerStatus.set(
+      { chain_id: chainLabel },
+      status === 'error' || indexerStatus === 'stale' ? 0 : 1,
+    );
 
     return {
       chainId,

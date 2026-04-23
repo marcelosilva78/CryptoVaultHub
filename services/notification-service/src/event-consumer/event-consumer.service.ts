@@ -28,12 +28,16 @@ const CONSUMER_GROUP = 'notification-service';
 const CONSUMER_NAME = 'worker-1';
 const BLOCK_MS = 5000;
 const BATCH_SIZE = 10;
+const PENDING_RECOVERY_INTERVAL_MS = 60_000;
+const PENDING_MIN_IDLE_MS = 60_000;
+const PENDING_BATCH_SIZE = 10;
 
 @Injectable()
 export class EventConsumerService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(EventConsumerService.name);
   private redis: Redis;
   private running = false;
+  private pendingRecoveryTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(
     private readonly config: ConfigService,
@@ -52,6 +56,15 @@ export class EventConsumerService implements OnModuleInit, OnModuleDestroy {
     await this.ensureConsumerGroups();
     this.running = true;
 
+    // Recover any pending messages left by previous crashed consumers
+    await this.recoverPendingMessages();
+
+    // Schedule periodic recovery of pending messages
+    this.pendingRecoveryTimer = setInterval(
+      () => this.recoverPendingMessages(),
+      PENDING_RECOVERY_INTERVAL_MS,
+    );
+
     // If Kafka is available, use it as the primary consumer
     if (this.kafkaConsumer) {
       await this.startKafkaConsumer();
@@ -65,6 +78,10 @@ export class EventConsumerService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleDestroy() {
     this.running = false;
+    if (this.pendingRecoveryTimer) {
+      clearInterval(this.pendingRecoveryTimer);
+      this.pendingRecoveryTimer = null;
+    }
     await this.redis.quit();
   }
 
@@ -89,6 +106,75 @@ export class EventConsumerService implements OnModuleInit, OnModuleDestroy {
             `Failed to create consumer group for ${stream}: ${error.message}`,
           );
         }
+      }
+    }
+  }
+
+  /**
+   * Recover pending messages that were delivered but never ACKed (e.g. after a crash).
+   * Uses XPENDING to discover stale entries and XCLAIM to take ownership before
+   * re-processing them. Messages that fail processing are left un-ACKed so they
+   * will be retried on the next recovery cycle.
+   */
+  private async recoverPendingMessages() {
+    const streams = Object.keys(STREAM_EVENT_MAP);
+
+    for (const stream of streams) {
+      try {
+        // XPENDING <stream> <group> <start> <end> <count>
+        // Returns array of [messageId, consumerName, idleTimeMs, deliveryCount]
+        const pending = (await this.redis.xpending(
+          stream,
+          CONSUMER_GROUP,
+          '-',
+          '+',
+          PENDING_BATCH_SIZE,
+        )) as [string, string, number, number][];
+
+        if (!pending || pending.length === 0) continue;
+
+        // Filter for messages that have been idle longer than the threshold
+        const staleIds = pending
+          .filter(([, , idleTime]) => idleTime >= PENDING_MIN_IDLE_MS)
+          .map(([id]) => id);
+
+        if (staleIds.length === 0) continue;
+
+        this.logger.log(
+          `Recovering ${staleIds.length} pending message(s) from stream "${stream}"`,
+        );
+
+        // XCLAIM <stream> <group> <consumer> <min-idle-time> <id...>
+        // Returns messages in the same format as XREADGROUP entries: [[id, fields], ...]
+        const claimed = (await this.redis.xclaim(
+          stream,
+          CONSUMER_GROUP,
+          CONSUMER_NAME,
+          PENDING_MIN_IDLE_MS,
+          ...staleIds,
+        )) as [string, string[]][];
+
+        if (!claimed || claimed.length === 0) continue;
+
+        const eventType = STREAM_EVENT_MAP[stream];
+        if (!eventType) continue;
+
+        for (const [id, fields] of claimed) {
+          try {
+            await this.processStreamEntry(stream, id, fields, eventType);
+            await this.redis.xack(stream, CONSUMER_GROUP, id);
+            this.logger.debug(`Recovered and processed ${stream}/${id}`);
+          } catch (err: any) {
+            this.logger.error(
+              `Failed to process recovered message ${stream}/${id}: ${err.message}`,
+            );
+            // Don't XACK — will be retried on next recovery cycle
+          }
+        }
+      } catch (err: any) {
+        this.logger.error(
+          `Failed to recover pending messages for stream "${stream}": ${err.message}`,
+        );
       }
     }
   }
@@ -197,10 +283,12 @@ export class EventConsumerService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
+    const projectId = data.projectId || data.project_id;
     await this.deliveryService.createDeliveries(
       BigInt(clientId),
       eventType,
       payload,
+      projectId ? BigInt(projectId) : undefined,
     );
 
     this.logger.debug(
@@ -245,10 +333,12 @@ export class EventConsumerService implements OnModuleInit, OnModuleDestroy {
           source: 'kafka',
         };
 
+        const kafkaProjectId = data.projectId || data.project_id;
         await this.deliveryService.createDeliveries(
           BigInt(clientId),
           eventType,
           payload,
+          kafkaProjectId ? BigInt(kafkaProjectId) : undefined,
         );
 
         this.logger.debug(

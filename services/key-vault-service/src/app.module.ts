@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { APP_GUARD } from '@nestjs/core';
-import { MetricsModule, StructuredLoggerModule } from '@cvh/config';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { MetricsModule, MetricsInterceptor, StructuredLoggerModule } from '@cvh/config';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuditModule } from './audit/audit.module';
 import { EncryptionModule } from './encryption/encryption.module';
@@ -28,6 +28,10 @@ import { HealthController } from './common/health.controller';
   ],
   controllers: [HealthController],
   providers: [
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: MetricsInterceptor,
+    },
     // M1: Apply internal service auth globally to all Key Vault endpoints
     {
       provide: APP_GUARD,

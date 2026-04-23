@@ -54,6 +54,7 @@ describe('Withdrawal Flow Integration', () => {
     mockPrisma = {
       withdrawal: {
         findUnique: jest.fn(),
+        findFirst: jest.fn(),
         create: jest.fn().mockImplementation(({ data }) => {
           withdrawalIdCounter++;
           return Promise.resolve({
@@ -310,7 +311,7 @@ describe('Withdrawal Flow Integration', () => {
         createdAt: new Date(),
       };
 
-      mockPrisma.withdrawal.findUnique.mockResolvedValue(existingWithdrawal);
+      mockPrisma.withdrawal.findFirst.mockResolvedValue(existingWithdrawal);
 
       const result = await withdrawalService.createWithdrawal({
         clientId: CLIENT_ID,
@@ -371,13 +372,13 @@ describe('Withdrawal Flow Integration', () => {
 
   describe('Phase 2: Approve Withdrawal', () => {
     it('should transition withdrawal from pending_approval to approved', async () => {
-      mockPrisma.withdrawal.findUnique.mockResolvedValue({
+      mockPrisma.withdrawal.findFirst.mockResolvedValue({
         id: BigInt(1001),
         status: 'pending_approval',
         clientId: BigInt(CLIENT_ID),
       });
 
-      const result = await withdrawalService.approveWithdrawal(1001);
+      const result = await withdrawalService.approveWithdrawal(1001, CLIENT_ID);
 
       expect(mockPrisma.withdrawal.update).toHaveBeenCalledWith({
         where: { id: BigInt(1001) },
@@ -388,21 +389,21 @@ describe('Withdrawal Flow Integration', () => {
     });
 
     it('should reject approval of non-pending withdrawal', async () => {
-      mockPrisma.withdrawal.findUnique.mockResolvedValue({
+      mockPrisma.withdrawal.findFirst.mockResolvedValue({
         id: BigInt(1002),
         status: 'broadcasting',
         clientId: BigInt(CLIENT_ID),
       });
 
-      await expect(withdrawalService.approveWithdrawal(1002)).rejects.toThrow(
+      await expect(withdrawalService.approveWithdrawal(1002, CLIENT_ID)).rejects.toThrow(
         'cannot be approved',
       );
     });
 
     it('should throw when approving non-existent withdrawal', async () => {
-      mockPrisma.withdrawal.findUnique.mockResolvedValue(null);
+      mockPrisma.withdrawal.findFirst.mockResolvedValue(null);
 
-      await expect(withdrawalService.approveWithdrawal(9999)).rejects.toThrow(
+      await expect(withdrawalService.approveWithdrawal(9999, CLIENT_ID)).rejects.toThrow(
         'not found',
       );
     });
@@ -534,13 +535,13 @@ describe('Withdrawal Flow Integration', () => {
 
   describe('Phase 4: Cancel Withdrawal', () => {
     it('should cancel a pending_approval withdrawal', async () => {
-      mockPrisma.withdrawal.findUnique.mockResolvedValue({
+      mockPrisma.withdrawal.findFirst.mockResolvedValue({
         id: BigInt(1004),
         status: 'pending_approval',
         clientId: BigInt(CLIENT_ID),
       });
 
-      const result = await withdrawalService.cancelWithdrawal(1004);
+      const result = await withdrawalService.cancelWithdrawal(1004, CLIENT_ID);
 
       expect(mockPrisma.withdrawal.update).toHaveBeenCalledWith({
         where: { id: BigInt(1004) },
@@ -550,26 +551,26 @@ describe('Withdrawal Flow Integration', () => {
       expect(result.withdrawal.status).toBe('cancelled');
     });
 
-    it('should cancel an approved withdrawal', async () => {
-      mockPrisma.withdrawal.findUnique.mockResolvedValue({
+    it('should reject cancellation of approved withdrawal (race prevention)', async () => {
+      mockPrisma.withdrawal.findFirst.mockResolvedValue({
         id: BigInt(1005),
         status: 'approved',
         clientId: BigInt(CLIENT_ID),
       });
 
-      const result = await withdrawalService.cancelWithdrawal(1005);
-
-      expect(result.withdrawal.status).toBe('cancelled');
+      await expect(withdrawalService.cancelWithdrawal(1005, CLIENT_ID)).rejects.toThrow(
+        'cannot be cancelled',
+      );
     });
 
     it('should reject cancellation of broadcasting withdrawal', async () => {
-      mockPrisma.withdrawal.findUnique.mockResolvedValue({
+      mockPrisma.withdrawal.findFirst.mockResolvedValue({
         id: BigInt(1006),
         status: 'broadcasting',
         clientId: BigInt(CLIENT_ID),
       });
 
-      await expect(withdrawalService.cancelWithdrawal(1006)).rejects.toThrow(
+      await expect(withdrawalService.cancelWithdrawal(1006, CLIENT_ID)).rejects.toThrow(
         'cannot be cancelled',
       );
     });
@@ -693,8 +694,8 @@ describe('Withdrawal Flow Integration', () => {
 
   describe('Phase 6: End-to-End Withdrawal Lifecycle', () => {
     it('should complete the full lifecycle: create -> approve -> format', async () => {
-      // Reset findUnique to not interfere with idempotency check
-      mockPrisma.withdrawal.findUnique
+      // Reset findFirst to handle idempotency check + approve lookup sequentially
+      mockPrisma.withdrawal.findFirst
         .mockResolvedValueOnce(null) // idempotency check: no existing
         .mockResolvedValueOnce({
           // approve lookup
@@ -730,7 +731,7 @@ describe('Withdrawal Flow Integration', () => {
       expect(mockComplianceService.screenWithdrawal).toHaveBeenCalledTimes(1);
 
       // Step 2: Approve
-      const approveResult = await withdrawalService.approveWithdrawal(withdrawalId);
+      const approveResult = await withdrawalService.approveWithdrawal(withdrawalId, CLIENT_ID);
       expect(approveResult.withdrawal.status).toBe('approved');
 
       // Verify the state transitions are correct
@@ -757,7 +758,7 @@ describe('Withdrawal Flow Integration', () => {
         ],
       });
 
-      mockPrisma.withdrawal.findUnique.mockResolvedValue(null); // idempotency check
+      mockPrisma.withdrawal.findFirst.mockResolvedValue(null); // idempotency check
 
       const result = await withdrawalService.createWithdrawal({
         clientId: CLIENT_ID,
@@ -773,13 +774,14 @@ describe('Withdrawal Flow Integration', () => {
       expect(result.withdrawal.kytResult).toBe('hit');
 
       // Should NOT be approvable after rejection
-      mockPrisma.withdrawal.findUnique.mockResolvedValue({
+      mockPrisma.withdrawal.findFirst.mockResolvedValue({
         id: BigInt(result.withdrawal.id),
         status: 'rejected',
+        clientId: BigInt(CLIENT_ID),
       });
 
       await expect(
-        withdrawalService.approveWithdrawal(result.withdrawal.id),
+        withdrawalService.approveWithdrawal(result.withdrawal.id, CLIENT_ID),
       ).rejects.toThrow('cannot be approved');
     });
   });
@@ -832,7 +834,7 @@ describe('Withdrawal Flow Integration', () => {
     });
 
     it('should get a single withdrawal by ID', async () => {
-      mockPrisma.withdrawal.findUnique.mockResolvedValue({
+      mockPrisma.withdrawal.findFirst.mockResolvedValue({
         id: BigInt(1007),
         clientId: BigInt(CLIENT_ID),
         chainId: CHAIN_ID,
@@ -854,7 +856,7 @@ describe('Withdrawal Flow Integration', () => {
         confirmedAt: null,
       });
 
-      const withdrawal = await withdrawalService.getWithdrawal(1007);
+      const withdrawal = await withdrawalService.getWithdrawal(1007, CLIENT_ID);
 
       expect(withdrawal.id).toBe(1007);
       expect(withdrawal.txHash).toBe('0xtxhash999');

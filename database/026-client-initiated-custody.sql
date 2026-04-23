@@ -16,9 +16,8 @@
 
 USE `cvh_admin`;
 
--- Safely add client_initiated to the custody_policy / custody_mode enum.
--- This covers both possible column names depending on which migration path
--- was followed (raw SQL vs Prisma-generated).
+-- Safely add client_initiated to the custody_mode enum.
+-- The column is named custody_mode as defined in 003-cvh-admin.sql.
 ALTER TABLE `clients`
-  MODIFY COLUMN `custody_policy` ENUM('full_custody','co_sign','self_managed','client_initiated')
+  MODIFY COLUMN `custody_mode` ENUM('full_custody','co_sign','self_managed','client_initiated')
     NOT NULL DEFAULT 'full_custody';

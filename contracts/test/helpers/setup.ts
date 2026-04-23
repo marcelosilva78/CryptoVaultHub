@@ -38,12 +38,13 @@ export function futureTimestamp(seconds: number): number {
  * Creates the operationHash that CvhWalletSimple expects for sendMultiSig.
  *
  * The contract computes:
- *   keccak256(abi.encode(getNetworkId(), toAddress, value, data, expireTime, sequenceId))
+ *   keccak256(abi.encode(getNetworkId(), address(this), toAddress, value, data, expireTime, sequenceId))
  *
  * where getNetworkId() returns the chain ID as a string ("31337" on hardhat).
  */
 export function createOperationHash(
   networkId: string,
+  walletAddress: string,
   toAddress: string,
   value: bigint,
   data: string,
@@ -52,8 +53,8 @@ export function createOperationHash(
 ): string {
   return ethers.keccak256(
     ethers.AbiCoder.defaultAbiCoder().encode(
-      ['string', 'address', 'uint256', 'bytes', 'uint256', 'uint256'],
-      [networkId, toAddress, value, data, expireTime, sequenceId]
+      ['string', 'address', 'address', 'uint256', 'bytes', 'uint256', 'uint256'],
+      [networkId, walletAddress, toAddress, value, data, expireTime, sequenceId]
     )
   );
 }
@@ -62,10 +63,11 @@ export function createOperationHash(
  * Creates the operationHash for sendMultiSigToken.
  *
  * The contract computes:
- *   keccak256(abi.encode(getTokenNetworkId(), toAddress, value, tokenContractAddress, expireTime, sequenceId))
+ *   keccak256(abi.encode(getTokenNetworkId(), address(this), toAddress, value, tokenContractAddress, expireTime, sequenceId))
  */
 export function createTokenOperationHash(
   networkId: string,
+  walletAddress: string,
   toAddress: string,
   value: bigint,
   tokenContractAddress: string,
@@ -74,8 +76,8 @@ export function createTokenOperationHash(
 ): string {
   return ethers.keccak256(
     ethers.AbiCoder.defaultAbiCoder().encode(
-      ['string', 'address', 'uint256', 'address', 'uint256', 'uint256'],
-      [`${networkId}-ERC20`, toAddress, value, tokenContractAddress, expireTime, sequenceId]
+      ['string', 'address', 'address', 'uint256', 'address', 'uint256', 'uint256'],
+      [`${networkId}-ERC20`, walletAddress, toAddress, value, tokenContractAddress, expireTime, sequenceId]
     )
   );
 }
@@ -84,10 +86,11 @@ export function createTokenOperationHash(
  * Creates the operationHash for sendMultiSigBatch.
  *
  * The contract computes:
- *   keccak256(abi.encode(getBatchNetworkId(), recipients, values, expireTime, sequenceId))
+ *   keccak256(abi.encode(getBatchNetworkId(), address(this), recipients, values, expireTime, sequenceId))
  */
 export function createBatchOperationHash(
   networkId: string,
+  walletAddress: string,
   recipients: string[],
   values: bigint[],
   expireTime: number,
@@ -95,8 +98,8 @@ export function createBatchOperationHash(
 ): string {
   return ethers.keccak256(
     ethers.AbiCoder.defaultAbiCoder().encode(
-      ['string', 'address[]', 'uint256[]', 'uint256', 'uint256'],
-      [`${networkId}-Batch`, recipients, values, expireTime, sequenceId]
+      ['string', 'address', 'address[]', 'uint256[]', 'uint256', 'uint256'],
+      [`${networkId}-Batch`, walletAddress, recipients, values, expireTime, sequenceId]
     )
   );
 }

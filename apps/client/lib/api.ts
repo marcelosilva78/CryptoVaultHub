@@ -6,13 +6,6 @@ export const CLIENT_API =
 export const AUTH_API =
   process.env.NEXT_PUBLIC_AUTH_API_URL || 'http://localhost:8000/auth';
 
-/** Read the access token from the cookie. */
-function getToken(): string | null {
-  if (typeof document === 'undefined') return null;
-  const match = document.cookie.match(/(?:^|;\s*)cvh_client_token=([^;]*)/);
-  return match ? decodeURIComponent(match[1]) : null;
-}
-
 async function attemptTokenRefresh(): Promise<boolean> {
   try {
     const res = await fetch('/api/auth/refresh', {
@@ -33,32 +26,34 @@ function clearAuthAndRedirect(): never {
 
 /**
  * Shared fetch helper for all client portal pages.
- * Reads JWT from cookie and sends as Authorization: Bearer header.
+ * Routes requests through the server-side proxy at /api/proxy/... which reads
+ * the HttpOnly access token cookie and attaches the Authorization header.
+ * This prevents the JWT from ever being exposed to client-side JavaScript.
  */
 export async function clientFetch<T = any>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
-  const token = getToken();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(options.headers as Record<string, string>),
   };
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
 
-  const res = await fetch(`${CLIENT_API}${path}`, { ...options, headers });
+  const res = await fetch(`/api/proxy${path}`, {
+    ...options,
+    headers,
+    credentials: 'include',
+  });
 
   if (res.status === 401) {
     const refreshed = await attemptTokenRefresh();
     if (!refreshed) clearAuthAndRedirect();
 
-    const newToken = getToken();
-    const retryHeaders = { ...headers };
-    if (newToken) retryHeaders['Authorization'] = `Bearer ${newToken}`;
-
-    const retryRes = await fetch(`${CLIENT_API}${path}`, { ...options, headers: retryHeaders });
+    const retryRes = await fetch(`/api/proxy${path}`, {
+      ...options,
+      headers,
+      credentials: 'include',
+    });
     if (!retryRes.ok) {
       if (retryRes.status === 401) clearAuthAndRedirect();
       const e = await retryRes.json().catch(() => ({ message: 'Request failed' }));

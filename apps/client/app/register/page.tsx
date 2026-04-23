@@ -169,10 +169,11 @@ export default function RegisterPage() {
     setIsSubmitting(true);
 
     try {
-      const res = await fetch(`${AUTH_API_URL}/invite/${token}/accept`, {
+      const res = await fetch('/api/auth/register-accept', {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password, name }),
+        credentials: "include",
+        body: JSON.stringify({ token, password, name }),
       });
 
       if (res.status === 410) {
@@ -189,23 +190,6 @@ export default function RegisterPage() {
         setFormError("Something went wrong. Please try again.");
         return;
       }
-
-      const data = await res.json();
-
-      /* Store JWT tokens using the same pattern as the login page */
-      const accessToken = data?.tokens?.accessToken ?? data?.accessToken;
-      const refreshToken = data?.tokens?.refreshToken ?? data?.refreshToken;
-
-      if (!accessToken) {
-        setFormError("Registration failed: no token received");
-        return;
-      }
-
-      localStorage.setItem("cvh_client_token", accessToken);
-      if (refreshToken) {
-        localStorage.setItem("cvh_client_refresh", refreshToken);
-      }
-      document.cookie = `cvh_client_token=${accessToken}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax${window.location.protocol === 'https:' ? '; Secure' : ''}`;
 
       router.push("/setup");
     } catch {

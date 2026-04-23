@@ -138,6 +138,7 @@ contract CvhWalletSimple is IERC721Receiver, ERC1155Holder, ReentrancyGuard {
         bytes32 operationHash = keccak256(
             abi.encode(
                 getNetworkId(),
+                address(this),
                 toAddress,
                 value,
                 data,
@@ -180,6 +181,7 @@ contract CvhWalletSimple is IERC721Receiver, ERC1155Holder, ReentrancyGuard {
         bytes32 operationHash = keccak256(
             abi.encode(
                 getTokenNetworkId(),
+                address(this),
                 toAddress,
                 value,
                 tokenContractAddress,
@@ -228,6 +230,7 @@ contract CvhWalletSimple is IERC721Receiver, ERC1155Holder, ReentrancyGuard {
         bytes32 operationHash = keccak256(
             abi.encode(
                 getBatchNetworkId(),
+                address(this),
                 recipients,
                 values,
                 expireTime,

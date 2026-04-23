@@ -188,17 +188,17 @@ export class WithdrawalWorkerService extends WorkerHost implements OnModuleInit 
     withdrawalId: string,
     job: Job,
   ): Promise<WithdrawalJobResult> {
-    const [withdrawal] = await this.prisma.$queryRaw<any[]>`
-      SELECT * FROM cvh_transactions.withdrawals WHERE id = ${BigInt(withdrawalId)}
+    // Atomic compare-and-swap: only proceed if we successfully claim this withdrawal.
+    // This prevents double-execution when concurrent workers pick up the same withdrawal.
+    const claimResult = await this.prisma.$executeRaw`
+      UPDATE cvh_transactions.withdrawals
+      SET status = 'broadcasting'
+      WHERE id = ${BigInt(withdrawalId)} AND status = 'approved'
     `;
 
-    if (!withdrawal) {
-      throw new Error(`Withdrawal ${withdrawalId} not found`);
-    }
-
-    if (withdrawal.status !== 'approved') {
+    if (claimResult !== 1) {
       this.logger.warn(
-        `Withdrawal ${withdrawalId} is not 'approved' (current: ${withdrawal.status}), skipping`,
+        `Withdrawal ${withdrawalId} could not be claimed (already picked up or not approved), skipping`,
       );
       return {
         withdrawalId,
@@ -206,6 +206,15 @@ export class WithdrawalWorkerService extends WorkerHost implements OnModuleInit 
         sequenceId: 0,
         status: 'failed',
       };
+    }
+
+    // Fetch the full withdrawal row now that we own it
+    const [withdrawal] = await this.prisma.$queryRaw<any[]>`
+      SELECT * FROM cvh_transactions.withdrawals WHERE id = ${BigInt(withdrawalId)}
+    `;
+
+    if (!withdrawal) {
+      throw new Error(`Withdrawal ${withdrawalId} not found after claiming`);
     }
 
     const clientId = Number(withdrawal.clientId);
@@ -442,10 +451,10 @@ export class WithdrawalWorkerService extends WorkerHost implements OnModuleInit 
         `Withdrawal ${withdrawalId} broadcast: txHash=${txHash}`,
       );
 
-      // Update withdrawal: approved -> broadcasting
+      // Update withdrawal with tx details (status already set to 'broadcasting' during claim)
       await this.prisma.$executeRaw`
         UPDATE cvh_transactions.withdrawals
-        SET status = 'broadcasting', tx_hash = ${txHash}, sequence_id = ${sequenceId}, submitted_at = ${submittedAt}
+        SET tx_hash = ${txHash}, sequence_id = ${sequenceId}, submitted_at = ${submittedAt}
         WHERE id = ${BigInt(withdrawalId)}
       `;
 
@@ -515,6 +524,11 @@ export class WithdrawalWorkerService extends WorkerHost implements OnModuleInit 
           attempts: attemptsMade.toString(),
           timestamp: new Date().toISOString(),
         });
+      } else {
+        // Revert status to 'approved' so the next retry attempt can claim it again
+        await this.prisma.$executeRaw`
+          UPDATE cvh_transactions.withdrawals SET status = 'approved' WHERE id = ${BigInt(withdrawalId)}
+        `;
       }
 
       throw error; // Re-throw so BullMQ can retry (if attempts remain)

@@ -37,7 +37,7 @@ jobs:
       - run: |
           for svc in admin-api auth-service client-api core-wallet-service chain-indexer-service notification-service cron-worker-service key-vault-service rpc-gateway-service; do
             echo "Type checking $svc..."
-            cd services/$svc && npx tsc --noEmit || true && cd ../..
+            cd services/$svc && npx tsc --noEmit && cd ../..
           done
 
   test:

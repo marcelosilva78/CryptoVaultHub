@@ -178,6 +178,7 @@ export class SweepService extends WorkerHost implements OnModuleInit {
 
   /**
    * Execute sweep: find forwarders with token balances > 0, flush to hot wallet.
+   * Uses a Redis distributed lock to prevent concurrent sweeps for the same (chainId, clientId).
    */
   async executeSweep(
     chainId: number,
@@ -191,6 +192,25 @@ export class SweepService extends WorkerHost implements OnModuleInit {
       txHashes: [],
     };
 
+    // Acquire distributed lock to prevent double-spend from concurrent sweep jobs
+    const lockKey = `sweep:lock:${chainId}:${clientId}`;
+    const lockValue = `${Date.now()}:${Math.random().toString(36).slice(2)}`;
+    const lockAcquired = await this.redis.getClient().set(
+      lockKey,
+      lockValue,
+      'PX',
+      300_000, // 5 minutes
+      'NX',
+    );
+
+    if (!lockAcquired) {
+      this.logger.debug(
+        `Sweep lock already held for chain ${chainId}, client ${clientId}, skipping`,
+      );
+      return result;
+    }
+
+    try {
     // 1. Get confirmed deposits that are not yet swept
     const deposits = await this.prisma.deposit.findMany({
       where: {
@@ -496,5 +516,12 @@ export class SweepService extends WorkerHost implements OnModuleInit {
     }
 
     return result;
+    } finally {
+      // Release the distributed lock only if we still own it (compare-and-delete)
+      const currentValue = await this.redis.getClient().get(lockKey);
+      if (currentValue === lockValue) {
+        await this.redis.getClient().del(lockKey);
+      }
+    }
   }
 }

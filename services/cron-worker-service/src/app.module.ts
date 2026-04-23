@@ -1,7 +1,8 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { BullModule } from '@nestjs/bullmq';
-import { MetricsModule, StructuredLoggerModule } from '@cvh/config';
+import { MetricsModule, MetricsInterceptor, StructuredLoggerModule } from '@cvh/config';
 import { EventBusModule } from '@cvh/event-bus';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
@@ -15,6 +16,7 @@ import { ChainListenerModule } from './chain-listener/chain-listener.module';
 import { ClientDeletionModule } from './client-deletion/client-deletion.module';
 import { ProjectDeletionModule } from './project-deletion/project-deletion.module';
 import { HealthController } from './common/health.controller';
+import { InternalServiceGuard } from './common/guards/internal-service.guard';
 
 @Module({
   imports: [
@@ -54,5 +56,15 @@ import { HealthController } from './common/health.controller';
     ProjectDeletionModule,
   ],
   controllers: [HealthController],
+  providers: [
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: MetricsInterceptor,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: InternalServiceGuard,
+    },
+  ],
 })
 export class AppModule {}

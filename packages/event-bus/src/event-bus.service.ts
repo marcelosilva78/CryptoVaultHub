@@ -52,9 +52,19 @@ export class EventBusService {
     }
 
     const results = await Promise.allSettled(promises);
+
+    const allFailed = results.length > 0 && results.every(r => r.status === 'rejected');
+    if (allFailed) {
+      const errors = results
+        .filter((r): r is PromiseRejectedResult => r.status === 'rejected')
+        .map(r => r.reason?.message)
+        .join('; ');
+      throw new Error(`All event transports failed for ${stream}: ${errors}`);
+    }
+
     for (const result of results) {
       if (result.status === 'rejected') {
-        this.logger.error(
+        this.logger.warn(
           `Event bus publish partial failure for ${stream}: ${result.reason}`,
         );
       }

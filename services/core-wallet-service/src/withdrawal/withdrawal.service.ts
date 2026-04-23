@@ -53,9 +53,9 @@ export class WithdrawalService {
       idempotencyKey,
     } = params;
 
-    // Idempotency check
-    const existingByKey = await this.prisma.withdrawal.findUnique({
-      where: { idempotencyKey },
+    // Idempotency check (scoped to client to prevent cross-tenant collision)
+    const existingByKey = await this.prisma.withdrawal.findFirst({
+      where: { idempotencyKey, clientId: BigInt(clientId) },
     });
     if (existingByKey) {
       // Return the existing withdrawal (idempotent behavior)
@@ -82,6 +82,9 @@ export class WithdrawalService {
       throw new BadRequestException(
         `Whitelisted address ${toAddressId} is not active (status: ${whitelisted.status})`,
       );
+    }
+    if (whitelisted.cooldownEndsAt && new Date(whitelisted.cooldownEndsAt) > new Date()) {
+      throw new BadRequestException(`Address is in cooldown until ${whitelisted.cooldownEndsAt}`);
     }
 
     // Compliance screening: check destination address against sanctions lists
@@ -226,9 +229,9 @@ export class WithdrawalService {
    * Approve a pending withdrawal, transitioning it to 'approved' status.
    * The cron worker will pick it up and execute it on-chain.
    */
-  async approveWithdrawal(withdrawalId: number) {
-    const withdrawal = await this.prisma.withdrawal.findUnique({
-      where: { id: BigInt(withdrawalId) },
+  async approveWithdrawal(withdrawalId: number, clientId: number) {
+    const withdrawal = await this.prisma.withdrawal.findFirst({
+      where: { id: BigInt(withdrawalId), clientId: BigInt(clientId) },
     });
 
     if (!withdrawal) {
@@ -256,19 +259,16 @@ export class WithdrawalService {
   /**
    * Cancel a pending withdrawal.
    */
-  async cancelWithdrawal(withdrawalId: number) {
-    const withdrawal = await this.prisma.withdrawal.findUnique({
-      where: { id: BigInt(withdrawalId) },
+  async cancelWithdrawal(withdrawalId: number, clientId: number) {
+    const withdrawal = await this.prisma.withdrawal.findFirst({
+      where: { id: BigInt(withdrawalId), clientId: BigInt(clientId) },
     });
 
     if (!withdrawal) {
       throw new NotFoundException(`Withdrawal ${withdrawalId} not found`);
     }
 
-    if (
-      withdrawal.status !== 'pending_approval' &&
-      withdrawal.status !== 'approved'
-    ) {
+    if (withdrawal.status !== 'pending_approval') {
       throw new BadRequestException(
         `Withdrawal ${withdrawalId} cannot be cancelled (current status: ${withdrawal.status})`,
       );
@@ -287,9 +287,9 @@ export class WithdrawalService {
   /**
    * Get a single withdrawal by ID.
    */
-  async getWithdrawal(withdrawalId: number) {
-    const withdrawal = await this.prisma.withdrawal.findUnique({
-      where: { id: BigInt(withdrawalId) },
+  async getWithdrawal(withdrawalId: number, clientId: number) {
+    const withdrawal = await this.prisma.withdrawal.findFirst({
+      where: { id: BigInt(withdrawalId), clientId: BigInt(clientId) },
     });
 
     if (!withdrawal) {

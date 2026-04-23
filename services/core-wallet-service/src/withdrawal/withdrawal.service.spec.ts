@@ -77,6 +77,7 @@ describe('WithdrawalService', () => {
     mockPrisma = {
       withdrawal: {
         findUnique: jest.fn().mockResolvedValue(null),
+        findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue(mockWithdrawalRecord),
         update: jest.fn(),
       },
@@ -202,7 +203,7 @@ describe('WithdrawalService', () => {
 
   describe('approveWithdrawal', () => {
     it('should transition pending_approval to approved', async () => {
-      mockPrisma.withdrawal.findUnique.mockResolvedValue({
+      mockPrisma.withdrawal.findFirst.mockResolvedValue({
         ...mockWithdrawalRecord,
         status: 'pending_approval',
       });
@@ -213,7 +214,7 @@ describe('WithdrawalService', () => {
       };
       mockPrisma.withdrawal.update.mockResolvedValue(updatedRecord);
 
-      const result = await service.approveWithdrawal(1);
+      const result = await service.approveWithdrawal(1, 1);
 
       expect(result.withdrawal.status).toBe('approved');
       expect(mockPrisma.withdrawal.update).toHaveBeenCalledWith({
@@ -226,55 +227,53 @@ describe('WithdrawalService', () => {
       const statuses = ['approved', 'submitted', 'confirmed', 'cancelled', 'rejected'];
 
       for (const status of statuses) {
-        mockPrisma.withdrawal.findUnique.mockResolvedValue({
+        mockPrisma.withdrawal.findFirst.mockResolvedValue({
           ...mockWithdrawalRecord,
           status,
         });
 
         await expect(
-          service.approveWithdrawal(1),
+          service.approveWithdrawal(1, 1),
         ).rejects.toThrow(BadRequestException);
       }
     });
   });
 
   describe('cancelWithdrawal', () => {
-    it('should work for pending_approval and approved statuses', async () => {
-      for (const status of ['pending_approval', 'approved']) {
-        mockPrisma.withdrawal.findUnique.mockResolvedValue({
-          ...mockWithdrawalRecord,
-          status,
-        });
-        mockPrisma.withdrawal.update.mockResolvedValue({
-          ...mockWithdrawalRecord,
-          status: 'cancelled',
-        });
+    it('should work for pending_approval status only', async () => {
+      mockPrisma.withdrawal.findFirst.mockResolvedValue({
+        ...mockWithdrawalRecord,
+        status: 'pending_approval',
+      });
+      mockPrisma.withdrawal.update.mockResolvedValue({
+        ...mockWithdrawalRecord,
+        status: 'cancelled',
+      });
 
-        const result = await service.cancelWithdrawal(1);
-        expect(result.withdrawal.status).toBe('cancelled');
-      }
+      const result = await service.cancelWithdrawal(1, 1);
+      expect(result.withdrawal.status).toBe('cancelled');
     });
 
     it('should reject cancellation for non-cancellable statuses', async () => {
-      const nonCancellable = ['submitted', 'confirmed', 'cancelled', 'rejected'];
+      const nonCancellable = ['approved', 'submitted', 'confirmed', 'cancelled', 'rejected'];
 
       for (const status of nonCancellable) {
-        mockPrisma.withdrawal.findUnique.mockResolvedValue({
+        mockPrisma.withdrawal.findFirst.mockResolvedValue({
           ...mockWithdrawalRecord,
           status,
         });
 
         await expect(
-          service.cancelWithdrawal(1),
+          service.cancelWithdrawal(1, 1),
         ).rejects.toThrow(BadRequestException);
       }
     });
 
     it('should throw NotFoundException for non-existent withdrawal', async () => {
-      mockPrisma.withdrawal.findUnique.mockResolvedValue(null);
+      mockPrisma.withdrawal.findFirst.mockResolvedValue(null);
 
       await expect(
-        service.cancelWithdrawal(999),
+        service.cancelWithdrawal(999, 1),
       ).rejects.toThrow(NotFoundException);
     });
   });

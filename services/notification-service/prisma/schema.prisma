@@ -72,6 +72,7 @@ model WebhookDelivery {
   errorCode          String?   @db.VarChar(50) @map("error_code")
   isManualResend     Boolean   @default(false) @map("is_manual_resend")
   originalDeliveryId BigInt?   @map("original_delivery_id")
+  projectId          BigInt    @map("project_id")
   createdAt          DateTime  @default(now()) @map("created_at")
 
   webhook  Webhook                  @relation(fields: [webhookId], references: [id])

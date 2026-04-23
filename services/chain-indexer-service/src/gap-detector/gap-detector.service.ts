@@ -131,8 +131,8 @@ export class GapDetectorService {
           {
             gapId: Number(syncGap.id),
             chainId,
-            fromBlock: gap.gapStart,
-            toBlock: gap.gapEnd,
+            startBlock: gap.gapStart,
+            endBlock: gap.gapEnd,
           },
           {
             attempts: 3,

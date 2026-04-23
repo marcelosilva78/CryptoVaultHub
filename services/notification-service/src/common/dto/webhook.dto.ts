@@ -43,6 +43,11 @@ export class ManualDeliveryDto {
   @IsPositive()
   clientId: number;
 
+  @IsOptional()
+  @IsInt()
+  @IsPositive()
+  projectId?: number;
+
   @IsString()
   eventType: string;
 

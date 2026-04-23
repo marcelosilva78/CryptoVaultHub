@@ -14,6 +14,8 @@ networks:
     internal: true
   monitoring-net:
     driver: bridge
+  docker-proxy-net:
+    driver: bridge
 
 services:
 
@@ -29,7 +31,12 @@ services:
       - ./infra/docker/docker-api-proxy-main.conf:/etc/nginx/nginx.conf:ro
       - ./infra/docker/docker-api-proxy.conf:/etc/nginx/conf.d/docker-proxy.conf:ro
     networks:
-      - internal-net
+      - docker-proxy-net
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: '0.5'
     restart: unless-stopped
 
   # ─── Traefik Reverse Proxy + SSL ─────────────────────────────
@@ -70,6 +77,7 @@ services:
       - public-net
       - internal-net
       - monitoring-net
+      - docker-proxy-net
     labels:
       # Traefik dashboard at traefik.vaulthub.live (protected by basic auth)
       - "traefik.enable=true"
@@ -79,6 +87,11 @@ services:
       - "traefik.http.routers.traefik-dashboard.service=api@internal"
       - "traefik.http.routers.traefik-dashboard.middlewares=traefik-auth"
       - "traefik.http.middlewares.traefik-auth.basicauth.users=${TRAEFIK_DASHBOARD_USERS}"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.5'
     restart: unless-stopped
 
   # ─── MySQL (temporary local — remove when migrating to cluster) ──
@@ -94,6 +107,11 @@ services:
     networks:
       - internal-net
       - vault-net
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2.0'
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${MYSQL_PASSWORD}"]
@@ -111,6 +129,11 @@ services:
       - /docker/data/redis:/data
     networks:
       - internal-net
+    deploy:
+      resources:
+        limits:
+          memory: 2560M
+          cpus: '1.0'
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
@@ -136,6 +159,11 @@ services:
       - public-net
       - internal-net
       - monitoring-net
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '1.0'
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.api.rule=Host(`api.${BASE_DOMAIN:-vaulthub.live}`)"
@@ -155,10 +183,16 @@ services:
     image: prom/prometheus:v2.50.0
     volumes:
       - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./infra/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
       - /docker/data/prometheus:/prometheus
     networks:
       - monitoring-net
       - internal-net
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
@@ -183,6 +217,11 @@ services:
       - "traefik.http.routers.grafana.entrypoints=websecure"
       - "traefik.http.routers.grafana.tls.certresolver=letsencrypt"
       - "traefik.http.services.grafana.loadbalancer.server.port=3000"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '1.0'
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
@@ -199,6 +238,11 @@ services:
     networks:
       - monitoring-net
       - internal-net
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '1.0'
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:3100/ready"]
@@ -220,6 +264,43 @@ services:
       - "traefik.http.routers.jaeger.entrypoints=websecure"
       - "traefik.http.routers.jaeger.tls.certresolver=letsencrypt"
       - "traefik.http.services.jaeger.loadbalancer.server.port=16686"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '1.0'
+    restart: unless-stopped
+
+  promtail:
+    image: grafana/promtail:2.9.0
+    volumes:
+      - ./infra/promtail/promtail.yml:/etc/promtail/promtail.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: -config.file=/etc/promtail/promtail.yml
+    depends_on:
+      - loki
+    networks:
+      - monitoring-net
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.5'
+    restart: unless-stopped
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    volumes:
+      - ./infra/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    command: --config.file=/etc/alertmanager/alertmanager.yml
+    networks:
+      - monitoring-net
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.5'
     restart: unless-stopped
 
   # ─── Application Services ──────────────────────────────────
@@ -234,6 +315,8 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3001
+      - SERVICE_NAME=admin-api
+      - LOG_LEVEL=info
       - MYSQL_HOST=${MYSQL_HOST}
       - MYSQL_PORT=${MYSQL_PORT}
       - MYSQL_USER=${MYSQL_USER}
@@ -273,6 +356,11 @@ services:
     networks:
       - internal-net
       - monitoring-net
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '1.0'
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
@@ -290,6 +378,8 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3002
+      - SERVICE_NAME=client-api
+      - LOG_LEVEL=info
       - MYSQL_HOST=${MYSQL_HOST}
       - MYSQL_PORT=${MYSQL_PORT}
       - MYSQL_USER=${MYSQL_USER}
@@ -315,6 +405,11 @@ services:
     networks:
       - internal-net
       - monitoring-net
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '1.0'
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3002/client/v1/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
@@ -332,6 +427,8 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3003
+      - SERVICE_NAME=auth-service
+      - LOG_LEVEL=info
       - MYSQL_HOST=${MYSQL_HOST}
       - MYSQL_PORT=${MYSQL_PORT}
       - MYSQL_USER=${MYSQL_USER}
@@ -356,6 +453,11 @@ services:
     networks:
       - internal-net
       - monitoring-net
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '1.0'
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3003/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
@@ -373,6 +475,8 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3004
+      - SERVICE_NAME=core-wallet-service
+      - LOG_LEVEL=info
       - MYSQL_HOST=${MYSQL_HOST}
       - MYSQL_PORT=${MYSQL_PORT}
       - MYSQL_USER=${MYSQL_USER}
@@ -403,6 +507,11 @@ services:
       - internal-net
       - vault-net
       - monitoring-net
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '1.0'
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3004/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
@@ -420,6 +529,8 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3005
+      - SERVICE_NAME=key-vault-service
+      - LOG_LEVEL=info
       - MYSQL_HOST=${MYSQL_HOST}
       - MYSQL_PORT=${MYSQL_PORT}
       - MYSQL_USER=${MYSQL_USER}
@@ -444,6 +555,11 @@ services:
     networks:
       - vault-net
       - monitoring-net
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '2.0'
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3005/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
@@ -461,6 +577,8 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3006
+      - SERVICE_NAME=chain-indexer-service
+      - LOG_LEVEL=info
       - MYSQL_HOST=${MYSQL_HOST}
       - MYSQL_PORT=${MYSQL_PORT}
       - MYSQL_USER=${MYSQL_USER}
@@ -491,6 +609,11 @@ services:
     networks:
       - internal-net
       - monitoring-net
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '2.0'
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3006/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
@@ -508,6 +631,8 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3007
+      - SERVICE_NAME=notification-service
+      - LOG_LEVEL=info
       - MYSQL_HOST=${MYSQL_HOST}
       - MYSQL_PORT=${MYSQL_PORT}
       - MYSQL_USER=${MYSQL_USER}
@@ -532,6 +657,11 @@ services:
     networks:
       - internal-net
       - monitoring-net
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '1.0'
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3007/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
@@ -549,6 +679,8 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3008
+      - SERVICE_NAME=cron-worker-service
+      - LOG_LEVEL=info
       - MYSQL_HOST=${MYSQL_HOST}
       - MYSQL_PORT=${MYSQL_PORT}
       - MYSQL_USER=${MYSQL_USER}
@@ -579,6 +711,11 @@ services:
     networks:
       - internal-net
       - monitoring-net
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '1.0'
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3008/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
@@ -596,6 +733,8 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3009
+      - SERVICE_NAME=rpc-gateway-service
+      - LOG_LEVEL=info
       - MYSQL_HOST=${MYSQL_HOST}
       - MYSQL_PORT=${MYSQL_PORT}
       - MYSQL_USER=${MYSQL_USER}
@@ -620,6 +759,11 @@ services:
     networks:
       - internal-net
       - monitoring-net
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '1.0'
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3009/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
@@ -646,7 +790,19 @@ services:
       - "traefik.http.routers.admin.rule=Host(`admin.${BASE_DOMAIN:-vaulthub.live}`)"
       - "traefik.http.routers.admin.entrypoints=websecure"
       - "traefik.http.routers.admin.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.admin.middlewares=security-headers"
       - "traefik.http.services.admin.loadbalancer.server.port=3000"
+      - "traefik.http.middlewares.security-headers.headers.stsSeconds=31536000"
+      - "traefik.http.middlewares.security-headers.headers.stsIncludeSubdomains=true"
+      - "traefik.http.middlewares.security-headers.headers.frameDeny=true"
+      - "traefik.http.middlewares.security-headers.headers.contentTypeNosniff=true"
+      - "traefik.http.middlewares.security-headers.headers.browserXssFilter=true"
+      - "traefik.http.middlewares.security-headers.headers.referrerPolicy=strict-origin-when-cross-origin"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.5'
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/"]
@@ -671,7 +827,13 @@ services:
       - "traefik.http.routers.portal.rule=Host(`portal.${BASE_DOMAIN:-vaulthub.live}`)"
       - "traefik.http.routers.portal.entrypoints=websecure"
       - "traefik.http.routers.portal.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.portal.middlewares=security-headers"
       - "traefik.http.services.portal.loadbalancer.server.port=3000"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.5'
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/"]
@@ -691,6 +853,11 @@ services:
       - /docker/data/posthog-postgres:/var/lib/postgresql/data
     networks:
       - monitoring-net
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
     restart: unless-stopped
 
   posthog-redis:
@@ -700,6 +867,11 @@ services:
       - /docker/data/posthog-redis:/data
     networks:
       - monitoring-net
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
     restart: unless-stopped
 
   clickhouse:
@@ -710,6 +882,11 @@ services:
       - ./infra/clickhouse/clickhouse-user-config.xml:/etc/clickhouse-server/users.d/posthog-users.xml:ro
     networks:
       - monitoring-net
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2.0'
     restart: unless-stopped
 
   kafka:
@@ -732,6 +909,11 @@ services:
     networks:
       - internal-net
       - monitoring-net
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2.0'
     healthcheck:
       test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1"]
       interval: 15s
@@ -750,6 +932,11 @@ services:
     depends_on:
       kafka:
         condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.5'
     restart: "no"
 
   posthog-web:
@@ -769,7 +956,7 @@ services:
       CLICKHOUSE_VERIFY: "false"
       CLICKHOUSE_REPLICATION: "false"
       CLICKHOUSE_USER: default
-      CLICKHOUSE_PASSWORD: ""
+      CLICKHOUSE_PASSWORD: "${CLICKHOUSE_PASSWORD:-CHANGE_ME_CLICKHOUSE_PASSWORD}"
       CLICKHOUSE_DATABASE: posthog
       KAFKA_HOSTS: kafka:9092
       SECRET_KEY: ${POSTHOG_SECRET_KEY}
@@ -783,6 +970,11 @@ services:
     networks:
       - monitoring-net
       - internal-net
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '2.0'
     restart: unless-stopped
 
   posthog-worker:
@@ -800,7 +992,7 @@ services:
       CLICKHOUSE_VERIFY: "false"
       CLICKHOUSE_REPLICATION: "false"
       CLICKHOUSE_USER: default
-      CLICKHOUSE_PASSWORD: ""
+      CLICKHOUSE_PASSWORD: "${CLICKHOUSE_PASSWORD:-CHANGE_ME_CLICKHOUSE_PASSWORD}"
       CLICKHOUSE_DATABASE: posthog
       KAFKA_HOSTS: kafka:9092
       SECRET_KEY: ${POSTHOG_SECRET_KEY}
@@ -811,6 +1003,11 @@ services:
       - kafka
     networks:
       - monitoring-net
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '2.0'
     restart: unless-stopped
 
 # ─── Storage Layout (all on /docker LVM volume) ──────────────────────────────

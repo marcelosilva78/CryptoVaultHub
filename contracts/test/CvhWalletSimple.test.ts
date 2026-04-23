@@ -157,6 +157,7 @@ describe('CvhWalletSimple', () => {
 
       const operationHash = createOperationHash(
         NETWORK_ID,
+        await wallet.getAddress(),
         s.recipient.address,
         SEND_VALUE,
         data,
@@ -194,6 +195,7 @@ describe('CvhWalletSimple', () => {
 
       const operationHash = createOperationHash(
         NETWORK_ID,
+        await wallet.getAddress(),
         s.recipient.address,
         SEND_VALUE,
         data,
@@ -226,6 +228,7 @@ describe('CvhWalletSimple', () => {
 
       const operationHash = createOperationHash(
         NETWORK_ID,
+        await wallet.getAddress(),
         s.recipient.address,
         SEND_VALUE,
         data,
@@ -256,6 +259,7 @@ describe('CvhWalletSimple', () => {
 
       const operationHash = createOperationHash(
         NETWORK_ID,
+        await wallet.getAddress(),
         s.recipient.address,
         SEND_VALUE,
         data,
@@ -341,6 +345,7 @@ describe('CvhWalletSimple', () => {
 
       const operationHash = createBatchOperationHash(
         NETWORK_ID,
+        await wallet.getAddress(),
         recipients,
         values,
         expireTime,
@@ -373,6 +378,7 @@ describe('CvhWalletSimple', () => {
 
       const operationHash = createBatchOperationHash(
         NETWORK_ID,
+        await wallet.getAddress(),
         recipients,
         values,
         expireTime,
@@ -402,6 +408,7 @@ describe('CvhWalletSimple', () => {
       // Hash with correct data shape (the contract checks before verifying sig)
       const operationHash = createBatchOperationHash(
         NETWORK_ID,
+        await wallet.getAddress(),
         recipients,
         values,
         expireTime,
@@ -423,6 +430,7 @@ describe('CvhWalletSimple', () => {
 
       const operationHash = createBatchOperationHash(
         NETWORK_ID,
+        await wallet.getAddress(),
         [],
         [],
         expireTime,
@@ -446,6 +454,7 @@ describe('CvhWalletSimple', () => {
 
       const operationHash = createBatchOperationHash(
         NETWORK_ID,
+        await wallet.getAddress(),
         recipients,
         values,
         expireTime,
@@ -471,6 +480,7 @@ describe('CvhWalletSimple', () => {
 
       const operationHash = createBatchOperationHash(
         NETWORK_ID,
+        await wallet.getAddress(),
         recipients,
         values,
         expireTime,
@@ -494,6 +504,7 @@ describe('CvhWalletSimple', () => {
 
       const operationHash = createBatchOperationHash(
         NETWORK_ID,
+        await wallet.getAddress(),
         recipients,
         values,
         expireTime,
@@ -517,6 +528,7 @@ describe('CvhWalletSimple', () => {
 
       const operationHash = createBatchOperationHash(
         NETWORK_ID,
+        await wallet.getAddress(),
         recipients,
         values,
         expireTime,
@@ -541,6 +553,7 @@ describe('CvhWalletSimple', () => {
 
       const operationHash = createBatchOperationHash(
         NETWORK_ID,
+        await wallet.getAddress(),
         recipients,
         values,
         expireTime,
@@ -564,6 +577,7 @@ describe('CvhWalletSimple', () => {
 
       const operationHash = createBatchOperationHash(
         NETWORK_ID,
+        await wallet.getAddress(),
         recipients,
         values,
         expireTime,
@@ -610,6 +624,7 @@ describe('CvhWalletSimple', () => {
 
       const operationHash = createTokenOperationHash(
         NETWORK_ID,
+        await wallet.getAddress(),
         s.recipient.address,
         sendValue,
         tokenAddr,
@@ -643,6 +658,7 @@ describe('CvhWalletSimple', () => {
 
       const operationHash = createTokenOperationHash(
         NETWORK_ID,
+        await wallet.getAddress(),
         s.recipient.address,
         sendValue,
         tokenAddr,
@@ -676,6 +692,7 @@ describe('CvhWalletSimple', () => {
 
       const operationHash = createTokenOperationHash(
         NETWORK_ID,
+        await wallet.getAddress(),
         s.recipient.address,
         sendValue,
         tokenAddr,
@@ -706,6 +723,7 @@ describe('CvhWalletSimple', () => {
 
       const operationHash = createTokenOperationHash(
         NETWORK_ID,
+        await wallet.getAddress(),
         s.recipient.address,
         sendValue,
         tokenAddr,
@@ -736,6 +754,7 @@ describe('CvhWalletSimple', () => {
 
       const operationHash = createTokenOperationHash(
         NETWORK_ID,
+        await wallet.getAddress(),
         s.recipient.address,
         sendValue,
         tokenAddr,
@@ -768,6 +787,7 @@ describe('CvhWalletSimple', () => {
 
       const operationHash = createTokenOperationHash(
         NETWORK_ID,
+        await wallet.getAddress(),
         s.recipient.address,
         sendValue,
         tokenAddr,
@@ -801,6 +821,7 @@ describe('CvhWalletSimple', () => {
 
       const operationHash = createTokenOperationHash(
         NETWORK_ID,
+        await wallet.getAddress(),
         s.signer2.address,
         sendValue,
         tokenAddr,
@@ -833,6 +854,7 @@ describe('CvhWalletSimple', () => {
 
       const operationHash = createTokenOperationHash(
         NETWORK_ID,
+        await wallet.getAddress(),
         s.recipient.address,
         sendValue,
         tokenAddr,
@@ -882,6 +904,7 @@ describe('CvhWalletSimple', () => {
 
       const operationHash = createOperationHash(
         NETWORK_ID,
+        await wallet.getAddress(),
         s.recipient.address,
         SEND_VALUE,
         data,
@@ -913,6 +936,7 @@ describe('CvhWalletSimple', () => {
 
       const operationHash = createOperationHash(
         NETWORK_ID,
+        await wallet.getAddress(),
         s.recipient.address,
         SEND_VALUE,
         data,
@@ -974,6 +998,7 @@ describe('CvhWalletSimple', () => {
       // Use an already-consumed ID to trigger SequenceIdAlreadyUsed
       const operationHash = createOperationHash(
         NETWORK_ID,
+        await wallet.getAddress(),
         s.recipient.address,
         SEND_VALUE,
         data,
@@ -1005,6 +1030,7 @@ describe('CvhWalletSimple', () => {
 
       const operationHash = createOperationHash(
         NETWORK_ID,
+        await wallet.getAddress(),
         s.recipient.address,
         SEND_VALUE,
         data,
@@ -1036,6 +1062,7 @@ describe('CvhWalletSimple', () => {
 
       const operationHash = createOperationHash(
         NETWORK_ID,
+        await wallet.getAddress(),
         s.recipient.address,
         SEND_VALUE,
         data,
@@ -1075,6 +1102,7 @@ describe('CvhWalletSimple', () => {
 
       const operationHash = createOperationHash(
         NETWORK_ID,
+        await wallet.getAddress(),
         s.recipient.address,
         SEND_VALUE,
         data,
@@ -1118,6 +1146,7 @@ describe('CvhWalletSimple', () => {
 
       const operationHash = createBatchOperationHash(
         NETWORK_ID,
+        await wallet.getAddress(),
         recipients,
         values,
         expireTime,

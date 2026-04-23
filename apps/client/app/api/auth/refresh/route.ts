@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
   const response = NextResponse.json({ user: data.user, success: true });
 
   response.cookies.set('cvh_client_token', accessToken, {
-    httpOnly: false,
+    httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
     maxAge: 60 * 60 * 24 * 7,

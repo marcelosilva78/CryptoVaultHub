@@ -213,9 +213,8 @@ export default function ClientExportsPage() {
   };
 
   const handleDownload = (requestUid: string) => {
-    const token = typeof window !== "undefined" ? localStorage.getItem("cvh_client_token") ?? "" : "";
-    const baseUrl = process.env.NEXT_PUBLIC_CLIENT_API_URL || "http://localhost:3002/client";
-    window.open(`${baseUrl}/v1/exports/${requestUid}/download?token=${token}`, "_blank");
+    // Route through the server-side proxy so the HttpOnly cookie provides auth
+    window.open(`/api/proxy/v1/exports/${requestUid}/download`, "_blank");
   };
 
   if (loading) {

@@ -1,9 +1,11 @@
 <clickhouse>
     <users>
         <default>
-            <password></password>
+            <password>CHANGE_ME_CLICKHOUSE_PASSWORD</password>
             <networks>
-                <ip>::/0</ip>
+                <ip>10.0.0.0/8</ip>
+                <ip>172.16.0.0/12</ip>
+                <ip>192.168.0.0/16</ip>
             </networks>
             <profile>default</profile>
             <quota>default</quota>
