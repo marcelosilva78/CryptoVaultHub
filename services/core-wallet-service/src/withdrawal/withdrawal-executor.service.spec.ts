@@ -62,7 +62,7 @@ describe('WithdrawalExecutorService', () => {
   const mockProjectChain = {
     projectId: BigInt(10),
     chainId: 1,
-    hotWalletAddress: '0xProjectHotWallet',
+    hotWalletAddress: '0x5B38Da6a701c568545dCfcB03FcB875f56beddC4',
     hotWalletSequenceId: 5,
     walletFactoryAddress: '0xFactory',
   };
@@ -227,6 +227,7 @@ describe('WithdrawalExecutorService', () => {
     it('should produce a valid keccak256 hash for native ETH', () => {
       const hash = service.buildNativeOperationHash({
         networkId: '1',
+        hotWalletAddress: '0x5B38Da6a701c568545dCfcB03FcB875f56beddC4',
         toAddress: '0x742D35Cc6634C0532925A3b844Bc9E7595F2BD68',
         value: BigInt('1500000000000000000'),
         data: '0x',
@@ -241,6 +242,7 @@ describe('WithdrawalExecutorService', () => {
     it('should produce deterministic output for the same inputs', () => {
       const params = {
         networkId: '137',
+        hotWalletAddress: '0x5B38Da6a701c568545dCfcB03FcB875f56beddC4',
         toAddress: '0x1234567890AbcdEF1234567890aBcdef12345678',
         value: BigInt('500000'),
         data: '0x',
@@ -257,6 +259,7 @@ describe('WithdrawalExecutorService', () => {
     it('should produce different hashes for different sequence IDs', () => {
       const baseParams = {
         networkId: '1',
+        hotWalletAddress: '0x5B38Da6a701c568545dCfcB03FcB875f56beddC4',
         toAddress: '0x742D35Cc6634C0532925A3b844Bc9E7595F2BD68',
         value: BigInt('1000'),
         data: '0x',
@@ -278,6 +281,7 @@ describe('WithdrawalExecutorService', () => {
     it('should match ethers ABI encoding (keccak256 of abi.encode)', () => {
       const params = {
         networkId: '1',
+        hotWalletAddress: '0x5B38Da6a701c568545dCfcB03FcB875f56beddC4',
         toAddress: '0x742D35Cc6634C0532925A3b844Bc9E7595F2BD68',
         value: BigInt('1500000000000000000'),
         data: '0x',
@@ -290,9 +294,10 @@ describe('WithdrawalExecutorService', () => {
       // Manually verify using ethers
       const abiCoder = ethers.AbiCoder.defaultAbiCoder();
       const encoded = abiCoder.encode(
-        ['string', 'address', 'uint256', 'bytes', 'uint256', 'uint256'],
+        ['string', 'address', 'address', 'uint256', 'bytes', 'uint256', 'uint256'],
         [
           params.networkId,
+          params.hotWalletAddress,
           params.toAddress,
           params.value,
           params.data,
@@ -310,6 +315,7 @@ describe('WithdrawalExecutorService', () => {
     it('should produce a valid keccak256 hash for ERC-20 tokens', () => {
       const hash = service.buildTokenOperationHash({
         tokenNetworkId: '1-ERC20',
+        hotWalletAddress: '0x5B38Da6a701c568545dCfcB03FcB875f56beddC4',
         toAddress: '0x742D35Cc6634C0532925A3b844Bc9E7595F2BD68',
         value: BigInt('1500000'),
         tokenContractAddress: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
@@ -323,6 +329,7 @@ describe('WithdrawalExecutorService', () => {
     it('should use tokenNetworkId format: chainId-ERC20', () => {
       const params = {
         tokenNetworkId: '137-ERC20',
+        hotWalletAddress: '0x5B38Da6a701c568545dCfcB03FcB875f56beddC4',
         toAddress: '0x742D35Cc6634C0532925A3b844Bc9E7595F2BD68',
         value: BigInt('1000000'),
         tokenContractAddress: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
@@ -335,9 +342,10 @@ describe('WithdrawalExecutorService', () => {
       // Manually verify
       const abiCoder = ethers.AbiCoder.defaultAbiCoder();
       const encoded = abiCoder.encode(
-        ['string', 'address', 'uint256', 'address', 'uint256', 'uint256'],
+        ['string', 'address', 'address', 'uint256', 'address', 'uint256', 'uint256'],
         [
           params.tokenNetworkId,
+          params.hotWalletAddress,
           params.toAddress,
           params.value,
           params.tokenContractAddress,
@@ -353,6 +361,7 @@ describe('WithdrawalExecutorService', () => {
     it('should produce different hashes for native vs ERC-20 with same amount', () => {
       const nativeHash = service.buildNativeOperationHash({
         networkId: '1',
+        hotWalletAddress: '0x5B38Da6a701c568545dCfcB03FcB875f56beddC4',
         toAddress: '0x742D35Cc6634C0532925A3b844Bc9E7595F2BD68',
         value: BigInt('1000'),
         data: '0x',
@@ -362,6 +371,7 @@ describe('WithdrawalExecutorService', () => {
 
       const tokenHash = service.buildTokenOperationHash({
         tokenNetworkId: '1-ERC20',
+        hotWalletAddress: '0x5B38Da6a701c568545dCfcB03FcB875f56beddC4',
         toAddress: '0x742D35Cc6634C0532925A3b844Bc9E7595F2BD68',
         value: BigInt('1000'),
         tokenContractAddress: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
@@ -406,7 +416,7 @@ describe('WithdrawalExecutorService', () => {
       const result = await service.getProjectWalletInfo(BigInt(10), 1);
 
       expect(result).toEqual({
-        hotWalletAddress: '0xProjectHotWallet',
+        hotWalletAddress: '0x5B38Da6a701c568545dCfcB03FcB875f56beddC4',
         sequenceId: 5,
         walletFactoryAddress: '0xFactory',
       });
@@ -548,7 +558,7 @@ describe('WithdrawalExecutorService', () => {
       mockPrisma.projectChain.findUnique.mockResolvedValue(null);
 
       const mockHotWallet = {
-        address: '0xLegacyHotWallet',
+        address: '0xAb8483F64d9C6d1EcF9b849Ae677dD3315835cb2',
         clientId: BigInt(42),
         chainId: 1,
         walletType: 'hot',
@@ -567,11 +577,6 @@ describe('WithdrawalExecutorService', () => {
         },
       };
       jest.spyOn(ethers, 'Contract').mockReturnValue(mockContract as any);
-
-      const mockWallet = {
-        sendTransaction: jest.fn().mockResolvedValue({ hash: '0xtxhash' }),
-      };
-      jest.spyOn(ethers, 'Wallet').mockReturnValue(mockWallet as any);
 
       await service.executeWithdrawal('1');
 
@@ -592,11 +597,6 @@ describe('WithdrawalExecutorService', () => {
       };
       jest.spyOn(ethers, 'Contract').mockReturnValue(mockContract as any);
 
-      const mockWallet = {
-        sendTransaction: jest.fn().mockResolvedValue({ hash: '0xtxhash' }),
-      };
-      jest.spyOn(ethers, 'Wallet').mockReturnValue(mockWallet as any);
-
       await service.executeWithdrawal('1');
 
       expect(mockNonceService.acquireNonce).toHaveBeenCalledWith(
@@ -604,10 +604,13 @@ describe('WithdrawalExecutorService', () => {
         '0xGasTankAddress',
       );
 
-      // Verify the nonce was used in the transaction
-      expect(mockWallet.sendTransaction).toHaveBeenCalledWith(
-        expect.objectContaining({ nonce: 42 }),
+      // Verify the nonce was passed to the Key Vault sign-transaction call
+      const signTxCall = mockFetch.mock.calls.find(
+        (call: any[]) => typeof call[0] === 'string' && call[0].includes('/sign-transaction'),
       );
+      expect(signTxCall).toBeDefined();
+      const signTxBody = JSON.parse(signTxCall[1].body);
+      expect(signTxBody.txData.nonce).toBe(42);
     });
 
     it('should release nonce lock after successful transaction', async () => {
@@ -650,10 +653,8 @@ describe('WithdrawalExecutorService', () => {
       };
       jest.spyOn(ethers, 'Contract').mockReturnValue(mockContract as any);
 
-      const mockWallet = {
-        sendTransaction: jest.fn().mockRejectedValue(new Error('gas too low')),
-      };
-      jest.spyOn(ethers, 'Wallet').mockReturnValue(mockWallet as any);
+      // Make broadcastTransaction fail to trigger nonce reset
+      mockProvider.broadcastTransaction.mockRejectedValue(new Error('gas too low'));
 
       await expect(service.executeWithdrawal('1')).rejects.toThrow(
         'gas too low',
@@ -673,6 +674,8 @@ describe('WithdrawalExecutorService', () => {
 
   describe('executeWithdrawal — full flow', () => {
     it('should execute a native ETH withdrawal end-to-end', async () => {
+      mockProvider.broadcastTransaction.mockResolvedValue({ hash: '0xbroadcastedTxHash' });
+
       const mockContract = {
         getNextSequenceId: jest.fn().mockResolvedValue(BigInt(5)),
         interface: {
@@ -680,13 +683,6 @@ describe('WithdrawalExecutorService', () => {
         },
       };
       jest.spyOn(ethers, 'Contract').mockReturnValue(mockContract as any);
-
-      const mockWallet = {
-        sendTransaction: jest
-          .fn()
-          .mockResolvedValue({ hash: '0xbroadcastedTxHash' }),
-      };
-      jest.spyOn(ethers, 'Wallet').mockReturnValue(mockWallet as any);
 
       const result = await service.executeWithdrawal('1');
 
@@ -725,6 +721,8 @@ describe('WithdrawalExecutorService', () => {
         amountRaw: '1500000', // 1.5 USDC (6 decimals)
       });
 
+      mockProvider.broadcastTransaction.mockResolvedValue({ hash: '0xerc20TxHash' });
+
       const mockContract = {
         getNextSequenceId: jest.fn().mockResolvedValue(BigInt(8)),
         interface: {
@@ -734,13 +732,6 @@ describe('WithdrawalExecutorService', () => {
         },
       };
       jest.spyOn(ethers, 'Contract').mockReturnValue(mockContract as any);
-
-      const mockWallet = {
-        sendTransaction: jest
-          .fn()
-          .mockResolvedValue({ hash: '0xerc20TxHash' }),
-      };
-      jest.spyOn(ethers, 'Wallet').mockReturnValue(mockWallet as any);
 
       const result = await service.executeWithdrawal('1');
 
@@ -767,26 +758,22 @@ describe('WithdrawalExecutorService', () => {
       };
       jest.spyOn(ethers, 'Contract').mockReturnValue(mockContract as any);
 
-      const mockWallet = {
-        sendTransaction: jest.fn().mockResolvedValue({ hash: '0xtxhash' }),
-      };
-      jest.spyOn(ethers, 'Wallet').mockReturnValue(mockWallet as any);
-
       await service.executeWithdrawal('1');
 
-      // The transaction should be sent to the project hot wallet
-      expect(mockWallet.sendTransaction).toHaveBeenCalledWith(
-        expect.objectContaining({
-          to: '0xProjectHotWallet',
-        }),
+      // The transaction should be sent to the project hot wallet via Key Vault sign-transaction
+      const signTxCall = mockFetch.mock.calls.find(
+        (call: any[]) => typeof call[0] === 'string' && call[0].includes('/sign-transaction'),
       );
+      expect(signTxCall).toBeDefined();
+      const signTxBody = JSON.parse(signTxCall[1].body);
+      expect(signTxBody.txData.to).toBe('0x5B38Da6a701c568545dCfcB03FcB875f56beddC4');
     });
 
     it('should fall back to legacy client hot wallet when no project chain', async () => {
       mockPrisma.projectChain.findUnique.mockResolvedValue(null);
 
       const mockHotWallet = {
-        address: '0xLegacyHotWallet',
+        address: '0xAb8483F64d9C6d1EcF9b849Ae677dD3315835cb2',
         clientId: BigInt(42),
         chainId: 1,
         walletType: 'hot',
@@ -803,18 +790,15 @@ describe('WithdrawalExecutorService', () => {
       };
       jest.spyOn(ethers, 'Contract').mockReturnValue(mockContract as any);
 
-      const mockWallet = {
-        sendTransaction: jest.fn().mockResolvedValue({ hash: '0xtxhash' }),
-      };
-      jest.spyOn(ethers, 'Wallet').mockReturnValue(mockWallet as any);
-
       await service.executeWithdrawal('1');
 
-      expect(mockWallet.sendTransaction).toHaveBeenCalledWith(
-        expect.objectContaining({
-          to: '0xLegacyHotWallet',
-        }),
+      // The transaction should be sent to the legacy hot wallet via Key Vault sign-transaction
+      const signTxCall = mockFetch.mock.calls.find(
+        (call: any[]) => typeof call[0] === 'string' && call[0].includes('/sign-transaction'),
       );
+      expect(signTxCall).toBeDefined();
+      const signTxBody = JSON.parse(signTxCall[1].body);
+      expect(signTxBody.txData.to).toBe('0xAb8483F64d9C6d1EcF9b849Ae677dD3315835cb2');
     });
   });
 });

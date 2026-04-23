@@ -185,9 +185,10 @@ export class WithdrawalExecutorService {
     let operationHash: string;
 
     if (token.isNative) {
-      // sendMultiSig: operationHash = keccak256(abi.encode(getNetworkId(), toAddress, value, data, expireTime, sequenceId))
+      // sendMultiSig: operationHash = keccak256(abi.encode(getNetworkId(), address(this), toAddress, value, data, expireTime, sequenceId))
       operationHash = this.buildNativeOperationHash({
         networkId: chainId.toString(),
+        hotWalletAddress,
         toAddress: withdrawal.toAddress,
         value,
         data: '0x',
@@ -195,9 +196,10 @@ export class WithdrawalExecutorService {
         sequenceId,
       });
     } else {
-      // sendMultiSigToken: operationHash = keccak256(abi.encode(getTokenNetworkId(), toAddress, value, tokenContractAddress, expireTime, sequenceId))
+      // sendMultiSigToken: operationHash = keccak256(abi.encode(getTokenNetworkId(), address(this), toAddress, value, tokenContractAddress, expireTime, sequenceId))
       operationHash = this.buildTokenOperationHash({
         tokenNetworkId: `${chainId}-ERC20`,
+        hotWalletAddress,
         toAddress: withdrawal.toAddress,
         value,
         tokenContractAddress: token.contractAddress,
@@ -387,6 +389,7 @@ export class WithdrawalExecutorService {
    */
   buildNativeOperationHash(params: {
     networkId: string;
+    hotWalletAddress: string;
     toAddress: string;
     value: bigint;
     data: string;
@@ -396,9 +399,10 @@ export class WithdrawalExecutorService {
     const abiCoder = ethers.AbiCoder.defaultAbiCoder();
 
     const encoded = abiCoder.encode(
-      ['string', 'address', 'uint256', 'bytes', 'uint256', 'uint256'],
+      ['string', 'address', 'address', 'uint256', 'bytes', 'uint256', 'uint256'],
       [
         params.networkId,
+        params.hotWalletAddress,
         params.toAddress,
         params.value,
         params.data,
@@ -420,6 +424,7 @@ export class WithdrawalExecutorService {
    */
   buildTokenOperationHash(params: {
     tokenNetworkId: string;
+    hotWalletAddress: string;
     toAddress: string;
     value: bigint;
     tokenContractAddress: string;
@@ -429,9 +434,10 @@ export class WithdrawalExecutorService {
     const abiCoder = ethers.AbiCoder.defaultAbiCoder();
 
     const encoded = abiCoder.encode(
-      ['string', 'address', 'uint256', 'address', 'uint256', 'uint256'],
+      ['string', 'address', 'address', 'uint256', 'address', 'uint256', 'uint256'],
       [
         params.tokenNetworkId,
+        params.hotWalletAddress,
         params.toAddress,
         params.value,
         params.tokenContractAddress,
