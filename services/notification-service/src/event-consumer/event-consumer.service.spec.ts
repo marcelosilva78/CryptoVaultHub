@@ -1,4 +1,3 @@
-import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { EventConsumerService } from './event-consumer.service';
 import { WebhookDeliveryService } from '../webhook/webhook-delivery.service';
@@ -8,6 +7,7 @@ jest.mock('ioredis', () => {
   return jest.fn().mockImplementation(() => ({
     xgroup: jest.fn().mockResolvedValue('OK'),
     xreadgroup: jest.fn().mockResolvedValue(null),
+    xpending: jest.fn().mockResolvedValue([]),
     xack: jest.fn().mockResolvedValue(1),
     quit: jest.fn().mockResolvedValue('OK'),
   }));
@@ -41,34 +41,17 @@ describe('EventConsumerService', () => {
     };
   });
 
-  async function createService(withKafka: boolean): Promise<EventConsumerService> {
-    const providers: any[] = [
-      EventConsumerService,
-      { provide: ConfigService, useValue: mockConfig },
-      { provide: WebhookDeliveryService, useValue: mockDeliveryService },
-    ];
-
-    if (withKafka) {
-      // KafkaConsumerService is @Optional, so provide it only when testing Kafka path
-      providers.push({
-        provide: 'KafkaConsumerService',
-        useValue: mockKafkaConsumer,
-      });
-    }
-
-    // We construct manually to avoid triggering onModuleInit (which starts loops)
-    const svc = new EventConsumerService(
+  function createService(withKafka: boolean): EventConsumerService {
+    return new EventConsumerService(
       mockConfig as ConfigService,
       mockDeliveryService as WebhookDeliveryService,
       withKafka ? mockKafkaConsumer : undefined,
     );
-
-    return svc;
   }
 
   describe('onModuleInit', () => {
     it('should use Kafka consumer when available (not both)', async () => {
-      const service = await createService(true);
+      const service = createService(true);
 
       // Spy on private methods
       const kafkaSpy = jest.spyOn(service as any, 'startKafkaConsumer').mockResolvedValue(undefined);
@@ -78,10 +61,13 @@ describe('EventConsumerService', () => {
 
       expect(kafkaSpy).toHaveBeenCalled();
       expect(redisSpy).not.toHaveBeenCalled();
+
+      // Clean up timer to avoid leaks
+      await service.onModuleDestroy();
     });
 
     it('should fall back to Redis when Kafka not available', async () => {
-      const service = await createService(false);
+      const service = createService(false);
 
       const kafkaSpy = jest.spyOn(service as any, 'startKafkaConsumer');
       const redisSpy = jest.spyOn(service as any, 'consumeLoop').mockReturnValue(undefined);
@@ -90,10 +76,12 @@ describe('EventConsumerService', () => {
 
       expect(kafkaSpy).not.toHaveBeenCalled();
       expect(redisSpy).toHaveBeenCalled();
+
+      await service.onModuleDestroy();
     });
 
     it('should NOT start both consumers simultaneously', async () => {
-      const service = await createService(true);
+      const service = createService(true);
 
       const kafkaSpy = jest.spyOn(service as any, 'startKafkaConsumer').mockResolvedValue(undefined);
       const redisSpy = jest.spyOn(service as any, 'consumeLoop').mockReturnValue(undefined);
@@ -104,12 +92,14 @@ describe('EventConsumerService', () => {
       const startedCount = (kafkaSpy.mock.calls.length > 0 ? 1 : 0) +
                            (redisSpy.mock.calls.length > 0 ? 1 : 0);
       expect(startedCount).toBe(1);
+
+      await service.onModuleDestroy();
     });
   });
 
   describe('handleEvent (via processStreamEntry)', () => {
     it('should create deliveries for matching webhooks', async () => {
-      const service = await createService(false);
+      const service = createService(false);
 
       // Call the private processStreamEntry directly
       await (service as any).processStreamEntry(
@@ -130,11 +120,12 @@ describe('EventConsumerService', () => {
             amount: '1000',
           }),
         }),
+        undefined, // projectId not present in stream data
       );
     });
 
     it('should skip events with no matching webhooks (no clientId)', async () => {
-      const service = await createService(false);
+      const service = createService(false);
       const warnSpy = jest.spyOn((service as any).logger, 'warn');
 
       await (service as any).processStreamEntry(

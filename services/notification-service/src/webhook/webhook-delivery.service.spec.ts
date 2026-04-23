@@ -1,9 +1,13 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getQueueToken } from '@nestjs/bullmq';
 import axios from 'axios';
-import { WebhookDeliveryService, RETRY_DELAYS_MS } from './webhook-delivery.service';
+import { WebhookDeliveryService } from './webhook-delivery.service';
 import { WebhookService } from './webhook.service';
+import { ConfigurableRetryService } from './configurable-retry.service';
+import { DeliveryAttemptRecorderService } from './delivery-attempt-recorder.service';
+import { DeadLetterService } from './dead-letter.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { POSTHOG_SERVICE } from '@cvh/posthog';
 
 jest.mock('axios');
 jest.mock('uuid', () => ({ v4: () => 'aaaabbbb-cccc-dddd-eeee-ffffffffffff' }));
@@ -12,9 +16,12 @@ const mockedAxios = axios as jest.Mocked<typeof axios>;
 
 describe('WebhookDeliveryService', () => {
   let service: WebhookDeliveryService;
+  let retryService: ConfigurableRetryService;
   let mockPrisma: any;
   let mockWebhookService: any;
   let mockQueue: any;
+  let mockAttemptRecorder: any;
+  let mockDeadLetterService: any;
 
   const TEST_WEBHOOK = {
     id: BigInt(1),
@@ -23,6 +30,14 @@ describe('WebhookDeliveryService', () => {
     secret: 'test-secret-key-abc123',
     events: ['deposit.confirmed', 'withdrawal.confirmed'],
     isActive: true,
+    retryMaxAttempts: 5,
+    retryBackoffType: 'exponential',
+    retryBackoffBaseMs: 1000,
+    retryBackoffMaxMs: 3600000,
+    retryJitter: false,
+    retryTimeoutMs: 10000,
+    retryOnStatusCodes: '[]',
+    failOnStatusCodes: '[]',
     createdAt: new Date(),
   };
 
@@ -42,6 +57,8 @@ describe('WebhookDeliveryService', () => {
     lastAttemptAt: null,
     nextRetryAt: null,
     error: null,
+    idempotencyKey: 'idem_test123',
+    correlationId: 'cor_test123',
     createdAt: new Date(),
   };
 
@@ -72,12 +89,26 @@ describe('WebhookDeliveryService', () => {
       add: jest.fn().mockResolvedValue({ id: 'job-1' }),
     };
 
+    mockAttemptRecorder = {
+      recordAttempt: jest.fn().mockResolvedValue(undefined),
+    };
+
+    mockDeadLetterService = {
+      deadLetter: jest.fn().mockResolvedValue(undefined),
+    };
+
+    retryService = new ConfigurableRetryService();
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         WebhookDeliveryService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: WebhookService, useValue: mockWebhookService },
+        { provide: ConfigurableRetryService, useValue: retryService },
+        { provide: DeliveryAttemptRecorderService, useValue: mockAttemptRecorder },
+        { provide: DeadLetterService, useValue: mockDeadLetterService },
         { provide: getQueueToken('webhook-delivery'), useValue: mockQueue },
+        { provide: POSTHOG_SERVICE, useValue: null },
       ],
     }).compile();
 
@@ -183,6 +214,7 @@ describe('WebhookDeliveryService', () => {
       mockedAxios.post.mockResolvedValue({
         status: 200,
         data: 'ok',
+        headers: { 'content-type': 'text/plain' },
       });
 
       await service.deliverWebhook(BigInt(10), BigInt(1));
@@ -209,6 +241,7 @@ describe('WebhookDeliveryService', () => {
       mockedAxios.post.mockResolvedValue({
         status: 200,
         data: 'ok',
+        headers: { 'content-type': 'text/plain' },
       });
 
       await service.deliverWebhook(BigInt(10), BigInt(1));
@@ -227,6 +260,7 @@ describe('WebhookDeliveryService', () => {
       mockedAxios.post.mockResolvedValue({
         status: 500,
         data: 'Internal Server Error',
+        headers: {},
       });
 
       await service.deliverWebhook(BigInt(10), BigInt(1));
@@ -241,11 +275,12 @@ describe('WebhookDeliveryService', () => {
         }),
       });
 
-      // Should enqueue a retry job with delay
+      // Should enqueue a retry job with configurable backoff delay
+      // Attempt 1: 2^(1-1) * 1000 = 1000ms
       expect(mockQueue.add).toHaveBeenCalledWith(
         'deliver',
         expect.objectContaining({ deliveryId: 10 }),
-        expect.objectContaining({ delay: RETRY_DELAYS_MS[0] }),
+        expect.objectContaining({ delay: 1000 }),
       );
     });
 
@@ -275,6 +310,7 @@ describe('WebhookDeliveryService', () => {
       mockedAxios.post.mockResolvedValue({
         status: 503,
         data: 'Service Unavailable',
+        headers: {},
       });
 
       await service.deliverWebhook(BigInt(10), BigInt(1));
@@ -287,17 +323,26 @@ describe('WebhookDeliveryService', () => {
         }),
       });
 
-      // Should NOT enqueue another retry
+      // Should call dead letter service
+      expect(mockDeadLetterService.deadLetter).toHaveBeenCalledWith(
+        BigInt(10),
+        expect.stringContaining('503'),
+      );
+
+      // Should NOT enqueue another retry (only the dead letter, no queue.add for retry)
       expect(mockQueue.add).not.toHaveBeenCalled();
     });
 
-    it('should use exponential backoff delays', async () => {
-      expect(RETRY_DELAYS_MS[0]).toBe(1_000);
-      expect(RETRY_DELAYS_MS[1]).toBe(5_000);
-      expect(RETRY_DELAYS_MS[2]).toBe(30_000);
-      expect(RETRY_DELAYS_MS[3]).toBe(120_000);
-      expect(RETRY_DELAYS_MS[4]).toBe(600_000);
-      expect(RETRY_DELAYS_MS[5]).toBe(3_600_000);
+    it('should use configurable backoff delays from webhook config', () => {
+      const config = retryService.extractConfig(TEST_WEBHOOK);
+
+      // Exponential: 2^(n-1) * base
+      expect(retryService.computeDelay(config, 1)).toBe(1_000);
+      expect(retryService.computeDelay(config, 2)).toBe(2_000);
+      expect(retryService.computeDelay(config, 3)).toBe(4_000);
+      expect(retryService.computeDelay(config, 4)).toBe(8_000);
+      expect(retryService.computeDelay(config, 5)).toBe(16_000);
+      expect(retryService.computeDelay(config, 6)).toBe(32_000);
     });
 
     it('should handle missing delivery gracefully', async () => {
@@ -338,7 +383,11 @@ describe('WebhookDeliveryService', () => {
     });
 
     it('should correctly compute HMAC signature in delivery headers', async () => {
-      mockedAxios.post.mockResolvedValue({ status: 200, data: 'ok' });
+      mockedAxios.post.mockResolvedValue({
+        status: 200,
+        data: 'ok',
+        headers: { 'content-type': 'text/plain' },
+      });
 
       await service.deliverWebhook(BigInt(10), BigInt(1));
 

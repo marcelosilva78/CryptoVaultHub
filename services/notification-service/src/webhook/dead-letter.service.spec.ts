@@ -1,14 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import {
-  NotFoundException,
-  BadRequestException,
-} from '@nestjs/common';
+import { getQueueToken } from '@nestjs/bullmq';
 import { DeadLetterService } from './dead-letter.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 describe('DeadLetterService', () => {
   let service: DeadLetterService;
   let prisma: any;
+  let mockQueue: any;
 
   const now = new Date('2026-04-09');
 
@@ -32,23 +30,11 @@ describe('DeadLetterService', () => {
     ...overrides,
   });
 
-  const mockDlqEntry = (overrides: Partial<any> = {}) => ({
-    id: 1n,
-    deliveryId: 1n,
-    webhookId: 10n,
-    clientId: 100n,
-    eventType: 'deposit.confirmed',
-    payload: { txHash: '0x123' },
-    lastError: 'HTTP 500',
-    attempts: 5,
-    status: 'pending',
-    movedAt: now,
-    resentAt: null,
-    discardedAt: null,
-    ...overrides,
-  });
-
   beforeEach(async () => {
+    mockQueue = {
+      add: jest.fn().mockResolvedValue({ id: 'job-1' }),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         DeadLetterService,
@@ -57,15 +43,18 @@ describe('DeadLetterService', () => {
           useValue: {
             webhookDelivery: {
               findUnique: jest.fn(),
+              findMany: jest.fn(),
               update: jest.fn(),
-              create: jest.fn(),
+              count: jest.fn(),
             },
-            webhookDlq: {
+            webhook: {
               findUnique: jest.fn(),
-              create: jest.fn(),
-              update: jest.fn(),
             },
           },
+        },
+        {
+          provide: getQueueToken('webhook-delivery'),
+          useValue: mockQueue,
         },
       ],
     }).compile();
@@ -78,157 +67,206 @@ describe('DeadLetterService', () => {
     jest.clearAllMocks();
   });
 
-  describe('moveToDLQ', () => {
-    it('should move an exhausted delivery to the DLQ', async () => {
-      const delivery = mockDelivery();
-      const dlqEntry = mockDlqEntry();
+  describe('deadLetter', () => {
+    it('should log the dead-letter action without throwing', async () => {
+      // deadLetter is a bookkeeping hook; it should not throw
+      await expect(
+        service.deadLetter(1n, 'HTTP 500'),
+      ).resolves.toBeUndefined();
+    });
+  });
 
-      prisma.webhookDelivery.findUnique.mockResolvedValue(delivery);
-      prisma.webhookDlq.create.mockResolvedValue(dlqEntry);
-      prisma.webhookDelivery.update.mockResolvedValue({
-        ...delivery,
-        status: 'dead_letter',
-      });
+  describe('listDeadLetters', () => {
+    it('should list failed deliveries for a client with pagination', async () => {
+      const deliveries = [mockDelivery(), mockDelivery({ id: 2n })];
+      prisma.webhookDelivery.findMany.mockResolvedValue(deliveries);
+      prisma.webhookDelivery.count.mockResolvedValue(2);
 
-      const result = await service.moveToDLQ(1);
+      const result = await service.listDeadLetters(100n);
 
-      expect(result).toBeDefined();
-      expect(result.id).toBe(1);
-      expect(result.status).toBe('pending');
-      expect(result.eventType).toBe('deposit.confirmed');
+      expect(result.data).toHaveLength(2);
+      expect(result.total).toBe(2);
+      expect(result.page).toBe(1);
+      expect(result.limit).toBe(20);
 
-      expect(prisma.webhookDlq.create).toHaveBeenCalledWith({
-        data: expect.objectContaining({
-          deliveryId: 1n,
-          webhookId: 10n,
-          clientId: 100n,
-          eventType: 'deposit.confirmed',
-          status: 'pending',
+      expect(prisma.webhookDelivery.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { clientId: 100n, status: 'failed' },
+          skip: 0,
+          take: 20,
         }),
-      });
-
-      expect(prisma.webhookDelivery.update).toHaveBeenCalledWith({
-        where: { id: 1n },
-        data: { status: 'dead_letter' },
-      });
-    });
-
-    it('should throw NotFoundException for missing delivery', async () => {
-      prisma.webhookDelivery.findUnique.mockResolvedValue(null);
-
-      await expect(service.moveToDLQ(999)).rejects.toThrow(
-        NotFoundException,
       );
     });
 
-    it('should reject delivery that has not exhausted attempts', async () => {
-      const delivery = mockDelivery({ attempts: 2, maxAttempts: 5 });
-      prisma.webhookDelivery.findUnique.mockResolvedValue(delivery);
+    it('should support custom page and limit', async () => {
+      prisma.webhookDelivery.findMany.mockResolvedValue([]);
+      prisma.webhookDelivery.count.mockResolvedValue(0);
 
-      await expect(service.moveToDLQ(1)).rejects.toThrow(
-        BadRequestException,
+      const result = await service.listDeadLetters(100n, {
+        page: 2,
+        limit: 10,
+      });
+
+      expect(result.page).toBe(2);
+      expect(result.limit).toBe(10);
+
+      expect(prisma.webhookDelivery.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          skip: 10, // (2-1) * 10
+          take: 10,
+        }),
       );
-      await expect(service.moveToDLQ(1)).rejects.toThrow(
-        'Delivery has not exhausted all attempts',
+    });
+
+    it('should cap limit at 100', async () => {
+      prisma.webhookDelivery.findMany.mockResolvedValue([]);
+      prisma.webhookDelivery.count.mockResolvedValue(0);
+
+      const result = await service.listDeadLetters(100n, { limit: 500 });
+
+      expect(result.limit).toBe(100);
+    });
+
+    it('should format delivery data correctly', async () => {
+      const delivery = mockDelivery();
+      prisma.webhookDelivery.findMany.mockResolvedValue([delivery]);
+      prisma.webhookDelivery.count.mockResolvedValue(1);
+
+      const result = await service.listDeadLetters(100n);
+
+      expect(result.data[0]).toEqual(
+        expect.objectContaining({
+          id: 1, // Number, not BigInt
+          deliveryCode: 'dlv_abc123',
+          webhookId: 10,
+          clientId: 100,
+          eventType: 'deposit.confirmed',
+          attempts: 5,
+          maxAttempts: 5,
+          error: 'HTTP 500',
+        }),
       );
     });
   });
 
   describe('resend', () => {
-    it('should resend from DLQ by creating a new delivery', async () => {
-      const dlqEntry = mockDlqEntry();
-      prisma.webhookDlq.findUnique.mockResolvedValue(dlqEntry);
-
-      const newDelivery = {
-        id: 50n,
-        deliveryCode: 'dlv_resend_123',
-        webhookId: 10n,
-        clientId: 100n,
-        eventType: 'deposit.confirmed',
-        payload: { txHash: '0x123' },
+    it('should resend a failed delivery by resetting and re-enqueuing', async () => {
+      const delivery = mockDelivery();
+      prisma.webhookDelivery.findUnique.mockResolvedValue(delivery);
+      prisma.webhook.findUnique.mockResolvedValue({
+        id: 10n,
+        retryMaxAttempts: 3,
+      });
+      prisma.webhookDelivery.update.mockResolvedValue({
+        ...delivery,
         status: 'queued',
-        maxAttempts: 3,
         attempts: 0,
-      };
-      prisma.webhookDelivery.create.mockResolvedValue(newDelivery);
-
-      const updatedDlq = mockDlqEntry({ status: 'resent', resentAt: now });
-      prisma.webhookDlq.update.mockResolvedValue(updatedDlq);
-      // For the follow-up findUnique in the result
-      prisma.webhookDlq.findUnique.mockResolvedValueOnce(dlqEntry);
-      prisma.webhookDlq.findUnique.mockResolvedValueOnce(updatedDlq);
+        maxAttempts: 3,
+      });
 
       const result = await service.resend(1);
 
-      expect(result.newDeliveryId).toBe(50);
+      expect(result).toBe(true);
 
-      expect(prisma.webhookDelivery.create).toHaveBeenCalledWith({
-        data: expect.objectContaining({
-          webhookId: 10n,
-          clientId: 100n,
-          eventType: 'deposit.confirmed',
-          status: 'queued',
-          maxAttempts: 3,
-          attempts: 0,
-        }),
-      });
-
-      expect(prisma.webhookDlq.update).toHaveBeenCalledWith({
+      // Should reset the delivery
+      expect(prisma.webhookDelivery.update).toHaveBeenCalledWith({
         where: { id: 1n },
         data: expect.objectContaining({
-          status: 'resent',
+          status: 'queued',
+          attempts: 0,
+          maxAttempts: 3,
+          error: null,
+          nextRetryAt: null,
         }),
       });
-    });
 
-    it('should throw NotFoundException for missing DLQ entry', async () => {
-      prisma.webhookDlq.findUnique.mockResolvedValue(null);
-
-      await expect(service.resend(999)).rejects.toThrow(
-        NotFoundException,
+      // Should enqueue for delivery
+      expect(mockQueue.add).toHaveBeenCalledWith(
+        'deliver',
+        expect.objectContaining({
+          deliveryId: 1,
+          webhookId: 10,
+        }),
+        expect.objectContaining({
+          attempts: 1,
+          removeOnComplete: 100,
+          removeOnFail: 500,
+        }),
       );
     });
 
-    it('should reject resend of non-pending DLQ entry', async () => {
-      const dlqEntry = mockDlqEntry({ status: 'resent' });
-      prisma.webhookDlq.findUnique.mockResolvedValue(dlqEntry);
+    it('should return false for missing delivery', async () => {
+      prisma.webhookDelivery.findUnique.mockResolvedValue(null);
 
-      await expect(service.resend(1)).rejects.toThrow(
-        BadRequestException,
-      );
+      const result = await service.resend(999);
+
+      expect(result).toBe(false);
+    });
+
+    it('should return false for non-failed delivery', async () => {
+      const delivery = mockDelivery({ status: 'sent' });
+      prisma.webhookDelivery.findUnique.mockResolvedValue(delivery);
+
+      const result = await service.resend(1);
+
+      expect(result).toBe(false);
+    });
+
+    it('should use default maxAttempts when webhook not found', async () => {
+      const delivery = mockDelivery();
+      prisma.webhookDelivery.findUnique.mockResolvedValue(delivery);
+      prisma.webhook.findUnique.mockResolvedValue(null);
+      prisma.webhookDelivery.update.mockResolvedValue({
+        ...delivery,
+        status: 'queued',
+        attempts: 0,
+        maxAttempts: 5,
+      });
+
+      const result = await service.resend(1);
+
+      expect(result).toBe(true);
+      expect(prisma.webhookDelivery.update).toHaveBeenCalledWith({
+        where: { id: 1n },
+        data: expect.objectContaining({
+          maxAttempts: 5, // default
+        }),
+      });
     });
   });
 
-  describe('discard', () => {
-    it('should mark DLQ entry as discarded', async () => {
-      const dlqEntry = mockDlqEntry();
-      prisma.webhookDlq.findUnique.mockResolvedValue(dlqEntry);
+  describe('resendAll', () => {
+    it('should resend all failed deliveries for a webhook', async () => {
+      const deliveries = [
+        mockDelivery({ id: 1n, webhookId: 10n }),
+        mockDelivery({ id: 2n, webhookId: 10n }),
+      ];
 
-      const discardedEntry = mockDlqEntry({
-        status: 'discarded',
-        discardedAt: now,
+      prisma.webhookDelivery.findMany.mockResolvedValue(deliveries);
+      // resend calls findUnique per delivery
+      prisma.webhookDelivery.findUnique.mockImplementation(({ where }: any) => {
+        return Promise.resolve(
+          deliveries.find((d) => d.id === where.id) ?? null,
+        );
       });
-      prisma.webhookDlq.update.mockResolvedValue(discardedEntry);
-
-      const result = await service.discard(1);
-
-      expect(result.status).toBe('discarded');
-      expect(result.discardedAt).toEqual(now);
-
-      expect(prisma.webhookDlq.update).toHaveBeenCalledWith({
-        where: { id: 1n },
-        data: expect.objectContaining({
-          status: 'discarded',
-        }),
+      prisma.webhook.findUnique.mockResolvedValue({
+        id: 10n,
+        retryMaxAttempts: 3,
       });
+      prisma.webhookDelivery.update.mockResolvedValue({ status: 'queued' });
+
+      const count = await service.resendAll(10);
+
+      expect(count).toBe(2);
+      expect(mockQueue.add).toHaveBeenCalledTimes(2);
     });
 
-    it('should throw NotFoundException for missing DLQ entry', async () => {
-      prisma.webhookDlq.findUnique.mockResolvedValue(null);
+    it('should return 0 when no failed deliveries exist', async () => {
+      prisma.webhookDelivery.findMany.mockResolvedValue([]);
 
-      await expect(service.discard(999)).rejects.toThrow(
-        NotFoundException,
-      );
+      const count = await service.resendAll(10);
+
+      expect(count).toBe(0);
     });
   });
 });
