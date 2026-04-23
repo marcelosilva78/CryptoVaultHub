@@ -28,17 +28,24 @@ import {
   Lock,
   Users,
   Crown,
+  Eye,
+  EyeOff,
+  Fuel,
 } from "lucide-react";
+import { ethers } from "ethers";
 
 // ─── Types ──────────────────────────────────────────────────────
 
-interface ChainConfig {
-  id: string;
+interface AvailableChain {
+  chainId: number;
   name: string;
-  symbol: string;
-  icon: string;
-  gasEstimateLabel: string;
-  explorerBase: string;
+  shortName: string;
+  nativeCurrencySymbol: string;
+  nativeCurrencyDecimals: number;
+  explorerUrl: string;
+  isActive: boolean;
+  rpcConfigured: boolean;
+  activeNodeCount: number;
 }
 
 type CustodyMode = "full_custody" | "co_sign" | "client_only";
@@ -72,71 +79,15 @@ interface DeployStatusChain {
 
 // ─── Constants ──────────────────────────────────────────────────
 
-const CHAINS: (ChainConfig & { chainId: number })[] = [
-  {
-    id: "ethereum",
-    chainId: 1,
-    name: "Ethereum",
-    symbol: "ETH",
-    icon: "\u039E",
-    gasEstimateLabel: "~0.05 ETH ($162)",
-    explorerBase: "https://etherscan.io",
-  },
-  {
-    id: "bsc",
-    chainId: 56,
-    name: "BNB Smart Chain",
-    symbol: "BNB",
-    icon: "\u25C6",
-    gasEstimateLabel: "~0.02 BNB ($12)",
-    explorerBase: "https://bscscan.com",
-  },
-  {
-    id: "polygon",
-    chainId: 137,
-    name: "Polygon",
-    symbol: "POL",
-    icon: "\u2B21",
-    gasEstimateLabel: "~5.0 POL ($4.50)",
-    explorerBase: "https://polygonscan.com",
-  },
-  {
-    id: "arbitrum",
-    chainId: 42161,
-    name: "Arbitrum",
-    symbol: "ETH",
-    icon: "\u25B2",
-    gasEstimateLabel: "~0.001 ETH ($3.24)",
-    explorerBase: "https://arbiscan.io",
-  },
-  {
-    id: "optimism",
-    chainId: 10,
-    name: "Optimism",
-    symbol: "ETH",
-    icon: "\u2B24",
-    gasEstimateLabel: "~0.001 ETH ($3.24)",
-    explorerBase: "https://optimistic.etherscan.io",
-  },
-  {
-    id: "avalanche",
-    chainId: 43114,
-    name: "Avalanche",
-    symbol: "AVAX",
-    icon: "\u25B3",
-    gasEstimateLabel: "~0.1 AVAX ($3.50)",
-    explorerBase: "https://snowtrace.io",
-  },
-  {
-    id: "base",
-    chainId: 8453,
-    name: "Base",
-    symbol: "ETH",
-    icon: "B",
-    gasEstimateLabel: "~0.0005 ETH ($1.62)",
-    explorerBase: "https://basescan.org",
-  },
-];
+const CHAIN_UI_META: Record<number, { icon: string; gasEstimateLabel: string }> = {
+  1:     { icon: "\u039E", gasEstimateLabel: "~0.05 ETH ($162)" },
+  56:    { icon: "\u25C6", gasEstimateLabel: "~0.02 BNB ($12)" },
+  137:   { icon: "\u2B21", gasEstimateLabel: "~5.0 POL ($4.50)" },
+  42161: { icon: "\u25B2", gasEstimateLabel: "~0.001 ETH ($3.24)" },
+  10:    { icon: "\u2B24", gasEstimateLabel: "~0.001 ETH ($3.24)" },
+  43114: { icon: "\u25B3", gasEstimateLabel: "~0.1 AVAX ($3.50)" },
+  8453:  { icon: "B",      gasEstimateLabel: "~0.0005 ETH ($1.62)" },
+};
 
 const CUSTODY_OPTIONS: {
   id: CustodyMode;
@@ -191,7 +142,9 @@ export default function SetupWizardPage() {
   const [projectDescription, setProjectDescription] = useState("");
 
   // Step 2 - Chain Selection
-  const [selectedChains, setSelectedChains] = useState<string[]>([]);
+  const [availableChains, setAvailableChains] = useState<AvailableChain[]>([]);
+  const [chainsLoading, setChainsLoading] = useState(true);
+  const [selectedChains, setSelectedChains] = useState<number[]>([]);
 
   // Step 3 - Custody Mode
   const [custodyMode, setCustodyMode] = useState<CustodyMode>("full_custody");
@@ -209,6 +162,8 @@ export default function SetupWizardPage() {
   const [gasLoading, setGasLoading] = useState(false);
   const [gasError, setGasError] = useState<string | null>(null);
   const gasPollingRef = useRef<NodeJS.Timeout | null>(null);
+  const [gasTankKeys, setGasTankKeys] = useState<Record<number, string>>({});
+  const [visibleKeys, setVisibleKeys] = useState<Record<number, boolean>>({});
 
   // Step 6 - Contract Deployment
   const [deployChains, setDeployChains] = useState<DeployStatusChain[]>([]);
@@ -227,10 +182,8 @@ export default function SetupWizardPage() {
     setKeyCeremonyError(null);
 
     try {
-      // Convert string chain IDs to numeric chain IDs for the backend
-      const numericChainIds = selectedChains
-        .map((id) => CHAINS.find((c) => c.id === id)?.chainId)
-        .filter((id): id is number => id !== undefined);
+      // selectedChains is already number[] of chain IDs
+      const numericChainIds = selectedChains;
 
       // Create project (skip if already created on a previous attempt)
       let currentProjectId = projectId;
@@ -251,17 +204,41 @@ export default function SetupWizardPage() {
         setProjectId(currentProjectId);
       }
 
-      // Initialize keys
+      // Initialize keys (pass chains so backend creates gas tank wallets)
       const keysRes = await clientFetch<{
         mnemonic: string[] | string;
         publicKeys: Array<{ keyType: string; publicKey: string; address?: string }>;
+        gasTanks?: Array<{ chainId: number; address: string }>;
       }>(`/v1/projects/${currentProjectId}/keys`, {
         method: "POST",
+        body: JSON.stringify({ chains: numericChainIds }),
       });
 
       const mnemonic = Array.isArray(keysRes.mnemonic)
         ? keysRes.mnemonic
         : keysRes.mnemonic.split(" ");
+
+      // Derive gas tank private keys client-side from the mnemonic
+      // Path: m/44'/60'/1000'/{chainId}/0 (same as backend derivation)
+      if (mnemonic.length >= 12 && !mnemonic[0].startsWith("(")) {
+        try {
+          const phrase = mnemonic.join(" ");
+          const mnemonicObj = ethers.Mnemonic.fromPhrase(phrase);
+          const seed = mnemonicObj.computeSeed();
+          const masterNode = ethers.HDNodeWallet.fromSeed(seed);
+          const derivedKeys: Record<number, string> = {};
+
+          for (const chainId of numericChainIds) {
+            const path = `m/44'/60'/1000'/${chainId}/0`;
+            const child = masterNode.derivePath(path);
+            derivedKeys[chainId] = child.privateKey;
+          }
+
+          setGasTankKeys(derivedKeys);
+        } catch (err) {
+          console.warn("Failed to derive gas tank keys client-side:", err);
+        }
+      }
 
       setKeyCeremony({
         mnemonic,
@@ -272,7 +249,7 @@ export default function SetupWizardPage() {
     } finally {
       setKeyCeremonyLoading(false);
     }
-  }, [projectName, projectDescription, selectedChains, custodyMode]);
+  }, [projectName, projectDescription, selectedChains, custodyMode, projectId]);
 
   // Step 5: Fetch gas check
   const fetchGasCheck = useCallback(async () => {
@@ -331,6 +308,25 @@ export default function SetupWizardPage() {
     }
   }, [projectId]);
 
+  // ─── Fetch Available Chains on Mount ─────────────────────────
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await clientFetch<{ success: boolean; chains: AvailableChain[] }>("/v1/chains");
+        if (!cancelled) {
+          setAvailableChains(res.chains || []);
+        }
+      } catch (err) {
+        console.error("Failed to fetch available chains:", err);
+      } finally {
+        if (!cancelled) setChainsLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   // ─── Step Transition Effects ────────────────────────────────
 
   // Step 4: Trigger key ceremony on entry
@@ -382,12 +378,23 @@ export default function SetupWizardPage() {
       } catch {
         // Non-blocking — seed confirmation is an audit record
       }
+      // Clear mnemonic from memory — it has been confirmed as saved
+      setKeyCeremony((prev) =>
+        prev ? { ...prev, mnemonic: [] } : null,
+      );
+    }
+    // Clear gas tank private keys from memory when leaving step 5
+    if (currentStep === 5) {
+      setGasTankKeys({});
+      setVisibleKeys({});
     }
     setCurrentStep((s) => Math.min(s + 1, 7));
   };
   const prevStep = () => setCurrentStep((s) => Math.max(s - 1, 1));
 
-  const toggleChain = (chainId: string) => {
+  const toggleChain = (chainId: number) => {
+    const chain = availableChains.find((c) => c.chainId === chainId);
+    if (!chain?.rpcConfigured) return;
     setSelectedChains((prev) =>
       prev.includes(chainId)
         ? prev.filter((c) => c !== chainId)
@@ -395,7 +402,7 @@ export default function SetupWizardPage() {
     );
   };
 
-  const allGasSufficient = gasChains.length === 0 || gasChains.every((c) => c.sufficient);
+  const allGasSufficient = gasChains.length > 0 && gasChains.every((c) => c.sufficient);
   const anyDeployFailed = deployChains.some((c) => c.status === "failed");
 
   // ─── Copy Mnemonic ──────────────────────────────────────────
@@ -504,59 +511,104 @@ export default function SetupWizardPage() {
               subtitle="Choose the networks you want to deploy smart contracts on. Each chain will get its own set of contracts."
             />
 
-            <div className="grid grid-cols-2 gap-3">
-              {CHAINS.map((chain) => {
-                const isSelected = selectedChains.includes(chain.id);
+            {chainsLoading && (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-5 h-5 animate-spin text-accent-primary" />
+                <span className="ml-2 text-text-muted font-display">Loading available chains...</span>
+              </div>
+            )}
 
-                return (
-                  <button
-                    key={chain.id}
-                    onClick={() => toggleChain(chain.id)}
-                    className={cn(
-                      "relative p-4 rounded-card border-2 text-left transition-all duration-fast cursor-pointer group",
-                      isSelected
-                        ? "bg-accent-subtle border-accent-primary/30"
-                        : "bg-surface-elevated border-border-default hover:border-border-focus hover:bg-surface-hover"
-                    )}
-                  >
-                    <div className="flex items-center gap-3">
-                      {/* Hexagonal chain icon */}
-                      <div
-                        className="w-10 h-10 flex items-center justify-center text-[18px] font-bold text-accent-primary bg-accent-subtle"
-                        style={{
-                          clipPath:
-                            "polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)",
-                        }}
-                      >
-                        {chain.icon}
-                      </div>
-                      <div className="flex-1">
-                        <div className="text-body font-display font-semibold text-text-primary">
-                          {chain.name}
-                        </div>
-                        <div className="text-micro text-text-muted font-display">
-                          {chain.symbol} &middot; {chain.gasEstimateLabel}
-                        </div>
-                      </div>
+            {!chainsLoading && availableChains.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-12 gap-3">
+                <AlertTriangle className="w-6 h-6 text-status-warning" />
+                <div className="text-body font-display font-semibold text-text-primary">No chains available</div>
+                <div className="text-caption text-text-muted font-display text-center max-w-[400px]">
+                  No blockchain networks have been configured yet. Please ask the administrator to add chains and RPC nodes.
+                </div>
+              </div>
+            )}
 
-                      {/* Checkbox */}
-                      <div
-                        className={cn(
-                          "w-5 h-5 rounded-input border-2 flex items-center justify-center transition-all duration-fast",
-                          isSelected
-                            ? "bg-accent-primary border-accent-primary"
-                            : "border-border-default group-hover:border-text-muted"
-                        )}
-                      >
-                        {isSelected && (
-                          <Check className="w-3 h-3 text-white" strokeWidth={3} />
+            {!chainsLoading && availableChains.length > 0 && (
+              <div className="grid grid-cols-2 gap-3">
+                {availableChains.map((chain) => {
+                  const isSelected = selectedChains.includes(chain.chainId);
+                  const meta = CHAIN_UI_META[chain.chainId];
+                  const disabled = !chain.rpcConfigured;
+
+                  return (
+                    <button
+                      key={chain.chainId}
+                      onClick={() => toggleChain(chain.chainId)}
+                      disabled={disabled}
+                      title={disabled ? "No RPC nodes configured for this chain" : undefined}
+                      className={cn(
+                        "relative p-4 rounded-card border-2 text-left transition-all duration-fast group",
+                        disabled
+                          ? "opacity-40 cursor-not-allowed"
+                          : "cursor-pointer",
+                        isSelected
+                          ? "bg-accent-subtle border-accent-primary/30"
+                          : !disabled
+                            ? "bg-surface-elevated border-border-default hover:border-border-focus hover:bg-surface-hover"
+                            : "bg-surface-elevated border-border-default"
+                      )}
+                    >
+                      <div className="flex items-center gap-3">
+                        {/* Hexagonal chain icon */}
+                        <div
+                          className="w-10 h-10 flex items-center justify-center text-[18px] font-bold text-accent-primary bg-accent-subtle"
+                          style={{
+                            clipPath:
+                              "polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)",
+                          }}
+                        >
+                          {meta?.icon ?? chain.shortName.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="flex-1">
+                          <div className="text-body font-display font-semibold text-text-primary">
+                            {chain.name}
+                          </div>
+                          <div className="text-micro text-text-muted font-display">
+                            {chain.nativeCurrencySymbol}
+                            {meta && <> &middot; {meta.gasEstimateLabel}</>}
+                          </div>
+                          <div className="mt-1 flex items-center gap-1.5">
+                            {disabled ? (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-badge text-[9px] font-display font-semibold bg-status-error-subtle text-status-error border border-status-error/15">
+                                <Lock className="w-2.5 h-2.5" />
+                                No RPC nodes configured
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-badge text-[9px] font-display font-semibold bg-status-success-subtle text-status-success border border-status-success/15">
+                                {chain.activeNodeCount} RPC node{chain.activeNodeCount !== 1 ? "s" : ""} active
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Checkbox or Lock */}
+                        {disabled ? (
+                          <Lock className="w-5 h-5 text-text-muted" />
+                        ) : (
+                          <div
+                            className={cn(
+                              "w-5 h-5 rounded-input border-2 flex items-center justify-center transition-all duration-fast",
+                              isSelected
+                                ? "bg-accent-primary border-accent-primary"
+                                : "border-border-default group-hover:border-text-muted"
+                            )}
+                          >
+                            {isSelected && (
+                              <Check className="w-3 h-3 text-white" strokeWidth={3} />
+                            )}
+                          </div>
                         )}
                       </div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
 
             {selectedChains.length > 0 && (
               <div className="bg-surface-elevated border border-border-default rounded-card p-3">
@@ -564,15 +616,16 @@ export default function SetupWizardPage() {
                   Estimated Total Gas (~5.65M gas per chain)
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {selectedChains.map((cid) => {
-                    const chain = CHAINS.find((c) => c.id === cid);
+                  {selectedChains.map((chainId) => {
+                    const chain = availableChains.find((c) => c.chainId === chainId);
+                    const meta = CHAIN_UI_META[chainId];
                     if (!chain) return null;
                     return (
                       <span
-                        key={cid}
+                        key={chainId}
                         className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-badge text-[10px] font-display font-semibold bg-accent-subtle text-accent-primary border border-accent-primary/15"
                       >
-                        {chain.name}: {chain.gasEstimateLabel}
+                        {chain.name}: {meta?.gasEstimateLabel ?? `~${chain.nativeCurrencySymbol}`}
                       </span>
                     );
                   })}
@@ -864,12 +917,39 @@ export default function SetupWizardPage() {
         );
 
       // ========== STEP 5: Gas Deposit ==========
-      case 5:
+      case 5: {
+        const toggleKeyVisibility = (chainId: number) => {
+          setVisibleKeys((prev) => ({ ...prev, [chainId]: !prev[chainId] }));
+        };
+
+        // Find chain config for gas estimate labels and symbols
+        const getChainMeta = (chainId: number) => {
+          const chain = availableChains.find((c) => c.chainId === chainId);
+          const ui = CHAIN_UI_META[chainId];
+          if (!chain) return undefined;
+          return {
+            icon: ui?.icon ?? chain.shortName.charAt(0).toUpperCase(),
+            symbol: chain.nativeCurrencySymbol,
+            gasEstimateLabel: ui?.gasEstimateLabel ?? `~${chain.nativeCurrencySymbol}`,
+          };
+        };
+
+        // Confirmations guidance per chain
+        const confirmationsMap: Record<number, { count: number; time: string }> = {
+          1: { count: 12, time: "~3 min" },
+          56: { count: 15, time: "~45 sec" },
+          137: { count: 128, time: "~5 min" },
+          42161: { count: 1, time: "~15 sec" },
+          10: { count: 1, time: "~2 sec" },
+          43114: { count: 1, time: "~2 sec" },
+          8453: { count: 1, time: "~2 sec" },
+        };
+
         return (
           <div className="space-y-6">
             <StepHeader
               title="Fund Gas Tanks"
-              subtitle="Deposit native tokens to each chain's gas tank address. These funds cover smart contract deployment costs."
+              subtitle="Deposit native tokens to each chain's gas tank. These funds cover the 5 smart contract deployments per chain."
             />
 
             {gasError && (
@@ -888,89 +968,208 @@ export default function SetupWizardPage() {
 
             {!gasLoading && gasChains.length === 0 && !gasError && (
               <div className="flex flex-col items-center justify-center py-12 gap-3">
-                <div className="w-12 h-12 flex items-center justify-center rounded-full bg-accent-subtle">
-                  <CheckCircle className="w-6 h-6 text-accent-primary" />
-                </div>
-                <div className="text-body font-display font-semibold text-text-primary">No gas tanks required yet</div>
+                <Loader2 className="w-6 h-6 animate-spin text-accent-primary" />
+                <div className="text-body font-display font-semibold text-text-primary">Creating gas tanks...</div>
                 <div className="text-caption text-text-muted font-display text-center max-w-[400px]">
-                  Gas tanks will be created during contract deployment. You can proceed to the deployment step.
+                  Gas tank wallets are being derived for each selected chain. This will only take a moment.
                 </div>
               </div>
             )}
 
-            <div className="space-y-3">
-              {gasChains.map((chain) => (
-                <div
-                  key={chain.chainId}
-                  className={cn(
-                    "bg-surface-elevated border rounded-card p-4",
-                    chain.sufficient
-                      ? "border-status-success/20"
-                      : "border-border-default"
-                  )}
-                >
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <span className="text-body font-display font-semibold text-text-primary">
-                        {chain.chainName}
-                      </span>
+            <div className="space-y-4">
+              {gasChains.map((chain) => {
+                const meta = getChainMeta(chain.chainId);
+                const confirmInfo = confirmationsMap[chain.chainId] ?? { count: 6, time: "~2 min" };
+                const privateKey = gasTankKeys[chain.chainId];
+                const keyVisible = visibleKeys[chain.chainId] ?? false;
+
+                return (
+                  <div
+                    key={chain.chainId}
+                    className={cn(
+                      "bg-surface-elevated border rounded-card overflow-hidden",
+                      chain.sufficient
+                        ? "border-status-success/30"
+                        : "border-border-default"
+                    )}
+                  >
+                    {/* Chain Header */}
+                    <div className={cn(
+                      "flex items-center justify-between px-5 py-3",
+                      chain.sufficient
+                        ? "bg-status-success/5"
+                        : "bg-surface-card"
+                    )}>
+                      <div className="flex items-center gap-3">
+                        <div
+                          className="w-8 h-8 flex items-center justify-center text-[14px] font-bold text-accent-primary bg-accent-subtle"
+                          style={{
+                            clipPath:
+                              "polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)",
+                          }}
+                        >
+                          {meta?.icon ?? "?"}
+                        </div>
+                        <div>
+                          <span className="text-body font-display font-bold text-text-primary">
+                            {chain.chainName}
+                          </span>
+                          {meta && (
+                            <span className="ml-2 text-micro text-text-muted font-display">
+                              {meta.symbol}
+                            </span>
+                          )}
+                        </div>
+                      </div>
                       {chain.sufficient ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-badge bg-status-success-subtle text-status-success text-[10px] font-display font-semibold">
-                          <CheckCircle className="w-3 h-3" />
-                          Sufficient
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-badge bg-status-success-subtle text-status-success text-[11px] font-display font-bold">
+                          <CheckCircle className="w-3.5 h-3.5" />
+                          Funded
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-badge bg-status-error-subtle text-status-error text-[10px] font-display font-semibold">
-                          <AlertCircle className="w-3 h-3" />
-                          Insufficient
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-badge bg-status-warning-subtle text-status-warning text-[11px] font-display font-bold">
+                          <Fuel className="w-3.5 h-3.5" />
+                          Awaiting Deposit
                         </span>
                       )}
                     </div>
-                  </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    {/* Gas Tank Address */}
-                    <div>
-                      <div className="text-[9px] text-text-muted uppercase tracking-wider mb-1 font-display font-semibold">
-                        Gas Tank Address
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <code className="text-[10px] font-mono text-accent-primary truncate flex-1">
-                          {chain.gasTankAddress}
-                        </code>
-                        <CopyIconButton value={chain.gasTankAddress} />
-                      </div>
-                    </div>
+                    {/* Content */}
+                    <div className="px-5 py-4">
+                      <div className="flex gap-5">
+                        {/* QR Code */}
+                        <div className="flex-shrink-0">
+                          <QRCodeDisplay
+                            address={chain.gasTankAddress}
+                            network={chain.chainName}
+                            size="md"
+                          />
+                        </div>
 
-                    {/* Balance Info */}
-                    <div className="flex gap-6">
-                      <div>
-                        <div className="text-[9px] text-text-muted uppercase tracking-wider mb-1 font-display font-semibold">
-                          Current Balance
-                        </div>
-                        <div className={cn(
-                          "text-[14px] font-mono font-semibold",
-                          chain.sufficient ? "text-status-success" : "text-text-primary"
-                        )}>
-                          {chain.balanceFormatted}
+                        {/* Details */}
+                        <div className="flex-1 min-w-0 space-y-3">
+                          {/* Gas Tank Address */}
+                          <div>
+                            <div className="text-[9px] text-text-muted uppercase tracking-wider mb-1 font-display font-semibold">
+                              Deposit Address
+                            </div>
+                            <div className="flex items-center gap-2 bg-surface-input rounded-input px-2.5 py-1.5 border border-border-default">
+                              <code className="text-[11px] font-mono text-accent-primary truncate flex-1">
+                                {chain.gasTankAddress}
+                              </code>
+                              <CopyIconButton value={chain.gasTankAddress} />
+                            </div>
+                          </div>
+
+                          {/* Private Key */}
+                          {privateKey && (
+                            <div>
+                              <div className="text-[9px] text-text-muted uppercase tracking-wider mb-1 font-display font-semibold">
+                                Private Key <span className="text-status-warning">(keep secret)</span>
+                              </div>
+                              <div className="flex items-center gap-2 bg-surface-input rounded-input px-2.5 py-1.5 border border-border-default">
+                                <code className="text-[11px] font-mono text-text-secondary truncate flex-1">
+                                  {keyVisible
+                                    ? privateKey
+                                    : "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"}
+                                </code>
+                                <button
+                                  onClick={() => toggleKeyVisibility(chain.chainId)}
+                                  className="flex-shrink-0 p-1 rounded-input text-text-muted hover:text-accent-primary transition-all duration-fast cursor-pointer"
+                                  title={keyVisible ? "Hide" : "Show"}
+                                >
+                                  {keyVisible ? (
+                                    <EyeOff className="w-3 h-3" />
+                                  ) : (
+                                    <Eye className="w-3 h-3" />
+                                  )}
+                                </button>
+                                <CopyIconButton value={privateKey} />
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Balance Bar */}
+                          <div>
+                            <div className="flex items-center justify-between mb-1.5">
+                              <div className="flex gap-4">
+                                <div>
+                                  <div className="text-[9px] text-text-muted uppercase tracking-wider font-display font-semibold">
+                                    Balance
+                                  </div>
+                                  <div className={cn(
+                                    "text-[15px] font-mono font-bold",
+                                    chain.sufficient ? "text-status-success" : "text-text-primary"
+                                  )}>
+                                    {chain.balanceFormatted} {meta?.symbol}
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className="text-[9px] text-text-muted uppercase tracking-wider font-display font-semibold">
+                                    Required
+                                  </div>
+                                  <div className="text-[15px] font-mono font-bold text-text-secondary">
+                                    {chain.requiredFormatted} {meta?.symbol}
+                                  </div>
+                                </div>
+                              </div>
+                              {meta && (
+                                <div className="text-right">
+                                  <div className="text-[9px] text-text-muted uppercase tracking-wider font-display font-semibold">
+                                    Estimate
+                                  </div>
+                                  <div className="text-[11px] font-display text-text-muted">
+                                    {meta.gasEstimateLabel}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Progress bar */}
+                            <div className="w-full h-1.5 bg-surface-input rounded-full overflow-hidden">
+                              <div
+                                className={cn(
+                                  "h-full rounded-full transition-all duration-normal",
+                                  chain.sufficient
+                                    ? "bg-status-success"
+                                    : "bg-accent-primary"
+                                )}
+                                style={{
+                                  width: `${Math.min(
+                                    100,
+                                    chain.requiredFormatted === "0.0000"
+                                      ? 100
+                                      : (parseFloat(chain.balanceFormatted) /
+                                          parseFloat(chain.requiredFormatted)) *
+                                        100
+                                  )}%`,
+                                }}
+                              />
+                            </div>
+                          </div>
                         </div>
                       </div>
-                      <div>
-                        <div className="text-[9px] text-text-muted uppercase tracking-wider mb-1 font-display font-semibold">
-                          Required
+
+                      {/* Confirmation guidance */}
+                      {!chain.sufficient && (
+                        <div className="mt-3 flex items-start gap-2 p-2.5 bg-accent-subtle/30 rounded-input border border-accent-primary/10">
+                          <AlertTriangle className="w-3.5 h-3.5 text-accent-primary flex-shrink-0 mt-0.5" />
+                          <div className="text-[11px] text-text-secondary font-display leading-relaxed">
+                            Send <strong>{meta?.symbol ?? "native tokens"}</strong> to
+                            the address above. Wait for{" "}
+                            <strong>{confirmInfo.count} confirmation{confirmInfo.count > 1 ? "s" : ""}</strong> ({confirmInfo.time}) before
+                            the balance updates. Auto-polling every 15s.
+                          </div>
                         </div>
-                        <div className="text-[14px] font-mono font-semibold text-text-secondary">
-                          {chain.requiredFormatted}
-                        </div>
-                      </div>
+                      )}
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             {gasChains.length > 0 && (
-              <div className="flex items-center justify-center">
+              <div className="flex items-center justify-center gap-3">
                 <button
                   onClick={fetchGasCheck}
                   disabled={gasLoading}
@@ -980,7 +1179,7 @@ export default function SetupWizardPage() {
                   Refresh Balances
                 </button>
                 {!allGasSufficient && (
-                  <span className="ml-3 text-micro text-text-muted font-display">
+                  <span className="text-micro text-text-muted font-display">
                     Auto-checking every 15s
                   </span>
                 )}
@@ -998,6 +1197,7 @@ export default function SetupWizardPage() {
             </StepNav>
           </div>
         );
+      }
 
       // ========== STEP 6: Contract Deployment ==========
       case 6:
@@ -1052,8 +1252,9 @@ export default function SetupWizardPage() {
             {deployStarted && (
               <div className="space-y-5">
                 {deployChains.map((chain) => {
-                  const chainConfig = CHAINS.find((c) => c.chainId === chain.chainId);
-                  const explorerBase = chainConfig?.explorerBase || "https://etherscan.io";
+                  const chainConfig = availableChains.find((c) => c.chainId === chain.chainId);
+                  const uiMeta = CHAIN_UI_META[chain.chainId];
+                  const explorerBase = chainConfig?.explorerUrl || "https://etherscan.io";
 
                   // Build steps from contracts object returned by backend
                   const contractNames = ["walletImpl", "forwarderImpl", "walletFactory", "forwarderFactory", "hotWallet"];
@@ -1090,7 +1291,7 @@ export default function SetupWizardPage() {
                                 "polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)",
                             }}
                           >
-                            {chainConfig?.icon || "?"}
+                            {uiMeta?.icon || chainConfig?.shortName?.charAt(0)?.toUpperCase() || "?"}
                           </div>
                           <span className="text-body font-display font-semibold text-text-primary">
                             {chainConfig?.name || `Chain ${chain.chainId}`}
@@ -1227,7 +1428,8 @@ export default function SetupWizardPage() {
               </div>
               <div className="space-y-3">
                 {deployChains.map((chain) => {
-                  const chainConfig = CHAINS.find((c) => c.chainId === chain.chainId);
+                  const chainConfig = availableChains.find((c) => c.chainId === chain.chainId);
+                  const uiMeta = CHAIN_UI_META[chain.chainId];
 
                   return (
                     <div
@@ -1241,7 +1443,7 @@ export default function SetupWizardPage() {
                             "polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)",
                         }}
                       >
-                        {chainConfig?.icon || "?"}
+                        {uiMeta?.icon || chainConfig?.shortName?.charAt(0)?.toUpperCase() || "?"}
                       </div>
                       <div className="flex-1">
                         <div className="text-body font-display font-semibold text-text-primary">
