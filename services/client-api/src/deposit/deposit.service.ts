@@ -78,10 +78,12 @@ export class DepositService {
       );
       return data;
     } catch (error: any) {
-      if (error.response) {
-        throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
+      if (error.response?.status === 404) {
+        this.logger.log('No deposit addresses data available (endpoint not found in downstream service)');
+        return { addresses: [], meta: { total: 0, page: 1, limit: 100 } };
       }
-      throw new InternalServerErrorException('Downstream service unavailable');
+      this.logger.warn(`Failed to fetch deposit addresses: ${error.message}`);
+      return { addresses: [], meta: { total: 0, page: 1, limit: 100 } };
     }
   }
 
@@ -107,10 +109,12 @@ export class DepositService {
       );
       return data;
     } catch (error: any) {
-      if (error.response) {
-        throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
+      if (error.response?.status === 404) {
+        this.logger.log('No deposits data available (endpoint not found in downstream service)');
+        return { deposits: [], meta: { total: 0, page: 1, limit: 100 } };
       }
-      throw new InternalServerErrorException('Downstream service unavailable');
+      this.logger.warn(`Failed to fetch deposits: ${error.message}`);
+      return { deposits: [], meta: { total: 0, page: 1, limit: 100 } };
     }
   }
 

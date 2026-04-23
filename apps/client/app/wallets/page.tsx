@@ -78,7 +78,8 @@ export default function WalletsPage() {
         if (cancelled) return;
 
         // Fetch balances for each chain (hot wallets only)
-        const uniqueChainIds = [...new Set(walletsRes.wallets.filter(w => w.walletType === 'hot').map(w => w.chainId))];
+        const wallets = walletsRes?.wallets ?? [];
+        const uniqueChainIds = [...new Set(wallets.filter(w => w.walletType === 'hot').map(w => w.chainId))];
         const balanceResults = await Promise.all(
           uniqueChainIds.map(chainId =>
             clientFetch<{ success: boolean; balances: ApiBalance[] }>(`/v1/wallets/${chainId}/balances`)

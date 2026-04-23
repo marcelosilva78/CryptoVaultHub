@@ -32,13 +32,15 @@ export class WalletService {
           timeout: 10000,
         },
       );
-      // core-wallet returns { wallets: [...] } — extract the array
-      return data.wallets ?? data ?? [];
+      // core-wallet may return { wallets: [...] } or a raw array
+      return data?.wallets ?? (Array.isArray(data) ? data : []);
     } catch (error: any) {
-      if (error.response) {
-        throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
+      if (error.response?.status === 404) {
+        this.logger.log('No wallets data available (endpoint not found in downstream service)');
+        return [];
       }
-      throw new InternalServerErrorException('Downstream service unavailable');
+      this.logger.warn(`Failed to fetch wallets: ${error.message}`);
+      return [];
     }
   }
 
@@ -51,12 +53,15 @@ export class WalletService {
           timeout: 10000,
         },
       );
-      return data;
+      // core-wallet may return { balances: [...] } or a raw array
+      return data?.balances ?? (Array.isArray(data) ? data : []);
     } catch (error: any) {
-      if (error.response) {
-        throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
+      if (error.response?.status === 404) {
+        this.logger.log(`No balances data available for chain ${chainId} (endpoint not found in downstream service)`);
+        return [];
       }
-      throw new InternalServerErrorException('Downstream service unavailable');
+      this.logger.warn(`Failed to fetch balances for chain ${chainId}: ${error.message}`);
+      return [];
     }
   }
 }

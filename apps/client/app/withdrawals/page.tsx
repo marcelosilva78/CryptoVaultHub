@@ -134,8 +134,10 @@ export default function WithdrawalsPage() {
 
         if (cancelled) return;
 
+        const addressEntries = addressesRes?.addresses ?? [];
+
         // Fetch balances for each hot wallet chain
-        const hotWallets = walletsRes.wallets.filter(w => w.walletType === 'hot');
+        const hotWallets = (walletsRes?.wallets ?? []).filter(w => w.walletType === 'hot');
         const uniqueChainIds = [...new Set(hotWallets.map(w => w.chainId))];
         const chains = uniqueChainIds.map(id => ({
           chainId: id,
@@ -178,11 +180,11 @@ export default function WithdrawalsPage() {
         let confirmedToday = 0;
         let limitUsed = 0;
 
-        const displayWithdrawals: DisplayWithdrawal[] = withdrawalsRes.withdrawals.map(w => {
+        const displayWithdrawals: DisplayWithdrawal[] = (withdrawalsRes?.withdrawals ?? []).map(w => {
           const chain = w.chainName || chainNames[w.chainId] || `Chain ${w.chainId}`;
 
           // Find label from address book
-          const addrEntry = addressesRes.addresses.find(a => a.address.toLowerCase() === w.toAddress.toLowerCase());
+          const addrEntry = addressEntries.find(a => a.address.toLowerCase() === w.toAddress.toLowerCase());
           const destLabel = addrEntry?.label || "Unknown";
           const shortAddr = w.toAddress.length > 14
             ? `${w.toAddress.slice(0, 6)}...${w.toAddress.slice(-4)}`
@@ -230,7 +232,7 @@ export default function WithdrawalsPage() {
         setDailyLimitUsed(limitUsed);
 
         // Transform address book
-        const displayAddresses: DisplayAddressBook[] = addressesRes.addresses.map(a => {
+        const displayAddresses: DisplayAddressBook[] = addressEntries.map(a => {
           const chain = a.chainName || chainNames[a.chainId] || `Chain ${a.chainId}`;
           let statusDisplay = "Active";
           if (a.status === 'cooldown' && a.cooldownExpiresAt) {
@@ -258,7 +260,7 @@ export default function WithdrawalsPage() {
         setAddressBook(displayAddresses);
 
         // Build destinations for the form dropdown
-        const dests = addressesRes.addresses
+        const dests = addressEntries
           .filter(a => a.status === 'active')
           .map(a => ({
             label: a.label,
@@ -338,9 +340,9 @@ export default function WithdrawalsPage() {
       const withdrawalsRes = await clientFetch<{ success: boolean; withdrawals: ApiWithdrawal[]; meta: { total: number } }>('/v1/withdrawals?limit=100');
       const addressesRes = await clientFetch<{ success: boolean; addresses: ApiAddressBookEntry[]; meta: { total: number } }>('/v1/addresses?limit=100');
 
-      const displayWithdrawals: DisplayWithdrawal[] = withdrawalsRes.withdrawals.map(w => {
+      const displayWithdrawals: DisplayWithdrawal[] = (withdrawalsRes?.withdrawals ?? []).map(w => {
         const chain = w.chainName || chainNames[w.chainId] || `Chain ${w.chainId}`;
-        const addrEntry = addressesRes.addresses.find(a => a.address.toLowerCase() === w.toAddress.toLowerCase());
+        const addrEntry = (addressesRes?.addresses ?? []).find(a => a.address.toLowerCase() === w.toAddress.toLowerCase());
         const destLabel = addrEntry?.label || "Unknown";
         const shortAddr = w.toAddress.length > 14 ? `${w.toAddress.slice(0, 6)}...${w.toAddress.slice(-4)}` : w.toAddress;
 

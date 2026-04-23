@@ -110,7 +110,7 @@ export default function DepositsPage() {
         let volume24h = 0;
         let confirmingNow = 0;
 
-        const displayDeposits: DisplayDeposit[] = depositsRes.deposits.map(d => {
+        const displayDeposits: DisplayDeposit[] = (depositsRes?.deposits ?? []).map(d => {
           const chain = chainNames[d.chainId] || `Chain ${d.chainId}`;
           const detectedDate = new Date(d.detectedAt);
           const isRecent = detectedDate >= dayAgo;
@@ -151,7 +151,7 @@ export default function DepositsPage() {
         setKpis({ deposits24h, volume24h, confirmingNow });
 
         // Transform deposit addresses for the address picker
-        const displayAddresses: DisplayAddress[] = addressesRes.addresses
+        const displayAddresses: DisplayAddress[] = (addressesRes?.addresses ?? [])
           .filter(a => a.status === 'deployed')
           .slice(0, 8)
           .map(a => {

@@ -72,10 +72,12 @@ export class WithdrawalService {
       );
       return data;
     } catch (error: any) {
-      if (error.response) {
-        throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
+      if (error.response?.status === 404) {
+        this.logger.log('No withdrawals data available (endpoint not found in downstream service)');
+        return { withdrawals: [], meta: { total: 0, page: 1, limit: 100 } };
       }
-      throw new InternalServerErrorException('Downstream service unavailable');
+      this.logger.warn(`Failed to fetch withdrawals: ${error.message}`);
+      return { withdrawals: [], meta: { total: 0, page: 1, limit: 100 } };
     }
   }
 

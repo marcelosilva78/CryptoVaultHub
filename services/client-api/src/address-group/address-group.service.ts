@@ -66,10 +66,12 @@ export class AddressGroupService {
       );
       return data;
     } catch (error: any) {
-      if (error.response) {
-        throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
+      if (error.response?.status === 404) {
+        this.logger.log('No address groups data available (endpoint not found in downstream service)');
+        return { groups: [], meta: { total: 0, page: 1, limit: 100 } };
       }
-      throw new InternalServerErrorException('Downstream service unavailable');
+      this.logger.warn(`Failed to fetch address groups: ${error.message}`);
+      return { groups: [], meta: { total: 0, page: 1, limit: 100 } };
     }
   }
 
