@@ -5,30 +5,6 @@ import { EvmProviderService } from '../blockchain/evm-provider.service';
 import { BalanceMaterializerService } from '../balance/balance-materializer.service';
 
 /**
- * Per-chain finality thresholds.
- * Number of confirmations required before a block is considered finalized.
- */
-const FINALITY_THRESHOLDS: Record<number, number> = {
-  1: 64,      // Ethereum Mainnet
-  11155111: 64, // Ethereum Sepolia
-  56: 15,     // BSC
-  97: 15,     // BSC Testnet
-  137: 256,   // Polygon
-  80001: 256, // Polygon Mumbai
-  80002: 256, // Polygon Amoy
-  42161: 1,   // Arbitrum One
-  421614: 1,  // Arbitrum Sepolia
-  10: 1,      // Optimism
-  11155420: 1, // Optimism Sepolia
-  8453: 1,    // Base
-  84532: 1,   // Base Sepolia
-  43114: 1,   // Avalanche
-  43113: 1,   // Avalanche Fuji
-};
-
-const DEFAULT_FINALITY_THRESHOLD = 32;
-
-/**
  * Marks blocks as finalized once they exceed the per-chain finality threshold.
  * Triggers balance materialization for newly finalized blocks.
  */
@@ -43,36 +19,39 @@ export class FinalityTrackerService {
   ) {}
 
   /**
-   * Check finality for all active chains every 30 seconds.
-   * Called by a scheduler (setInterval or @nestjs/schedule) in the module.
+   * Check finality for chains that have monitored addresses every 30 seconds.
+   * Reads finality_threshold from the DB chains table instead of a hardcoded map.
    */
   @Cron(CronExpression.EVERY_30_SECONDS)
   async checkFinality(): Promise<void> {
-    const chains = await this.prisma.chain.findMany({
-      where: { isActive: true },
-    });
+    // Only process chains with monitored addresses, reading threshold from DB
+    const activeChains = await this.prisma.$queryRaw<
+      Array<{ chain_id: number; finality_threshold: number }>
+    >`
+      SELECT DISTINCT c.chain_id, c.finality_threshold
+      FROM chains c
+      INNER JOIN monitored_addresses ma ON ma.chain_id = c.chain_id AND ma.is_active = 1
+      WHERE c.is_active = 1
+    `;
 
-    await Promise.all(
-      chains.map((chain) =>
-        this.checkFinalityForChain(chain.id).catch((err: any) => {
-          const msg = err instanceof Error ? err.message : String(err);
-          this.logger.error(
-            `Finality check failed for chain ${chain.id}: ${msg}`,
-          );
-        }),
-      ),
-    );
+    for (const chain of activeChains) {
+      try {
+        await this.checkFinalityForChain(chain.chain_id, chain.finality_threshold);
+      } catch (err) {
+        this.logger.error(
+          `Finality check failed for chain ${chain.chain_id}: ${err}`,
+        );
+      }
+    }
   }
 
   /**
    * Mark blocks as finalized for a single chain.
    */
-  async checkFinalityForChain(chainId: number): Promise<number> {
+  async checkFinalityForChain(chainId: number, finalityThreshold: number): Promise<number> {
     const provider = await this.evmProvider.getProvider(chainId);
     const currentBlock = await provider.getBlockNumber();
-    const threshold =
-      FINALITY_THRESHOLDS[chainId] ?? DEFAULT_FINALITY_THRESHOLD;
-    const finalizedBlock = currentBlock - threshold;
+    const finalizedBlock = currentBlock - finalityThreshold;
 
     if (finalizedBlock <= 0) return 0;
 
