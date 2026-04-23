@@ -271,7 +271,10 @@ export class ProjectSetupService {
             { headers: this.headers, timeout: 30000 },
           );
         } catch (keysErr: any) {
-          if (keysErr.response?.status === 409) {
+          const errMsg = keysErr.response?.data?.message ?? '';
+          const isDuplicate = keysErr.response?.status === 409 ||
+            errMsg.includes('Unique constraint') || errMsg.includes('already exist');
+          if (isDuplicate) {
             this.logger.log(`Keys already exist for project ${projectId}`);
           } else {
             throw keysErr;
