@@ -56,6 +56,12 @@ const navSections: Array<{ title: string; items: Array<{ label: string; href: st
     ],
   },
   {
+    title: "Content",
+    items: [
+      { label: "Knowledge Base", href: "/knowledge-base", icon: "BookOpen" },
+    ],
+  },
+  {
     title: "Config",
     items: [
       { label: "Tiers & Limits", href: "/tiers", icon: "Layers" },

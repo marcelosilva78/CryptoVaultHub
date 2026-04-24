@@ -85,6 +85,12 @@ const navSections: NavSection[] = [
     ],
   },
   {
+    title: "Resources",
+    items: [
+      { label: "Knowledge Base", href: "/knowledge-base", icon: BookOpen },
+    ],
+  },
+  {
     title: "Suporte",
     items: [
       { label: "Knowledge Base", href: "/support/kb", icon: BookOpen },
