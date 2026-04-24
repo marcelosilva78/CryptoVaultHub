@@ -76,7 +76,7 @@ Deposit addresses are CvhForwarder proxy clones that automatically forward recei
 
 ### Multi-Signature Security
 
-Every withdrawal requires 2 of 3 signatures on-chain. The three signers are: the platform key (controlled by CryptoVaultHub), the client key (controlled by the client in co-sign mode, or by CVH in full-custody mode), and the backup key (split via Shamir's Secret Sharing). Replay protection uses a sequence ID window with chain ID binding, and signature malleability is prevented by enforcing `s <= secp256k1n/2`.
+Every withdrawal requires 2 of 3 signatures on-chain. The three signers are: the platform key (controlled by CryptoVaultHub), the client key (controlled by the client in co-sign mode, or by CVH in full-custody mode), and the backup key (split via Shamir's Secret Sharing). The operation hash includes `address(this)` (the wallet contract address) to prevent cross-contract replay. Replay protection uses a sequence ID window with chain ID binding, and signature malleability is prevented by enforcing `s <= secp256k1n/2`.
 
 ### HD Key Management
 
@@ -114,9 +114,21 @@ The Client Portal (port 3011) gives each client self-service access to their wal
 
 Kong 3.6 runs in declarative (DB-less) mode, providing centralized request routing, multi-level rate limiting (global per-service and per-tenant via Redis-backed counters), CORS restriction to known origins (`localhost:3010`, `localhost:3011`, `admin.vaulthub.live`, `portal.vaulthub.live`), and request size limiting (1 MB). TLS termination is handled upstream by Traefik v3.0 with automatic Let's Encrypt certificates.
 
+### Co-Sign Custody Mode
+
+In co-sign mode, the client retains control of their own key and must independently co-sign every withdrawal. The Client Portal provides a client-side cryptographic signing flow: the client enters their mnemonic, derives the signing key locally in the browser, independently recomputes the operation hash (matching the on-chain contract logic), signs with secp256k1, and submits the signature. The platform verifies the hash match before broadcasting. Private key material never leaves the client's browser.
+
+### Knowledge Base
+
+Admins can create, edit, and publish help articles via the Admin Panel's Knowledge Base module (CRUD with rich text). Client Portal users can browse published articles with client-side Fuse.js fuzzy search. Articles support categories, ordering, and published/draft status.
+
+### Project Isolated Contracts
+
+Each project within a client organization can deploy its own set of smart contracts (CvhWalletSimple, CvhForwarder, CvhForwarderFactory, CvhBatcher). The Admin Panel tracks per-project contract deployment status, addresses, and deploy transaction hashes across all chains, enabling complete isolation between business lines.
+
 ### Full Observability Stack
 
-Self-hosted PostHog captures every API request, webhook delivery, blockchain event, and compliance action via NestJS interceptors. Prometheus (v2.50.0) scrapes metrics from Kong and all NestJS services at 15-second intervals. Grafana (10.3.0) provides dashboards with Prometheus and Loki data sources. Loki (2.9.0) aggregates structured JSON logs from all services. Jaeger (1.54) provides distributed tracing via OTLP. All events share trace IDs for end-to-end correlation.
+Self-hosted PostHog captures every API request, webhook delivery, blockchain event, and compliance action via NestJS interceptors (with sensitive data scrubbing). Prometheus (v2.50.0) scrapes custom metrics from Kong and all NestJS services at 15-second intervals, including RPC health gauges, sync status counters, and webhook delivery histograms. Grafana (10.3.0) provides dashboards with Prometheus, Loki, and Jaeger data sources. Loki (2.9.0) aggregates structured JSON logs from all services via Promtail log shipping. Alertmanager fires on 3 alert rules (service down, RPC degraded, sync stalled). Jaeger (1.54) provides distributed tracing via OTLP. Pino structured logging is active in all services. All events share trace IDs for end-to-end correlation.
 
 ---
 
@@ -246,7 +258,7 @@ SMTP server settings (host, port, username, password, from address) are configur
 - **Token refresh handling** -- `adminFetch` and `clientFetch` handle 401 responses with automatic token refresh via HttpOnly cookie rotation.
 - **Circuit breaker Redis state** -- RPC Gateway circuit breaker state persisted in Redis (survives service restarts).
 - **N-hop address tracing** -- KYT Full mode traces counterparty addresses 1 hop deep for enhanced risk scoring.
-- **7 new database migrations** (024-030) covering chain lifecycle, schema fixes, client-initiated custody, notification rules, client chain config, client deletion, and system settings.
+- **18 new database migrations** (024-041) covering chain lifecycle, schema fixes, client-initiated custody, notification rules, client chain config, client deletion, system settings, project chains/seeds/deletion, co-sign operations, key versioning, knowledge base, and project contracts.
 
 ---
 
@@ -295,7 +307,7 @@ graph TB
         end
     end
     
-    MySQL[("MySQL Cluster<br/>(External)<br/>10 databases")]
+    MySQL[("MySQL Cluster<br/>(External)<br/>10 databases<br/>42 migrations")]
     
     Internet --> Traefik
     Traefik --> Admin
@@ -571,7 +583,7 @@ All contracts are compiled with Solidity 0.8.27, optimizer enabled (1000 runs), 
 
 ### CvhForwarder
 
-Deposit address proxy that auto-forwards ETH to the parent wallet via `receive()` -> `flush()`. Holds ERC-20 tokens until `flushTokens()` or `batchFlushERC20Tokens()` is called by the parent or fee address. Supports ERC-721 and ERC-1155 auto-forwarding (configurable). The `callFromParent()` function allows the parent wallet to execute arbitrary calls through the forwarder. If ETH exists at the address before initialization, it is flushed during `init()`.
+Deposit address proxy that auto-forwards ETH to the parent wallet via `receive()` -> `flush()`. Holds ERC-20 tokens until `flushTokens()` or `batchFlushERC20Tokens()` is called by the parent or fee address. Supports ERC-721 and ERC-1155 auto-forwarding (configurable). The `callFromParent()` function allows the parent wallet to execute arbitrary calls through the forwarder. If ETH exists at the address before initialization, it is flushed during `init()`. `nonReentrant` modifier protects `receive()` and `fallback()` functions.
 
 **Source**: `contracts/contracts/CvhForwarder.sol`
 
@@ -687,7 +699,17 @@ Located in `database/`:
 | `028-client-chain-config.sql` | Per-client chain monitoring mode config |
 | `029-client-deletion.sql` | Client soft-deletion with 30-day grace period |
 | `030-system-settings.sql` | System settings table in cvh_admin (SMTP config, feature flags) |
-| `012-schema-fixes.sql` | Schema corrections and updates |
+| `031-project-chains.sql` | Project-chain associations |
+| `032-project-seeds.sql` | Per-project seed management |
+| `033-audit-indexes-and-shamir-project.sql` | Audit indexes and Shamir project scoping |
+| `034-project-deletion.sql` | Project soft-deletion |
+| `035-fix-derived-keys-constraint.sql` | Fix derived_keys unique constraint |
+| `036-add-start-block.sql` | Add `start_block` to monitored_addresses |
+| `037-fix-custody-column.sql` | Standardize `custody_mode` column |
+| `038-co-sign-operations.sql` | Co-sign operations table + `pending_cosign` withdrawal status |
+| `039-key-version.sql` | Add `key_version` to master_seeds, project_seeds, derived_keys, shamir_shares |
+| `040-knowledge-base.sql` | Knowledge base articles table in cvh_admin |
+| `041-project-contracts.sql` | Per-project contract deployment tracking in cvh_admin |
 
 ---
 
@@ -698,7 +720,7 @@ CryptoVaultHub implements defense-in-depth security across all layers.
 | Layer | Mechanism | Details |
 |-------|-----------|---------|
 | Network Isolation | `vault-net` Docker network | Key Vault has zero internet access. Only Core Wallet bridges `internal-net` and `vault-net`. `internal-net` is marked `internal: true` (no external access). |
-| mTLS | TLS mutual authentication | Optional mTLS between Core Wallet Service and Key Vault Service. Certificates generated via `scripts/generate-vault-certs.sh`. Opt-in via `VAULT_MTLS_ENABLED=true`. |
+| mTLS | TLS mutual authentication | mTLS active by default between Core Wallet Service and Key Vault Service (`VAULT_TLS_ENABLED=true`). Certificates generated via `scripts/generate-vault-certs.sh`. |
 | Native Signing | secp256k1 (noble-secp256k1) | Transaction signing uses native secp256k1 operations on Buffer objects, avoiding JS string conversion that could leak key material to V8 string pool. |
 | Cookie Auth | HttpOnly secure cookies | Frontend authentication uses HttpOnly cookies with server-side proxy, eliminating XSS risk from localStorage token storage. |
 | Encryption at Rest | AES-256-GCM envelope encryption | Two-layer scheme: PBKDF2-derived KEK wraps a random DEK, which encrypts the private key. Per-key random 32-byte salt. |
@@ -717,6 +739,11 @@ CryptoVaultHub implements defense-in-depth security across all layers.
 | Session Management | SHA-256 hashed refresh tokens | Stored in `cvh_auth.sessions` with IP, user agent, and expiry tracking. |
 | Webhook Integrity | HMAC-SHA256 | Per-endpoint signing secret. Signature in `X-CVH-Signature` header. |
 | Redis Auth | `requirepass` | Redis password authentication configured via `REDIS_PASSWORD` environment variable. |
+| TOTP Replay Prevention | Redis nonce store | Used TOTP codes are stored in Redis with TTL to prevent replay within the same time window. |
+| Security Headers | Traefik middleware | HSTS, frameDeny, contentTypeNosniff enforced via Traefik security headers middleware on all routes. |
+| Swagger in Production | Disabled | Swagger UI (`/api/docs`) is disabled when `NODE_ENV=production` to prevent endpoint enumeration. |
+| PostHog Scrubbing | Sensitive data filter | PostHog interceptor scrubs passwords, tokens, private keys, and secrets before event capture. |
+| Co-Sign Verification | Independent hash | Client-side signing independently recomputes the on-chain operation hash (including `address(this)`) and verifies it matches the server-provided hash before signing. |
 | Audit Trail | PostHog + key_vault_audit | Every API request, blockchain event, compliance action, and key operation is recorded. Correlated via trace ID across PostHog, Loki, and Jaeger. |
 | Memory Safety | Explicit zeroing | DEK, KEK, and plaintext key buffers are `.fill(0)` after use in the encryption service. |
 | 2FA Enforcement | Mandatory for admins | TOTP 2FA is mandatory for admin users. Configurable for client users. Password confirmation required to disable 2FA. |
@@ -835,11 +862,11 @@ bash database/migrate.sh
 # Or with custom host / user:
 bash database/migrate.sh -h 10.0.0.5 -u admin -p
 
-# Or manually run each script (000 through 030):
+# Or manually run each script (000 through 041):
 mysql -h <host> -u root -p < database/000-create-databases.sql
 mysql -h <host> -u root -p < database/001-cvh-auth.sql
-# ... (all scripts through 030)
-mysql -h <host> -u root -p < database/030-system-settings.sql
+# ... (all scripts through 041)
+mysql -h <host> -u root -p < database/041-project-contracts.sql
 ```
 
 Create the application database user:
@@ -982,7 +1009,7 @@ CryptoVaultHub/
 +-- apps/                       # Next.js frontend applications
 |   +-- admin/                  # Admin Panel (Port 3010) -- includes Analytics
 |   +-- client/                 # Client Portal (Port 3011) -- includes Setup Wizard
-+-- database/                   # SQL migration scripts (31 scripts: 000-030 + migrate.sh)
++-- database/                   # SQL migration scripts (42 scripts: 000-041 + migrate.sh)
 +-- infra/                      # Infrastructure configuration
 |   +-- docker/                 # Dockerfiles (NestJS, Next.js -- multi-stage builds)
 |   +-- kong/                   # Kong declarative config (kong.yml)
@@ -1022,6 +1049,10 @@ CryptoVaultHub/
 | Multi-Chain Addresses (v2) | [docs/multi-chain-addresses.md](docs/multi-chain-addresses.md) | CREATE2 deterministic addressing, address groups, cross-chain identity |
 | Operations Guide (v2) | [docs/operations.md](docs/operations.md) | Operational runbooks, monitoring, alerting, troubleshooting |
 | Rollout Checklist (v2) | [docs/rollout-checklist.md](docs/rollout-checklist.md) | v2 migration checklist, feature flags, rollback procedures |
+| Audit Report | [docs/AUDIT-REPORT-2026-04-15.md](docs/AUDIT-REPORT-2026-04-15.md) | Full-stack audit findings and remediation status |
+| Deployment Checklist | [docs/operations/deployment-checklist.md](docs/operations/deployment-checklist.md) | Production deployment checklist |
+| Smart Contract Deployment | [docs/operations/smart-contract-deployment.md](docs/operations/smart-contract-deployment.md) | Contract deployment procedures |
+| Shamir Physical Separation | [docs/operations/shamir-physical-separation.md](docs/operations/shamir-physical-separation.md) | Shamir share distribution runbook |
 
 ---
 
@@ -1218,9 +1249,11 @@ The Admin Panel and Client Portal have been designed with the CryptoVaultHub vis
 - [ ] Verify Key Vault has zero internet access: `docker exec key-vault-service ping -c 1 google.com` (should fail)
 - [ ] Set up DNS records for Traefik (all subdomains point to server IP)
 - [ ] Generate mTLS certificates: `bash scripts/generate-vault-certs.sh`
-- [ ] Enable mTLS: Set `VAULT_MTLS_ENABLED=true` in `.env`
+- [ ] Verify mTLS is active: `VAULT_TLS_ENABLED=true` in `.env` (default)
 - [ ] Configure SMTP settings in Admin Panel (Settings > SMTP)
-- [ ] Run all 31 database migrations: `bash database/migrate.sh`
+- [ ] Run all 42 database migrations: `bash database/migrate.sh`
+- [ ] Verify Swagger UI is disabled (`NODE_ENV=production`)
+- [ ] Review Shamir physical separation runbook: `docs/operations/shamir-physical-separation.md`
 
 ---
 
@@ -1244,6 +1277,10 @@ MIT
 - All backend code is TypeScript (strict mode).
 - Follow existing NestJS patterns: controllers, services, modules, DTOs with class-validator.
 - Smart contract changes require corresponding Hardhat tests.
+
+### Test Suite
+
+The project includes 500+ tests across all services: 128 Hardhat smart contract tests, 15 E2E cross-service contract tests, 35 `@cvh/utils` unit tests, 40 frontend tests (client-side crypto signing, utility functions), and comprehensive service-level tests across all 9 backend services.
 - Frontend changes must support both dark and light modes.
 - Use semantic design tokens from the visual identity system -- never hardcode colors.
 - All API endpoints must have corresponding DTO validation.

@@ -56,6 +56,8 @@ graph TB
             Prometheus["Prometheus"]
             Grafana["grafana.vaulthub.live<br/>Grafana"]
             Loki["Loki"]
+            Promtail["Promtail<br/>(log shipping)"]
+            Alertmanager["Alertmanager<br/>(3 alert rules)"]
             Jaeger["jaeger.vaulthub.live<br/>Jaeger"]
             PostHog["PostHog"]
         end
@@ -124,14 +126,14 @@ Traefik v3.0 serves as the single entry point for all external traffic. It is th
 
 | Service | Port | Responsibility |
 |---------|------|---------------|
-| **admin-api** | 3001 | Client/chain/tier/token/compliance management, monitoring dashboard, project management, job management, RPC management, sync management, export management |
-| **client-api** | 3002 | Wallet queries, deposit address generation, withdrawals, webhooks, address book, co-sign, projects, flush operations, deploy traces, address groups, exports |
+| **admin-api** | 3001 | Client/chain/tier/token/compliance management, monitoring dashboard, project management, job management, RPC management, sync management, export management, KnowledgeBaseModule (article CRUD), project contracts |
+| **client-api** | 3002 | Wallet queries, deposit address generation, withdrawals, webhooks, address book, co-sign, projects, flush operations, deploy traces, address groups, exports, KnowledgeBaseModule (article reader with Fuse.js search) |
 | **auth-service** | 3003 | JWT login/refresh/logout, TOTP 2FA, API key issuance and validation, RBAC, impersonation |
-| **core-wallet-service** | 3004 | Wallet creation, balance queries, deposit address computation, withdrawal signing, compliance screening |
+| **core-wallet-service** | 3004 | Wallet creation, balance queries, deposit address computation, withdrawal signing, compliance screening, CoSignModule (co-sign operation orchestration) |
 | **key-vault-service** | 3005 | HD key generation, Shamir secret sharing (3-of-5), transaction signing, key audit logging |
-| **chain-indexer-service** | 3006 | Hybrid polling + WebSocket block scanning, ERC-20 Transfer event detection, native transfer detection, confirmation tracking, reconciliation |
+| **chain-indexer-service** | 3006 | Hybrid polling + WebSocket block scanning, ERC-20 Transfer event detection, native transfer detection, confirmation tracking, reconciliation, ReorgRollbackHandler (chain reorganization detection and deposit re-evaluation), AddressRegistrationHandler (live monitored address updates) |
 | **notification-service** | 3007 | Webhook delivery with retry, HMAC signing, email notifications, event consumption from Redis Streams |
-| **cron-worker-service** | 3008 | Forwarder contract deployment, token sweep/flush, gas tank monitoring, sanctions list sync |
+| **cron-worker-service** | 3008 | Forwarder contract deployment, token sweep/flush, gas tank monitoring, sanctions list sync (InternalServiceGuard protected) |
 
 ### Frontend Applications
 
@@ -205,12 +207,12 @@ Docker Compose defines four isolated networks:
 |---------|------|--------|----------|
 | `public-net` | bridge | External-facing | Traefik, Kong, admin-api, client-api, admin (UI), client (UI) |
 | `internal-net` | bridge, **internal: true** | Service-to-service only | All backend services, Redis, Loki, Jaeger, PostHog |
-| `vault-net` | bridge, **internal: true** | Isolated key operations | key-vault-service, core-wallet-service only |
-| `monitoring-net` | bridge | Observability stack | Prometheus, Grafana, Loki, Jaeger, PostHog (+ Kafka, ClickHouse, Zookeeper) |
+| `vault-net` | bridge, **internal: true** | Isolated key operations, mTLS enabled | key-vault-service, core-wallet-service only |
+| `monitoring-net` | bridge | Observability stack | Prometheus, Grafana, Loki, Promtail, Alertmanager, Jaeger, PostHog (+ Kafka, ClickHouse, Zookeeper) |
 
 **Traefik** is the single entry point on `public-net`, exposing only ports 80 and 443 to the internet. All other services are routed through Traefik via Docker label-based subdomain routing. No other container exposes ports externally.
 
-The `vault-net` is deliberately isolated so that **only** `core-wallet-service` can reach `key-vault-service`. The key vault has no Redis dependency and no public network access. Internal service-to-service calls are authenticated via the `INTERNAL_SERVICE_KEY` shared secret.
+The `vault-net` is deliberately isolated so that **only** `core-wallet-service` can reach `key-vault-service`. The key vault has no Redis dependency and no public network access. Communication over vault-net is protected by mTLS (`VAULT_TLS_ENABLED=true` by default) with certificates generated via `scripts/generate-vault-certs.sh`. Internal service-to-service calls are additionally authenticated via the `INTERNAL_SERVICE_KEY` shared secret. The `docker-proxy` container runs on a dedicated network for Docker socket access isolation.
 
 ---
 
@@ -224,7 +226,7 @@ The `vault-net` is deliberately isolated so that **only** `core-wallet-service` 
 | **Frontend Framework** | Next.js | latest | Admin Panel, Client Portal |
 | **ORM** | Prisma | latest | Database access (per-service schema) |
 | **Database** | MySQL | 8.0+ | Primary data store (10 databases) |
-| **Cache / Queue** | Redis 7 | Alpine | Caching, BullMQ job queues, Redis Streams |
+| **Cache / Queue** | Redis 7 | Alpine | Caching, BullMQ job queues, Redis Streams (with XPENDING/XCLAIM recovery) |
 | **API Gateway** | Kong | 3.6 | Rate limiting, routing, CORS, request size limiting |
 | **Reverse Proxy / TLS** | Traefik | v3.0 | Automatic SSL via Let's Encrypt, subdomain routing via Docker labels, single entry point (ports 80/443) |
 | **Blockchain** | ethers.js | 6.x | EVM RPC interaction |
@@ -422,7 +424,7 @@ Supporting contracts:
 | Kong config | `infra/kong/kong.yml` |
 | Prometheus config | `infra/prometheus/prometheus.yml` |
 | Dockerfiles | `infra/docker/Dockerfile.nestjs`, `infra/docker/Dockerfile.nextjs` |
-| SQL migrations | `database/000-create-databases.sql` through `database/012-schema-fixes.sql` |
+| SQL migrations | `database/000-create-databases.sql` through `database/041-project-contracts.sql` (42 migrations) |
 | Migration runner | `database/migrate.sh` |
 | Seed data | `database/009-seed-data.sql` |
 | Admin API | `services/admin-api/` |

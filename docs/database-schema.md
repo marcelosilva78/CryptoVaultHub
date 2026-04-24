@@ -2,7 +2,7 @@
 
 All databases target MySQL 8.0+ with `utf8mb4_unicode_ci` collation and InnoDB engine.
 
-Migration files are located in `database/` and executed via `database/migrate.sh`.
+Migration files are located in `database/` and executed via `database/migrate.sh`. Total: **42 migrations** (000-041).
 
 ---
 
@@ -93,6 +93,7 @@ Encrypted master seeds for HD key derivation.
 | `auth_tag` | VARBINARY(16) | NO | GCM authentication tag |
 | `salt` | VARBINARY(32) | NO | PBKDF2 salt |
 | `kdf_iterations` | INT | NO | KDF iteration count (default: 100000) |
+| `key_version` | INT | NO | Key version for rotation tracking (migration 039) |
 | `created_at` | TIMESTAMP | NO | Creation timestamp |
 
 **Indexes:** `uq_master_seeds_seed_id` (UNIQUE)
@@ -115,6 +116,7 @@ Per-client derived keys (HD wallet keys, gas tank keys).
 | `iv` | VARBINARY(16) | NO | IV |
 | `auth_tag` | VARBINARY(16) | NO | Auth tag |
 | `salt` | VARBINARY(32) | NO | Salt |
+| `key_version` | INT | NO | Key version for rotation tracking (migration 039) |
 | `is_active` | TINYINT(1) | NO | Active flag (default: 1) |
 | `last_used_at` | TIMESTAMP | YES | Last signing timestamp |
 | `sign_count` | BIGINT | NO | Total sign operations (default: 0) |
@@ -137,6 +139,7 @@ Shamir Secret Sharing (3-of-5) shares for key recovery.
 | `iv` | VARBINARY(16) | NO | IV |
 | `auth_tag` | VARBINARY(16) | NO | Auth tag |
 | `salt` | VARBINARY(32) | NO | Salt |
+| `key_version` | INT | NO | Key version for rotation tracking (migration 039) |
 | `is_distributed` | TINYINT(1) | NO | Whether share has been distributed (default: 0) |
 | `distributed_at` | TIMESTAMP | YES | Distribution timestamp |
 | `created_at` | TIMESTAMP | NO | Creation timestamp |
@@ -436,7 +439,7 @@ Outgoing withdrawal records.
 | `amount` | VARCHAR(78) | NO | Human-readable amount |
 | `amount_raw` | VARCHAR(78) | NO | Raw amount |
 | `tx_hash` | VARCHAR(66) | YES | Transaction hash (null until broadcast) |
-| `status` | VARCHAR(30) | NO | pending_approval, pending_kyt, pending_signing, pending_cosign, pending_broadcast, broadcasted, confirming, confirmed, failed, rejected |
+| `status` | VARCHAR(30) | NO | pending_approval, pending_kyt, pending_signing, pending_cosign (migration 038), pending_broadcast, broadcasted, confirming, confirmed, failed, rejected |
 | `sequence_id` | INT | YES | Multisig sequence ID |
 | `gas_cost` | VARCHAR(78) | YES | Gas cost in native token |
 | `kyt_result` | VARCHAR(20) | YES | KYT screening result |
@@ -599,10 +602,64 @@ Addresses being watched for incoming deposits.
 | `address` | VARCHAR(100) | NO | Watched address |
 | `client_id` | BIGINT | NO | Owning client |
 | `wallet_id` | BIGINT | NO | Parent wallet ID |
+| `start_block` | BIGINT | YES | Block number from which to start monitoring (migration 036) |
 | `is_active` | TINYINT(1) | NO | Active flag (default: 1) |
 | `created_at` | TIMESTAMP | NO | Creation timestamp |
 
 **Indexes:** `uq_chain_address` (UNIQUE on chain_id + address), `idx_chain_active`
+
+### co_sign_operations
+
+Co-sign withdrawal operations requiring client signature (migration 038).
+
+| Column | Type | Nullable | Description |
+|--------|------|----------|-------------|
+| `id` | BIGINT AUTO_INCREMENT | NO | Primary key |
+| `client_id` | BIGINT | NO | Owning client |
+| `withdrawal_id` | BIGINT | NO | FK to withdrawals |
+| `operation_hash` | VARCHAR(66) | NO | Keccak256 operation hash for signing |
+| `wallet_address` | VARCHAR(100) | NO | Hot wallet contract address (included in hash) |
+| `status` | VARCHAR(30) | NO | pending, signed, expired, rejected |
+| `client_signature` | TEXT | YES | Client-provided ECDSA signature |
+| `signed_at` | TIMESTAMP | YES | Signature timestamp |
+| `expires_at` | TIMESTAMP | NO | Operation expiry |
+| `created_at` | TIMESTAMP | NO | Creation timestamp |
+
+---
+
+## cvh_admin (additional tables)
+
+### knowledge_base_articles
+
+Knowledge base help articles (migration 040).
+
+| Column | Type | Nullable | Description |
+|--------|------|----------|-------------|
+| `id` | BIGINT AUTO_INCREMENT | NO | Primary key |
+| `title` | VARCHAR(255) | NO | Article title |
+| `slug` | VARCHAR(255) | NO | URL-safe slug (UNIQUE) |
+| `content` | TEXT | NO | Article body (rich text) |
+| `category` | VARCHAR(100) | YES | Article category |
+| `sort_order` | INT | NO | Display order (default: 0) |
+| `is_published` | TINYINT(1) | NO | Published status (default: 0) |
+| `created_at` | TIMESTAMP | NO | Creation timestamp |
+| `updated_at` | TIMESTAMP | NO | Last update (auto) |
+
+### project_contracts
+
+Per-project deployed smart contract addresses (migration 041).
+
+| Column | Type | Nullable | Description |
+|--------|------|----------|-------------|
+| `id` | BIGINT AUTO_INCREMENT | NO | Primary key |
+| `project_id` | BIGINT | NO | FK to projects |
+| `chain_id` | INT | NO | Chain ID |
+| `contract_type` | VARCHAR(50) | NO | Contract type (wallet_factory, forwarder_factory, wallet_impl, forwarder_impl, batcher) |
+| `address` | VARCHAR(100) | YES | Deployed contract address |
+| `deploy_tx_hash` | VARCHAR(66) | YES | Deployment transaction hash |
+| `status` | VARCHAR(30) | NO | pending, deployed, failed |
+| `created_at` | TIMESTAMP | NO | Creation timestamp |
+| `updated_at` | TIMESTAMP | NO | Last update (auto) |
 
 ---
 
@@ -637,3 +694,32 @@ Defined in `database/011-traceability-views.sql`, created in `cvh_wallets`:
 | 010 | `010-performance-indexes.sql` | Additional performance indexes |
 | 011 | `011-traceability-views.sql` | Cross-database reporting views |
 | 012 | `012-schema-fixes.sql` | Schema corrections (address widths, constraints) |
+| 013 | `013-create-projects.sql` | Projects table in cvh_admin |
+| 014 | `014-add-project-id.sql` | Add project_id to tenant-scoped tables |
+| 015 | `015-rpc-providers.sql` | RPC provider management tables |
+| 016 | `016-create-cvh-jobs.sql` | cvh_jobs database for job tracking |
+| 017 | `017-indexer-v2.sql` | Chain Indexer v2 tables |
+| 018 | `018-webhooks-v2.sql` | Webhook v2 delivery_attempts, dead_letters |
+| 019 | `019-flush-operations.sql` | Flush operations table |
+| 020 | `020-deploy-traces.sql` | Deploy traces table |
+| 021 | `021-create-cvh-exports.sql` | cvh_exports database |
+| 022 | `022-impersonation.sql` | Impersonation sessions table |
+| 023 | `023-performance-indexes-v2.sql` | Supplementary performance indexes |
+| 024 | `024-chain-lifecycle.sql` | Chain lifecycle status + RPC quota |
+| 025 | `025-schema-fixes-v3.sql` | UNIQUE KEY on wallets(address, chain_id) |
+| 026 | `026-client-initiated-custody.sql` | client_initiated custody mode |
+| 027 | `027-notification-rules.sql` | Notification rules table |
+| 028 | `028-client-chain-config.sql` | Per-client chain config |
+| 029 | `029-client-deletion.sql` | Client soft-deletion |
+| 030 | `030-system-settings.sql` | System settings table |
+| 031 | `031-project-chains.sql` | Project-chain associations |
+| 032 | `032-project-seeds.sql` | Per-project seed management |
+| 033 | `033-audit-indexes-and-shamir-project.sql` | Audit indexes, Shamir project scoping |
+| 034 | `034-project-deletion.sql` | Project soft-deletion |
+| 035 | `035-fix-derived-keys-constraint.sql` | Fix derived_keys unique constraint |
+| 036 | `036-add-start-block.sql` | Add start_block to monitored_addresses |
+| 037 | `037-fix-custody-column.sql` | Standardize custody_mode column |
+| 038 | `038-co-sign-operations.sql` | Co-sign operations table + pending_cosign status |
+| 039 | `039-key-version.sql` | key_version on master_seeds, project_seeds, derived_keys, shamir_shares |
+| 040 | `040-knowledge-base.sql` | Knowledge base articles in cvh_admin |
+| 041 | `041-project-contracts.sql` | Project contracts in cvh_admin |

@@ -134,7 +134,7 @@ Each NestJS service receives the following environment variables via docker-comp
 
 ## 3. Database Setup
 
-CryptoVaultHub uses 8 separate MySQL databases. Run the migration scripts against your MySQL cluster:
+CryptoVaultHub uses 10 separate MySQL databases with 42 migrations (000-041). Run the migration scripts against your MySQL cluster:
 
 ```bash
 # Create all 8 databases
@@ -158,18 +158,20 @@ mysql -h <host> -u root -p < database/012-schema-fixes.sql
 bash database/migrate.sh
 ```
 
-The 8 databases created:
+The 10 databases created:
 
 | Database | Purpose | Accessed By |
 |----------|---------|-------------|
 | `cvh_auth` | Users, sessions, API keys | Auth Service |
 | `cvh_keyvault` | Master seeds, derived keys, Shamir shares, audit log | Key Vault Service ONLY |
-| `cvh_admin` | Clients, tiers, chains, tokens, audit logs | Admin API, Client API, Core Wallet |
+| `cvh_admin` | Clients, tiers, chains, tokens, audit logs, knowledge base, project contracts | Admin API, Client API, Core Wallet |
 | `cvh_wallets` | Wallets, deposit addresses, whitelisted addresses | Core Wallet Service |
-| `cvh_transactions` | Deposits, withdrawals | Core Wallet Service |
+| `cvh_transactions` | Deposits, withdrawals, co-sign operations | Core Wallet Service |
 | `cvh_compliance` | Sanctions entries, screening results, compliance alerts | Core Wallet Service, Cron Worker |
 | `cvh_notifications` | Webhooks, webhook deliveries, email logs | Notification Service |
 | `cvh_indexer` | Sync cursors, monitored addresses | Chain Indexer Service |
+| `cvh_jobs` | Job queue state, dead letter, retry tracking | Cron Worker Service |
+| `cvh_exports` | Export requests and file references | Admin API, Client API |
 
 Each service uses Prisma ORM with its own schema pointing to the relevant database.
 
@@ -187,6 +189,8 @@ GRANT ALL PRIVILEGES ON cvh_transactions.* TO 'cvh_admin'@'%';
 GRANT ALL PRIVILEGES ON cvh_compliance.* TO 'cvh_admin'@'%';
 GRANT ALL PRIVILEGES ON cvh_notifications.* TO 'cvh_admin'@'%';
 GRANT ALL PRIVILEGES ON cvh_indexer.* TO 'cvh_admin'@'%';
+GRANT ALL PRIVILEGES ON cvh_jobs.* TO 'cvh_admin'@'%';
+GRANT ALL PRIVILEGES ON cvh_exports.* TO 'cvh_admin'@'%';
 
 FLUSH PRIVILEGES;
 ```
@@ -611,7 +615,72 @@ Each health endpoint returns JSON:
 | Jaeger OTLP | 4318 | 4318 | monitoring-net, internal-net |
 | PostHog | 8000 (internal) | 8010 | monitoring-net, internal-net |
 
-## 12. Production Checklist
+## 12. mTLS Certificate Generation
+
+mTLS is active by default between Core Wallet Service and Key Vault Service. Generate certificates before first deployment:
+
+```bash
+bash scripts/generate-vault-certs.sh
+```
+
+This generates a self-signed CA, server certificate (Key Vault), and client certificate (Core Wallet) in `infra/certs/`. The certificates are mounted into containers via Docker Compose volumes.
+
+**Environment Variables**:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `VAULT_TLS_ENABLED` | Enable mTLS on vault-net | `true` |
+| `VAULT_TLS_CA_PATH` | CA certificate path | `/certs/ca.pem` |
+| `VAULT_TLS_CERT_PATH` | Server/client certificate path | `/certs/server.pem` or `/certs/client.pem` |
+| `VAULT_TLS_KEY_PATH` | Server/client key path | `/certs/server-key.pem` or `/certs/client-key.pem` |
+
+## 13. Promtail and Alertmanager
+
+### Promtail
+
+Promtail ships container logs from all services to Loki. It runs on the monitoring-net and internal-net, reading Docker container logs via the Docker socket.
+
+### Alertmanager
+
+Alertmanager processes alerts from Prometheus and delivers notifications. Three alert rules are configured:
+
+1. **ServiceDown** -- fires when any service health check fails for >2 minutes
+2. **RPCDegraded** -- fires when RPC health score drops below threshold
+3. **SyncStalled** -- fires when chain indexer falls behind by >100 blocks
+
+Configuration: `infra/prometheus/alertmanager.yml`
+
+## 14. Additional Environment Variables
+
+| Variable | Service | Description |
+|----------|---------|-------------|
+| `TRAEFIK_DASHBOARD_USERS` | Traefik | HTTP basic auth for Traefik dashboard |
+| `CLICKHOUSE_PASSWORD` | ClickHouse | PostHog ClickHouse password |
+| `VAULT_TLS_ENABLED` | Core Wallet, Key Vault | Enable mTLS (default: `true`) |
+| `SERVICE_NAME` | All services | Service identifier for structured logging |
+| `LOG_LEVEL` | All services | Pino log level (`debug`, `info`, `warn`, `error`) |
+
+## 15. Redis Backups
+
+Redis AOF persistence is enabled by default. For additional backup protection:
+
+```bash
+bash scripts/backup.sh
+```
+
+This script creates a point-in-time backup of the Redis AOF file and MySQL dumps.
+
+## 16. Smart Contract Deployment
+
+For detailed smart contract deployment procedures, see [`docs/operations/smart-contract-deployment.md`](operations/smart-contract-deployment.md).
+
+## 17. Deployment Checklist
+
+For the full production deployment checklist, see [`docs/operations/deployment-checklist.md`](operations/deployment-checklist.md).
+
+---
+
+## 18. Production Checklist
 
 ### Security
 
@@ -621,10 +690,15 @@ Each health endpoint returns JSON:
 - [ ] Set strong `TOTP_ENCRYPTION_KEY` (64-character hex string)
 - [ ] Set strong `REDIS_PASSWORD`
 - [ ] Set strong `GRAFANA_PASSWORD`
+- [ ] Generate mTLS certificates: `bash scripts/generate-vault-certs.sh`
+- [ ] Verify `VAULT_TLS_ENABLED=true` (default)
 - [ ] Configure TLS certificates for Kong (port 8443)
 - [ ] Update CORS origins in `infra/kong/kong.yml` to production domains
 - [ ] Verify Key Vault has zero internet access (test from container)
 - [ ] Remove default Kong Admin API access (or restrict to loopback)
+- [ ] Verify Swagger UI is disabled (`NODE_ENV=production`)
+- [ ] Set `TRAEFIK_DASHBOARD_USERS` for Traefik dashboard auth
+- [ ] Set `CLICKHOUSE_PASSWORD` for PostHog ClickHouse
 
 ### Infrastructure
 

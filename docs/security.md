@@ -314,12 +314,23 @@ export class InternalServiceGuard implements CanActivate {
 Identical guard implementations exist in:
 - `services/core-wallet-service/src/common/guards/internal-service.guard.ts`
 - `services/notification-service/src/common/guards/internal-service.guard.ts`
+- `services/chain-indexer-service/src/common/guards/internal-service.guard.ts`
+- `services/cron-worker-service/src/common/guards/internal-service.guard.ts`
 
-### Planned: mTLS Configuration
+InternalServiceGuard is now applied on **all** internal services (Key Vault, Core Wallet, Notification, Chain Indexer, Cron Worker).
 
-> **Note**: mTLS between Core Wallet Service and Key Vault Service is planned but not yet implemented. The current implementation uses `InternalServiceGuard` with shared secret + Docker network isolation (see above).
+### mTLS Configuration
 
-When implemented, mTLS will add certificate-based mutual authentication as a third layer of defense.
+mTLS between Core Wallet Service and Key Vault Service is **active by default** (`VAULT_TLS_ENABLED=true`). Certificates are generated via `scripts/generate-vault-certs.sh`, which produces a self-signed CA, server cert (for Key Vault), and client cert (for Core Wallet).
+
+mTLS adds certificate-based mutual authentication as a third layer of defense on top of Docker network isolation and InternalServiceGuard shared secret validation. TLS 1.2+ is enforced with strong cipher suites.
+
+**Configuration**:
+- `VAULT_TLS_ENABLED=true` (default) -- enables mTLS on vault-net
+- `VAULT_TLS_CA_PATH` -- path to CA certificate
+- `VAULT_TLS_CERT_PATH` -- path to server/client certificate
+- `VAULT_TLS_KEY_PATH` -- path to server/client private key
+- Certificate generation: `bash scripts/generate-vault-certs.sh`
 
 ### Verification
 
@@ -543,7 +554,7 @@ All events are correlated via `trace_id` shared with Loki logs and Jaeger distri
 | Layer | Mechanism | Details |
 |-------|-----------|---------|
 | Key Storage | AES-256-GCM envelope encryption | PBKDF2-derived KEK (600k iterations, SHA-512), per-key random salt |
-| Key Isolation | vault-net Docker network | Zero internet access, InternalServiceGuard + timing-safe comparison |
+| Key Isolation | vault-net Docker network + mTLS | Zero internet access, mTLS (`VAULT_TLS_ENABLED=true`), InternalServiceGuard + timing-safe comparison |
 | Transaction Auth | 2-of-3 on-chain multisig | ReentrancyGuard, replay protection, signature malleability prevention |
 | API Auth (Web) | JWT + bcryptjs | SHA-256 hashed refresh tokens, session tracking, login lockout |
 | API Auth (Client) | SHA-256 hashed API keys | Scoped (read/write/withdraw), IP-restricted, chain-restricted, expirable |
@@ -556,4 +567,12 @@ All events are correlated via `trace_id` shared with Loki logs and Jaeger distri
 | Webhook Integrity | HMAC-SHA256 | Per-endpoint signing secret, X-CVH-Signature header |
 | Key Backup | Shamir's Secret Sharing | 3-of-5 threshold, individually encrypted shares |
 | Memory Safety | Explicit buffer zeroing | .fill(0) on all DEK, KEK, and plaintext buffers |
+| HttpOnly Cookies | Secure cookie auth | Both portals use HttpOnly secure cookies with server-side API proxy, eliminating XSS token theft |
+| TOTP Replay Prevention | Redis nonce store | Used TOTP codes stored in Redis with TTL to prevent replay within the same time window |
+| AES-256-GCM IV | 12-byte IV (NIST) | Uses NIST-recommended 12-byte IV for AES-GCM; AAD (Additional Authenticated Data) binding available |
+| Key Rotation | POST /keys/rotate-master | Master password rotation with key versioning; `key_version` column tracks which version encrypted each key |
+| Security Headers | Traefik middleware | HSTS, frameDeny, contentTypeNosniff enforced on all routes via Traefik security headers |
+| Swagger Disabled | Production mode | Swagger UI disabled when `NODE_ENV=production` to prevent endpoint enumeration |
+| PostHog Scrubbing | Sensitive data filter | Passwords, tokens, private keys, and secrets scrubbed before PostHog event capture |
+| Co-Sign Verification | Client-side hash | Co-sign clients independently recompute operation hash (including `address(this)`) and verify match before signing |
 | Audit | PostHog + key_vault_audit + Loki + Jaeger | Full event capture, trace ID correlation |

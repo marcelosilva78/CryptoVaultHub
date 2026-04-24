@@ -50,6 +50,12 @@ Detailed reference for every feature in CryptoVaultHub, organized by functional 
   - [Client Portal](#client-portal)
   - [Client Onboarding Wizard](#client-onboarding-wizard)
   - [API Client SDK](#api-client-sdk)
+- [v3 Features (Post-Audit)](#v3-features-post-audit)
+  - [Co-Sign Custody Mode](#co-sign-custody-mode)
+  - [Knowledge Base](#knowledge-base)
+  - [Project Isolated Contracts](#project-isolated-contracts)
+  - [Key Rotation Mechanism](#key-rotation-mechanism)
+  - [Balance Materializer Batch Optimization](#balance-materializer-batch-optimization)
 
 ---
 
@@ -702,3 +708,104 @@ function WalletsPage() {
   // ...
 }
 ```
+
+---
+
+## v3 Features (Post-Audit)
+
+### Co-Sign Custody Mode
+
+**Description**: Full client-side cryptographic signing flow for co-sign custody mode clients. The client retains their own key and must independently co-sign every withdrawal.
+
+**How It Works**:
+1. When a withdrawal is created for a co-sign client, Core Wallet signs with the platform key and creates a `co_sign_operations` record with status `pending`.
+2. The withdrawal enters `pending_cosign` status.
+3. The client opens the co-sign page in the Client Portal, enters their BIP-39 mnemonic.
+4. The Client Portal derives the signing key locally in the browser using the same BIP-44 derivation path.
+5. The operation hash is **independently recomputed** client-side (including `address(this)` -- the wallet contract address) and verified against the server-provided hash.
+6. If hashes match, the client signs with secp256k1 and submits the signature.
+7. Core Wallet verifies the signature, assembles the 2-of-3 multisig transaction, and broadcasts.
+
+**Security Properties**:
+- Private key material never leaves the client's browser
+- Independent hash verification prevents the server from tricking the client into signing a different operation
+- Operation hash includes `address(this)` to prevent cross-contract replay
+
+**Services Involved**: Core Wallet Service (CoSignModule, CoSignOrchestratorService), Client API (proxy), Client Portal (signing UI).
+
+**Database**: `cvh_transactions.co_sign_operations` (migration 038)
+
+**API Endpoints**:
+- `GET /client/v1/co-sign/pending` -- List pending co-sign operations
+- `GET /client/v1/co-sign/:operationId` -- Get operation details with hash
+- `POST /client/v1/co-sign/:operationId/sign` -- Submit client signature
+
+---
+
+### Knowledge Base
+
+**Description**: Admin-managed help articles that are published to the Client Portal for self-service support.
+
+**How It Works**:
+1. Admins create, edit, and manage articles via the Admin Panel's Knowledge Base page (KnowledgeBaseModule).
+2. Articles have a title, slug, rich text content, category, sort order, and published/draft status.
+3. Client Portal users can browse published articles via a read-only Knowledge Base page.
+4. Client-side Fuse.js fuzzy search enables instant article filtering without server roundtrips.
+
+**Services Involved**: Admin API (KnowledgeBaseModule -- CRUD), Client API (KnowledgeBaseModule -- read-only proxy).
+
+**Database**: `cvh_admin.knowledge_base_articles` (migration 040)
+
+**API Endpoints**:
+- `POST /admin/knowledge-base` -- Create article
+- `GET /admin/knowledge-base` -- List articles
+- `PATCH /admin/knowledge-base/:id` -- Update article
+- `DELETE /admin/knowledge-base/:id` -- Delete article
+- `GET /client/v1/knowledge-base` -- List published articles (client reader)
+
+---
+
+### Project Isolated Contracts
+
+**Description**: Each project within a client organization can deploy its own isolated set of smart contracts, enabling complete separation between business lines or environments.
+
+**How It Works**:
+1. Admin triggers per-project contract deployment from the Admin Panel.
+2. The system deploys CvhWalletSimple, CvhForwarder, CvhForwarderFactory, and CvhBatcher implementation contracts for the project on each selected chain.
+3. Deployment status (pending, deployed, failed), contract addresses, and deploy transaction hashes are tracked in `cvh_admin.project_contracts`.
+4. Each project operates with its own contract instances, ensuring no cross-project fund mixing.
+
+**Services Involved**: Admin API (project contract management), Core Wallet Service (deployment orchestration).
+
+**Database**: `cvh_admin.project_contracts` (migration 041)
+
+---
+
+### Key Rotation Mechanism
+
+**Description**: The master password used for key encryption can be rotated without re-deriving all keys, using a key versioning scheme.
+
+**How It Works**:
+1. Admin calls `POST /keys/rotate-master` on the Key Vault Service with the old and new master passwords.
+2. Key Vault decrypts all keys using the old master password's KEK.
+3. Keys are re-encrypted with a new KEK derived from the new master password.
+4. The `key_version` column (on `master_seeds`, `project_seeds`, `derived_keys`, `shamir_shares`) is incremented.
+5. On decryption, the service reads `key_version` to determine which password version was used.
+
+**Database**: `key_version` column added to master_seeds, project_seeds, derived_keys, shamir_shares (migration 039).
+
+**API Endpoints**:
+- `POST /keys/rotate-master` -- Rotate master password with key versioning
+
+---
+
+### Balance Materializer Batch Optimization
+
+**Description**: The balance materializer has been optimized to process deposits and withdrawals in batches rather than scanning all events on every call.
+
+**How It Works**:
+1. Instead of full-scanning all indexed events on every balance query, the materializer processes events in configurable batch sizes.
+2. Materialized balances are cached and only recomputed when new events are detected.
+3. This reduces query latency from O(n) to near-constant time for repeat queries.
+
+**Services Involved**: Chain Indexer Service (materialized_balances table), Core Wallet Service (balance queries).
