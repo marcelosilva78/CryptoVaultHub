@@ -23,6 +23,7 @@ import {
 } from '@nestjs/swagger';
 import { AdminAuth } from '../common/decorators';
 import { ProjectManagementService } from './project-management.service';
+import { ProjectContractService } from './project-contract.service';
 import {
   CreateProjectDto,
   UpdateProjectDto,
@@ -33,7 +34,10 @@ import {
 @ApiBearerAuth('JWT')
 @Controller('admin/project-management/projects')
 export class ProjectManagementController {
-  constructor(private readonly projectService: ProjectManagementService) {}
+  constructor(
+    private readonly projectService: ProjectManagementService,
+    private readonly projectContractService: ProjectContractService,
+  ) {}
 
   @Post()
   @AdminAuth('super_admin', 'admin')
@@ -364,5 +368,120 @@ Results are ordered by creation date (newest first). **Accessible to all authent
       req.ip,
     );
     return { success: true, data: project };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Project Contract Deployment
+  // ---------------------------------------------------------------------------
+
+  @Post(':id/chains/:chainId/deploy')
+  @AdminAuth('super_admin', 'admin')
+  @ApiOperation({
+    summary: 'Deploy isolated contracts for a project on a chain',
+    description: `Triggers deployment of all project-isolated smart contracts (wallet impl, forwarder impl, wallet factory, forwarder factory, hot wallet) for the specified project on the given chain.
+
+Requires a gas tank to be funded and the client ID + signer addresses.`,
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'Project ID',
+    type: 'integer',
+    example: 1,
+  })
+  @ApiParam({
+    name: 'chainId',
+    description: 'Chain ID to deploy on',
+    type: 'integer',
+    example: 11155111,
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['clientId', 'signers'],
+      properties: {
+        clientId: { type: 'integer', example: 1 },
+        signers: {
+          type: 'array',
+          items: { type: 'string' },
+          example: ['0xaaa...', '0xbbb...', '0xccc...'],
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 200, description: 'Deployment triggered successfully' })
+  @ApiResponse({ status: 400, description: 'Invalid parameters' })
+  @ApiResponse({ status: 500, description: 'Deployment failed' })
+  async deployProjectContracts(
+    @Param('id', ParseIntPipe) projectId: number,
+    @Param('chainId', ParseIntPipe) chainId: number,
+    @Body() body: { clientId: number; signers: string[] },
+  ) {
+    const result = await this.projectContractService.deployProjectContracts(
+      projectId,
+      chainId,
+      body,
+    );
+    return { success: true, data: result };
+  }
+
+  @Get(':id/chains/:chainId/contracts')
+  @AdminAuth()
+  @ApiOperation({
+    summary: 'Get project contract deployment status',
+    description: `Returns the deployment status for all contract types of a project on a specific chain. Includes both the overall project chain status and individual contract statuses.`,
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'Project ID',
+    type: 'integer',
+    example: 1,
+  })
+  @ApiParam({
+    name: 'chainId',
+    description: 'Chain ID',
+    type: 'integer',
+    example: 11155111,
+  })
+  @ApiResponse({ status: 200, description: 'Contract status retrieved' })
+  @ApiResponse({ status: 500, description: 'Failed to fetch status' })
+  async getProjectContractStatus(
+    @Param('id', ParseIntPipe) projectId: number,
+    @Param('chainId', ParseIntPipe) chainId: number,
+  ) {
+    const result = await this.projectContractService.getDeployStatus(
+      projectId,
+      chainId,
+    );
+    return { success: true, data: result };
+  }
+
+  @Post(':id/chains/:chainId/contracts/:type/retry')
+  @AdminAuth('super_admin', 'admin')
+  @ApiOperation({
+    summary: 'Retry a failed contract deployment',
+    description: `Retries a single failed contract deployment for a project on a chain. Only contracts with status "failed" can be retried.`,
+  })
+  @ApiParam({ name: 'id', description: 'Project ID', type: 'integer' })
+  @ApiParam({ name: 'chainId', description: 'Chain ID', type: 'integer' })
+  @ApiParam({
+    name: 'type',
+    description: 'Contract type to retry',
+    enum: ['wallet_impl', 'forwarder_impl', 'wallet_factory', 'forwarder_factory'],
+  })
+  @ApiResponse({ status: 200, description: 'Retry succeeded' })
+  @ApiResponse({ status: 400, description: 'Contract is not in failed state' })
+  @ApiResponse({ status: 404, description: 'Contract record not found' })
+  @ApiResponse({ status: 500, description: 'Retry failed' })
+  async retryProjectContractDeploy(
+    @Param('id', ParseIntPipe) projectId: number,
+    @Param('chainId', ParseIntPipe) chainId: number,
+    @Param('type') contractType: string,
+  ) {
+    const result = await this.projectContractService.retryFailedDeploy(
+      projectId,
+      chainId,
+      contractType,
+    );
+    return { success: true, data: result };
   }
 }

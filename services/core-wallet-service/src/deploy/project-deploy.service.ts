@@ -6,6 +6,7 @@ import { ethers } from 'ethers';
 import { PrismaService } from '../prisma/prisma.service';
 import { EvmProviderService } from '../blockchain/evm-provider.service';
 import { NonceService } from '../blockchain/nonce.service';
+import { RedisService } from '../redis/redis.service';
 import { ProjectDeployTraceService } from './deploy-trace.service';
 
 interface ContractArtifact {
@@ -56,6 +57,7 @@ export class ProjectDeployService {
     private readonly evmProvider: EvmProviderService,
     private readonly nonceService: NonceService,
     private readonly traceService: ProjectDeployTraceService,
+    private readonly redis: RedisService,
   ) {
     this.keyVaultUrl = this.config.getOrThrow<string>('KEY_VAULT_URL');
     this.internalServiceKey = this.config.get<string>('INTERNAL_SERVICE_KEY', '');
@@ -262,6 +264,24 @@ export class ProjectDeployService {
         },
       });
 
+      // Upsert project_contracts rows for project-scoped resolution
+      await this.upsertProjectContract(projectId, chainId, 'wallet_impl', walletImpl, gasTankAddress);
+      await this.upsertProjectContract(projectId, chainId, 'forwarder_impl', forwarderImpl, gasTankAddress);
+      await this.upsertProjectContract(projectId, chainId, 'wallet_factory', walletFactory, gasTankAddress);
+      await this.upsertProjectContract(projectId, chainId, 'forwarder_factory', forwarderFactory, gasTankAddress);
+
+      // Publish project:contracts_deployed event to Redis Stream
+      await this.redis.publishToStream('project:contracts_deployed', {
+        projectId: String(projectId),
+        chainId: String(chainId),
+        walletImplAddress: walletImpl.contractAddress,
+        forwarderImplAddress: forwarderImpl.contractAddress,
+        walletFactoryAddress: walletFactory.contractAddress,
+        forwarderFactoryAddress: forwarderFactory.contractAddress,
+        hotWalletAddress: hotWallet.contractAddress,
+        timestamp: new Date().toISOString(),
+      });
+
       this.logger.log(
         `Deploy complete for project=${projectId} chain=${chainId}: ` +
           `walletImpl=${walletImpl.contractAddress} forwarderImpl=${forwarderImpl.contractAddress} ` +
@@ -369,9 +389,290 @@ export class ProjectDeployService {
     };
   }
 
+  /**
+   * Get the deployment status for all contract types of a project+chain
+   * from the `project_contracts` table.
+   *
+   * Returns an array of per-contract-type statuses. If no records exist,
+   * returns an empty array (project has not started individual contract tracking).
+   */
+  async getDeployStatus(
+    projectId: number,
+    chainId: number,
+  ): Promise<{
+    projectChain: {
+      deployStatus: string;
+      deployError: string | null;
+    } | null;
+    contracts: Array<{
+      contractType: string;
+      address: string;
+      deployStatus: string;
+      deployError: string | null;
+      txHash: string | null;
+      blockNumber: number | null;
+      gasUsed: string | null;
+      deployedAt: Date | null;
+    }>;
+  }> {
+    const [pc, contracts] = await Promise.all([
+      this.prisma.projectChain.findUnique({
+        where: {
+          uq_project_chain: {
+            projectId: BigInt(projectId),
+            chainId,
+          },
+        },
+      }),
+      this.prisma.projectContract.findMany({
+        where: {
+          projectId: BigInt(projectId),
+          chainId,
+        },
+        orderBy: { createdAt: 'asc' },
+      }),
+    ]);
+
+    return {
+      projectChain: pc
+        ? {
+            deployStatus: pc.deployStatus,
+            deployError: pc.deployError,
+          }
+        : null,
+      contracts: contracts.map((c) => ({
+        contractType: c.contractType,
+        address: c.address,
+        deployStatus: c.deployStatus,
+        deployError: c.deployError,
+        txHash: c.txHash,
+        blockNumber: c.blockNumber ? Number(c.blockNumber) : null,
+        gasUsed: c.gasUsed,
+        deployedAt: c.deployedAt,
+      })),
+    };
+  }
+
+  /**
+   * Retry a single failed contract deployment for a project+chain.
+   *
+   * Resets the contract's status to 'deploying', attempts redeployment,
+   * and updates the record on success or failure.
+   */
+  async retryFailedDeploy(
+    projectId: number,
+    chainId: number,
+    contractType: string,
+  ): Promise<{
+    contractType: string;
+    address: string;
+    deployStatus: string;
+    txHash: string | null;
+  }> {
+    const existing = await this.prisma.projectContract.findUnique({
+      where: {
+        uq_project_chain_type: {
+          projectId: BigInt(projectId),
+          chainId,
+          contractType,
+        },
+      },
+    });
+
+    if (!existing) {
+      throw new NotFoundException(
+        `ProjectContract not found for project=${projectId} chain=${chainId} type=${contractType}`,
+      );
+    }
+
+    if (existing.deployStatus !== 'failed') {
+      throw new Error(
+        `Cannot retry contract with status="${existing.deployStatus}". Only "failed" contracts can be retried.`,
+      );
+    }
+
+    // Mark as deploying
+    await this.prisma.projectContract.update({
+      where: { id: existing.id },
+      data: {
+        deployStatus: 'deploying',
+        deployError: null,
+      },
+    });
+
+    try {
+      // Get the project chain to find existing addresses for dependencies
+      const pc = await this.prisma.projectChain.findUnique({
+        where: {
+          uq_project_chain: {
+            projectId: BigInt(projectId),
+            chainId,
+          },
+        },
+      });
+
+      if (!pc) {
+        throw new Error(
+          `ProjectChain not found for project=${projectId} chain=${chainId}`,
+        );
+      }
+
+      // For factory contracts, we need the impl addresses as constructor args
+      let constructorArgs: unknown[] = [];
+      if (contractType === 'wallet_factory' && pc.walletImplAddress) {
+        constructorArgs = [pc.walletImplAddress];
+      } else if (contractType === 'forwarder_factory' && pc.forwarderImplAddress) {
+        constructorArgs = [pc.forwarderImplAddress];
+      }
+
+      const contractNameMap: Record<string, string> = {
+        wallet_impl: 'CvhWalletSimple',
+        forwarder_impl: 'CvhForwarder',
+        wallet_factory: 'CvhWalletFactory',
+        forwarder_factory: 'CvhForwarderFactory',
+      };
+
+      const contractName = contractNameMap[contractType];
+      if (!contractName) {
+        throw new Error(`Unknown contract type for retry: ${contractType}`);
+      }
+
+      // Find gas tank
+      const projectExists = await this.prisma.$queryRaw<any[]>`
+        SELECT client_id FROM cvh_admin.projects WHERE id = ${BigInt(projectId)} LIMIT 1
+      `;
+      if (!projectExists?.length) {
+        throw new NotFoundException(`Project ${projectId} not found`);
+      }
+      const clientId = Number(projectExists[0].client_id);
+
+      const gasTank = await this.prisma.wallet.findUnique({
+        where: {
+          uq_client_chain_type: {
+            clientId: BigInt(clientId),
+            chainId,
+            walletType: 'gas_tank',
+          },
+        },
+      });
+      if (!gasTank) {
+        throw new Error(`Gas tank not found for client=${clientId} chain=${chainId}`);
+      }
+
+      const chain = await this.prisma.chain.findUnique({ where: { id: chainId } });
+      if (!chain) throw new Error(`Chain ${chainId} not found`);
+
+      const provider = await this.evmProvider.getProvider(chainId);
+
+      const result = await this.deployContract({
+        projectId,
+        clientId,
+        chainId,
+        projectChainId: Number(pc.id),
+        contractName,
+        contractType,
+        constructorArgs,
+        gasTankAddress: gasTank.address,
+        provider,
+        chainExplorerUrl: chain.explorerUrl,
+      });
+
+      // Update project_contracts with success
+      await this.prisma.projectContract.update({
+        where: { id: existing.id },
+        data: {
+          address: result.contractAddress,
+          txHash: result.txHash,
+          deployerAddress: gasTank.address,
+          deployStatus: 'deployed',
+          deployError: null,
+          deployedAt: new Date(),
+        },
+      });
+
+      // Also update the project_chain address field
+      const fieldMap: Record<string, string> = {
+        wallet_impl: 'walletImplAddress',
+        forwarder_impl: 'forwarderImplAddress',
+        wallet_factory: 'walletFactoryAddress',
+        forwarder_factory: 'forwarderFactoryAddress',
+      };
+      const field = fieldMap[contractType];
+      if (field) {
+        await this.prisma.projectChain.update({
+          where: { id: pc.id },
+          data: { [field]: result.contractAddress },
+        });
+      }
+
+      this.logger.log(
+        `Retry succeeded for project=${projectId} chain=${chainId} type=${contractType} address=${result.contractAddress}`,
+      );
+
+      return {
+        contractType,
+        address: result.contractAddress,
+        deployStatus: 'deployed',
+        txHash: result.txHash,
+      };
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      await this.prisma.projectContract.update({
+        where: { id: existing.id },
+        data: {
+          deployStatus: 'failed',
+          deployError: errMsg,
+        },
+      });
+      this.logger.error(
+        `Retry FAILED for project=${projectId} chain=${chainId} type=${contractType}: ${errMsg}`,
+      );
+      throw error;
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Private helpers
   // ---------------------------------------------------------------------------
+
+  /**
+   * Upsert a project_contracts row after successful deployment.
+   */
+  private async upsertProjectContract(
+    projectId: number,
+    chainId: number,
+    contractType: string,
+    result: DeployStepResult,
+    deployerAddress: string,
+  ): Promise<void> {
+    await this.prisma.projectContract.upsert({
+      where: {
+        uq_project_chain_type: {
+          projectId: BigInt(projectId),
+          chainId,
+          contractType,
+        },
+      },
+      create: {
+        projectId: BigInt(projectId),
+        chainId,
+        contractType,
+        address: result.contractAddress,
+        txHash: result.txHash,
+        deployerAddress,
+        deployStatus: 'deployed',
+        deployedAt: new Date(),
+      },
+      update: {
+        address: result.contractAddress,
+        txHash: result.txHash,
+        deployerAddress,
+        deployStatus: 'deployed',
+        deployError: null,
+        deployedAt: new Date(),
+      },
+    });
+  }
 
   /**
    * Deploy a contract by name: build deploy tx, sign via Key Vault, broadcast,

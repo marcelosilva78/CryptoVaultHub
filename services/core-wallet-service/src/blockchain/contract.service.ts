@@ -81,6 +81,90 @@ export class ContractService {
   }
 
   /**
+   * Get project-scoped contracts for a project+chain.
+   *
+   * Queries `project_contracts` for all 4 core contract types
+   * (wallet_factory, forwarder_factory, wallet_impl, forwarder_impl)
+   * with status='deployed'. Returns ChainContracts if all are present,
+   * or null if the project has not yet deployed all contracts.
+   */
+  async getProjectContracts(
+    projectId: number,
+    chainId: number,
+  ): Promise<ChainContracts | null> {
+    const rows = await this.prisma.projectContract.findMany({
+      where: {
+        projectId: BigInt(projectId),
+        chainId,
+        deployStatus: 'deployed',
+      },
+    });
+
+    const byType = new Map<string, string>();
+    for (const row of rows) {
+      byType.set(row.contractType, row.address);
+    }
+
+    const walletFactoryAddr = byType.get('wallet_factory');
+    const forwarderFactoryAddr = byType.get('forwarder_factory');
+
+    // All 4 core contract types must be deployed for project-scoped resolution
+    if (
+      !walletFactoryAddr ||
+      !forwarderFactoryAddr ||
+      !byType.has('wallet_impl') ||
+      !byType.has('forwarder_impl')
+    ) {
+      return null;
+    }
+
+    const provider = await this.evmProvider.getProvider(chainId);
+
+    const walletFactory = new ethers.Contract(
+      walletFactoryAddr,
+      WALLET_FACTORY_ABI,
+      provider,
+    );
+
+    const forwarderFactory = new ethers.Contract(
+      forwarderFactoryAddr,
+      FORWARDER_FACTORY_ABI,
+      provider,
+    );
+
+    // Multicall3 is chain-level (universal address), not project-scoped
+    const chain = await this.prisma.chain.findUnique({
+      where: { id: chainId },
+    });
+    if (!chain) {
+      throw new NotFoundException(`Chain ${chainId} not found`);
+    }
+    const multicall3 = new ethers.Contract(
+      chain.multicall3Address,
+      MULTICALL3_ABI,
+      provider,
+    );
+
+    return { walletFactory, forwarderFactory, multicall3 };
+  }
+
+  /**
+   * Get contracts for a project with fallback to chain-level.
+   *
+   * Tries project-scoped contracts first. If all 4 core contracts are
+   * deployed for the project, uses those. Otherwise falls back to the
+   * shared chain-level contracts.
+   */
+  async getContractsForProject(
+    projectId: number,
+    chainId: number,
+  ): Promise<ChainContracts> {
+    const projectContracts = await this.getProjectContracts(projectId, chainId);
+    if (projectContracts) return projectContracts;
+    return this.getContracts(chainId);
+  }
+
+  /**
    * Compute a forwarder (deposit) address via the factory's view function.
    */
   async computeForwarderAddress(

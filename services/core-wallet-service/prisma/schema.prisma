@@ -382,6 +382,31 @@ model ProjectDeployTrace {
 }
 
 // ---------------------------------------------------------------------------
+// Project Contracts — per-contract deployment status (cvh_admin)
+// ---------------------------------------------------------------------------
+
+model ProjectContract {
+  id              BigInt    @id @default(autoincrement())
+  projectId       BigInt    @map("project_id")
+  chainId         Int       @map("chain_id")
+  contractType    String    @db.VarChar(30) @map("contract_type")
+  address         String    @db.VarChar(42)
+  txHash          String?   @db.VarChar(66) @map("tx_hash")
+  deployerAddress String?   @db.VarChar(42) @map("deployer_address")
+  deployStatus    String    @default("pending") @db.VarChar(20) @map("deploy_status")
+  deployError     String?   @db.Text @map("deploy_error")
+  blockNumber     BigInt?   @map("block_number")
+  gasUsed         String?   @db.VarChar(78) @map("gas_used")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  deployedAt      DateTime? @map("deployed_at") @db.DateTime(3)
+
+  @@unique([projectId, chainId, contractType], name: "uq_project_chain_type")
+  @@index([projectId], map: "idx_project")
+  @@index([chainId, deployStatus], map: "idx_chain_status")
+  @@map("project_contracts")
+}
+
+// ---------------------------------------------------------------------------
 // Compliance / KYT
 // ---------------------------------------------------------------------------
 
