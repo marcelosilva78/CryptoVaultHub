@@ -21,6 +21,7 @@ import { AuditLogModule } from './audit-log/audit-log.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { TraceabilityModule } from './traceability/traceability.module';
 import { SettingsModule } from './settings/settings.module';
+import { KnowledgeBaseModule } from './knowledge-base/knowledge-base.module';
 import { PostHogInterceptor } from './common/interceptors/posthog.interceptor';
 import { HealthController } from './common/health.controller';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
@@ -56,6 +57,7 @@ import { ImpersonationGuard } from './common/guards/impersonation.guard';
     DashboardModule,
     TraceabilityModule,
     SettingsModule,
+    KnowledgeBaseModule,
   ],
   controllers: [HealthController],
   providers: [
