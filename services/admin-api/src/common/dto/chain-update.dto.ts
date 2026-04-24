@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsInt, IsNumber, IsIn, MinLength, MaxLength, Min } from 'class-validator';
+import { IsString, IsOptional, IsInt, IsNumber, IsIn, MinLength, MaxLength, Min, Matches } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class UpdateChainDto {
@@ -43,4 +43,28 @@ export class UpdateChainDto {
   @IsOptional()
   @IsIn(['eip1559', 'legacy'])
   gasPriceStrategy?: string;
+
+  @ApiPropertyOptional({ description: 'Wallet factory contract address' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^0x[a-fA-F0-9]{40}$/, { message: 'Must be a valid Ethereum address' })
+  walletFactoryAddress?: string;
+
+  @ApiPropertyOptional({ description: 'Forwarder factory contract address' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^0x[a-fA-F0-9]{40}$/, { message: 'Must be a valid Ethereum address' })
+  forwarderFactoryAddress?: string;
+
+  @ApiPropertyOptional({ description: 'Wallet implementation contract address' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^0x[a-fA-F0-9]{40}$/, { message: 'Must be a valid Ethereum address' })
+  walletImplAddress?: string;
+
+  @ApiPropertyOptional({ description: 'Forwarder implementation contract address' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^0x[a-fA-F0-9]{40}$/, { message: 'Must be a valid Ethereum address' })
+  forwarderImplAddress?: string;
 }
