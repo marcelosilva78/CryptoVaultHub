@@ -418,6 +418,7 @@ services:
         condition: service_healthy
     networks:
       - internal-net
+      - vault-net
       - monitoring-net
     deploy:
       resources:
@@ -578,7 +579,7 @@ services:
           cpus: '2.0'
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "node", "-e", "const fs=require('fs'),https=require('https');https.get({hostname:'localhost',port:3005,path:'/health',cert:fs.readFileSync('/tls/client.crt'),key:fs.readFileSync('/tls/client.key'),ca:fs.readFileSync('/tls/ca.crt'),rejectUnauthorized:false},r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3005/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
       interval: 30s
       timeout: 5s
       retries: 3
