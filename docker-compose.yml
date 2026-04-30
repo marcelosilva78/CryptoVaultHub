@@ -797,8 +797,11 @@ services:
       - NODE_ENV=production
       - NEXT_PUBLIC_AUTH_API_URL=https://api.${BASE_DOMAIN:-vaulthub.live}/auth
       - NEXT_PUBLIC_ADMIN_API_URL=https://api.${BASE_DOMAIN:-vaulthub.live}/admin
+      - ADMIN_API_URL=http://api-gateway:8000/admin
+      - AUTH_API_URL=http://api-gateway:8000/auth
     networks:
       - public-net
+      - internal-net
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.admin.rule=Host(`admin.${BASE_DOMAIN:-vaulthub.live}`)"
@@ -834,8 +837,11 @@ services:
       - NODE_ENV=production
       - NEXT_PUBLIC_AUTH_API_URL=https://api.${BASE_DOMAIN:-vaulthub.live}/auth
       - NEXT_PUBLIC_CLIENT_API_URL=https://api.${BASE_DOMAIN:-vaulthub.live}/client
+      - CLIENT_API_URL=http://api-gateway:8000/client
+      - AUTH_API_URL=http://api-gateway:8000/auth
     networks:
       - public-net
+      - internal-net
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.portal.rule=Host(`portal.${BASE_DOMAIN:-vaulthub.live}`)"
