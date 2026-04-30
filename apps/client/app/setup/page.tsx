@@ -246,6 +246,8 @@ export default function SetupWizardPage() {
         publicKeys: keysRes.publicKeys,
       });
     } catch (err: any) {
+      // Ignore AbortError — happens when React StrictMode re-mounts the effect
+      if (err.name === 'AbortError' || err.message === 'Request failed') return;
       setKeyCeremonyError(err.message || "Failed to create project or initialize keys");
     } finally {
       setKeyCeremonyLoading(false);
@@ -333,11 +335,72 @@ export default function SetupWizardPage() {
   // Step 4: Trigger key ceremony on entry
   const keyCeremonyTriggered = useRef(false);
   useEffect(() => {
-    if (currentStep === 4 && !keyCeremony && !keyCeremonyLoading && !keyCeremonyTriggered.current) {
-      keyCeremonyTriggered.current = true;
-      createProjectAndKeys();
-    }
-  }, [currentStep, keyCeremony, keyCeremonyLoading, createProjectAndKeys]);
+    if (currentStep !== 4) return;
+    if (keyCeremony || keyCeremonyLoading || keyCeremonyTriggered.current) return;
+    keyCeremonyTriggered.current = true;
+
+    let cancelled = false;
+    (async () => {
+      setKeyCeremonyLoading(true);
+      setKeyCeremonyError(null);
+      try {
+        const numericChainIds = selectedChains;
+        let currentProjectId = projectId;
+        if (!currentProjectId) {
+          const projectRes = await clientFetch<{ project?: { id: number }; id?: number }>("/v1/projects/setup", {
+            method: "POST",
+            body: JSON.stringify({ name: projectName, description: projectDescription, chains: numericChainIds, custodyMode }),
+          });
+          const newProjectId = projectRes.project?.id ?? projectRes.id;
+          if (!newProjectId) throw new Error("No project ID returned");
+          currentProjectId = String(newProjectId);
+          if (!cancelled) setProjectId(currentProjectId);
+        }
+
+        const keysRes = await clientFetch<{
+          mnemonic: string[] | string;
+          publicKeys: Array<{ keyType: string; publicKey: string; address?: string }>;
+          gasTanks?: Array<{ chainId: number; address: string }>;
+        }>(`/v1/projects/${currentProjectId}/keys`, {
+          method: "POST",
+          body: JSON.stringify({ chains: numericChainIds }),
+        });
+
+        if (cancelled) return;
+
+        const mnemonic = Array.isArray(keysRes.mnemonic) ? keysRes.mnemonic : keysRes.mnemonic.split(" ");
+
+        if (mnemonic.length >= 12 && !mnemonic[0].startsWith("(")) {
+          try {
+            const phrase = mnemonic.join(" ");
+            const mnemonicObj = ethers.Mnemonic.fromPhrase(phrase);
+            const seed = mnemonicObj.computeSeed();
+            const masterNode = ethers.HDNodeWallet.fromSeed(seed);
+            const derivedKeys: Record<number, string> = {};
+            for (const chainId of numericChainIds) {
+              const child = masterNode.derivePath(`m/44'/60'/1000'/${chainId}/0`);
+              derivedKeys[chainId] = child.privateKey;
+            }
+            setGasTankKeys(derivedKeys);
+          } catch (err) {
+            console.warn("Failed to derive gas tank keys client-side:", err);
+          }
+        }
+
+        setKeyCeremony({ mnemonic, publicKeys: keysRes.publicKeys });
+      } catch (err: any) {
+        if (!cancelled) {
+          setKeyCeremonyError(err.message || "Key generation failed");
+          keyCeremonyTriggered.current = false; // allow retry
+        }
+      } finally {
+        if (!cancelled) setKeyCeremonyLoading(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentStep]);
 
   // Step 5: Fetch gas check on entry + start polling
   useEffect(() => {
@@ -796,7 +859,9 @@ export default function SetupWizardPage() {
                     setKeyCeremonyError(null);
                     setKeyCeremony(null);
                     keyCeremonyTriggered.current = false;
-                    createProjectAndKeys();
+                    // Re-trigger the useEffect by cycling currentStep
+                    setCurrentStep(3);
+                    setTimeout(() => setCurrentStep(4), 100);
                   }}
                   className="inline-flex items-center gap-2 px-4 py-2 rounded-button text-caption font-display font-semibold bg-accent-primary text-accent-text hover:bg-accent-hover transition-all duration-fast cursor-pointer"
                 >
