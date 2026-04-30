@@ -266,8 +266,12 @@ export default function SetupWizardPage() {
         { cache: 'no-store' }
       );
       setGasChains(res.chains || []);
+      setGasError(null); // clear previous errors on success
     } catch (err: any) {
-      setGasError(err.message || "Failed to fetch gas balances");
+      // Don't show error if we already have gas chain data — just keep polling
+      if (gasChains.length === 0) {
+        setGasError(err.message || "Failed to fetch gas balances");
+      }
     } finally {
       setGasLoading(false);
     }
@@ -407,7 +411,7 @@ export default function SetupWizardPage() {
     if (currentStep === 5 && projectId) {
       fetchGasCheck();
 
-      gasPollingRef.current = setInterval(fetchGasCheck, 15000);
+      gasPollingRef.current = setInterval(fetchGasCheck, 45000);
       return () => {
         if (gasPollingRef.current) clearInterval(gasPollingRef.current);
       };
@@ -1224,7 +1228,7 @@ export default function SetupWizardPage() {
                             Send <strong>{meta?.symbol ?? "native tokens"}</strong> to
                             the address above. Wait for{" "}
                             <strong>{confirmInfo.count} confirmation{confirmInfo.count > 1 ? "s" : ""}</strong> ({confirmInfo.time}) before
-                            the balance updates. Auto-polling every 15s.
+                            the balance updates. Auto-polling every 45s.
                           </div>
                         </div>
                       )}
