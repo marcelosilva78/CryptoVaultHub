@@ -40,7 +40,14 @@ export class EvmProviderService implements OnModuleInit, OnModuleDestroy {
     private readonly redisService: RedisService,
   ) {}
 
+  private rateLimiterInitialized = false;
+
   async onModuleInit() {
+    await this.ensureRateLimiter();
+  }
+
+  private async ensureRateLimiter(): Promise<void> {
+    if (this.rateLimiterInitialized) return;
     try {
       const client = this.redisService.getClient();
       if (client) {
@@ -50,12 +57,11 @@ export class EvmProviderService implements OnModuleInit, OnModuleDestroy {
           defaultLimitPerSecond: 3,
         });
         await this.rateLimiter.register();
+        this.rateLimiterInitialized = true;
         this.logger.log('Shared RPC rate limiter registered (chain-indexer)');
-      } else {
-        this.logger.warn('Redis client not ready — RPC rate limiter disabled');
       }
-    } catch (err: any) {
-      this.logger.warn(`Failed to init RPC rate limiter: ${err.message} — continuing without rate limiting`);
+    } catch {
+      // Will retry on next getProvider call
     }
   }
 
@@ -63,6 +69,8 @@ export class EvmProviderService implements OnModuleInit, OnModuleDestroy {
    * Get an HTTP provider for the given chain.
    */
   async getProvider(chainId: number): Promise<ethers.JsonRpcProvider> {
+    if (!this.rateLimiterInitialized) await this.ensureRateLimiter();
+
     const existing = this.providers.get(chainId);
     if (existing) {
       if (!existing.healthy) {

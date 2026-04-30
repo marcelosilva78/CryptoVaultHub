@@ -411,7 +411,7 @@ export default function SetupWizardPage() {
     if (currentStep === 5 && projectId) {
       fetchGasCheck();
 
-      gasPollingRef.current = setInterval(fetchGasCheck, 45000);
+      gasPollingRef.current = setInterval(fetchGasCheck, 15000);
       return () => {
         if (gasPollingRef.current) clearInterval(gasPollingRef.current);
       };
@@ -1228,7 +1228,7 @@ export default function SetupWizardPage() {
                             Send <strong>{meta?.symbol ?? "native tokens"}</strong> to
                             the address above. Wait for{" "}
                             <strong>{confirmInfo.count} confirmation{confirmInfo.count > 1 ? "s" : ""}</strong> ({confirmInfo.time}) before
-                            the balance updates. Auto-polling every 45s.
+                            the balance updates. Auto-polling every 15s.
                           </div>
                         </div>
                       )}
