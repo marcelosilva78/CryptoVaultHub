@@ -1120,19 +1120,29 @@ export class ProjectSetupService {
     const impactSummary = await this.getDeletionImpact(clientId, projectId);
 
     // Decision logic:
-    // - Zero transactions AND zero wallets → immediate hard-delete
-    // - Has wallets but no transactions and no balance → 7-day grace period
-    // - Has transactions or has balance → 30-day grace period
+    // - Zero transactions AND zero balance → immediate hard-delete (clean up wallets/keys too)
+    // - Has transactions or has non-zero balance → 30-day grace period
 
-    if (impactSummary.transactionCount === 0 && impactSummary.walletCount === 0) {
-      // Immediate hard-delete: remove from DB completely
+    if (impactSummary.transactionCount === 0 && !impactSummary.hasNonZeroBalance) {
+      // Immediate hard-delete: clean up all related data then remove project
+      try {
+        await this.adminDb.query(`DELETE FROM cvh_wallets.deposit_addresses WHERE wallet_id IN (SELECT id FROM cvh_wallets.wallets WHERE project_id = ?)`, [projectId]);
+        await this.adminDb.query(`DELETE FROM cvh_wallets.wallets WHERE project_id = ?`, [projectId]);
+        await this.adminDb.query(`DELETE FROM cvh_wallets.project_chains WHERE project_id = ?`, [projectId]);
+        await this.adminDb.query(`DELETE FROM cvh_keyvault.shamir_shares WHERE project_id = ?`, [projectId]);
+        await this.adminDb.query(`DELETE FROM cvh_keyvault.derived_keys WHERE project_id = ?`, [projectId]);
+        await this.adminDb.query(`DELETE FROM cvh_keyvault.project_seeds WHERE project_id = ?`, [projectId]);
+      } catch (cleanupErr: any) {
+        this.logger.warn(`Cleanup failed for project ${projectId}: ${cleanupErr.message}`);
+      }
+
       await this.adminDb.query(
         `DELETE FROM projects WHERE id = ? AND client_id = ?`,
         [projectId, clientId],
       );
 
       this.logger.log(
-        `Project ${projectId} hard-deleted immediately (no wallets, no transactions)`,
+        `Project ${projectId} hard-deleted immediately (no transactions, no balance)`,
       );
 
       return {
@@ -1143,13 +1153,7 @@ export class ProjectSetupService {
     }
 
     const now = new Date();
-    let graceDays: number;
-
-    if (impactSummary.transactionCount > 0 || impactSummary.hasNonZeroBalance) {
-      graceDays = 30;
-    } else {
-      graceDays = 7;
-    }
+    const graceDays = 30;
 
     const scheduledFor = new Date(now.getTime() + graceDays * 24 * 60 * 60 * 1000);
 
