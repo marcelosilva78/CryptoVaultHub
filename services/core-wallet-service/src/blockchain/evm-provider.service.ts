@@ -28,7 +28,7 @@ interface ProviderEntry {
 export class EvmProviderService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(EvmProviderService.name);
   private readonly providers = new Map<number, ProviderEntry>();
-  private rateLimiter!: SharedRpcRateLimiter;
+  private rateLimiter: SharedRpcRateLimiter | null = null;
 
   /** Circuit breaker: reopen after this many ms */
   private readonly CIRCUIT_RESET_MS = 30_000;
@@ -42,13 +42,22 @@ export class EvmProviderService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   async onModuleInit() {
-    this.rateLimiter = new SharedRpcRateLimiter({
-      redis: this.redisService.getClient(),
-      serviceClass: 'core-wallet',
-      defaultLimitPerSecond: 3,
-    });
-    await this.rateLimiter.register();
-    this.logger.log('Shared RPC rate limiter registered (core-wallet)');
+    try {
+      const client = this.redisService.getClient();
+      if (client) {
+        this.rateLimiter = new SharedRpcRateLimiter({
+          redis: client,
+          serviceClass: 'core-wallet',
+          defaultLimitPerSecond: 3,
+        });
+        await this.rateLimiter.register();
+        this.logger.log('Shared RPC rate limiter registered (core-wallet)');
+      } else {
+        this.logger.warn('Redis client not ready — RPC rate limiter disabled');
+      }
+    } catch (err: any) {
+      this.logger.warn(`Failed to init RPC rate limiter: ${err.message} — continuing without rate limiting`);
+    }
   }
 
   /**
@@ -220,7 +229,7 @@ export class EvmProviderService implements OnModuleInit, OnModuleDestroy {
     const limiter = this.rateLimiter;
 
     provider.send = async function (method: string, params: any[]) {
-      await limiter.acquire(chainId);
+      if (limiter) await limiter.acquire(chainId);
       return originalSend(method, params);
     };
   }
