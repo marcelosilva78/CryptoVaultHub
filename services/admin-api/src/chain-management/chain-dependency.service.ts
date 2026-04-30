@@ -1,4 +1,5 @@
 import { Injectable, Inject } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -19,10 +20,15 @@ export interface ChainDependencies {
 
 @Injectable()
 export class ChainDependencyService {
+  private readonly internalKey: string;
+
   constructor(
     private readonly prisma: PrismaService,
     @Inject('CHAIN_INDEXER_URL') private readonly chainIndexerUrl: string,
-  ) {}
+    private readonly configService: ConfigService,
+  ) {
+    this.internalKey = this.configService.get<string>('INTERNAL_SERVICE_KEY', '');
+  }
 
   async getDependencies(chainId: number): Promise<ChainDependencies> {
     const [rpcTotal, rpcActive, clientCount, indexerDeps] = await Promise.all([
@@ -75,7 +81,7 @@ export class ChainDependencyService {
 
   private async fetchIndexerDependencies(chainId: number) {
     try {
-      const { data } = await axios.get(`${this.chainIndexerUrl}/chains/${chainId}/dependencies`);
+      const { data } = await axios.get(`${this.chainIndexerUrl}/chains/${chainId}/dependencies`, { headers: { 'X-Internal-Service-Key': this.internalKey } });
       return data;
     } catch {
       return {

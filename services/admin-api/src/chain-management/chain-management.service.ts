@@ -13,6 +13,10 @@ export class ChainManagementService {
   private readonly rpcGatewayUrl: string;
   private readonly redis: Redis;
 
+  private get internalHeaders() {
+    return { 'X-Internal-Service-Key': this.configService.get<string>('INTERNAL_SERVICE_KEY', '') };
+  }
+
   constructor(
     private readonly auditLog: AuditLogService,
     private readonly configService: ConfigService,
@@ -93,7 +97,7 @@ export class ChainManagementService {
       const { data: responseData } = await axios.post(
         `${this.chainIndexerUrl}/chains`,
         chainData,
-        { timeout: 10000 },
+        { timeout: 10000, headers: this.internalHeaders },
       );
 
       await this.auditLog.log({
@@ -128,7 +132,7 @@ export class ChainManagementService {
   async listChains() {
     const response = await axios.get(
       `${this.chainIndexerUrl}/chains`,
-      { timeout: 10000 },
+      { timeout: 10000, headers: this.internalHeaders },
     );
     // chain-indexer returns { chains: [...] } — extract the array so the
     // controller can wrap it cleanly as { success: true, chains: [...] }
@@ -153,7 +157,7 @@ export class ChainManagementService {
     const response = await axios.post(
       `${this.chainIndexerUrl}/tokens`,
       data,
-      { timeout: 10000 },
+      { timeout: 10000, headers: this.internalHeaders },
     );
 
     await this.auditLog.log({
@@ -172,7 +176,7 @@ export class ChainManagementService {
   async listTokens() {
     const response = await axios.get(
       `${this.chainIndexerUrl}/tokens`,
-      { timeout: 10000 },
+      { timeout: 10000, headers: this.internalHeaders },
     );
     // chain-indexer returns { tokens: [...] } — extract the array so the
     // controller can wrap it cleanly as { success: true, tokens: [...] }
@@ -193,7 +197,7 @@ export class ChainManagementService {
   }
 
   async updateChain(chainId: number, dto: any, adminUserId: string) {
-    const { data } = await axios.patch(`${this.chainIndexerUrl}/chains/${chainId}`, dto);
+    const { data } = await axios.patch(`${this.chainIndexerUrl}/chains/${chainId}`, dto, { headers: this.internalHeaders });
     await this.auditLog.log({
       adminUserId,
       action: 'chain.update',
@@ -213,7 +217,7 @@ export class ChainManagementService {
         dependencies: deps,
       });
     }
-    const { data } = await axios.delete(`${this.chainIndexerUrl}/chains/${chainId}`);
+    const { data } = await axios.delete(`${this.chainIndexerUrl}/chains/${chainId}`, { headers: this.internalHeaders });
     await this.auditLog.log({
       adminUserId,
       action: 'chain.delete',
@@ -240,7 +244,7 @@ export class ChainManagementService {
     try {
       const { data: chainsData } = await axios.get(
         `${this.chainIndexerUrl}/chains`,
-        { timeout: 10000 },
+        { timeout: 10000, headers: this.internalHeaders },
       );
       const chains = chainsData?.chains ?? chainsData;
       const chain = chains.find(
@@ -365,8 +369,8 @@ export class ChainManagementService {
     }
 
     const [chainsRes, syncHealthRes, rpcHealthRes, rpcNodes] = await Promise.all([
-      axios.get(`${this.chainIndexerUrl}/chains`),
-      axios.get(`${this.chainIndexerUrl}/sync-health`).catch((err) => {
+      axios.get(`${this.chainIndexerUrl}/chains`, { headers: this.internalHeaders }),
+      axios.get(`${this.chainIndexerUrl}/sync-health`, { headers: this.internalHeaders }).catch((err) => {
         this.logger.warn(`Failed to fetch sync-health: ${err.message}`);
         return { data: [] };
       }),
@@ -480,7 +484,7 @@ export class ChainManagementService {
   }
 
   private async getChainById(chainId: number) {
-    const { data } = await axios.get(`${this.chainIndexerUrl}/chains`);
+    const { data } = await axios.get(`${this.chainIndexerUrl}/chains`, { headers: this.internalHeaders });
     const chains = data.chains || data.data || data;
     const chain = chains.find((c: any) => (c.chainId || c.id) === chainId);
     if (!chain) throw new NotFoundException(`Chain ${chainId} not found`);

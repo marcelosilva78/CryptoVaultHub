@@ -1,4 +1,5 @@
 import { Injectable, Inject, ConflictException, BadRequestException, Optional } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { EventBusService, TOPICS } from '@cvh/event-bus';
 import { ChainDependencyService } from './chain-dependency.service';
@@ -21,12 +22,17 @@ export interface TransitionResult {
 
 @Injectable()
 export class ChainLifecycleService {
+  private readonly internalKey: string;
+
   constructor(
     private readonly depService: ChainDependencyService,
     private readonly auditLog: AuditLogService,
     @Inject('CHAIN_INDEXER_URL') private readonly chainIndexerUrl: string,
+    private readonly configService: ConfigService,
     @Optional() private readonly eventBus?: EventBusService,
-  ) {}
+  ) {
+    this.internalKey = this.configService.get<string>('INTERNAL_SERVICE_KEY', '');
+  }
 
   getAllowedTransitions(currentStatus: string): string[] {
     return Object.keys(ALLOWED_TRANSITIONS[currentStatus] || {});
@@ -114,7 +120,7 @@ export class ChainLifecycleService {
   }
 
   private async getCurrentStatus(chainId: number): Promise<string> {
-    const { data } = await axios.get(`${this.chainIndexerUrl}/chains`);
+    const { data } = await axios.get(`${this.chainIndexerUrl}/chains`, { headers: { 'X-Internal-Service-Key': this.internalKey } });
     const chains = data.chains || data.data || data;
     const chain = chains.find((c: any) => (c.chainId || c.id) === chainId);
     if (!chain) throw new BadRequestException(`Chain ${chainId} not found`);
@@ -127,6 +133,6 @@ export class ChainLifecycleService {
       statusReason: reason,
       statusChangedAt: new Date().toISOString(),
       isActive: status === 'active' || status === 'draining',
-    });
+    }, { headers: { 'X-Internal-Service-Key': this.internalKey } });
   }
 }
