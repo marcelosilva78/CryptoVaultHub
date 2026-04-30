@@ -7,7 +7,6 @@ import { BalanceChart } from "@/components/balance-chart";
 import { GenerateAddressModal } from "@/components/generate-address-modal";
 import { clientFetch } from "@/lib/api";
 import { useClientAuth } from "@/lib/auth-context";
-import { balanceHistory } from "@/lib/mock-data";
 
 /* ─── Chain ID → Name map ───────────────────────────────────── */
 const chainNames: Record<number, string> = {
@@ -313,6 +312,7 @@ export default function DashboardPage() {
   const [confirmedToday, setConfirmedToday] = useState(0);
   const [confirmedVolume, setConfirmedVolume] = useState(0);
   const [recentTxs, setRecentTxs] = useState<RecentTx[]>([]);
+  const [balanceHistory, setBalanceHistory] = useState<{ date: string; balance: number; deposits: number; withdrawals: number }[]>([]);
 
   useEffect(() => {
     let cancelled = false;

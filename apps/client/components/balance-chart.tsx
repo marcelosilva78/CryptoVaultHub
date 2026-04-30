@@ -10,7 +10,12 @@ import {
   AreaChart,
   Line,
 } from "recharts";
-import type { BalanceHistoryPoint } from "@/lib/mock-data";
+export interface BalanceHistoryPoint {
+  date: string;
+  balance: number;
+  deposits: number;
+  withdrawals: number;
+}
 
 interface BalanceChartProps {
   data: BalanceHistoryPoint[];
@@ -59,6 +64,19 @@ function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
 }
 
 export function BalanceChart({ data }: BalanceChartProps) {
+  if (!data || data.length === 0) {
+    return (
+      <div className="bg-surface-card border border-border-default rounded-card overflow-hidden shadow-card">
+        <div className="flex items-center justify-between px-card-p py-[14px] border-b border-border-subtle">
+          <div className="text-subheading font-display">Balance Over Time</div>
+        </div>
+        <div className="h-[260px] flex items-center justify-center text-text-secondary text-sm">
+          No balance history yet. Deposit funds to see your balance chart.
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="bg-surface-card border border-border-default rounded-card overflow-hidden shadow-card">
       <div className="flex items-center justify-between px-card-p py-[14px] border-b border-border-subtle">
