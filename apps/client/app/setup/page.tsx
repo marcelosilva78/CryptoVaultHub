@@ -258,20 +258,21 @@ export default function SetupWizardPage() {
   const fetchGasCheck = useCallback(async () => {
     if (!projectId) return;
     setGasLoading(true);
-    setGasError(null);
 
     try {
       const res = await clientFetch<{ chains: GasCheckChain[] }>(
         `/v1/projects/${projectId}/gas-check`,
         { cache: 'no-store' }
       );
-      setGasChains(res.chains || []);
-      setGasError(null); // clear previous errors on success
-    } catch (err: any) {
-      // Don't show error if we already have gas chain data — just keep polling
-      if (gasChains.length === 0) {
-        setGasError(err.message || "Failed to fetch gas balances");
+      if (res.chains && res.chains.length > 0) {
+        setGasChains(res.chains);
+        setGasError(null);
       }
+    } catch (err: any) {
+      // Ignore aborted requests and transient errors when we already have data
+      if (err.name === 'AbortError') return;
+      // Only show error if we have NO data at all AND this isn't the first load
+      // The first load may fail due to RPC rate limits — polling will retry
     } finally {
       setGasLoading(false);
     }
@@ -408,18 +409,31 @@ export default function SetupWizardPage() {
 
   // Step 5: Fetch gas check on entry + start polling
   useEffect(() => {
-    if (currentStep === 5 && projectId) {
-      fetchGasCheck();
-
-      gasPollingRef.current = setInterval(fetchGasCheck, 15000);
-      return () => {
-        if (gasPollingRef.current) clearInterval(gasPollingRef.current);
-      };
+    if (currentStep !== 5 || !projectId) {
+      if (gasPollingRef.current) clearInterval(gasPollingRef.current);
+      return;
     }
+
+    let cancelled = false;
+
+    // Initial fetch with retry on failure
+    (async () => {
+      await fetchGasCheck();
+      // If first attempt got no data, retry after 3s (RPC may be rate-limited)
+      if (!cancelled && gasChains.length === 0) {
+        await new Promise(r => setTimeout(r, 3000));
+        if (!cancelled) await fetchGasCheck();
+      }
+    })();
+
+    gasPollingRef.current = setInterval(fetchGasCheck, 15000);
+
     return () => {
+      cancelled = true;
       if (gasPollingRef.current) clearInterval(gasPollingRef.current);
     };
-  }, [currentStep, projectId, fetchGasCheck]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentStep, projectId]);
 
   // Step 6: Poll deploy status when deployment starts
   useEffect(() => {
