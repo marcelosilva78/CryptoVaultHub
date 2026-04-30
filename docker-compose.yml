@@ -563,6 +563,8 @@ services:
       - ./infra/vault-tls/vault-server.crt:/tls/server.crt:ro
       - ./infra/vault-tls/vault-server.key:/tls/server.key:ro
       - ./infra/vault-tls/vault-ca.crt:/tls/ca.crt:ro
+      - ./infra/vault-tls/vault-client.crt:/tls/client.crt:ro
+      - ./infra/vault-tls/vault-client.key:/tls/client.key:ro
     depends_on:
       mysql:
         condition: service_healthy
@@ -576,7 +578,7 @@ services:
           cpus: '2.0'
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "node", "-e", "const fs=require('fs'),https=require('https');https.get({hostname:'localhost',port:3005,path:'/health',cert:fs.readFileSync('/tls/server.crt'),key:fs.readFileSync('/tls/server.key'),ca:fs.readFileSync('/tls/ca.crt'),rejectUnauthorized:false},r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "const fs=require('fs'),https=require('https');https.get({hostname:'localhost',port:3005,path:'/health',cert:fs.readFileSync('/tls/client.crt'),key:fs.readFileSync('/tls/client.key'),ca:fs.readFileSync('/tls/ca.crt'),rejectUnauthorized:false},r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
       interval: 30s
       timeout: 5s
       retries: 3
