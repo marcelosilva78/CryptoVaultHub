@@ -7,6 +7,7 @@ import * as promClient from 'prom-client';
 import { EventBusService, TOPICS } from '@cvh/event-bus';
 import { PrismaService } from '../prisma/prisma.service';
 import { RateLimiterService } from '../rate-limiter/rate-limiter.service';
+import { RedisService } from '../redis/redis.service';
 import { Decimal } from '../generated/prisma-client/runtime/library';
 
 /* ── Prometheus metrics for RPC provider health ─────────────────────── */
@@ -38,6 +39,7 @@ export class HealthService implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly rateLimiter: RateLimiterService,
     private readonly configService: ConfigService,
+    private readonly redisService: RedisService,
     @Optional() private readonly eventBus?: EventBusService,
   ) {
     const keyHex = this.configService.get<string>('INTERNAL_SERVICE_KEY', '');
@@ -76,6 +78,21 @@ export class HealthService implements OnModuleInit {
       });
     }
     this.logger.log(`Seeded rate limits for ${nodes.length} RPC nodes`);
+
+    // Seed shared rate limits for direct-RPC services (chain-indexer, cron-worker, core-wallet).
+    // Sum limits per chain across all nodes so the shared budget reflects total provider capacity.
+    const redis = this.redisService.getClient();
+    const chainLimits = new Map<number, number>();
+    for (const node of nodes) {
+      const prev = chainLimits.get(node.chainId) ?? 0;
+      chainLimits.set(node.chainId, prev + (node.maxRequestsPerSecond ?? 50));
+    }
+    for (const [chainId, limit] of chainLimits) {
+      await redis.set(`rpc:shared:${chainId}:limit`, String(limit));
+    }
+    this.logger.log(
+      `Seeded shared RPC rate limits for ${chainLimits.size} chains`,
+    );
   }
 
   /**

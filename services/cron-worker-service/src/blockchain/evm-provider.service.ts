@@ -2,11 +2,14 @@ import {
   Injectable,
   Logger,
   OnModuleDestroy,
+  OnModuleInit,
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ethers } from 'ethers';
+import { SharedRpcRateLimiter } from '@cvh/config';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../redis/redis.service';
 
 interface ProviderEntry {
   provider: ethers.JsonRpcProvider;
@@ -17,9 +20,10 @@ interface ProviderEntry {
 }
 
 @Injectable()
-export class EvmProviderService implements OnModuleDestroy {
+export class EvmProviderService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(EvmProviderService.name);
   private readonly providers = new Map<number, ProviderEntry>();
+  private rateLimiter!: SharedRpcRateLimiter;
 
   private readonly CIRCUIT_RESET_MS = 30_000;
   private readonly CIRCUIT_FAIL_THRESHOLD = 3;
@@ -27,7 +31,18 @@ export class EvmProviderService implements OnModuleDestroy {
   constructor(
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
+    private readonly redisService: RedisService,
   ) {}
+
+  async onModuleInit() {
+    this.rateLimiter = new SharedRpcRateLimiter({
+      redis: this.redisService.getClient(),
+      serviceClass: 'cron-worker',
+      defaultLimitPerSecond: 3,
+    });
+    await this.rateLimiter.register();
+    this.logger.log('Shared RPC rate limiter registered (cron-worker)');
+  }
 
   async getProvider(chainId: number): Promise<ethers.JsonRpcProvider> {
     const existing = this.providers.get(chainId);
@@ -122,6 +137,10 @@ export class EvmProviderService implements OnModuleDestroy {
       });
     }
 
+    // Wrap provider.send() with shared rate limiter so every RPC call
+    // is automatically rate-limited without touching individual call sites.
+    this.wrapWithRateLimit(provider, chainId);
+
     this.providers.set(chainId, {
       provider,
       chainId,
@@ -134,5 +153,23 @@ export class EvmProviderService implements OnModuleDestroy {
       `Provider created for chain ${chainId} (${chain.name})`,
     );
     return provider;
+  }
+
+  /**
+   * Wrap the provider's `send` method with the shared rate limiter.
+   * All ethers provider methods (getBlock, getLogs, etc.) internally call
+   * `send()`, so this transparently rate-limits every RPC call.
+   */
+  private wrapWithRateLimit(
+    provider: ethers.JsonRpcProvider,
+    chainId: number,
+  ): void {
+    const originalSend = provider.send.bind(provider);
+    const limiter = this.rateLimiter;
+
+    provider.send = async function (method: string, params: any[]) {
+      await limiter.acquire(chainId);
+      return originalSend(method, params);
+    };
   }
 }

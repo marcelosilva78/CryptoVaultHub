@@ -13,6 +13,8 @@ interface BackfillJobData {
 }
 
 const BATCH_SIZE = 100;
+/** Max number of blocks to process concurrently within a batch (prevents RPC flooding) */
+const BATCH_CONCURRENCY = 5;
 
 /**
  * BullMQ worker for gap recovery: processes gap ranges in batches of 100 blocks.
@@ -91,27 +93,34 @@ export class BackfillWorker extends WorkerHost {
       ) {
         const batchEnd = Math.min(batchStart + BATCH_SIZE - 1, endBlock);
 
-        const promises: Promise<any>[] = [];
+        // Process blocks in small sub-batches to avoid flooding the RPC provider.
+        // Each sub-batch runs BATCH_CONCURRENCY blocks in parallel.
+        const blockNumbers: number[] = [];
         for (let block = batchStart; block <= batchEnd; block++) {
-          promises.push(
-            this.blockProcessor.processBlock(chainId, block)
-              .then(async () => {
-                // Mark block as scanned in Redis (prevents gap detector from re-detecting empty blocks)
-                await this.redis.setCache(
-                  `scanned:${chainId}:${block}`,
-                  '1',
-                  86400, // 24h TTL
-                );
-              })
-              .catch((err: any) => {
-                this.logger.warn(
-                  `Failed to process block ${block} during backfill: ${err.message}`,
-                );
-              }),
-          );
+          blockNumbers.push(block);
         }
 
-        await Promise.all(promises);
+        for (let i = 0; i < blockNumbers.length; i += BATCH_CONCURRENCY) {
+          const subBatch = blockNumbers.slice(i, i + BATCH_CONCURRENCY);
+          await Promise.all(
+            subBatch.map((block) =>
+              this.blockProcessor.processBlock(chainId, block)
+                .then(async () => {
+                  // Mark block as scanned in Redis (prevents gap detector from re-detecting empty blocks)
+                  await this.redis.setCache(
+                    `scanned:${chainId}:${block}`,
+                    '1',
+                    86400, // 24h TTL
+                  );
+                })
+                .catch((err: any) => {
+                  this.logger.warn(
+                    `Failed to process block ${block} during backfill: ${err.message}`,
+                  );
+                }),
+            ),
+          );
+        }
 
         // Update job progress
         const progress = Math.round(
