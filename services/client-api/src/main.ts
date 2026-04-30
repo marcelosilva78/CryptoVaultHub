@@ -129,29 +129,25 @@ const isValid = signature === request.headers['x-cvh-signature'];
     .build();
 
   const document = SwaggerModule.createDocument(app, config);
-  if (process.env.NODE_ENV !== 'production') {
-    SwaggerModule.setup('client/api/docs', app, document, {
-      customSiteTitle: 'CryptoVaultHub Client API Documentation',
-      customCss: `
-        .swagger-ui .topbar { background-color: #0D0F14; }
-        .swagger-ui .info .title { color: #E2A828; }
-      `,
-      swaggerOptions: {
-        persistAuthorization: true,
-        docExpansion: 'list',
-        filter: true,
-        showRequestDuration: true,
-        syntaxHighlight: { theme: 'monokai' },
-        tagsSorter: 'alpha',
-      },
-    });
-  }
+  SwaggerModule.setup('client/api/docs', app, document, {
+    customSiteTitle: 'CryptoVaultHub Client API Documentation',
+    customCss: `
+      .swagger-ui .topbar { background-color: #0D0F14; }
+      .swagger-ui .info .title { color: #E2A828; }
+    `,
+    swaggerOptions: {
+      persistAuthorization: true,
+      docExpansion: 'list',
+      filter: true,
+      showRequestDuration: true,
+      syntaxHighlight: { theme: 'monokai' },
+      tagsSorter: 'alpha',
+    },
+  });
 
   const port = process.env.PORT || 3002;
   await app.listen(port);
   logger.log(`Client API running on port ${port}`);
-  if (process.env.NODE_ENV !== 'production') {
-    logger.log(`Swagger docs available at http://localhost:${port}/client/api/docs`);
-  }
+  logger.log(`API docs available at /client/api/docs`);
 }
 bootstrap();
