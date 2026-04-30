@@ -53,6 +53,8 @@ export class ForwarderDeployService extends WorkerHost implements OnModuleInit {
         {
           repeat: { every: intervalMs },
           jobId: `forwarder-deploy-${chain.id}`,
+          removeOnComplete: 100,
+          removeOnFail: 200,
         },
       );
     }

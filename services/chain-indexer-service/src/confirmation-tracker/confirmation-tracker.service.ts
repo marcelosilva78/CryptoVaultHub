@@ -76,6 +76,8 @@ export class ConfirmationTrackerService extends WorkerHost {
     await this.confirmationQueue.add('check-confirmation', jobData, {
       delay: blockTimeMs,
       jobId: `confirm:${deposit.txHash}`,
+      removeOnComplete: 100,
+      removeOnFail: 200,
     });
 
     this.logger.log(

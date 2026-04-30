@@ -60,6 +60,8 @@ export class GasTankService extends WorkerHost implements OnModuleInit {
         {
           repeat: { every: intervalMs },
           jobId: `gas-tank-${chain.id}`,
+          removeOnComplete: 100,
+          removeOnFail: 200,
         },
       );
     }

@@ -56,6 +56,8 @@ export class ProjectDeletionService extends WorkerHost implements OnModuleInit {
       {
         repeat: { pattern: '30 9 * * *' },
         jobId: 'project-deletion-daily',
+        removeOnComplete: 100,
+        removeOnFail: 200,
       },
     );
 

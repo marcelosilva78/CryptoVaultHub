@@ -76,6 +76,8 @@ export class SanctionsListSyncService extends WorkerHost implements OnModuleInit
         {
           repeat: { pattern: schedule.cron },
           jobId: `sanctions-${schedule.source}-daily`,
+          removeOnComplete: 100,
+          removeOnFail: 200,
         },
       );
     }

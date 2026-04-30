@@ -48,6 +48,8 @@ export class ClientDeletionService extends WorkerHost implements OnModuleInit {
       {
         repeat: { pattern: '0 9 * * *' },
         jobId: 'client-deletion-daily',
+        removeOnComplete: 100,
+        removeOnFail: 200,
       },
     );
 

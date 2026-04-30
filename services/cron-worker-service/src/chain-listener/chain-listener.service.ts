@@ -70,6 +70,8 @@ export class ChainListenerService implements OnModuleInit {
         {
           repeat: { every: 30_000 },
           jobId: fwdJobId,
+          removeOnComplete: 100,
+          removeOnFail: 200,
         },
       );
       this.logger.log(`Registered forwarder-deploy job: ${fwdJobId}`);

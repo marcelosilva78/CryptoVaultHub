@@ -70,6 +70,8 @@ export class SweepService extends WorkerHost implements OnModuleInit {
           {
             repeat: { every: intervalMs },
             jobId: `sweep-${chain.id}-${clientId}`,
+            removeOnComplete: 100,
+            removeOnFail: 200,
           },
         );
         this.logger.log(
@@ -107,6 +109,8 @@ export class SweepService extends WorkerHost implements OnModuleInit {
         {
           repeat: { every: intervalMs },
           jobId,
+          removeOnComplete: 100,
+          removeOnFail: 200,
         },
       );
       registered++;

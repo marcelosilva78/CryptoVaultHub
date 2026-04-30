@@ -114,6 +114,8 @@ export class WithdrawalWorkerService extends WorkerHost implements OnModuleInit 
       {
         repeat: { every: intervalMs },
         jobId: 'withdrawal-poll',
+        removeOnComplete: 100,
+        removeOnFail: 200,
       },
     );
     this.logger.log(
@@ -174,6 +176,8 @@ export class WithdrawalWorkerService extends WorkerHost implements OnModuleInit 
           jobId,
           attempts: 3,
           backoff: { type: 'exponential', delay: 5000 },
+          removeOnComplete: 100,
+          removeOnFail: 200,
         },
       );
     }
@@ -471,6 +475,8 @@ export class WithdrawalWorkerService extends WorkerHost implements OnModuleInit 
           delay: 15_000, // Wait 15s before first check
           attempts: 60,
           backoff: { type: 'fixed', delay: 15_000 },
+          removeOnComplete: 100,
+          removeOnFail: 200,
         },
       );
 
