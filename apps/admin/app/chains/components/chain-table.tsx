@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
-import { Loader2, ChevronDown, ChevronRight, MoreHorizontal } from "lucide-react";
+import React, { useState, useMemo } from "react";
+import { Loader2, ChevronDown, ChevronRight, MoreHorizontal, Search } from "lucide-react";
 import { DataTable, TableCell, TableRow } from "@/components/data-table";
 import { Badge } from "@/components/badge";
 import { cn } from "@/lib/utils";
@@ -73,6 +73,26 @@ interface ChainTableProps {
 
 export function ChainTable({ chains, loading, onEdit, onLifecycle }: ChainTableProps) {
   const [expandedChain, setExpandedChain] = useState<number | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [healthFilter, setHealthFilter] = useState<string>("all");
+
+  const filteredChains = useMemo(() => {
+    return chains.filter((chain) => {
+      // Search by name or chain ID
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        const matchesName = chain.name.toLowerCase().includes(q);
+        const matchesId = String(chain.chainId).includes(q);
+        if (!matchesName && !matchesId) return false;
+      }
+      // Status filter
+      if (statusFilter !== "all" && chain.status !== statusFilter) return false;
+      // Health filter
+      if (healthFilter !== "all" && chain.health?.overall !== healthFilter) return false;
+      return true;
+    });
+  }, [chains, searchQuery, statusFilter, healthFilter]);
 
   function handleRowAction(chain: ChainHealth, action: string) {
     if (action === "edit") {
@@ -82,7 +102,38 @@ export function ChainTable({ chains, loading, onEdit, onLifecycle }: ChainTableP
     }
   }
 
+  const selectCls = "bg-surface-input border border-border-default rounded-input px-3 py-2 text-body text-text-primary outline-none focus:border-border-focus transition-colors duration-fast font-display";
+
   return (
+    <div className="space-y-3">
+      {/* Search & Filters */}
+      <div className="flex items-center gap-3">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted pointer-events-none" />
+          <input
+            type="text"
+            placeholder="Search by name or chain ID..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-9 pr-3 py-2 bg-surface-input border border-border-default rounded-input text-body text-text-primary outline-none focus:border-border-focus transition-colors duration-fast font-display placeholder:text-text-muted"
+          />
+        </div>
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={selectCls}>
+          <option value="all">All Statuses</option>
+          <option value="active">Active</option>
+          <option value="draining">Draining</option>
+          <option value="inactive">Inactive</option>
+          <option value="archived">Archived</option>
+        </select>
+        <select value={healthFilter} onChange={(e) => setHealthFilter(e.target.value)} className={selectCls}>
+          <option value="all">All Health</option>
+          <option value="healthy">Healthy</option>
+          <option value="degraded">Degraded</option>
+          <option value="critical">Critical</option>
+          <option value="error">Error</option>
+        </select>
+      </div>
+
     <DataTable
       title="Blockchain Networks"
       headers={["Chain", "ID", "Block Time", "Last Block", "Lag", "RPC", "Health", "Status", ""]}
@@ -95,14 +146,16 @@ export function ChainTable({ chains, loading, onEdit, onLifecycle }: ChainTableP
             </span>
           </td>
         </TableRow>
-      ) : chains.length === 0 ? (
+      ) : filteredChains.length === 0 ? (
         <TableRow>
           <td colSpan={9} className="px-4 py-12 text-center text-text-muted font-display">
-            No chains configured. Add your first chain to get started.
+            {chains.length === 0
+              ? "No chains configured. Add your first chain to get started."
+              : "No chains match the current filters."}
           </td>
         </TableRow>
       ) : (
-        chains.map((chain) => (
+        filteredChains.map((chain) => (
           <React.Fragment key={chain.chainId}>
             <TableRow
               className="cursor-pointer"
@@ -144,6 +197,8 @@ export function ChainTable({ chains, loading, onEdit, onLifecycle }: ChainTableP
               <ChainDetailPanel
                 key={`detail-${chain.chainId}`}
                 chainId={chain.chainId}
+                chainName={chain.name}
+                chainStatus={chain.status}
                 onAction={(action) => handleRowAction(chain, action)}
               />
             )}
@@ -151,5 +206,6 @@ export function ChainTable({ chains, loading, onEdit, onLifecycle }: ChainTableP
         ))
       )}
     </DataTable>
+    </div>
   );
 }

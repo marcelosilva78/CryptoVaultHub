@@ -33,6 +33,8 @@ interface RpcNode {
   maxRequestsPerMonth?: number | null;
   healthScore?: number | null;
   quotaStatus?: string;
+  quotaDailyUsed?: number | null;
+  quotaMonthlyUsed?: number | null;
 }
 
 interface ProviderFormData {
@@ -76,8 +78,21 @@ function HealthScoreCell({ score }: { score: number | null | undefined }) {
   return <span className={cn("font-mono font-semibold", color)}>{score.toFixed(0)}</span>;
 }
 
-function QuotaProgressBar({ used, limit, label }: { used: number; limit: number | null; label: string }) {
+function QuotaProgressBar({ used, limit, label }: { used: number | null | undefined; limit: number | null; label: string }) {
   if (!limit) return null;
+  if (used === null || used === undefined) {
+    return (
+      <div className="space-y-0.5">
+        <div className="flex justify-between text-micro text-text-muted">
+          <span>{label}</span>
+          <span>N/A / {limit.toLocaleString()}</span>
+        </div>
+        <div className="h-1.5 bg-surface-hover rounded-full overflow-hidden">
+          <div className="h-full rounded-full bg-surface-hover" style={{ width: "0%" }} />
+        </div>
+      </div>
+    );
+  }
   const pct = Math.min(100, (used / limit) * 100);
   const color = pct >= 100 ? "bg-status-error" : pct >= 80 ? "bg-status-warning" : "bg-status-success";
   return (
@@ -715,8 +730,8 @@ export default function RpcProvidersPage() {
                         </div>
                         {(node.maxRequestsPerDay || node.maxRequestsPerMonth) && (
                           <div className="mt-1.5 space-y-1 max-w-[240px]">
-                            <QuotaProgressBar used={0} limit={node.maxRequestsPerDay ?? null} label="Daily" />
-                            <QuotaProgressBar used={0} limit={node.maxRequestsPerMonth ?? null} label="Monthly" />
+                            <QuotaProgressBar used={node.quotaDailyUsed ?? null} limit={node.maxRequestsPerDay ?? null} label="Daily" />
+                            <QuotaProgressBar used={node.quotaMonthlyUsed ?? null} limit={node.maxRequestsPerMonth ?? null} label="Monthly" />
                           </div>
                         )}
                       </TableCell>

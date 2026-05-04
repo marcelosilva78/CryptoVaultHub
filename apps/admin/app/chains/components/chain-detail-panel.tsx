@@ -1,16 +1,50 @@
 "use client";
 
-import { Loader2, Pencil, Pause, Square, Archive, Play, ExternalLink } from "lucide-react";
+import { useState } from "react";
+import { Loader2, Pencil, Pause, Square, Archive, Play, ExternalLink, Trash2, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useChainDetail } from "../hooks";
+import { ConfirmationModal } from "@/components/confirmation-modal";
+import { useChainDetail, useDeleteChain } from "../hooks";
 
 interface ChainDetailPanelProps {
   chainId: number;
+  chainName: string;
+  chainStatus: string;
   onAction: (action: string) => void;
 }
 
-export function ChainDetailPanel({ chainId, onAction }: ChainDetailPanelProps) {
+export function ChainDetailPanel({ chainId, chainName, chainStatus, onAction }: ChainDetailPanelProps) {
   const { data: detail, isLoading } = useChainDetail(chainId);
+  const deleteChain = useDeleteChain();
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+
+  const isArchived = chainStatus === "archived";
+  const canPhysicalDelete = detail?.canPhysicalDelete === true;
+
+  function buildDependencySummary() {
+    if (!detail) return "";
+    const d = detail.dependencies;
+    const lines: string[] = [];
+    if (d.rpcNodes.total > 0) lines.push(`${d.rpcNodes.total} RPC node(s)`);
+    if (d.clients.total > 0) lines.push(`${d.clients.total} client(s)`);
+    if (d.tokens.total > 0) lines.push(`${d.tokens.total} token(s)`);
+    const walletCount = typeof d.wallets === "object" ? d.wallets.total || 0 : d.wallets;
+    if (walletCount > 0) lines.push(`${walletCount} wallet(s)`);
+    if (d.depositAddresses.total > 0) lines.push(`${d.depositAddresses.total} deposit address(es)`);
+    if (d.deposits.total > 0) lines.push(`${d.deposits.total} deposit(s)`);
+    if (d.withdrawals.total > 0) lines.push(`${d.withdrawals.total} withdrawal(s)`);
+    if (d.flushOperations.total > 0) lines.push(`${d.flushOperations.total} flush operation(s)`);
+    const gasTankCount = typeof d.gasTanks === "object" ? d.gasTanks.total || 0 : d.gasTanks;
+    if (gasTankCount > 0) lines.push(`${gasTankCount} gas tank(s)`);
+    return lines.length > 0 ? lines.join(", ") : "No dependencies";
+  }
+
+  function handleDeleteConfirm() {
+    deleteChain.mutate(
+      { chainId },
+      { onSuccess: () => setShowDeleteModal(false) },
+    );
+  }
 
   if (isLoading) {
     return (
@@ -64,7 +98,26 @@ export function ChainDetailPanel({ chainId, onAction }: ChainDetailPanelProps) {
                 <ExternalLink className="w-3.5 h-3.5" /> Explorer
               </a>
             )}
+            {isArchived && canPhysicalDelete && (
+              <button
+                onClick={() => setShowDeleteModal(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-caption font-display font-semibold text-status-error border border-status-error/30 rounded-button hover:bg-status-error/10 transition-all duration-fast"
+              >
+                <Trash2 className="w-3.5 h-3.5" /> Delete
+              </button>
+            )}
           </div>
+
+          {/* Info message when deletion is blocked */}
+          {isArchived && !canPhysicalDelete && detail && (
+            <div className="flex items-start gap-2 mb-4 px-4 py-3 bg-accent-subtle/50 border border-accent-primary/20 rounded-card text-caption text-text-secondary font-display">
+              <Info className="w-4 h-4 text-accent-primary mt-0.5 shrink-0" />
+              <div>
+                <span className="font-semibold text-text-primary">Deletion blocked.</span>{" "}
+                This chain still has dependencies that must be removed first: {buildDependencySummary()}.
+              </div>
+            </div>
+          )}
 
           {/* 4-column metrics grid */}
           <div className="grid grid-cols-4 gap-4 mb-4">
@@ -118,6 +171,19 @@ export function ChainDetailPanel({ chainId, onAction }: ChainDetailPanelProps) {
             <span>Created: <strong className="text-text-primary">{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : "\u2014"}</strong></span>
             {c.statusReason && <span>Reason: <strong className="text-text-primary">{c.statusReason}</strong></span>}
           </div>
+
+          {/* Delete confirmation modal */}
+          <ConfirmationModal
+            open={showDeleteModal}
+            onClose={() => setShowDeleteModal(false)}
+            onConfirm={handleDeleteConfirm}
+            title="Permanently Delete Chain"
+            description={`This will permanently delete "${chainName}" and all associated configuration. Dependencies: ${buildDependencySummary()}. This action cannot be undone.`}
+            destructive
+            confirmText={chainName.toUpperCase()}
+            confirmLabel="Delete Chain"
+            loading={deleteChain.isPending}
+          />
         </div>
       </td>
     </tr>

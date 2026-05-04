@@ -5,7 +5,7 @@ import { adminFetch } from "@/lib/api";
 import type { ChainsHealthResponse, ChainDetail, LifecycleAction } from "./types";
 
 /* ─── Query Keys ───────────────────────────────────────────────── */
-const CHAINS_HEALTH_KEY = ["chains", "health"] as const;
+export const CHAINS_HEALTH_KEY = ["chains", "health"] as const;
 const chainDetailKey = (chainId: number) => ["chains", chainId, "detail"] as const;
 
 /* ─── useChainsHealth ──────────────────────────────────────────── */
@@ -91,6 +91,18 @@ export function useUpdateChain() {
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: CHAINS_HEALTH_KEY });
       qc.invalidateQueries({ queryKey: chainDetailKey(variables.chainId) });
+    },
+  });
+}
+
+/* ─── useDeleteChain ──────────────────────────────────────────── */
+export function useDeleteChain() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ chainId }: { chainId: number }) =>
+      adminFetch(`/chains/${chainId}`, { method: "DELETE" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: CHAINS_HEALTH_KEY });
     },
   });
 }

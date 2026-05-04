@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { RefreshCw } from "lucide-react";
 import { StatCard } from "@/components/stat-card";
+import { CHAINS_HEALTH_KEY } from "../hooks";
 import type { ChainHealth } from "../types";
 
 interface ChainStatCardsProps {
@@ -12,6 +14,7 @@ interface ChainStatCardsProps {
 }
 
 export function ChainStatCards({ chains, updatedAt, isRefetching }: ChainStatCardsProps) {
+  const queryClient = useQueryClient();
   const [agoText, setAgoText] = useState("");
 
   // Update "Xs ago" text every 5 seconds
@@ -43,7 +46,14 @@ export function ChainStatCards({ chains, updatedAt, isRefetching }: ChainStatCar
       </div>
       {updatedAt && (
         <div className="flex items-center justify-end gap-1.5 text-caption text-text-muted font-display">
-          <RefreshCw className={`w-3 h-3 ${isRefetching ? "animate-spin" : ""}`} />
+          <button
+            onClick={() => queryClient.invalidateQueries({ queryKey: CHAINS_HEALTH_KEY })}
+            disabled={isRefetching}
+            className="p-0.5 rounded-button hover:text-accent-primary hover:bg-accent-primary/10 transition-all duration-fast disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Refresh chains data"
+          >
+            <RefreshCw className={`w-3 h-3 ${isRefetching ? "animate-spin" : ""}`} />
+          </button>
           <span>{agoText}</span>
         </div>
       )}

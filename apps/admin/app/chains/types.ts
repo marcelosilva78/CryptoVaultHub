@@ -36,6 +36,7 @@ export interface ChainDetail {
     gasTanks: number | { total: number };
   };
   canTransitionTo: string[];
+  canPhysicalDelete?: boolean;
 }
 
 /* ─── Chains Health Response ───────────────────────────────────── */
