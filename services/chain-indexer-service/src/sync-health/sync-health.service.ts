@@ -158,6 +158,7 @@ export class SyncHealthService {
 
     // Check for staleness via Redis cache of last progress timestamp
     const progressKey = `sync:progress:${chainId}`;
+    const lastHeadKey = `sync:lastHead:${chainId}`;
     const lastProgressStr = await this.redis.getCache(progressKey);
     const lastProgress = lastProgressStr
       ? parseInt(lastProgressStr, 10)
@@ -227,13 +228,14 @@ export class SyncHealthService {
       );
     }
 
-    // Update progress timestamp if we're advancing
-    if (blocksBehind < this.DEGRADED_THRESHOLD) {
-      await this.redis.setCache(
-        progressKey,
-        Date.now().toString(),
-        600,
-      );
+    // Update progress timestamp whenever the chain head has advanced,
+    // regardless of how far behind the indexer is. This prevents false
+    // "stale" alerts during initial sync or large backfills.
+    const lastHeadStr = await this.redis.getCache(lastHeadKey);
+    const lastHead = lastHeadStr ? parseInt(lastHeadStr, 10) : 0;
+    if (chainHeadBlock > lastHead) {
+      await this.redis.setCache(progressKey, Date.now().toString(), 600);
+      await this.redis.setCache(lastHeadKey, chainHeadBlock.toString(), 600);
     }
 
     // Push Prometheus metrics
@@ -261,6 +263,8 @@ export class SyncHealthService {
 
   /**
    * Get sync health for all active chains (for admin API).
+   * Reads from the sync_cursors table directly — no live RPC calls.
+   * The 30-second cron (`checkHealth()`) keeps sync_cursors fresh.
    */
   async getAllChainHealth(): Promise<ChainSyncHealth[]> {
     const chains = await this.prisma.chain.findMany({
@@ -270,7 +274,7 @@ export class SyncHealthService {
     const results: ChainSyncHealth[] = [];
     for (const chain of chains) {
       try {
-        const health = await this.checkChainHealth(chain.id, chain.name);
+        const health = await this.getCachedChainHealth(chain.id, chain.name);
         results.push(health);
       } catch (error: any) {
         results.push({
@@ -290,5 +294,100 @@ export class SyncHealthService {
     }
 
     return results;
+  }
+
+  /**
+   * Read cached sync health from sync_cursors (populated by the 30s cron).
+   * Does NOT make any live RPC calls — suitable for HTTP endpoints.
+   */
+  private async getCachedChainHealth(
+    chainId: number,
+    chainName: string,
+  ): Promise<ChainSyncHealth> {
+    const cursors = await this.prisma.$queryRawUnsafe<
+      Array<{
+        chain_id: number;
+        last_block: bigint;
+        latest_finalized_block: bigint | null;
+        blocks_behind: number | null;
+        indexer_status: string | null;
+        last_error: string | null;
+        updated_at: Date;
+      }>
+    >(
+      `SELECT chain_id, last_block, latest_finalized_block, blocks_behind,
+              indexer_status, last_error, updated_at
+       FROM sync_cursors WHERE chain_id = ? LIMIT 1`,
+      chainId,
+    );
+    const cursorRow = cursors[0] ?? null;
+
+    if (!cursorRow) {
+      return {
+        chainId,
+        chainName,
+        lastBlock: 0,
+        latestFinalizedBlock: 0,
+        chainHeadBlock: 0,
+        blocksBehind: 0,
+        status: 'error',
+        gapCount: 0,
+        lastUpdated: new Date(),
+        lastError: 'No sync cursor found — chain may not have been indexed yet',
+      };
+    }
+
+    const lastBlock = Number(cursorRow.last_block);
+    const latestFinalized = Number(cursorRow.latest_finalized_block ?? 0n);
+    const blocksBehind = cursorRow.blocks_behind ?? 0;
+
+    // Check for staleness via Redis cache of last progress timestamp
+    const progressKey = `sync:progress:${chainId}`;
+    const lastProgressStr = await this.redis.getCache(progressKey);
+    const lastProgress = lastProgressStr
+      ? parseInt(lastProgressStr, 10)
+      : Date.now();
+
+    const isStale = Date.now() - lastProgress > this.STALE_TIMEOUT_MS;
+
+    // Determine status from cached data
+    let status: 'healthy' | 'degraded' | 'critical' | 'error';
+    if (cursorRow.indexer_status === 'error' || cursorRow.indexer_status === 'stale') {
+      status = 'error';
+    } else if (isStale && blocksBehind > 0) {
+      status = 'error';
+    } else if (blocksBehind > this.DEGRADED_THRESHOLD) {
+      status = 'critical';
+    } else if (blocksBehind > this.HEALTHY_THRESHOLD) {
+      status = 'degraded';
+    } else {
+      status = 'healthy';
+    }
+
+    // Count open gaps
+    const gapCountRows = await this.prisma.$queryRawUnsafe<
+      Array<{ cnt: bigint }>
+    >(
+      `SELECT COUNT(*) AS cnt FROM sync_gaps
+       WHERE chain_id = ? AND status IN ('detected', 'backfilling')`,
+      chainId,
+    );
+    const gapCount = Number(gapCountRows[0]?.cnt ?? 0n);
+
+    // Estimate chainHeadBlock from blocks_behind + last_block
+    const chainHeadBlock = lastBlock + blocksBehind;
+
+    return {
+      chainId,
+      chainName,
+      lastBlock,
+      latestFinalizedBlock: latestFinalized,
+      chainHeadBlock,
+      blocksBehind,
+      status,
+      gapCount,
+      lastUpdated: cursorRow.updated_at,
+      lastError: cursorRow.last_error ?? null,
+    };
   }
 }

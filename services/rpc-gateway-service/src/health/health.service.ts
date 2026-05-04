@@ -73,8 +73,8 @@ export class HealthService implements OnModuleInit {
       this.rateLimiter.registerNode(Number(node.id), {
         maxRequestsPerSecond: node.maxRequestsPerSecond ?? 50,
         maxRequestsPerMinute: node.maxRequestsPerMinute ?? 2000,
-        maxRequestsPerDay: (node as any).maxRequestsPerDay ?? undefined,
-        maxRequestsPerMonth: (node as any).maxRequestsPerMonth ?? undefined,
+        maxRequestsPerDay: node.maxRequestsPerDay ?? undefined,
+        maxRequestsPerMonth: node.maxRequestsPerMonth ?? undefined,
       });
     }
     this.logger.log(`Seeded rate limits for ${nodes.length} RPC nodes`);
@@ -296,6 +296,7 @@ export class HealthService implements OnModuleInit {
       endpointUrl: string;
       status: string;
       healthScore: number;
+      lastLatencyMs: number | null;
       consecutiveFailures: number;
       lastHealthCheckAt: Date | null;
       lastHealthyAt: Date | null;
@@ -307,6 +308,29 @@ export class HealthService implements OnModuleInit {
       orderBy: [{ chainId: 'asc' }, { priority: 'asc' }],
     });
 
+    // Fetch the most recent latency measurement per node in one query
+    const nodeIds = nodes.map((n: any) => n.id);
+    const latencyRows = nodeIds.length > 0
+      ? await this.prisma.$queryRawUnsafe<
+          Array<{ node_id: bigint; value: any }>
+        >(
+          `SELECT h.node_id, h.value
+           FROM rpc_provider_health h
+           INNER JOIN (
+             SELECT node_id, MAX(measured_at) AS max_at
+             FROM rpc_provider_health
+             WHERE check_type = 'latency' AND node_id IN (${nodeIds.map(() => '?').join(',')})
+             GROUP BY node_id
+           ) latest ON h.node_id = latest.node_id AND h.measured_at = latest.max_at AND h.check_type = 'latency'`,
+          ...nodeIds,
+        )
+      : [];
+
+    const latencyMap = new Map<string, number>();
+    for (const row of latencyRows) {
+      latencyMap.set(row.node_id.toString(), Number(row.value));
+    }
+
     return nodes.map((node: any) => ({
       nodeId: node.id.toString(),
       providerId: node.providerId.toString(),
@@ -315,6 +339,7 @@ export class HealthService implements OnModuleInit {
       endpointUrl: node.endpointUrl,
       status: node.status,
       healthScore: Number(node.healthScore),
+      lastLatencyMs: latencyMap.get(node.id.toString()) ?? null,
       consecutiveFailures: node.consecutiveFailures,
       lastHealthCheckAt: node.lastHealthCheckAt,
       lastHealthyAt: node.lastHealthyAt,

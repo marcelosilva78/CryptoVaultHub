@@ -389,6 +389,24 @@ export class ChainManagementService {
       : syncHealthRes.data.chains || [];
     const rpcNodesHealth = rpcHealthRes.data.nodes || [];
 
+    // Fetch pending operations for all chains in parallel
+    const chainIds = chains.map((c: any) => c.chainId || c.id);
+    const depsResults = await Promise.all(
+      chainIds.map((cid: number) =>
+        axios
+          .get(`${this.chainIndexerUrl}/chains/${cid}/dependencies`, {
+            timeout: 5000,
+            headers: this.internalHeaders,
+          })
+          .then((res) => ({ chainId: cid, data: res.data }))
+          .catch(() => ({ chainId: cid, data: null })),
+      ),
+    );
+    const depsMap = new Map<number, any>();
+    for (const d of depsResults) {
+      if (d.data) depsMap.set(d.chainId, d.data);
+    }
+
     // Group RPC nodes by chainId
     const rpcByChain = new Map<number, any[]>();
     for (const node of rpcNodesHealth) {
@@ -403,6 +421,7 @@ export class ChainManagementService {
         const sync = syncHealth.find((s: any) => s.chainId === chainId);
         const rpc = rpcNodes instanceof Map ? rpcNodes.get(chainId) : undefined;
         const rpcHealth = rpcByChain.get(chainId) ?? [];
+        const deps = depsMap.get(chainId);
 
         const healthyNodes = rpcHealth.filter(
           (n: any) => n.status === 'active' && n.healthScore >= 70,
@@ -430,13 +449,16 @@ export class ChainManagementService {
           }
         }
 
+        const nodesWithLatency = rpcHealth.filter(
+          (n: any) => n.lastLatencyMs != null,
+        );
         const avgLatencyMs =
-          rpcHealth.length > 0
+          nodesWithLatency.length > 0
             ? Math.round(
-                rpcHealth.reduce(
-                  (sum: number, n: any) => sum + (n.healthScore ?? 0),
+                nodesWithLatency.reduce(
+                  (sum: number, n: any) => sum + n.lastLatencyMs,
                   0,
-                ) / rpcHealth.length,
+                ) / nodesWithLatency.length,
               )
             : null;
 
@@ -464,9 +486,9 @@ export class ChainManagementService {
             quotaStatus,
           },
           operations: {
-            pendingDeposits: 0,
-            pendingWithdrawals: 0,
-            pendingFlushes: 0,
+            pendingDeposits: deps?.deposits?.pending ?? 0,
+            pendingWithdrawals: deps?.withdrawals?.pending ?? 0,
+            pendingFlushes: deps?.flushOperations?.pending ?? 0,
           },
         };
       }),
