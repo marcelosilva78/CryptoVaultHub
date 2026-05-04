@@ -205,11 +205,15 @@ export class SyncHealthController {
   async getChainDependencies(@Param('id', ParseIntPipe) id: number) {
     // Only count models available in chain-indexer schema (Token, SyncCursor, MonitoredAddress, etc.)
     // Wallet, Deposit, Withdrawal, FlushOperation are in core-wallet-service DB — use raw SQL via cross-DB views
-    const [tokens, monitoredAddresses, syncCursors, indexedBlocks] = await Promise.all([
+    const [tokens, monitoredAddresses, syncCursors, indexedBlocks, indexedEvents, syncGaps] = await Promise.all([
       this.prisma.token.count({ where: { chainId: id } }),
       this.prisma.monitoredAddress.count({ where: { chainId: id } }),
       this.prisma.syncCursor.count({ where: { chainId: id } }),
       this.prisma.indexedBlock.count({ where: { chainId: id } }),
+      this.prisma.indexedEvent.count({ where: { chainId: id } }),
+      this.prisma.$queryRawUnsafe<any[]>(
+        `SELECT COUNT(*) AS cnt FROM cvh_indexer.sync_gaps WHERE chain_id = ?`, id,
+      ).then((rows) => Number(rows[0]?.cnt || 0)),
     ]);
 
     // Cross-database counts via raw SQL (cvh_wallets tables are accessible)
@@ -224,14 +228,20 @@ export class SyncHealthController {
         (SELECT COUNT(*) FROM cvh_wallets.withdrawals WHERE chain_id = ? AND status IN ('pending','submitted')) AS pendingWithdrawals,
         (SELECT COUNT(*) FROM cvh_wallets.flush_operations WHERE chain_id = ?) AS flushOps,
         (SELECT COUNT(*) FROM cvh_wallets.flush_operations WHERE chain_id = ? AND status IN ('pending','executing')) AS pendingFlushOps,
-        (SELECT COUNT(*) FROM cvh_wallets.wallets WHERE chain_id = ? AND wallet_type = 'gas_tank') AS gasTanks`,
-      id, id, id, id, id, id, id, id, id, id,
+        (SELECT COUNT(*) FROM cvh_wallets.wallets WHERE chain_id = ? AND wallet_type = 'gas_tank') AS gasTanks,
+        (SELECT COUNT(*) FROM cvh_wallets.project_chains WHERE chain_id = ?) AS projectChains`,
+      id, id, id, id, id, id, id, id, id, id, id,
     );
 
     const r = walletCounts[0] || {};
 
     return {
       tokens,
+      monitoredAddresses,
+      indexedBlocks,
+      indexedEvents,
+      syncGaps,
+      projectChains: Number(r.projectChains || 0),
       wallets: Number(r.wallets || 0),
       depositAddresses: { total: Number(r.depositAddresses || 0), deployed: Number(r.deployedAddresses || 0) },
       deposits: { total: Number(r.deposits || 0), pending: Number(r.pendingDeposits || 0) },

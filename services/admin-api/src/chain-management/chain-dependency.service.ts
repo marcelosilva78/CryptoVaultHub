@@ -13,6 +13,11 @@ export interface ChainDependencies {
   withdrawals: { total: number; pending: number };
   flushOperations: { total: number; pending: number };
   gasTanks: { total: number };
+  monitoredAddresses: { total: number };
+  indexedBlocks: { total: number };
+  indexedEvents: { total: number };
+  syncGaps: { total: number };
+  projectChains: { total: number };
   hasPendingOperations: boolean;
   hasAnyDependency: boolean;
   canPhysicalDelete: boolean;
@@ -47,7 +52,12 @@ export class ChainDependencyService {
       rpcTotal + clientCount + indexerDeps.tokens +
       indexerDeps.wallets + indexerDeps.depositAddresses.total +
       indexerDeps.deposits.total + indexerDeps.withdrawals.total +
-      indexerDeps.flushOperations.total + indexerDeps.gasTanks;
+      indexerDeps.flushOperations.total + indexerDeps.gasTanks +
+      (indexerDeps.monitoredAddresses || 0) +
+      (indexerDeps.indexedBlocks || 0) +
+      (indexerDeps.indexedEvents || 0) +
+      (indexerDeps.syncGaps || 0) +
+      (indexerDeps.projectChains || 0);
 
     return {
       rpcNodes: { total: rpcTotal, active: rpcActive },
@@ -59,6 +69,11 @@ export class ChainDependencyService {
       withdrawals: indexerDeps.withdrawals,
       flushOperations: indexerDeps.flushOperations,
       gasTanks: { total: indexerDeps.gasTanks },
+      monitoredAddresses: { total: indexerDeps.monitoredAddresses || 0 },
+      indexedBlocks: { total: indexerDeps.indexedBlocks || 0 },
+      indexedEvents: { total: indexerDeps.indexedEvents || 0 },
+      syncGaps: { total: indexerDeps.syncGaps || 0 },
+      projectChains: { total: indexerDeps.projectChains || 0 },
       hasPendingOperations,
       hasAnyDependency: totalDeps > 0,
       canPhysicalDelete: totalDeps === 0,
@@ -91,6 +106,11 @@ export class ChainDependencyService {
         withdrawals: { total: 1, pending: 1 },
         flushOperations: { total: 1, pending: 1 },
         gasTanks: 1,
+        monitoredAddresses: 1,
+        indexedBlocks: 1,
+        indexedEvents: 1,
+        syncGaps: 1,
+        projectChains: 1,
       };
     }
   }

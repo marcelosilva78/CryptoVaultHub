@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Inject, Injectable, Logger, Not
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import Redis from 'ioredis';
+import { EventBusService, TOPICS } from '@cvh/event-bus';
 import { AuditLogService } from '../common/audit-log.service';
 import { ChainDependencyService } from './chain-dependency.service';
 import { ChainLifecycleService } from './chain-lifecycle.service';
@@ -23,6 +24,7 @@ export class ChainManagementService {
     private readonly depService: ChainDependencyService,
     private readonly lifecycleService: ChainLifecycleService,
     @Optional() @Inject('RPC_GATEWAY_URL') rpcGatewayUrl?: string,
+    @Optional() private readonly eventBus?: EventBusService,
   ) {
     this.chainIndexerUrl = this.configService.get<string>(
       'CHAIN_INDEXER_URL',
@@ -209,6 +211,15 @@ export class ChainManagementService {
   }
 
   async deleteChain(chainId: number, adminUserId: string) {
+    // Require archived status before physical deletion
+    const chain = await this.getChainById(chainId);
+    const chainStatus = chain.status || (chain.isActive ? 'active' : 'inactive');
+    if (chainStatus !== 'archived') {
+      throw new BadRequestException(
+        'Chain must be archived before it can be deleted. Use lifecycle transitions to archive it first.',
+      );
+    }
+
     const deps = await this.depService.getDependencies(chainId);
     if (!deps.canPhysicalDelete) {
       throw new ConflictException({
@@ -224,6 +235,23 @@ export class ChainManagementService {
       entityType: 'chain',
       entityId: String(chainId),
     });
+
+    // Publish chain deletion event to Kafka
+    if (this.eventBus) {
+      await this.eventBus.publishToKafka(
+        TOPICS.CHAIN_STATUS,
+        chainId.toString(),
+        {
+          chainId,
+          event: 'chain.deleted',
+          deletedAt: new Date().toISOString(),
+        },
+      );
+    }
+
+    // Invalidate health cache in Redis
+    await this.redis.del('admin:chains:health');
+
     return data;
   }
 
