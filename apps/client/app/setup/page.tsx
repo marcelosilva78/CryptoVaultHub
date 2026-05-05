@@ -1178,6 +1178,57 @@ export default function SetupWizardPage() {
                             </div>
                           )}
 
+                          {/* Derivation Path */}
+                          <div>
+                            <div className="text-[9px] text-text-muted uppercase tracking-wider mb-1 font-display font-semibold">
+                              Derivation Path
+                            </div>
+                            <div className="flex items-center gap-2 bg-surface-input rounded-input px-2.5 py-1.5 border border-border-default">
+                              <code className="text-[11px] font-mono text-text-secondary flex-1">
+                                m/44&apos;/60&apos;/1000&apos;/{chain.chainId}/0
+                              </code>
+                              <CopyIconButton value={`m/44'/60'/1000'/${chain.chainId}/0`} />
+                            </div>
+                          </div>
+
+                          {/* Export Keystore JSON (MetaMask compatible) */}
+                          {privateKey && (
+                            <div className="flex gap-2">
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    const wallet = new ethers.Wallet(privateKey);
+                                    // Prompt for an encryption password
+                                    const password = window.prompt(
+                                      "Enter a password to encrypt the keystore file.\nYou will need this password to import in MetaMask.",
+                                      ""
+                                    );
+                                    if (!password) return;
+                                    // Generate V3 Keystore JSON (MetaMask / geth compatible)
+                                    const json = await wallet.encrypt(password);
+                                    const blob = new Blob([json], { type: "application/json" });
+                                    const url = URL.createObjectURL(blob);
+                                    const a = document.createElement("a");
+                                    a.href = url;
+                                    a.download = `keystore-${chain.chainName.toLowerCase().replace(/\s+/g, "-")}-${chain.gasTankAddress.slice(0, 10)}.json`;
+                                    a.click();
+                                    URL.revokeObjectURL(url);
+                                  } catch (err) {
+                                    console.error("Failed to export keystore:", err);
+                                  }
+                                }}
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-button text-[10px] font-display font-semibold bg-surface-card text-text-secondary border border-border-default hover:border-accent-primary hover:text-text-primary transition-all duration-fast cursor-pointer"
+                              >
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                  <polyline points="7 10 12 15 17 10" />
+                                  <line x1="12" y1="15" x2="12" y2="3" />
+                                </svg>
+                                Export Keystore JSON (MetaMask)
+                              </button>
+                            </div>
+                          )}
+
                           {/* Balance Bar */}
                           <div>
                             <div className="flex items-center justify-between mb-1.5">
