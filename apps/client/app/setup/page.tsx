@@ -326,8 +326,12 @@ export default function SetupWizardPage() {
         if (!cancelled) {
           setAvailableChains(res.chains || []);
         }
-      } catch (err) {
-        console.error("Failed to fetch available chains:", err);
+      } catch (err: any) {
+        // If it's a session error, clientFetch already redirects to /login
+        // Only log non-auth errors
+        if (!err.message?.includes('Session expired')) {
+          console.error("Failed to fetch available chains:", err);
+        }
       } finally {
         if (!cancelled) setChainsLoading(false);
       }
