@@ -511,9 +511,9 @@ export default function SetupWizardPage() {
       setGasTankKeys({});
       setVisibleKeys({});
     }
-    setCurrentStep((s) => Math.min(s + 1, 7));
+    setCurrentStep((s: number) => Math.min(s + 1, 7));
   };
-  const prevStep = () => setCurrentStep((s) => Math.max(s - 1, 1));
+  const prevStep = () => setCurrentStep((s: number) => Math.max(s - 1, 1));
 
   const toggleChain = (chainId: number) => {
     const chain = availableChains.find((c) => c.chainId === chainId);
