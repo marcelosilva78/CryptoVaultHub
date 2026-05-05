@@ -135,23 +135,46 @@ export default function SetupWizardPage() {
   const router = useRouter();
   const { isLoading: authLoading } = useClientAuth();
 
+  // ─── Session persistence: restore wizard state on refresh ────
+  const WIZARD_STATE_KEY = "cvh_wizard_state";
+
+  function loadWizardState() {
+    if (typeof window === "undefined") return null;
+    try {
+      const raw = sessionStorage.getItem(WIZARD_STATE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  }
+
+  function saveWizardState(state: Record<string, any>) {
+    if (typeof window === "undefined") return;
+    try { sessionStorage.setItem(WIZARD_STATE_KEY, JSON.stringify(state)); } catch {}
+  }
+
+  function clearWizardState() {
+    if (typeof window === "undefined") return;
+    try { sessionStorage.removeItem(WIZARD_STATE_KEY); } catch {}
+  }
+
+  const savedState = useRef(loadWizardState());
+
   // Step state
-  const [currentStep, setCurrentStep] = useState(1);
+  const [currentStep, setCurrentStep] = useState(savedState.current?.currentStep ?? 1);
 
   // Step 1 - Project Details
-  const [projectName, setProjectName] = useState("");
-  const [projectDescription, setProjectDescription] = useState("");
+  const [projectName, setProjectName] = useState(savedState.current?.projectName ?? "");
+  const [projectDescription, setProjectDescription] = useState(savedState.current?.projectDescription ?? "");
 
   // Step 2 - Chain Selection
   const [availableChains, setAvailableChains] = useState<AvailableChain[]>([]);
   const [chainsLoading, setChainsLoading] = useState(true);
-  const [selectedChains, setSelectedChains] = useState<number[]>([]);
+  const [selectedChains, setSelectedChains] = useState<number[]>(savedState.current?.selectedChains ?? []);
 
   // Step 3 - Custody Mode
-  const [custodyMode, setCustodyMode] = useState<CustodyMode>("full_custody");
+  const [custodyMode, setCustodyMode] = useState<CustodyMode>(savedState.current?.custodyMode ?? "full_custody");
 
   // Step 4 - Key Ceremony
-  const [projectId, setProjectId] = useState<string | null>(null);
+  const [projectId, setProjectId] = useState<string | null>(savedState.current?.projectId ?? null);
   const [keyCeremony, setKeyCeremony] = useState<KeyCeremonyResult | null>(null);
   const [keyCeremonyLoading, setKeyCeremonyLoading] = useState(false);
   const [keyCeremonyError, setKeyCeremonyError] = useState<string | null>(null);
@@ -172,6 +195,20 @@ export default function SetupWizardPage() {
   const [deployLoading, setDeployLoading] = useState(false);
   const [deployError, setDeployError] = useState<string | null>(null);
   const deployPollingRef = useRef<NodeJS.Timeout | null>(null);
+
+  // ─── Persist wizard state on changes (survives page refresh) ────
+  useEffect(() => {
+    if (currentStep <= 1 && !projectId) return; // don't save initial empty state
+    saveWizardState({
+      currentStep,
+      projectName,
+      projectDescription,
+      selectedChains,
+      custodyMode,
+      projectId,
+      mnemonicAcknowledged,
+    });
+  }, [currentStep, projectName, projectDescription, selectedChains, custodyMode, projectId, mnemonicAcknowledged]);
 
   // Step 7 - Complete (use deployChains for summary)
 

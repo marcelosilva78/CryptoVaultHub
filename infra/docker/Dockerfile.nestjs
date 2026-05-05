@@ -8,6 +8,9 @@ ARG SERVICE_PATH
 COPY package*.json turbo.json tsconfig.base.json ./
 COPY packages/ packages/
 COPY ${SERVICE_PATH}/ ${SERVICE_PATH}/
+# Copy contract sources and compile (needed by core-wallet-service for deployment)
+COPY contracts/ contracts/
+RUN cd contracts && npx hardhat compile 2>/dev/null || true
 RUN npm ci
 # Regenerate Prisma client from the current schema before compiling.
 # This ensures the generated client always matches the schema even when
@@ -42,6 +45,7 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/${SERVICE_PATH}/dist ./${SERVICE_PATH}/dist
 COPY --from=builder /app/${SERVICE_PATH}/package.json ./${SERVICE_PATH}/
 COPY --from=builder /app/packages ./packages
+COPY --from=builder /app/contracts/artifacts ./contracts/artifacts
 USER nestjs
 EXPOSE ${PORT}
 WORKDIR /app/${SERVICE_PATH}
