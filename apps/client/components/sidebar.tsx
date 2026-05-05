@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useClientAuth } from "@/lib/auth-context";
+import { useProject } from "@/lib/project-context";
 
 interface NavItem {
   label: string;
@@ -54,8 +55,8 @@ const navSections: NavSection[] = [
     title: "Projects",
     items: [
       { label: "All Projects", href: "/projects", icon: FolderKanban },
-      { label: "Deploy History", href: "/projects/deploys", icon: Rocket },
-      { label: "Export", href: "/projects/export", icon: PackageOpen },
+      { label: "Deploy History", href: "__PROJECT_DEPLOYS__", icon: Rocket },
+      { label: "Export", href: "__PROJECT_EXPORT__", icon: PackageOpen },
       { label: "Setup Wizard", href: "/setup", icon: Wand2 },
     ],
   },
@@ -133,6 +134,7 @@ function LogoIcon({ size = 28 }: { size?: number }) {
 export function Sidebar() {
   const pathname = usePathname();
   const { user, logout } = useClientAuth();
+  const { activeProject } = useProject();
 
   const clientName = user?.clientName ?? "Client";
   const clientTier = user?.tier ?? "Standard";
@@ -180,12 +182,19 @@ export function Sidebar() {
               {section.title}
             </div>
             {section.items.map((item) => {
-              const active = isActive(item.href);
+              // Resolve project-scoped routes dynamically
+              let resolvedHref = item.href;
+              if (item.href === "__PROJECT_DEPLOYS__") {
+                resolvedHref = activeProject ? `/projects/${activeProject.id}/deploys` : "/projects";
+              } else if (item.href === "__PROJECT_EXPORT__") {
+                resolvedHref = activeProject ? `/projects/${activeProject.id}/export` : "/projects";
+              }
+              const active = isActive(resolvedHref);
               const Icon = item.icon;
               return (
                 <Link
-                  key={item.href}
-                  href={item.href}
+                  key={item.label}
+                  href={resolvedHref}
                   className={cn(
                     "flex items-center gap-2.5 px-3 py-2 rounded-button text-body font-[450] text-text-secondary relative transition-all duration-fast font-display no-underline",
                     "hover:bg-surface-hover hover:text-text-primary",
