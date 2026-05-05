@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { DataTable } from "@/components/data-table";
 import { Badge } from "@/components/badge";
 import { JsonViewerV2 } from "@/components/json-viewer-v2";
+import { CopyButton } from "@/components/copy-button";
 import { clientFetch } from "@/lib/api";
-import { Loader2 } from "lucide-react";
+import { Loader2, X, AlertTriangle } from "lucide-react";
 
 /* ── Types (from backend API) ──────────────────────────────────── */
 interface Webhook {
@@ -72,6 +73,83 @@ export default function WebhooksPage() {
   const [showPayload, setShowPayload] = useState<string | null>(null);
   const [testSent, setTestSent] = useState(false);
   const [testingId, setTestingId] = useState<string | null>(null);
+
+  /* ── Create-modal state ────────────────────────────────────── */
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createUrl, setCreateUrl] = useState("");
+  const [createLabel, setCreateLabel] = useState("");
+  const [createEvents, setCreateEvents] = useState<string[]>([]);
+  const [createActive, setCreateActive] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState("");
+  const [createdWebhook, setCreatedWebhook] = useState<Webhook | null>(null);
+  const createOverlayRef = useRef<HTMLDivElement>(null);
+
+  const resetCreateModal = () => {
+    setCreateUrl("");
+    setCreateLabel("");
+    setCreateEvents([]);
+    setCreateActive(true);
+    setCreating(false);
+    setCreateError("");
+    setCreatedWebhook(null);
+  };
+
+  const openCreateModal = () => {
+    resetCreateModal();
+    setShowCreateModal(true);
+  };
+
+  const closeCreateModal = () => {
+    setShowCreateModal(false);
+    resetCreateModal();
+  };
+
+  const toggleCreateEvent = (evt: string) => {
+    setCreateEvents((prev) =>
+      prev.includes(evt) ? prev.filter((e) => e !== evt) : [...prev, evt],
+    );
+  };
+
+  const handleCreate = async () => {
+    setCreateError("");
+
+    const trimmedUrl = createUrl.trim();
+    if (!trimmedUrl) {
+      setCreateError("URL is required.");
+      return;
+    }
+    try {
+      new URL(trimmedUrl);
+    } catch {
+      setCreateError("Please enter a valid URL (e.g. https://example.com/webhook).");
+      return;
+    }
+    if (createEvents.length === 0) {
+      setCreateError("Select at least one event.");
+      return;
+    }
+
+    setCreating(true);
+    try {
+      const res = await clientFetch<{ webhook: Webhook }>("/v1/webhooks", {
+        method: "POST",
+        body: JSON.stringify({
+          url: trimmedUrl,
+          events: createEvents,
+          ...(createLabel.trim() ? { label: createLabel.trim() } : {}),
+          isActive: createActive,
+        }),
+      });
+      setCreatedWebhook(res.webhook);
+      // Refresh the webhook list in the background
+      fetchWebhooks();
+    } catch (err: any) {
+      setCreateError(err.message || "Failed to create webhook.");
+    } finally {
+      setCreating(false);
+    }
+  };
 
   const fetchWebhooks = useCallback(async () => {
     try {
@@ -160,7 +238,10 @@ export default function WebhooksPage() {
             Configure real-time notifications for deposits, withdrawals, and system events
           </p>
         </div>
-        <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-button font-display text-caption font-semibold cursor-pointer transition-colors duration-fast bg-accent-primary text-accent-text border-none hover:bg-accent-hover">
+        <button
+          onClick={openCreateModal}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-button font-display text-caption font-semibold cursor-pointer transition-colors duration-fast bg-accent-primary text-accent-text border-none hover:bg-accent-hover"
+        >
           + New Webhook
         </button>
       </div>
@@ -377,6 +458,240 @@ export default function WebhooksPage() {
             }
             maxHeight="250px"
           />
+        </div>
+      )}
+
+      {/* ── Create Webhook Modal ───────────────────────────────── */}
+      {showCreateModal && (
+        <div
+          ref={createOverlayRef}
+          className="fixed inset-0 bg-black/60 backdrop-blur-[4px] z-[200] flex items-start justify-center pt-16 pb-4 overflow-y-auto animate-fade-in"
+          onClick={(e) => {
+            if (e.target === createOverlayRef.current) closeCreateModal();
+          }}
+        >
+          <div className="bg-surface-card border border-border-default rounded-modal p-6 w-[540px] max-h-[85vh] overflow-y-auto animate-fade-up shadow-float">
+            {/* Header */}
+            <div className="flex items-start justify-between mb-4">
+              <div className="text-subheading font-bold font-display">
+                {createdWebhook ? "Webhook Created" : "New Webhook"}
+              </div>
+              <button
+                onClick={closeCreateModal}
+                className="p-1 rounded-button text-text-muted hover:text-text-primary hover:bg-surface-hover transition-all duration-fast"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {createdWebhook ? (
+              /* ── Success: show secret once ─────────────────────── */
+              <div>
+                <div className="p-4 bg-status-success-subtle border border-status-success/25 rounded-card mb-4">
+                  <div className="text-caption font-semibold text-status-success font-display mb-1">
+                    Webhook endpoint registered
+                  </div>
+                  <div className="font-mono text-code text-text-primary break-all select-all bg-surface-input rounded-input p-2.5 border border-border-default">
+                    {createdWebhook.url}
+                  </div>
+                </div>
+
+                {/* Secret display */}
+                <div className="p-4 bg-status-warning-subtle border border-status-warning/25 rounded-card mb-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <AlertTriangle className="w-4 h-4 text-status-warning shrink-0" />
+                    <div className="text-caption font-semibold text-status-warning font-display">
+                      Signing Secret — save it now, it will not be shown again
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 font-mono text-code text-text-primary break-all select-all bg-surface-input rounded-input p-2.5 border border-border-default">
+                      {createdWebhook.secret ?? "—"}
+                    </div>
+                    {createdWebhook.secret && (
+                      <CopyButton value={createdWebhook.secret} size="md" label="Copy" />
+                    )}
+                  </div>
+                  <div className="mt-2 text-micro text-text-muted font-display">
+                    Use this secret to verify the <span className="font-mono">X-CVH-Signature</span> header on incoming deliveries (HMAC-SHA256).
+                  </div>
+                </div>
+
+                {/* Subscribed events summary */}
+                <div className="mb-4">
+                  <div className="text-micro font-semibold text-text-muted uppercase tracking-[0.08em] mb-1.5 font-display">
+                    Subscribed Events
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {createdWebhook.events.map((evt) => (
+                      <Badge key={evt} variant="success" className="text-[10px]">
+                        {evt}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex justify-end">
+                  <button
+                    onClick={closeCreateModal}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-button font-display text-caption font-semibold cursor-pointer transition-all duration-fast bg-accent-primary text-accent-text hover:bg-accent-hover"
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* ── Form ──────────────────────────────────────────── */
+              <div>
+                {createError && (
+                  <div className="mb-3.5 px-3 py-2.5 bg-status-error-subtle border border-status-error/25 rounded-card text-status-error text-caption font-display">
+                    {createError}
+                  </div>
+                )}
+
+                {/* URL */}
+                <div className="mb-3.5">
+                  <label className="block text-caption font-semibold text-text-secondary mb-1 uppercase tracking-[0.06em] font-display">
+                    Endpoint URL <span className="text-status-error">*</span>
+                  </label>
+                  <input
+                    type="url"
+                    placeholder="https://example.com/webhooks/cvh"
+                    value={createUrl}
+                    onChange={(e) => setCreateUrl(e.target.value)}
+                    disabled={creating}
+                    className="w-full bg-surface-input border border-border-default rounded-input px-3 py-2 text-text-primary font-display text-body outline-none focus:border-border-focus transition-colors duration-fast disabled:opacity-50 font-mono"
+                  />
+                </div>
+
+                {/* Label */}
+                <div className="mb-3.5">
+                  <label className="block text-caption font-semibold text-text-secondary mb-1 uppercase tracking-[0.06em] font-display">
+                    Label <span className="text-text-muted font-normal">(optional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Production deposit listener"
+                    value={createLabel}
+                    onChange={(e) => setCreateLabel(e.target.value)}
+                    disabled={creating}
+                    className="w-full bg-surface-input border border-border-default rounded-input px-3 py-2 text-text-primary font-display text-body outline-none focus:border-border-focus transition-colors duration-fast disabled:opacity-50"
+                  />
+                </div>
+
+                {/* Events */}
+                <div className="mb-3.5">
+                  <label className="block text-caption font-semibold text-text-secondary mb-1 uppercase tracking-[0.06em] font-display">
+                    Events <span className="text-status-error">*</span>
+                  </label>
+                  <div className="flex items-center gap-2 mb-2">
+                    <button
+                      type="button"
+                      onClick={() => setCreateEvents([...ALL_EVENTS])}
+                      disabled={creating}
+                      className="text-micro font-semibold text-accent-primary hover:underline font-display disabled:opacity-50"
+                    >
+                      Select all
+                    </button>
+                    <span className="text-border-default">|</span>
+                    <button
+                      type="button"
+                      onClick={() => setCreateEvents([])}
+                      disabled={creating}
+                      className="text-micro font-semibold text-text-muted hover:text-text-primary hover:underline font-display disabled:opacity-50"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {ALL_EVENTS.map((evt) => {
+                      const checked = createEvents.includes(evt);
+                      return (
+                        <label
+                          key={evt}
+                          className={`flex items-center gap-1.5 text-caption px-2.5 py-[5px] rounded-input cursor-pointer transition-colors duration-fast font-display select-none ${
+                            checked
+                              ? "bg-accent-subtle text-accent-primary"
+                              : "bg-surface-input text-text-secondary hover:bg-surface-hover"
+                          } ${creating ? "opacity-50 pointer-events-none" : ""}`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleCreateEvent(evt)}
+                            disabled={creating}
+                            className="accent-accent-primary"
+                            style={{ accentColor: "var(--accent-primary)" }}
+                          />
+                          {evt}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Active toggle */}
+                <div className="mb-4 flex items-center justify-between">
+                  <div>
+                    <div className="text-caption font-semibold text-text-secondary uppercase tracking-[0.06em] font-display">
+                      Active
+                    </div>
+                    <div className="text-micro text-text-muted font-display">
+                      Receive deliveries immediately after creation
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={createActive}
+                    onClick={() => setCreateActive((v) => !v)}
+                    disabled={creating}
+                    className={`relative inline-flex h-5 w-9 items-center rounded-pill transition-colors duration-fast focus-visible:ring-2 focus-visible:ring-accent-primary disabled:opacity-50 ${
+                      createActive ? "bg-accent-primary" : "bg-border-default"
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-3.5 w-3.5 rounded-pill bg-white shadow-sm transition-transform duration-fast ${
+                        createActive ? "translate-x-[18px]" : "translate-x-[3px]"
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {/* Info box */}
+                <div className="p-2.5 bg-surface-elevated rounded-input text-caption text-text-muted font-display mb-4">
+                  A unique signing secret (HMAC-SHA256) will be generated automatically.
+                  It is displayed <strong>only once</strong> after creation — store it
+                  securely in your application&apos;s environment.
+                </div>
+
+                {/* Actions */}
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={closeCreateModal}
+                    disabled={creating}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-button font-display text-caption font-semibold cursor-pointer transition-all duration-fast bg-transparent text-text-secondary border border-border-default hover:border-accent-primary hover:text-text-primary disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleCreate}
+                    disabled={creating}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-button font-display text-caption font-semibold cursor-pointer transition-all duration-fast bg-accent-primary text-accent-text hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {creating ? (
+                      <>
+                        <div className="w-3.5 h-3.5 border-2 border-accent-text/30 border-t-accent-text rounded-full animate-spin" />
+                        Creating...
+                      </>
+                    ) : (
+                      "Create Webhook"
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
