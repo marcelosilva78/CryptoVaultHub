@@ -81,11 +81,12 @@ export class SignBatchDto {
 }
 
 export class TxDataDto {
+  @IsOptional()
   @IsString()
   @Matches(/^0x[0-9a-fA-F]{40}$/, {
     message: 'to must be a valid Ethereum address',
   })
-  to!: string;
+  to?: string | null;
 
   @IsString()
   @Matches(/^0x[0-9a-fA-F]*$/, {
