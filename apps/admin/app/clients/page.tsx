@@ -194,6 +194,7 @@ export default function ClientsPage() {
   const [gracePeriodModal, setGracePeriodModal] = useState(false);
   const [gracePeriodInfo, setGracePeriodInfo] = useState<{ transactionCount: number; scheduledFor: string }>({ transactionCount: 0, scheduledFor: "" });
   const [cancelDeletionLoading, setCancelDeletionLoading] = useState<Record<string, boolean>>({});
+  const [searchQuery, setSearchQuery] = useState("");
 
   async function handleSendInvite(clientId: string) {
     setInviteState((prev) => ({ ...prev, [clientId]: { loading: true } }));
@@ -297,6 +298,8 @@ export default function ClientsPage() {
               <Search className="w-3.5 h-3.5 text-text-muted" />
               <input
                 type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search clients..."
                 className="bg-transparent border-none text-text-primary text-caption outline-none flex-1 font-display placeholder:text-text-muted"
               />
@@ -338,7 +341,14 @@ export default function ClientsPage() {
             </td>
           </tr>
         )}
-        {!loading && !error && clients.map((client) => {
+        {!loading && !error && clients.filter((client) => {
+          if (!searchQuery) return true;
+          const q = searchQuery.toLowerCase();
+          return (
+            client.name.toLowerCase().includes(q) ||
+            (client.email?.toLowerCase().includes(q) ?? false)
+          );
+        }).map((client) => {
           const tierName = typeof client.tier === "object" ? client.tier?.name : client.tier ?? "—";
           const statusVariant =
             client.status === "active" ? "success" :

@@ -7,7 +7,7 @@ import { StatCard } from "@/components/stat-card";
 import { Download, Plus, FileSpreadsheet, FileJson, FileText, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ComponentProps } from "react";
-import { adminFetch, ADMIN_API } from "@/lib/api";
+import { adminFetch } from "@/lib/api";
 
 /* ── Types ────────────────────────────────────────────────── */
 type ExportStatus = "completed" | "processing" | "queued" | "failed";
@@ -231,9 +231,10 @@ export default function ExportsPage() {
                     <button
                       onClick={async () => {
                         try {
-                          const blob = await fetch(`${ADMIN_API}/exports/${exp.request_uid}/download`, {
+                          const res = await fetch(`/api/proxy/exports/${exp.request_uid}/download`, {
                             credentials: 'include',
-                          }).then((r) => r.blob());
+                          });
+                          const blob = await res.blob();
                           const url = URL.createObjectURL(blob);
                           const a = document.createElement("a");
                           a.href = url;

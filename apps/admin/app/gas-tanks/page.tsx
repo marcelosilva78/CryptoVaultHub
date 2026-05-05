@@ -274,6 +274,8 @@ export default function GasTanksPage() {
   const [loading, setLoading] = useState(true);
   const [reload, setReload] = useState(0);
   const [topUpModal, setTopUpModal] = useState<TopUpTank | null>(null);
+  const [chainFilter, setChainFilter] = useState("All Chains");
+  const [statusFilter, setStatusFilter] = useState("All Status");
 
   useEffect(() => {
     adminFetch("/gas-tanks")
@@ -285,15 +287,24 @@ export default function GasTanksPage() {
       .finally(() => setLoading(false));
   }, [reload]);
 
+  // Derive unique chain names for the filter dropdown
+  const chainNames = Array.from(new Set(tanks.map((t) => t.chainName))).sort();
+
   // Derive percent for vault meter from balance / targetBalance
-  const tanksWithPercent = tanks.map((tank) => {
-    const percent = Math.min(
-      Math.round((parseFloat(tank.balance) / parseFloat(tank.targetBalance || "1")) * 100),
-      100
-    );
-    const tankStatus = (tank.status === "critical" ? "low" : "ok") as "low" | "ok";
-    return { ...tank, percent, tankStatus };
-  });
+  const tanksWithPercent = tanks
+    .filter((tank) => {
+      if (chainFilter !== "All Chains" && tank.chainName !== chainFilter) return false;
+      if (statusFilter !== "All Status" && tank.status !== statusFilter.toLowerCase()) return false;
+      return true;
+    })
+    .map((tank) => {
+      const percent = Math.min(
+        Math.round((parseFloat(tank.balance) / parseFloat(tank.targetBalance || "1")) * 100),
+        100
+      );
+      const tankStatus = (tank.status === "critical" ? "low" : "ok") as "low" | "ok";
+      return { ...tank, percent, tankStatus };
+    });
 
   async function handleTopUp(tank: TopUpTank, amount: string) {
     await adminFetch(`/gas-tanks/${tank.chainId}/top-up`, {
@@ -454,17 +465,25 @@ export default function GasTanksPage() {
           ]}
           actions={
             <>
-              <select className="bg-surface-input border border-border-default rounded-input text-text-primary px-2.5 py-1.5 text-caption font-display">
+              <select
+                value={chainFilter}
+                onChange={(e) => setChainFilter(e.target.value)}
+                className="bg-surface-input border border-border-default rounded-input text-text-primary px-2.5 py-1.5 text-caption font-display"
+              >
                 <option>All Chains</option>
-                <option>BSC</option>
-                <option>Ethereum</option>
-                <option>Polygon</option>
+                {chainNames.map((name) => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
               </select>
-              <select className="bg-surface-input border border-border-default rounded-input text-text-primary px-2.5 py-1.5 text-caption font-display">
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="bg-surface-input border border-border-default rounded-input text-text-primary px-2.5 py-1.5 text-caption font-display"
+              >
                 <option>All Status</option>
-                <option>Healthy</option>
-                <option>Warning</option>
-                <option>Critical</option>
+                <option value="Healthy">Healthy</option>
+                <option value="Warning">Warning</option>
+                <option value="Critical">Critical</option>
               </select>
             </>
           }

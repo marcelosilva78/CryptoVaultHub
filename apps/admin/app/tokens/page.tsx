@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Search, Filter, X, Loader2 } from "lucide-react";
+import { Search, Filter, X, Loader2, Trash2 } from "lucide-react";
 import { DataTable, TableCell, TableRow } from "@/components/data-table";
 import { Badge } from "@/components/badge";
 
@@ -240,7 +240,21 @@ export default function TokensPage() {
   const [chainFilter, setChainFilter] = useState<string | undefined>(undefined);
   const [showFilter, setShowFilter] = useState(false);
   const [addTokenModal, setAddTokenModal] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState<Record<number, boolean>>({});
   const filterRef = useRef<HTMLDivElement>(null);
+
+  async function handleDeleteToken(token: Token) {
+    if (!confirm(`Delete token "${token.symbol} (${token.name})" on ${token.chainName ?? token.chainId}? This cannot be undone.`)) return;
+    setDeleteLoading((prev) => ({ ...prev, [token.id]: true }));
+    try {
+      await adminFetch(`/tokens/${token.id}`, { method: "DELETE" });
+      setReload((r) => r + 1);
+    } catch (err: any) {
+      alert(err.message ?? "Failed to delete token");
+    } finally {
+      setDeleteLoading((prev) => ({ ...prev, [token.id]: false }));
+    }
+  }
 
   useEffect(() => {
     setLoading(true);
@@ -281,6 +295,7 @@ export default function TokensPage() {
           "Type",
           "Clients Using",
           "Status",
+          "Actions",
         ]}
         actions={
           <>
@@ -342,7 +357,7 @@ export default function TokensPage() {
       >
         {loading ? (
           <TableRow>
-            <td colSpan={7} className="px-4 py-8 text-center text-text-muted font-display">
+            <td colSpan={8} className="px-4 py-8 text-center text-text-muted font-display">
               <span className="flex items-center justify-center gap-2">
                 <Loader2 className="w-4 h-4 animate-spin" />
                 Loading tokens...
@@ -351,7 +366,7 @@ export default function TokensPage() {
           </TableRow>
         ) : filteredTokens.length === 0 ? (
           <TableRow>
-            <td colSpan={7} className="px-4 py-12 text-center text-text-muted font-display">
+            <td colSpan={8} className="px-4 py-12 text-center text-text-muted font-display">
               {tokens.length === 0
                 ? "No tokens configured. Add your first token to get started."
                 : "No tokens match your search or filter criteria."}
@@ -389,6 +404,16 @@ export default function TokensPage() {
                 <Badge variant={token.isActive ? "success" : "neutral"}>
                   {token.isActive ? "Active" : "Inactive"}
                 </Badge>
+              </TableCell>
+              <TableCell>
+                <button
+                  onClick={() => handleDeleteToken(token)}
+                  disabled={!!deleteLoading[token.id]}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-button text-caption font-semibold font-display text-status-error border border-status-error/30 hover:bg-status-error-subtle disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-fast"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  {deleteLoading[token.id] ? "Deleting..." : "Delete"}
+                </button>
               </TableCell>
             </TableRow>
           ))
