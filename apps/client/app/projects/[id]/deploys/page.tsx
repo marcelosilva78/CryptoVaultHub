@@ -20,6 +20,8 @@ import {
   ArrowDownUp,
   ShieldCheck,
   Globe,
+  EyeOff,
+  Eye,
 } from "lucide-react";
 
 // ─── Types ──────────────────────────────────────────────────────
@@ -36,9 +38,15 @@ interface TraceStep {
   blockNumber?: number;
   timestamp?: string;
   error?: string;
+  deployerAddress?: string;
+  calldataHex?: string;
+  constructorArgsJson?: unknown;
+  signedTxHex?: string;
+  abiJson?: unknown;
   calldata?: unknown;
   rpcRequest?: unknown;
   rpcResponse?: unknown;
+  bytecodeHash?: string;
   verification?: unknown;
   explorerUrl?: string;
 }
@@ -84,37 +92,94 @@ export default function DeployHistoryPage() {
   const [expandedChains, setExpandedChains] = useState<Set<string>>(new Set());
   const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set());
   const [activeTabs, setActiveTabs] = useState<Record<string, TabId>>({});
+  const [showFailed, setShowFailed] = useState(false);
 
-  // Fetch traces
+  // Fetch traces + chain names in parallel
   const fetchTraces = useCallback(async () => {
     try {
       setError(null);
-      const res = await clientFetch<{ traces: any[]; chains?: ChainTrace[] }>(
-        `/v1/projects/${projectId}/deploy/traces`
-      );
+
+      // Fetch traces and chain names in parallel
+      const [traceRes, chainsRes] = await Promise.all([
+        clientFetch<{ traces: any[]; chains?: ChainTrace[] }>(
+          `/v1/projects/${projectId}/deploy/traces`
+        ),
+        clientFetch<{ chains: { chainId: number; name: string; shortName: string }[] }>(
+          `/v1/chains`
+        ).catch(() => ({ chains: [] })),
+      ]);
+
+      // Build chain name lookup from /v1/chains
+      const chainNameMap = new Map<number, string>();
+      for (const c of chainsRes.chains ?? []) {
+        chainNameMap.set(c.chainId, c.name);
+      }
+
       // Backend returns { traces: [...] } — group by chainId for display
-      const rawTraces = res.traces || res.chains || [];
-      // Group traces by chainId into ChainTrace format
+      const rawTraces = traceRes.traces || traceRes.chains || [];
+
+      // Group traces by chainId into ChainTrace format, passing ALL fields
       const chainMap = new Map<number, any>();
       for (const t of rawTraces) {
         const cid = t.chainId;
         if (!chainMap.has(cid)) {
-          chainMap.set(cid, { chainId: cid, chainName: `Chain ${cid}`, status: 'ready', steps: [] });
+          const resolvedName = chainNameMap.get(cid) || `Chain ${cid}`;
+          chainMap.set(cid, { chainId: cid, chainName: resolvedName, status: 'ready', steps: [] });
         }
-        chainMap.get(cid)!.steps.push({
-          name: (t.contractType || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()),
+
+        // Determine the chain-level status based on worst step status
+        const entry = chainMap.get(cid)!;
+        if (t.status === 'failed') {
+          entry.status = 'failed';
+        } else if (t.status === 'pending' && entry.status !== 'failed') {
+          entry.status = 'pending';
+        }
+
+        const stepName = (t.contractType || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+
+        entry.steps.push({
+          stepName,
           contractType: t.contractType,
           status: t.status || 'confirmed',
-          contractAddress: t.contractAddress,
-          txHash: t.txHash,
-          blockNumber: t.blockNumber,
-          gasUsed: t.gasUsed,
-          gasPrice: t.gasPrice,
-          gasCostWei: t.gasCostWei,
-          deployerAddress: t.deployerAddress,
-          error: t.errorMessage,
+          contractAddress: t.contractAddress ?? null,
+          txHash: t.txHash ?? null,
+          blockNumber: t.blockNumber ?? null,
+          gasUsed: t.gasUsed ?? null,
+          gasPrice: t.gasPrice ?? null,
+          gasCost: t.gasCostWei ?? null,
+          deployerAddress: t.deployerAddress ?? null,
+          timestamp: t.confirmedAt ?? t.createdAt ?? null,
+          error: t.errorMessage ?? null,
+          explorerUrl: t.explorerUrl ?? null,
+          // Rich trace fields for detail tabs
+          calldataHex: t.calldataHex ?? null,
+          constructorArgsJson: t.constructorArgsJson ?? null,
+          signedTxHex: t.signedTxHex ?? null,
+          abiJson: t.abiJson ?? null,
+          rpcRequest: t.rpcRequestJson ?? null,
+          rpcResponse: t.rpcResponseJson ?? null,
+          bytecodeHash: t.bytecodeHash ?? null,
+          verification: t.verificationProofJson ?? null,
+          // Build composite calldata object for the Calldata tab
+          calldata: (t.calldataHex || t.constructorArgsJson || t.signedTxHex || t.abiJson)
+            ? {
+                ...(t.calldataHex ? { calldataHex: t.calldataHex } : {}),
+                ...(t.constructorArgsJson ? { constructorArgs: t.constructorArgsJson } : {}),
+                ...(t.signedTxHex ? { signedTxHex: t.signedTxHex } : {}),
+                ...(t.abiJson ? { abi: t.abiJson } : {}),
+              }
+            : null,
         });
       }
+
+      // Set chain-level status: if all steps confirmed => 'confirmed'
+      for (const entry of chainMap.values()) {
+        const allConfirmed = entry.steps.every((s: TraceStep) => s.status === 'confirmed');
+        if (allConfirmed && entry.steps.length > 0) {
+          entry.status = 'confirmed';
+        }
+      }
+
       const grouped = Array.from(chainMap.values());
       setTraces(grouped);
 
@@ -161,11 +226,20 @@ export default function DeployHistoryPage() {
     setActiveTabs((prev) => ({ ...prev, [stepKey]: tab }));
   };
 
-  const getExplorerUrl = (chainId: string, hash?: string, type: "tx" | "address" = "tx") => {
+  const getExplorerUrl = (_chainId: string, hash?: string, type: "tx" | "address" = "tx") => {
+    // Prefer the explorerUrl from the trace itself; fall back to static map
     if (!hash) return null;
-    const base = EXPLORER_BASES[chainId] || "https://etherscan.io";
+    const base = EXPLORER_BASES[_chainId] || "https://etherscan.io";
     return `${base}/${type}/${hash}`;
   };
+
+  // Count totals for the header
+  const totalSteps = traces.reduce((acc, c) => acc + c.steps.length, 0);
+  const failedSteps = traces.reduce(
+    (acc, c) => acc + c.steps.filter((s) => s.status === "failed").length,
+    0,
+  );
+  const confirmedSteps = totalSteps - failedSteps;
 
   // ─── Loading ──────────────────────────────────────────────
 
@@ -202,6 +276,26 @@ export default function DeployHistoryPage() {
           Full deployment trace timeline with transaction details, calldata, and
           RPC artifacts
         </p>
+        {/* Stats + failed toggle */}
+        <div className="flex items-center gap-4 mt-3 pl-9">
+          <span className="text-micro text-text-muted font-display">
+            {confirmedSteps} confirmed{failedSteps > 0 && `, ${failedSteps} failed`}
+          </span>
+          {failedSteps > 0 && (
+            <button
+              onClick={() => setShowFailed((prev) => !prev)}
+              className={cn(
+                "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-button text-micro font-display font-semibold transition-colors duration-fast cursor-pointer border",
+                showFailed
+                  ? "bg-status-error-subtle border-status-error/30 text-status-error"
+                  : "bg-surface-elevated border-border-default text-text-muted hover:text-text-primary hover:bg-surface-hover"
+              )}
+            >
+              {showFailed ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+              {showFailed ? "Showing failed" : "Failed hidden"}
+            </button>
+          )}
+        </div>
       </div>
 
       {error && (
@@ -234,6 +328,14 @@ export default function DeployHistoryPage() {
       <div className="space-y-4">
         {traces.map((chain) => {
           const isExpanded = expandedChains.has(chain.chainId);
+          const visibleSteps = showFailed
+            ? chain.steps
+            : chain.steps.filter((s) => s.status !== "failed");
+          const chainConfirmed = chain.steps.filter((s) => s.status === "confirmed").length;
+          const chainFailed = chain.steps.filter((s) => s.status === "failed").length;
+
+          // Skip chains with no visible steps (all failed and toggle is off)
+          if (visibleSteps.length === 0) return null;
 
           return (
             <div
@@ -259,7 +361,8 @@ export default function DeployHistoryPage() {
                     {chain.chainName}
                   </div>
                   <div className="text-micro text-text-muted font-display">
-                    {chain.steps.length} deployment steps
+                    {chainConfirmed} confirmed{chainFailed > 0 ? `, ${chainFailed} failed` : ""}{" "}
+                    — {visibleSteps.length} shown
                   </div>
                 </div>
                 <StatusBadge status={chain.status} />
@@ -275,12 +378,12 @@ export default function DeployHistoryPage() {
               {isExpanded && (
                 <div className="border-t border-border-subtle px-5 py-4 animate-fade-in">
                   <div className="relative">
-                    {chain.steps.map((step, idx) => {
-                      const stepKey = `${chain.chainId}-${idx}`;
+                    {visibleSteps.map((step, idx) => {
+                      const stepKey = `${chain.chainId}-${step.stepName}-${idx}`;
                       const isStepExpanded = expandedSteps.has(stepKey);
                       const activeTab = activeTabs[stepKey] || "transaction";
-                      const isLast = idx === chain.steps.length - 1;
-                      const explorerTxUrl = getExplorerUrl(chain.chainId, step.txHash, "tx");
+                      const isLast = idx === visibleSteps.length - 1;
+                      const explorerTxUrl = step.explorerUrl || getExplorerUrl(chain.chainId, step.txHash, "tx");
                       const explorerAddrUrl = getExplorerUrl(chain.chainId, step.contractAddress, "address");
 
                       return (
@@ -449,6 +552,11 @@ export default function DeployHistoryPage() {
                                         explorerUrl={explorerAddrUrl}
                                       />
                                       <InfoRow
+                                        label="Deployer"
+                                        value={step.deployerAddress}
+                                        mono
+                                      />
+                                      <InfoRow
                                         label="Block Number"
                                         value={step.blockNumber?.toLocaleString()}
                                       />
@@ -459,12 +567,12 @@ export default function DeployHistoryPage() {
                                       />
                                       <InfoRow
                                         label="Gas Price"
-                                        value={step.gasPrice}
+                                        value={step.gasPrice ? `${step.gasPrice} wei` : undefined}
                                         mono
                                       />
                                       <InfoRow
                                         label="Gas Cost"
-                                        value={step.gasCost}
+                                        value={step.gasCost ? `${step.gasCost} wei` : undefined}
                                         mono
                                       />
                                       <InfoRow
@@ -480,6 +588,11 @@ export default function DeployHistoryPage() {
                                       <InfoRow
                                         label="Status"
                                         value={step.status}
+                                      />
+                                      <InfoRow
+                                        label="Explorer"
+                                        value={step.explorerUrl}
+                                        explorerUrl={step.explorerUrl}
                                       />
                                     </div>
                                   )}
@@ -525,11 +638,24 @@ export default function DeployHistoryPage() {
 
                                   {activeTab === "verification" && (
                                     <div>
-                                      {step.verification ? (
-                                        <JsonViewer
-                                          data={step.verification}
-                                          maxHeight="350px"
-                                        />
+                                      {step.verification || step.bytecodeHash ? (
+                                        <div>
+                                          {step.bytecodeHash && (
+                                            <div className="p-4 border-b border-border-subtle">
+                                              <InfoRow
+                                                label="Bytecode Hash"
+                                                value={step.bytecodeHash}
+                                                mono
+                                              />
+                                            </div>
+                                          )}
+                                          {step.verification != null && (
+                                            <JsonViewer
+                                              data={step.verification}
+                                              maxHeight="350px"
+                                            />
+                                          )}
+                                        </div>
                                       ) : (
                                         <EmptyTab label="No verification data available." />
                                       )}
