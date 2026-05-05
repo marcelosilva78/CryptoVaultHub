@@ -89,13 +89,36 @@ export default function DeployHistoryPage() {
   const fetchTraces = useCallback(async () => {
     try {
       setError(null);
-      const res = await clientFetch<{ chains: ChainTrace[] }>(
+      const res = await clientFetch<{ traces: any[]; chains?: ChainTrace[] }>(
         `/v1/projects/${projectId}/deploy/traces`
       );
-      setTraces(res.chains || []);
+      // Backend returns { traces: [...] } — group by chainId for display
+      const rawTraces = res.traces || res.chains || [];
+      // Group traces by chainId into ChainTrace format
+      const chainMap = new Map<number, any>();
+      for (const t of rawTraces) {
+        const cid = t.chainId;
+        if (!chainMap.has(cid)) {
+          chainMap.set(cid, { chainId: cid, chainName: `Chain ${cid}`, status: 'ready', steps: [] });
+        }
+        chainMap.get(cid)!.steps.push({
+          name: (t.contractType || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()),
+          contractType: t.contractType,
+          status: t.status || 'confirmed',
+          contractAddress: t.contractAddress,
+          txHash: t.txHash,
+          blockNumber: t.blockNumber,
+          gasUsed: t.gasUsed,
+          gasPrice: t.gasPrice,
+          gasCostWei: t.gasCostWei,
+          deployerAddress: t.deployerAddress,
+          error: t.errorMessage,
+        });
+      }
+      const grouped = Array.from(chainMap.values());
+      setTraces(grouped);
 
-      // Auto-expand all chains by default
-      const chainIds = new Set((res.chains || []).map((c: ChainTrace) => c.chainId));
+      const chainIds = new Set(grouped.map((c: ChainTrace) => c.chainId));
       setExpandedChains(chainIds);
     } catch (err: any) {
       setError(err.message || "Failed to fetch deploy traces");
