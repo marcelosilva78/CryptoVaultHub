@@ -13,11 +13,15 @@
   },
   "peerDependencies": {
     "@nestjs/common": "^10.0.0",
-    "@nestjs/config": "^3.0.0"
+    "@nestjs/config": "^4.0.4"
   },
   "peerDependenciesMeta": {
-    "@nestjs/common": { "optional": true },
-    "@nestjs/config": { "optional": true }
+    "@nestjs/common": {
+      "optional": true
+    },
+    "@nestjs/config": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "typescript": "^5.4.0"
