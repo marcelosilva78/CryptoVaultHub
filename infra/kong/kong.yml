@@ -37,9 +37,7 @@ services:
       - name: rate-limiting
         config:
           second: 50
-          policy: redis
-          redis_host: redis
-          redis_password: "{vault://env/REDIS_PASSWORD}"
+          policy: local
       - name: ip-restriction
         config:
           allow:
@@ -57,9 +55,7 @@ services:
       - name: rate-limiting
         config:
           second: 100
-          policy: redis
-          redis_host: redis
-          redis_password: "{vault://env/REDIS_PASSWORD}"
+          policy: local
   - name: auth-service
     url: http://auth-service:3003
     routes:
@@ -70,9 +66,7 @@ services:
       - name: rate-limiting
         config:
           second: 10
-          policy: redis
-          redis_host: redis
-          redis_password: "{vault://env/REDIS_PASSWORD}"
+          policy: local
 
 # NOTE: rpc-gateway-service (port 3009) is internal-only and does NOT need
 # a Kong route. It is accessed exclusively by other backend services over
