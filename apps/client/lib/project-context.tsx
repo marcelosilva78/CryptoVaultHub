@@ -54,14 +54,20 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     const fetchProjects = async () => {
       try {
         const res = await clientFetch<{ projects?: Project[]; data?: Project[] }>('/v1/projects');
-        const data: Project[] = res.projects ?? res.data ?? (Array.isArray(res) ? res : []);
-        setProjects(data);
+        const raw: Project[] = res.projects ?? res.data ?? (Array.isArray(res) ? res : []);
 
-        // Restore from localStorage or pick default
+        // Normalize IDs to strings for consistent comparison
+        const normalized = raw.map(p => ({ ...p, id: String(p.id) }));
+        setProjects(normalized);
+
+        // Restore from localStorage or auto-select first/default
         const storedId = localStorage.getItem(STORAGE_KEY);
-        const restored = storedId ? data.find((p) => p.id === storedId) : null;
-        const defaultProject = data.find((p) => p.isDefault) ?? data[0] ?? null;
-        setActiveProjectState(restored ?? defaultProject);
+        const restored = storedId ? normalized.find((p) => p.id === storedId) : null;
+        const defaultProject = normalized.find((p) => p.isDefault) ?? normalized[0] ?? null;
+        const selected = restored ?? defaultProject;
+        setActiveProjectState(selected);
+        // Persist selection so it's available immediately on next load
+        if (selected) localStorage.setItem(STORAGE_KEY, selected.id);
       } catch {
         // If projects endpoint fails, continue with empty list
         setProjects([]);
