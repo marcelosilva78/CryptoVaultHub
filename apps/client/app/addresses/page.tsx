@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { DataTable } from "@/components/data-table";
 import { Badge } from "@/components/badge";
 import { clientFetch } from "@/lib/api";
-import { Loader2 } from "lucide-react";
+import { Loader2, X } from "lucide-react";
 
 /* ── Types (from backend API) ──────────────────────────────────── */
 interface AddressEntry {
@@ -34,6 +34,13 @@ export default function AddressBookPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Add address modal state
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [addAddress, setAddAddress] = useState("");
+  const [addLabel, setAddLabel] = useState("");
+  const [addChainId, setAddChainId] = useState(56);
+  const [addingAddress, setAddingAddress] = useState(false);
+
   const fetchAddresses = useCallback(async () => {
     try {
       const res = await clientFetch<{ addresses: AddressEntry[] }>("/v1/addresses");
@@ -55,6 +62,32 @@ export default function AddressBookPage() {
       setAddresses((prev) => prev.filter((a) => a.id !== id));
     } catch (err: any) {
       setError(err.message || "Failed to remove address");
+    }
+  };
+
+  const handleAddAddress = async () => {
+    if (!addAddress.trim() || !addLabel.trim()) return;
+    setAddingAddress(true);
+    try {
+      await clientFetch("/v1/addresses", {
+        method: "POST",
+        body: JSON.stringify({
+          address: addAddress.trim(),
+          label: addLabel.trim(),
+          chainId: addChainId,
+        }),
+      });
+      setShowAddModal(false);
+      setAddAddress("");
+      setAddLabel("");
+      setAddChainId(56);
+      // Refresh list
+      const res = await clientFetch<{ addresses: AddressEntry[] }>("/v1/addresses");
+      setAddresses(res.addresses ?? []);
+    } catch (err: any) {
+      setError(err.message || "Failed to add address");
+    } finally {
+      setAddingAddress(false);
     }
   };
 
@@ -85,7 +118,10 @@ export default function AddressBookPage() {
     <div>
       <div className="flex justify-between items-center mb-[18px]">
         <div className="text-[18px] font-bold">Address Book</div>
-        <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] font-display text-[11px] font-semibold cursor-pointer transition-colors bg-accent-primary text-accent-text border-none hover:bg-accent-hover">
+        <button
+          onClick={() => setShowAddModal(true)}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] font-display text-[11px] font-semibold cursor-pointer transition-colors bg-accent-primary text-accent-text border-none hover:bg-accent-hover"
+        >
           + Add Address
         </button>
       </div>
@@ -153,7 +189,10 @@ export default function AddressBookPage() {
                 </td>
                 <td className="px-[14px] py-2.5 border-b border-border-subtle">
                   <div className="flex gap-1.5">
-                    <button className="inline-flex items-center px-2 py-[3px] rounded-[6px] font-display text-[10px] font-semibold cursor-pointer transition-colors bg-transparent text-text-secondary border border-border-default hover:border-text-secondary hover:text-text-primary">
+                    <button
+                      onClick={() => window.alert("Edit address coming soon.")}
+                      className="inline-flex items-center px-2 py-[3px] rounded-[6px] font-display text-[10px] font-semibold cursor-pointer transition-colors bg-transparent text-text-secondary border border-border-default hover:border-text-secondary hover:text-text-primary"
+                    >
                       Edit
                     </button>
                     <button
@@ -169,6 +208,94 @@ export default function AddressBookPage() {
           })
         )}
       </DataTable>
+
+      {/* Add Address Modal */}
+      {showAddModal && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-[4px] z-[200] flex items-start justify-center pt-16 pb-4 overflow-y-auto"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowAddModal(false);
+          }}
+        >
+          <div className="bg-surface-card border border-border-default rounded-modal p-6 w-[480px] animate-fade-up shadow-float">
+            <div className="flex items-start justify-between mb-4">
+              <div className="text-subheading font-bold font-display">Add Whitelist Address</div>
+              <button
+                onClick={() => setShowAddModal(false)}
+                className="p-1 rounded-button text-text-muted hover:text-text-primary hover:bg-surface-hover transition-all duration-fast"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="mb-3.5">
+              <label className="block text-caption font-semibold text-text-secondary mb-1 uppercase tracking-[0.06em] font-display">
+                Address
+              </label>
+              <input
+                type="text"
+                placeholder="0x..."
+                value={addAddress}
+                onChange={(e) => setAddAddress(e.target.value)}
+                className="w-full bg-surface-input border border-border-default rounded-input px-3 py-2 text-text-primary font-mono text-body outline-none focus:border-border-focus transition-colors duration-fast"
+              />
+            </div>
+
+            <div className="mb-3.5">
+              <label className="block text-caption font-semibold text-text-secondary mb-1 uppercase tracking-[0.06em] font-display">
+                Label
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. Cold Storage, Exchange"
+                value={addLabel}
+                onChange={(e) => setAddLabel(e.target.value)}
+                className="w-full bg-surface-input border border-border-default rounded-input px-3 py-2 text-text-primary font-display text-body outline-none focus:border-border-focus transition-colors duration-fast"
+              />
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-caption font-semibold text-text-secondary mb-1 uppercase tracking-[0.06em] font-display">
+                Chain
+              </label>
+              <select
+                value={addChainId}
+                onChange={(e) => setAddChainId(parseInt(e.target.value))}
+                className="w-full bg-surface-input border border-border-default rounded-input px-3 py-2 text-text-primary font-display text-body outline-none focus:border-border-focus cursor-pointer transition-colors duration-fast"
+              >
+                <option value={1}>Ethereum</option>
+                <option value={56}>BSC</option>
+                <option value={137}>Polygon</option>
+                <option value={42161}>Arbitrum</option>
+                <option value={10}>Optimism</option>
+                <option value={43114}>Avalanche</option>
+                <option value={8453}>Base</option>
+              </select>
+            </div>
+
+            <div className="p-2.5 bg-surface-elevated rounded-input text-caption text-text-muted font-display mb-4">
+              New addresses enter a 24-hour cooldown period before they can be used for withdrawals.
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setShowAddModal(false)}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-button font-display text-caption font-semibold cursor-pointer transition-all duration-fast bg-transparent text-text-secondary border border-border-default hover:border-accent-primary hover:text-text-primary"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAddAddress}
+                disabled={addingAddress || !addAddress.trim() || !addLabel.trim()}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-button font-display text-caption font-semibold cursor-pointer transition-all duration-fast bg-accent-primary text-accent-text hover:bg-accent-hover disabled:opacity-50"
+              >
+                {addingAddress && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                Add Address
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

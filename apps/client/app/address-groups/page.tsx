@@ -188,8 +188,15 @@ export default function AddressGroupsPage() {
               status={group.status}
               chains={group.chains ?? []}
               createdAt={group.createdAt}
-              onProvision={() => {
-                // Will connect to provision modal
+              onProvision={async () => {
+                try {
+                  await clientFetch(`/v1/address-groups/${group.groupUid}/provision`, { method: "POST" });
+                  // Refresh list after provisioning
+                  const res = await clientFetch<{ groups: AddressGroup[] }>("/v1/address-groups");
+                  setGroups(res.groups ?? []);
+                } catch (err: any) {
+                  setError(err.message || "Failed to provision chain");
+                }
               }}
             />
           ))}

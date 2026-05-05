@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Loader2 } from "lucide-react";
 import { StatCard } from "@/components/stat-card";
 import { DataTable } from "@/components/data-table";
@@ -80,6 +80,8 @@ interface DisplayAddress {
 export default function DepositsPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedAddress, setSelectedAddress] = useState<string | null>(null);
+  const [chainFilter, setChainFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -183,6 +185,14 @@ export default function DepositsPage() {
     fetchData();
     return () => { cancelled = true; };
   }, []);
+
+  const filteredDeposits = useMemo(() => {
+    return deposits.filter((d) => {
+      if (chainFilter !== "all" && d.chain !== chainFilter) return false;
+      if (statusFilter !== "all" && d.status !== statusFilter) return false;
+      return true;
+    });
+  }, [deposits, chainFilter, statusFilter]);
 
   const selectedWallet = selectedAddress
     ? walletAddresses.find((w) => w.addressFull === selectedAddress)
@@ -328,18 +338,29 @@ export default function DepositsPage() {
         title="Deposit History"
         actions={
           <>
-            <select className="bg-surface-input border border-border-default rounded-input px-2 py-1 text-caption text-text-primary font-display outline-none focus:border-border-focus cursor-pointer transition-colors duration-fast">
-              <option>All Chains</option>
-              <option>BSC</option>
-              <option>ETH</option>
-              <option>Polygon</option>
+            <select
+              value={chainFilter}
+              onChange={(e) => setChainFilter(e.target.value)}
+              className="bg-surface-input border border-border-default rounded-input px-2 py-1 text-caption text-text-primary font-display outline-none focus:border-border-focus cursor-pointer transition-colors duration-fast"
+            >
+              <option value="all">All Chains</option>
+              <option value="BSC">BSC</option>
+              <option value="ETH">ETH</option>
+              <option value="Polygon">Polygon</option>
             </select>
-            <select className="bg-surface-input border border-border-default rounded-input px-2 py-1 text-caption text-text-primary font-display outline-none focus:border-border-focus cursor-pointer transition-colors duration-fast">
-              <option>All Status</option>
-              <option>Confirming</option>
-              <option>Confirmed</option>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="bg-surface-input border border-border-default rounded-input px-2 py-1 text-caption text-text-primary font-display outline-none focus:border-border-focus cursor-pointer transition-colors duration-fast"
+            >
+              <option value="all">All Status</option>
+              <option value="Confirming">Confirming</option>
+              <option value="Confirmed">Confirmed</option>
             </select>
-            <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-button font-display text-caption font-semibold cursor-pointer transition-colors duration-fast bg-transparent text-text-secondary border border-border-default hover:border-accent-primary hover:text-text-primary">
+            <button
+              onClick={() => window.alert("Export functionality is available in the Exports page.")}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-button font-display text-caption font-semibold cursor-pointer transition-colors duration-fast bg-transparent text-text-secondary border border-border-default hover:border-accent-primary hover:text-text-primary"
+            >
               Export CSV
             </button>
           </>
@@ -356,14 +377,14 @@ export default function DepositsPage() {
           "TX",
         ]}
       >
-        {deposits.length === 0 ? (
+        {filteredDeposits.length === 0 ? (
           <tr>
             <td colSpan={9} className="px-4 py-8 text-center text-text-muted text-caption font-display">
               No deposits found.
             </td>
           </tr>
         ) : (
-          deposits.map((d, i) => (
+          filteredDeposits.map((d, i) => (
             <tr key={i} className="hover:bg-surface-hover transition-colors duration-fast">
               <td className="px-[14px] py-2.5 border-b border-border-subtle font-mono text-code whitespace-nowrap">
                 {d.date}

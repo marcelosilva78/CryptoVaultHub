@@ -337,7 +337,10 @@ export default function ApiKeysPage() {
               </td>
               <td className="px-[14px] py-2.5 border-b border-border-subtle">
                 <div className="flex gap-1.5">
-                  <button className="inline-flex items-center px-2 py-[3px] rounded-button font-display text-micro font-semibold cursor-pointer transition-colors duration-fast bg-transparent text-text-secondary border border-border-default hover:border-accent-primary hover:text-text-primary">
+                  <button
+                    onClick={() => window.alert("API key scopes cannot be modified. Revoke and create a new key.")}
+                    className="inline-flex items-center px-2 py-[3px] rounded-button font-display text-micro font-semibold cursor-pointer transition-colors duration-fast bg-transparent text-text-secondary border border-border-default hover:border-accent-primary hover:text-text-primary"
+                  >
                     Edit
                   </button>
                   <button

@@ -206,7 +206,10 @@ export default function WalletsPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-button font-display text-caption font-semibold cursor-pointer transition-colors duration-fast bg-transparent text-text-secondary border border-border-default hover:border-accent-primary hover:text-text-primary">
+          <button
+            onClick={() => window.alert("CSV import coming soon.")}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-button font-display text-caption font-semibold cursor-pointer transition-colors duration-fast bg-transparent text-text-secondary border border-border-default hover:border-accent-primary hover:text-text-primary"
+          >
             Import CSV
           </button>
           <button

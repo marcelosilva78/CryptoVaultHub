@@ -73,6 +73,7 @@ export default function WebhooksPage() {
   const [showPayload, setShowPayload] = useState<string | null>(null);
   const [testSent, setTestSent] = useState(false);
   const [testingId, setTestingId] = useState<string | null>(null);
+  const [deliveryStatusFilter, setDeliveryStatusFilter] = useState("all");
 
   /* ── Create-modal state ────────────────────────────────────── */
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -226,6 +227,10 @@ export default function WebhooksPage() {
     );
   }
 
+  const filteredDeliveries = deliveryStatusFilter === "all"
+    ? deliveries
+    : deliveries.filter((d) => d.status === deliveryStatusFilter);
+
   const primaryWebhook = webhooks[0] ?? null;
 
   return (
@@ -292,7 +297,10 @@ export default function WebhooksPage() {
                   ) : null}
                   {testSent && testingId === null ? "Test Sent!" : "Test Delivery"}
                 </button>
-                <button className="inline-flex items-center px-2.5 py-[4px] rounded-button font-display text-micro font-semibold cursor-pointer transition-colors duration-fast bg-transparent text-text-secondary border border-border-default hover:border-accent-primary hover:text-text-primary">
+                <button
+                  onClick={() => window.alert("Edit webhook coming soon.")}
+                  className="inline-flex items-center px-2.5 py-[4px] rounded-button font-display text-micro font-semibold cursor-pointer transition-colors duration-fast bg-transparent text-text-secondary border border-border-default hover:border-accent-primary hover:text-text-primary"
+                >
                   Edit
                 </button>
               </div>
@@ -320,7 +328,25 @@ export default function WebhooksPage() {
                   >
                     <input
                       type="checkbox"
-                      defaultChecked={enabled}
+                      checked={enabled}
+                      onChange={async () => {
+                        const updatedEvents = enabled
+                          ? wh.events.filter((e) => e !== evt)
+                          : [...wh.events, evt];
+                        try {
+                          await clientFetch(`/v1/webhooks/${wh.id}`, {
+                            method: "PATCH",
+                            body: JSON.stringify({ events: updatedEvents }),
+                          });
+                          setWebhooks((prev) =>
+                            prev.map((w) =>
+                              w.id === wh.id ? { ...w, events: updatedEvents } : w,
+                            ),
+                          );
+                        } catch {
+                          // Silently handle - UI stays in sync with server state
+                        }
+                      }}
                       className="accent-accent-primary"
                       style={{ accentColor: "var(--accent-primary)" }}
                     />
@@ -351,10 +377,14 @@ export default function WebhooksPage() {
       <DataTable
         title="Delivery Log"
         actions={
-          <select className="bg-surface-input border border-border-default rounded-input px-2 py-1 text-caption text-text-primary font-display outline-none focus:border-border-focus cursor-pointer transition-colors duration-fast">
-            <option>All Status</option>
-            <option>Sent</option>
-            <option>Failed</option>
+          <select
+            value={deliveryStatusFilter}
+            onChange={(e) => setDeliveryStatusFilter(e.target.value)}
+            className="bg-surface-input border border-border-default rounded-input px-2 py-1 text-caption text-text-primary font-display outline-none focus:border-border-focus cursor-pointer transition-colors duration-fast"
+          >
+            <option value="all">All Status</option>
+            <option value="success">Sent</option>
+            <option value="failed">Failed</option>
           </select>
         }
         headers={[
@@ -367,14 +397,14 @@ export default function WebhooksPage() {
           "Actions",
         ]}
       >
-        {deliveries.length === 0 ? (
+        {filteredDeliveries.length === 0 ? (
           <tr>
             <td colSpan={7} className="px-[14px] py-6 text-center text-text-muted font-display">
               No deliveries yet
             </td>
           </tr>
         ) : (
-          deliveries.map((d) => {
+          filteredDeliveries.map((d) => {
             const isFailed = d.status === "failed";
             return (
               <tr

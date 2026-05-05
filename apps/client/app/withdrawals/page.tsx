@@ -574,7 +574,10 @@ export default function WithdrawalsPage() {
         <div className="bg-surface-card border border-border-default rounded-card overflow-hidden shadow-card">
           <div className="flex items-center justify-between px-card-p py-[14px] border-b border-border-subtle">
             <div className="text-subheading font-display">Withdrawal History</div>
-            <button className="inline-flex items-center gap-1.5 px-2 py-[3px] rounded-button font-display text-micro font-semibold cursor-pointer transition-colors duration-fast bg-transparent text-text-secondary border border-border-default hover:border-accent-primary hover:text-text-primary">
+            <button
+              onClick={() => window.alert("Export functionality is available in the Exports page.")}
+              className="inline-flex items-center gap-1.5 px-2 py-[3px] rounded-button font-display text-micro font-semibold cursor-pointer transition-colors duration-fast bg-transparent text-text-secondary border border-border-default hover:border-accent-primary hover:text-text-primary"
+            >
               Export
             </button>
           </div>
@@ -649,7 +652,10 @@ export default function WithdrawalsPage() {
         <DataTable
           title="Address Whitelist"
           actions={
-            <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-button font-display text-caption font-semibold cursor-pointer transition-colors duration-fast bg-transparent text-text-secondary border border-border-default hover:border-accent-primary hover:text-text-primary">
+            <button
+              onClick={() => window.alert("Add addresses through the Address Book page.")}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-button font-display text-caption font-semibold cursor-pointer transition-colors duration-fast bg-transparent text-text-secondary border border-border-default hover:border-accent-primary hover:text-text-primary"
+            >
               + Add Address
             </button>
           }
