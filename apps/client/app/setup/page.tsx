@@ -1129,6 +1129,7 @@ export default function SetupWizardPage() {
                         <div className="flex-shrink-0">
                           <QRCodeDisplay
                             address={chain.gasTankAddress}
+                            chainId={chain.chainId}
                             network={chain.chainName}
                             size="md"
                           />
