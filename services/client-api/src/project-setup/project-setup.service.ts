@@ -480,10 +480,12 @@ export class ProjectSetupService {
           );
         }
 
-        // Estimate required wei: gas units * estimated gas price
-        // Use a conservative gas price estimate (fallback 20 gwei)
-        let gasPriceWei = 20_000_000_000n; // 20 gwei default
+        // Estimate required wei: gas units * live gas price from RPC
+        // Fallback: 1 gwei (conservative for most EVM chains; BSC is typically ~0.05 gwei)
+        let gasPriceWei = 1_000_000_000n; // 1 gwei fallback
         try {
+          // Try to get live gas price from core-wallet's balance endpoint
+          // which uses the EvmProviderService (with API key + rate limiting)
           const { data: gasPriceData } = await axios.get(
             `${this.coreWalletUrl}/chains/${chainId}/gas-price`,
             { headers: this.headers, timeout: 10000 },
@@ -492,8 +494,21 @@ export class ProjectSetupService {
             gasPriceWei = BigInt(gasPriceData.gasPrice);
           }
         } catch {
-          // Use default gas price
+          // gas-price endpoint may not exist; try getting fee data via wallets/fee-data
+          try {
+            const { data: feeData } = await axios.get(
+              `${this.coreWalletUrl}/wallets/fee-data/${chainId}`,
+              { headers: this.headers, timeout: 10000 },
+            );
+            if (feeData.gasPrice) {
+              gasPriceWei = BigInt(feeData.gasPrice);
+            }
+          } catch {
+            // Use fallback — 1 gwei is reasonable for most chains
+          }
         }
+        // Apply a 2x safety margin for gas price volatility
+        gasPriceWei = gasPriceWei * 2n;
 
         const requiredWei = ESTIMATED_GAS_PER_CHAIN * gasPriceWei;
 

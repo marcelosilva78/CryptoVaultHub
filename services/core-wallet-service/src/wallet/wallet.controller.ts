@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { WalletService } from './wallet.service';
 import { BalanceService } from '../balance/balance.service';
+import { EvmProviderService } from '../blockchain/evm-provider.service';
 import { CreateWalletDto, RegisterWalletDto } from '../common/dto/wallet.dto';
 
 @Controller('wallets')
@@ -15,6 +16,7 @@ export class WalletController {
   constructor(
     private readonly walletService: WalletService,
     private readonly balanceService: BalanceService,
+    private readonly evmProvider: EvmProviderService,
   ) {}
 
   @Post('create')
@@ -90,6 +92,19 @@ export class WalletController {
       success: true,
       chainId,
       ...result,
+    };
+  }
+
+  @Get('fee-data/:chainId')
+  async getFeeData(@Param('chainId', ParseIntPipe) chainId: number) {
+    const provider = await this.evmProvider.getProvider(chainId);
+    const feeData = await provider.getFeeData();
+    return {
+      success: true,
+      chainId,
+      gasPrice: feeData.gasPrice?.toString() ?? null,
+      maxFeePerGas: feeData.maxFeePerGas?.toString() ?? null,
+      maxPriorityFeePerGas: feeData.maxPriorityFeePerGas?.toString() ?? null,
     };
   }
 }
