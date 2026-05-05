@@ -156,7 +156,7 @@ export class SigningService {
     chainId: number,
     keyType: string,
     txData: {
-      to: string;
+      to?: string | null;
       data: string;
       value?: string;
       gasLimit: string;
