@@ -127,13 +127,7 @@ export default function DeployHistoryPage() {
           chainMap.set(cid, { chainId: cid, chainName: resolvedName, status: 'ready', steps: [] });
         }
 
-        // Determine the chain-level status based on worst step status
         const entry = chainMap.get(cid)!;
-        if (t.status === 'failed') {
-          entry.status = 'failed';
-        } else if (t.status === 'pending' && entry.status !== 'failed') {
-          entry.status = 'pending';
-        }
 
         const stepName = (t.contractType || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
 
@@ -177,6 +171,27 @@ export default function DeployHistoryPage() {
         const allConfirmed = entry.steps.every((s: TraceStep) => s.status === 'confirmed');
         if (allConfirmed && entry.steps.length > 0) {
           entry.status = 'confirmed';
+        }
+      }
+
+      // Derive chain-level status from the LATEST trace per contract type
+      // (ignore old failed attempts if a newer confirmed attempt exists)
+      for (const entry of chainMap.values()) {
+        const latestByType = new Map<string, string>();
+        for (const step of entry.steps) {
+          const existing = latestByType.get(step.contractType);
+          // Later steps (higher index) are newer — always overwrite
+          latestByType.set(step.contractType, step.status);
+        }
+        const statuses = Array.from(latestByType.values());
+        if (statuses.every((s: string) => s === 'confirmed')) {
+          entry.status = 'confirmed';
+        } else if (statuses.some((s: string) => s === 'failed')) {
+          entry.status = 'failed';
+        } else if (statuses.some((s: string) => s === 'pending')) {
+          entry.status = 'pending';
+        } else {
+          entry.status = 'ready';
         }
       }
 
