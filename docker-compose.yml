@@ -507,6 +507,7 @@ services:
       - VAULT_CLIENT_KEY_PATH=/tls/client.key
       - VAULT_TLS_CA_PATH=/tls/ca.crt
       - KEY_VAULT_URL=${KEY_VAULT_URL:-http://key-vault-service:3005}
+      - TATUM_API_KEY=${TATUM_API_KEY}
       - TRACING_ENABLED=true
       - JAEGER_ENDPOINT=http://jaeger:4318/v1/traces
     volumes:

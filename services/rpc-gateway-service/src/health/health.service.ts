@@ -67,7 +67,7 @@ export class HealthService implements OnModuleInit {
 
   private async seedRateLimits() {
     const nodes = await this.prisma.rpcNode.findMany({
-      where: { status: { in: ['active', 'standby', 'draining'] } },
+      where: { isActive: true },
     });
     for (const node of nodes) {
       this.rateLimiter.registerNode(Number(node.id), {
