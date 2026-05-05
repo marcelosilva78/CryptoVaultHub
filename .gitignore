@@ -14,9 +14,8 @@ coverage
 # Turborepo
 .turbo
 
-# Smart contract artifacts
-artifacts
-cache
+# Smart contract build cache (artifacts are committed for Docker builds)
+contracts/cache
 typechain-types
 
 # Prisma generated client

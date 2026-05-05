@@ -8,9 +8,8 @@ ARG SERVICE_PATH
 COPY package*.json turbo.json tsconfig.base.json ./
 COPY packages/ packages/
 COPY ${SERVICE_PATH}/ ${SERVICE_PATH}/
-# Copy contract sources and compile (needed by core-wallet-service for deployment)
-COPY contracts/ contracts/
-RUN cd contracts && npx hardhat compile 2>/dev/null || true
+# Copy pre-compiled contract artifacts (needed by core-wallet-service for deployment)
+COPY contracts/artifacts/ contracts/artifacts/
 RUN npm ci
 # Regenerate Prisma client from the current schema before compiling.
 # This ensures the generated client always matches the schema even when
