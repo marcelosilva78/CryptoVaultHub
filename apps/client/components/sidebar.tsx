@@ -149,6 +149,14 @@ export function Sidebar() {
 
   const isActive = (href: string) => {
     if (href === "/") return pathname === "/";
+    // Exact match for routes that have sub-routes to avoid false highlights
+    if (pathname === href) return true;
+    // For paths like /projects — only exact match (not /projects/6998/...)
+    if (href === "/projects") return false;
+    // For dynamic routes like /projects/6998/deploys, check if pathname ends with the same suffix
+    if (href.includes("/deploys")) return pathname.includes("/deploys");
+    if (href.includes("/export")) return pathname.includes("/export") && !pathname.includes("/exports");
+    // Default: startsWith for simple routes like /deposits, /withdrawals
     return pathname.startsWith(href);
   };
 
