@@ -712,6 +712,7 @@ services:
       - RPC_GATEWAY_URL=http://rpc-gateway-service:3009
       - CORE_WALLET_SERVICE_URL=http://core-wallet-service:3004
       - EXPORT_STORAGE_PATH=${EXPORT_STORAGE_PATH:-/data/exports}
+      - TATUM_API_KEY=${TATUM_API_KEY}
       - KAFKA_BROKERS=kafka:9092
       - EVENTBUS_KAFKA_ENABLED=true
       - EVENTBUS_REDIS_ENABLED=true
@@ -762,6 +763,7 @@ services:
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD}
       - INTERNAL_SERVICE_KEY=${INTERNAL_SERVICE_KEY}
+      - TATUM_API_KEY=${TATUM_API_KEY}
       - KAFKA_BROKERS=kafka:9092
       - EVENTBUS_KAFKA_ENABLED=true
       - EVENTBUS_REDIS_ENABLED=true
