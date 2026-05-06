@@ -78,3 +78,83 @@ export function getClientApi(token: string, authMode: ClientAuthMode = 'auto') {
 }
 
 export { CLIENT_API as API_URL };
+
+// ---------------------------------------------------------------------------
+// Gas Tanks
+// ---------------------------------------------------------------------------
+
+export interface GasTank {
+  chainId: number;
+  chainName: string;
+  nativeSymbol: string;
+  address: string;
+  derivationPath: string;
+  balanceWei: string;
+  gasPriceWei: string;
+  thresholdWei: string;
+  estimatedOpsRemaining: number;
+  status: 'ok' | 'low' | 'critical';
+  alertConfig: { emailEnabled: boolean; webhookEnabled: boolean };
+  explorerUrl: string | null;
+}
+
+export interface GasTankTx {
+  id: string;
+  txHash: string;
+  operationType: string;
+  toAddress?: string | null;
+  gasUsed?: string | null;
+  gasPriceWei: string;
+  gasCostWei?: string | null;
+  status: 'submitted' | 'confirmed' | 'failed';
+  blockNumber?: string | null;
+  submittedAt: string;
+  confirmedAt?: string | null;
+}
+
+export interface AlertConfig {
+  thresholdWei: string;
+  emailEnabled: boolean;
+  webhookEnabled: boolean;
+}
+
+export const gasTanksApi = {
+  list: () =>
+    clientFetch<{ success: boolean; gasTanks: GasTank[] }>('/v1/gas-tanks'),
+
+  history: (
+    chainId: number,
+    opts: { limit?: number; offset?: number; type?: string; from?: string; to?: string } = {},
+  ) => {
+    const qs = new URLSearchParams(
+      Object.entries(opts)
+        .filter(([, v]) => v != null)
+        .map(([k, v]) => [k, String(v)]),
+    ).toString();
+    return clientFetch<{ success: boolean; rows: GasTankTx[]; total: number }>(
+      `/v1/gas-tanks/${chainId}/history${qs ? `?${qs}` : ''}`,
+    );
+  },
+
+  topupUri: (chainId: number) =>
+    clientFetch<{ success: boolean; address: string; chainId: number; eip681Uri: string }>(
+      `/v1/gas-tanks/${chainId}/topup-uri`,
+    ),
+
+  getAlertConfig: (chainId: number) =>
+    clientFetch<{ success: boolean; config: AlertConfig }>(
+      `/v1/gas-tanks/${chainId}/alert-config`,
+    ),
+
+  updateAlertConfig: (chainId: number, body: Partial<AlertConfig>) =>
+    clientFetch<{ success: boolean; config: AlertConfig }>(
+      `/v1/gas-tanks/${chainId}/alert-config`,
+      { method: 'PATCH', body: JSON.stringify(body) },
+    ),
+
+  exportKeystore: (chainId: number, body: { mnemonic: string; password: string }) =>
+    clientFetch<{ success: boolean; keystore: Record<string, unknown> }>(
+      `/v1/gas-tanks/${chainId}/export-keystore`,
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
+};
