@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { GasTankService } from './gas-tank.service';
 import { GasTankTxLoggerService } from './gas-tank-tx-logger.service';
+import { GasTankReceiptReconcilerService } from './gas-tank-receipt-reconciler.service';
 import { BlockchainModule } from '../blockchain/blockchain.module';
 
 @Module({
@@ -9,7 +10,7 @@ import { BlockchainModule } from '../blockchain/blockchain.module';
     BullModule.registerQueue({ name: 'gas-tank' }),
     BlockchainModule,
   ],
-  providers: [GasTankService, GasTankTxLoggerService],
+  providers: [GasTankService, GasTankTxLoggerService, GasTankReceiptReconcilerService],
   exports: [GasTankService, GasTankTxLoggerService],
 })
 export class GasTankModule {}
