@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ProjectDeployService } from './project-deploy.service';
 import { ProjectDeployTraceService } from './deploy-trace.service';
+import { GasTankTxLoggerService } from './gas-tank-tx-logger.service';
 import { DeployController } from './deploy.controller';
 import { ProjectContractController } from './project-contract.controller';
 import { BlockchainModule } from '../blockchain/blockchain.module';
@@ -8,7 +9,7 @@ import { BlockchainModule } from '../blockchain/blockchain.module';
 @Module({
   imports: [BlockchainModule],
   controllers: [DeployController, ProjectContractController],
-  providers: [ProjectDeployService, ProjectDeployTraceService],
-  exports: [ProjectDeployService, ProjectDeployTraceService],
+  providers: [ProjectDeployService, ProjectDeployTraceService, GasTankTxLoggerService],
+  exports: [ProjectDeployService, ProjectDeployTraceService, GasTankTxLoggerService],
 })
 export class DeployModule {}

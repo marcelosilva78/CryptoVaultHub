@@ -18,10 +18,11 @@ export const VALID_WEBHOOK_EVENTS = [
   'deposit.detected',
   'deposit.confirmed',
   'deposit.swept',
+  'forwarder.deployed',
+  'gas_tank.low_balance',
   'withdrawal.submitted',
   'withdrawal.confirmed',
   'withdrawal.failed',
-  'forwarder.deployed',
 ] as const;
 
 export type WebhookEventType = (typeof VALID_WEBHOOK_EVENTS)[number];
@@ -53,10 +54,11 @@ If your endpoint returns a non-2xx status code or times out, the delivery is ret
 | \`deposit.detected\` | New deposit detected on-chain (unconfirmed) | deposit ID, address, amount, token, txHash |
 | \`deposit.confirmed\` | Deposit reached required confirmations | deposit ID, confirmations, blockNumber |
 | \`deposit.swept\` | Deposited funds swept to hot wallet | deposit ID, sweepTxHash, amount |
+| \`forwarder.deployed\` | New forwarder contract deployed | address, chain, deployTxHash |
+| \`gas_tank.low_balance\` | Gas tank balance dropped below threshold | chainId, address, balanceWei, thresholdWei |
 | \`withdrawal.submitted\` | Withdrawal transaction broadcasted | withdrawal ID, txHash, chain |
 | \`withdrawal.confirmed\` | Withdrawal confirmed on-chain | withdrawal ID, confirmations, blockNumber |
 | \`withdrawal.failed\` | Withdrawal failed on-chain | withdrawal ID, error reason |
-| \`forwarder.deployed\` | New forwarder contract deployed | address, chain, deployTxHash |
 
 **Example:** Subscribe to all deposit events: \`["deposit.detected", "deposit.confirmed", "deposit.swept"]\``,
     example: ['deposit.detected', 'deposit.confirmed', 'withdrawal.confirmed'],

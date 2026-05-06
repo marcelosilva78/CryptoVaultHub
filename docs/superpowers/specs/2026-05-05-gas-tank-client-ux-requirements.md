@@ -102,3 +102,28 @@ No new tables needed. Gas tanks are already in `cvh_wallets.wallets` with `walle
 - `services/core-wallet-service/src/balance/balance.service.ts` — Balance checking
 - `apps/client/app/setup/page.tsx` — Wizard Step 5 gas funding UI (reference for QR/address display)
 - `apps/client/components/setup/qr-code-display.tsx` — QR code component (reusable)
+
+---
+
+## Delivery note (2026-05-06)
+
+Implemented under plan `docs/superpowers/plans/2026-05-06-gas-tank-client-ux.md` (21 tasks).
+
+**Branch:** `worktree-gas-tank-client-ux`
+
+**What landed:**
+- Migration `043-gas-tank-client-ux.sql` adds `gas_tank_transactions` and `gas_tank_alert_config` to `cvh_wallets`.
+- `cron-worker-service`: `GasTankTxLoggerService` instruments sweep + wallet-deploy submission sites; `GasTankReceiptReconcilerService` (cron, 30s) backfills receipts; alert pipeline reads per-chain threshold and dedups for 1h.
+- `core-wallet-service`: gas-tank tx logger duplicated locally; wallet creation seeds `gas_tank_alert_config` row.
+- `notification-service`: `GasTankAlertsConsumer` reads the `gas_tank:alerts` Redis stream (wired through `EventConsumerService`) and dispatches `gas_tank.low_balance` webhook deliveries via `WebhookDeliveryService`.
+- `client-api`: new `gas-tanks` module with 6 endpoints — list, history, topup-uri, alert-config GET/PATCH, keystore export. mysql2 cross-DB queries via `AdminDatabaseService`.
+- `apps/client`: `/gas-tanks` page, `GasTankCard`, top-up modal (auto-poll 15s), alert-config modal, keystore export modal (two-step), history modal + filtered full-history page, dashboard widget + critical banner, sidebar entry.
+
+**Stubbed for follow-up:**
+- Email channel for `gas_tank.low_balance` — the `emailEnabled` flag is honored end-to-end and the consumer logs an `[email-stub]` line, but no SMTP integration was added. Webhook + dashboard banner are the live channels.
+
+**Pending instrumentation gaps documented as TODOs:**
+- `forwarder-deploy.service.ts` and `gas-tank.service.ts triggerAutoTopup` publish to Redis streams instead of broadcasting transactions directly. Their async handlers (not yet implemented) will need to call `GasTankTxLoggerService.logSubmit` when they sign+broadcast.
+- `sweep.service.ts` passes `gasPriceWei: '0'` to the logger — the actual price is resolved inside `TransactionSubmitterService.signAndSubmit` and not returned. The receipt reconciler backfills `gasCostWei` from the on-chain receipt, so visible UI data is correct.
+
+**Smoke pass:** type-checks clean across all touched services. End-to-end smoke (dev stack startup, manual UI walkthrough, webhook delivery test) deferred — perform after deploy.

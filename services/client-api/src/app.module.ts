@@ -22,6 +22,7 @@ import { ChainModule } from './chain/chain.module';
 import { NotificationRulesModule } from './notification-rules/notification-rules.module';
 import { SecurityModule } from './security/security.module';
 import { KnowledgeBaseModule } from './knowledge-base/knowledge-base.module';
+import { GasTanksModule } from './gas-tanks/gas-tanks.module';
 import { HealthController } from './common/health.controller';
 import { PostHogInterceptor } from './common/interceptors/posthog.interceptor';
 
@@ -53,6 +54,7 @@ import { PostHogInterceptor } from './common/interceptors/posthog.interceptor';
     NotificationRulesModule,
     SecurityModule,
     KnowledgeBaseModule,
+    GasTanksModule,
   ],
   controllers: [HealthController],
   providers: [

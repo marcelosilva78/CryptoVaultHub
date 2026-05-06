@@ -9,6 +9,7 @@ import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 import { KafkaConsumerService, TOPICS, EventBusEvent } from '@cvh/event-bus';
 import { WebhookDeliveryService } from '../webhook/webhook-delivery.service';
+import { GasTankAlertsConsumer } from '../gas-tank-alerts/gas-tank-alerts.consumer';
 
 /**
  * Maps Redis stream names to webhook event types.
@@ -22,6 +23,7 @@ const STREAM_EVENT_MAP: Record<string, string> = {
   'withdrawals:broadcasting': 'withdrawal.broadcasting',
   'withdrawals:confirmed': 'withdrawal.confirmed',
   'withdrawals:failed': 'withdrawal.failed',
+  'gas_tank:alerts': 'gas_tank.low_balance',
 };
 
 const CONSUMER_GROUP = 'notification-service';
@@ -42,6 +44,7 @@ export class EventConsumerService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly config: ConfigService,
     private readonly deliveryService: WebhookDeliveryService,
+    private readonly gasTankAlertsConsumer: GasTankAlertsConsumer,
     @Optional() private readonly kafkaConsumer?: KafkaConsumerService,
   ) {
     this.redis = new Redis({
@@ -246,6 +249,11 @@ export class EventConsumerService implements OnModuleInit, OnModuleDestroy {
 
   /**
    * Process a single stream entry: parse fields and create webhook deliveries.
+   *
+   * For gas_tank.low_balance events the clientId is not present in the stream
+   * payload — it must be resolved from the project record. Delegate to
+   * GasTankAlertsConsumer.handleAlert which handles config lookup, clientId
+   * resolution, and conditional dispatch.
    */
   private async processStreamEntry(
     stream: string,
@@ -257,6 +265,23 @@ export class EventConsumerService implements OnModuleInit, OnModuleDestroy {
     const data: Record<string, string> = {};
     for (let i = 0; i < fields.length; i += 2) {
       data[fields[i]] = fields[i + 1];
+    }
+
+    // Gas-tank alerts carry no clientId in the stream payload; delegate to the
+    // dedicated consumer which resolves clientId from the project record.
+    if (eventType === 'gas_tank.low_balance') {
+      await this.gasTankAlertsConsumer.handleAlert({
+        projectId: data.projectId ?? data.project_id ?? '',
+        chainId: data.chainId ?? data.chain_id ?? '',
+        address: data.address ?? '',
+        balanceWei: data.balanceWei ?? data.balance_wei ?? '',
+        thresholdWei: data.thresholdWei ?? data.threshold_wei ?? '',
+        timestamp: data.timestamp ?? new Date().toISOString(),
+      });
+      this.logger.debug(
+        `Processed stream entry: ${stream}/${entryId} -> ${eventType} (delegated to GasTankAlertsConsumer)`,
+      );
+      return;
     }
 
     const clientId = data.clientId || data.client_id;

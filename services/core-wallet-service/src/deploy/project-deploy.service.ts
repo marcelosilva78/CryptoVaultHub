@@ -8,6 +8,7 @@ import { EvmProviderService } from '../blockchain/evm-provider.service';
 import { NonceService } from '../blockchain/nonce.service';
 import { RedisService } from '../redis/redis.service';
 import { ProjectDeployTraceService } from './deploy-trace.service';
+import { GasTankTxLoggerService } from './gas-tank-tx-logger.service';
 
 interface ContractArtifact {
   contractName: string;
@@ -58,6 +59,7 @@ export class ProjectDeployService {
     private readonly nonceService: NonceService,
     private readonly traceService: ProjectDeployTraceService,
     private readonly redis: RedisService,
+    private readonly gasTankTxLogger: GasTankTxLoggerService,
   ) {
     this.keyVaultUrl = this.config.getOrThrow<string>('KEY_VAULT_URL');
     this.internalServiceKey = this.config.get<string>('INTERNAL_SERVICE_KEY', '');
@@ -191,6 +193,8 @@ export class ProjectDeployService {
         contractType: 'wallet_impl',
         constructorArgs: [],
         gasTankAddress,
+        gasTankId: gasTank.id,
+        gasTankProjectId: gasTank.projectId,
         provider,
         chainExplorerUrl: chain.explorerUrl,
       });
@@ -205,6 +209,8 @@ export class ProjectDeployService {
         contractType: 'forwarder_impl',
         constructorArgs: [],
         gasTankAddress,
+        gasTankId: gasTank.id,
+        gasTankProjectId: gasTank.projectId,
         provider,
         chainExplorerUrl: chain.explorerUrl,
       });
@@ -219,6 +225,8 @@ export class ProjectDeployService {
         contractType: 'wallet_factory',
         constructorArgs: [walletImpl.contractAddress],
         gasTankAddress,
+        gasTankId: gasTank.id,
+        gasTankProjectId: gasTank.projectId,
         provider,
         chainExplorerUrl: chain.explorerUrl,
       });
@@ -233,6 +241,8 @@ export class ProjectDeployService {
         contractType: 'forwarder_factory',
         constructorArgs: [forwarderImpl.contractAddress],
         gasTankAddress,
+        gasTankId: gasTank.id,
+        gasTankProjectId: gasTank.projectId,
         provider,
         chainExplorerUrl: chain.explorerUrl,
       });
@@ -246,6 +256,8 @@ export class ProjectDeployService {
         walletFactoryAddress: walletFactory.contractAddress,
         signers,
         gasTankAddress,
+        gasTankId: gasTank.id,
+        gasTankProjectId: gasTank.projectId,
         provider,
         chainExplorerUrl: chain.explorerUrl,
       });
@@ -573,6 +585,8 @@ export class ProjectDeployService {
         contractType,
         constructorArgs,
         gasTankAddress: gasTank.address,
+        gasTankId: gasTank.id,
+        gasTankProjectId: gasTank.projectId,
         provider,
         chainExplorerUrl: chain.explorerUrl,
       });
@@ -687,6 +701,8 @@ export class ProjectDeployService {
     contractType: string;
     constructorArgs: unknown[];
     gasTankAddress: string;
+    gasTankId: bigint;
+    gasTankProjectId: bigint;
     provider: ethers.JsonRpcProvider;
     chainExplorerUrl?: string | null;
   }): Promise<DeployStepResult> {
@@ -699,6 +715,8 @@ export class ProjectDeployService {
       contractType,
       constructorArgs,
       gasTankAddress,
+      gasTankId,
+      gasTankProjectId,
       provider,
       chainExplorerUrl,
     } = params;
@@ -853,6 +871,16 @@ export class ProjectDeployService {
         this.logger.log(
           `${contractName} deploy tx submitted: ${txHash} (nonce=${nonce}, chain=${chainId})`,
         );
+
+        await this.gasTankTxLogger.logSubmit({
+          walletId: gasTankId,
+          projectId: gasTankProjectId,
+          chainId,
+          txHash,
+          operationType: 'deploy_wallet',
+          gasPriceWei: (txData.maxFeePerGas ?? txData.gasPrice ?? '0').toString(),
+          metadata: { contractName, contractType, projectId, clientId, nonce },
+        });
       } finally {
         await release();
       }
@@ -945,6 +973,8 @@ export class ProjectDeployService {
     walletFactoryAddress: string;
     signers: string[];
     gasTankAddress: string;
+    gasTankId: bigint;
+    gasTankProjectId: bigint;
     provider: ethers.JsonRpcProvider;
     chainExplorerUrl?: string | null;
   }): Promise<DeployStepResult> {
@@ -956,6 +986,8 @@ export class ProjectDeployService {
       walletFactoryAddress,
       signers,
       gasTankAddress,
+      gasTankId,
+      gasTankProjectId,
       provider,
       chainExplorerUrl,
     } = params;
@@ -1108,6 +1140,17 @@ export class ProjectDeployService {
         this.logger.log(
           `Hot wallet deploy tx submitted: ${txHash} (nonce=${nonce}, chain=${chainId})`,
         );
+
+        await this.gasTankTxLogger.logSubmit({
+          walletId: gasTankId,
+          projectId: gasTankProjectId,
+          chainId,
+          txHash,
+          operationType: 'deploy_wallet',
+          toAddress: walletFactoryAddress,
+          gasPriceWei: (txData.maxFeePerGas ?? txData.gasPrice ?? '0').toString(),
+          metadata: { contractType: 'hot_wallet', projectId, clientId, nonce },
+        });
       } finally {
         await release();
       }

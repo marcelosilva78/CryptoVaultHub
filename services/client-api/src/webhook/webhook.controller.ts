@@ -37,7 +37,7 @@ export class WebhookController {
   @ClientAuth('write')
   @ApiOperation({
     summary: 'Create a webhook endpoint',
-    description: `Registers a new webhook endpoint to receive real-time event notifications. When events occur (deposits, withdrawals, forwarder deployments), the system sends signed HTTP POST requests to the configured URL.
+    description: `Registers a new webhook endpoint to receive real-time event notifications. When events occur (deposits, withdrawals, forwarder deployments, gas tank low-balance alerts), the system sends signed HTTP POST requests to the configured URL.
 
 **Webhook Security:**
 Each webhook is assigned a unique secret upon creation. This secret is used to generate an HMAC-SHA256 signature included in the \`X-CVH-Signature\` header of every delivery. Always verify this signature before processing webhook payloads.
@@ -88,10 +88,11 @@ if (expectedSignature !== req.headers['x-cvh-signature']) {
             'deposit.detected',
             'deposit.confirmed',
             'deposit.swept',
+            'forwarder.deployed',
+            'gas_tank.low_balance',
             'withdrawal.submitted',
             'withdrawal.confirmed',
             'withdrawal.failed',
-            'forwarder.deployed',
           ],
           label: 'All events',
           isActive: true,

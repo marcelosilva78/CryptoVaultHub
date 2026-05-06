@@ -80,10 +80,11 @@ When configured, the system sends signed webhook notifications for:
 - \`deposit.detected\` — New deposit detected on-chain
 - \`deposit.confirmed\` — Deposit reached required confirmations
 - \`deposit.swept\` — Deposited funds swept to hot wallet
+- \`forwarder.deployed\` — New forwarder contract deployed
+- \`gas_tank.low_balance\` — Gas tank balance dropped below configured threshold
 - \`withdrawal.submitted\` — Withdrawal transaction broadcasted
 - \`withdrawal.confirmed\` — Withdrawal confirmed on-chain
 - \`withdrawal.failed\` — Withdrawal failed
-- \`forwarder.deployed\` — New forwarder contract deployed
 
 ### Webhook Signature Verification
 All webhooks are signed with HMAC-SHA256. Verify using:
