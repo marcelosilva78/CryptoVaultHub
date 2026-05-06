@@ -2,7 +2,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { gasTanksApi, GasTank } from '@/lib/api';
-import { LayoutShell } from '@/components/layout-shell';
 import { GasTankCard } from '@/components/gas-tanks/gas-tank-card';
 import { TopupModal } from '@/components/gas-tanks/topup-modal';
 import { AlertConfigModal } from '@/components/gas-tanks/alert-config-modal';
@@ -22,34 +21,32 @@ export default function GasTanksPage() {
   const close = () => setActive(null);
 
   return (
-    <LayoutShell>
-      <div className="mx-auto max-w-6xl space-y-6 p-6">
-        <header>
-          <h1 className="text-2xl font-bold">Gas Tanks</h1>
-          <p className="text-sm text-zinc-400">Wallets that fund deploys, sweeps, flushes, and forwarder operations.</p>
-        </header>
+    <div className="mx-auto max-w-6xl space-y-6 p-6">
+      <header>
+        <h1 className="text-2xl font-bold">Gas Tanks</h1>
+        <p className="text-sm text-zinc-400">Wallets that fund deploys, sweeps, flushes, and forwarder operations.</p>
+      </header>
 
-        {isLoading && <p className="text-zinc-500">Loading…</p>}
-        {error && <p className="text-red-400">Failed to load gas tanks.</p>}
+      {isLoading && <p className="text-zinc-500">Loading…</p>}
+      {error && <p className="text-red-400">Failed to load gas tanks.</p>}
 
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-          {data?.gasTanks.map((tank) => (
-            <GasTankCard
-              key={tank.chainId}
-              tank={tank}
-              onTopUp={() => open(tank, 'topup')}
-              onConfigureAlerts={() => open(tank, 'alerts')}
-              onExport={() => open(tank, 'keystore')}
-              onViewHistory={() => open(tank, 'history')}
-            />
-          ))}
-        </div>
-
-        {active?.modal === 'topup' && <TopupModal tank={active.tank} onClose={close} />}
-        {active?.modal === 'alerts' && <AlertConfigModal tank={active.tank} onClose={close} />}
-        {active?.modal === 'keystore' && <ExportKeystoreModal tank={active.tank} onClose={close} />}
-        {active?.modal === 'history' && <GasTankHistoryTable tank={active.tank} onClose={close} />}
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+        {data?.gasTanks.map((tank) => (
+          <GasTankCard
+            key={tank.chainId}
+            tank={tank}
+            onTopUp={() => open(tank, 'topup')}
+            onConfigureAlerts={() => open(tank, 'alerts')}
+            onExport={() => open(tank, 'keystore')}
+            onViewHistory={() => open(tank, 'history')}
+          />
+        ))}
       </div>
-    </LayoutShell>
+
+      {active?.modal === 'topup' && <TopupModal tank={active.tank} onClose={close} />}
+      {active?.modal === 'alerts' && <AlertConfigModal tank={active.tank} onClose={close} />}
+      {active?.modal === 'keystore' && <ExportKeystoreModal tank={active.tank} onClose={close} />}
+      {active?.modal === 'history' && <GasTankHistoryTable tank={active.tank} onClose={close} />}
+    </div>
   );
 }

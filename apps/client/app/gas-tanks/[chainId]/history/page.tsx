@@ -5,7 +5,6 @@ import { useQuery } from '@tanstack/react-query';
 import { ExternalLink } from 'lucide-react';
 import Link from 'next/link';
 import { gasTanksApi, GasTankTx, GasTank } from '@/lib/api';
-import { LayoutShell } from '@/components/layout-shell';
 
 const opLabel: Record<string, string> = {
   deploy_wallet: 'Wallet deploy',
@@ -55,8 +54,7 @@ export default function GasTankHistoryPage() {
     tank?.explorerUrl ? `${tank.explorerUrl.replace(/\/$/, '')}/tx/${txHash}` : '#';
 
   return (
-    <LayoutShell>
-      <div className="mx-auto max-w-5xl space-y-6 p-6">
+    <div className="mx-auto max-w-5xl space-y-6 p-6">
         <header className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold">
@@ -149,7 +147,6 @@ export default function GasTankHistoryPage() {
             </div>
           )}
         </div>
-      </div>
-    </LayoutShell>
+    </div>
   );
 }
