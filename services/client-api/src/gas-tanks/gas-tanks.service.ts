@@ -247,6 +247,11 @@ export class GasTanksService {
     );
     const total = Number(countRows[0]?.total ?? 0);
 
+    // mysql2 prepared-statement protocol rejects placeholders for LIMIT/OFFSET on
+    // some MySQL versions. limit/offset are validated integers — safe to inline.
+    const safeLimit = Math.max(0, Math.min(Math.floor(Number(limit) || 0), 200));
+    const safeOffset = Math.max(0, Math.floor(Number(offset) || 0));
+
     const rows = await this.db.query<GasTankTransactionRow>(
       `SELECT
          id, wallet_id AS walletId, project_id AS projectId, chain_id AS chainId,
@@ -258,8 +263,8 @@ export class GasTanksService {
        FROM cvh_wallets.gas_tank_transactions
        WHERE ${where}
        ORDER BY submitted_at DESC
-       LIMIT ? OFFSET ?`,
-      [...params, limit, offset],
+       LIMIT ${safeLimit} OFFSET ${safeOffset}`,
+      params,
     );
 
     return { total, rows };

@@ -221,8 +221,7 @@ describe('GasTanksService', () => {
     expect(out.rows).toHaveLength(0);
 
     const rowsSqlCall = (db.query as jest.Mock).mock.calls[1];
-    expect(rowsSqlCall[1]).toContain(10); // limit
-    expect(rowsSqlCall[1]).toContain(20); // offset
+    expect(rowsSqlCall[0]).toMatch(/LIMIT 10 OFFSET 20/); // inlined ints
   });
 
   it('history applies optional filters (type, from, to)', async () => {
