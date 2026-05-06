@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import { BalanceChart } from "@/components/balance-chart";
 import { GenerateAddressModal } from "@/components/generate-address-modal";
+import { GasTankSummary } from "@/components/gas-tanks/gas-tank-summary";
 import { clientFetch } from "@/lib/api";
 import { useClientAuth } from "@/lib/auth-context";
 
@@ -503,6 +504,11 @@ export default function DashboardPage() {
           value={totalAddresses.toLocaleString()}
           sub={`Across ${composition.length} chains`}
         />
+      </div>
+
+      {/* Gas Tanks Summary */}
+      <div className="mb-section-gap">
+        <GasTankSummary />
       </div>
 
       {/* Balance Chart */}
