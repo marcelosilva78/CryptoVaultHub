@@ -25,6 +25,8 @@ export interface SweepResult {
   txHashes: string[];
 }
 
+// gas-tank tx logging: this service handles automatic sweeps; flush operations go through a separate path
+// (apps/client/app/flush + flush.module). Operation type is hardcoded to 'sweep' here.
 /**
  * Token sweep service: finds forwarders with token balances > 0,
  * groups by chain and token, executes flushTokens/batchFlush via gas tank.
@@ -353,6 +355,8 @@ export class SweepService extends WorkerHost implements OnModuleInit {
               data: calldata,
             });
 
+            // TODO: gasPriceWei is '0' here — the actual price is resolved inside signAndSubmit.
+            // The receipt reconciler (gas-tank-receipt-reconciler.service) backfills gasCostWei via on-chain receipt.
             await this.gasTankTxLogger.logSubmit({
               walletId: gasTank.id,
               projectId: gasTank.projectId,
@@ -418,6 +422,8 @@ export class SweepService extends WorkerHost implements OnModuleInit {
               data: calldata,
             });
 
+            // TODO: gasPriceWei is '0' here — the actual price is resolved inside signAndSubmit.
+            // The receipt reconciler (gas-tank-receipt-reconciler.service) backfills gasCostWei via on-chain receipt.
             await this.gasTankTxLogger.logSubmit({
               walletId: gasTank.id,
               projectId: gasTank.projectId,
@@ -482,6 +488,8 @@ export class SweepService extends WorkerHost implements OnModuleInit {
               gasLimit,
             });
 
+            // TODO: gasPriceWei is '0' here — the actual price is resolved inside signAndSubmit.
+            // The receipt reconciler (gas-tank-receipt-reconciler.service) backfills gasCostWei via on-chain receipt.
             await this.gasTankTxLogger.logSubmit({
               walletId: gasTank.id,
               projectId: gasTank.projectId,
