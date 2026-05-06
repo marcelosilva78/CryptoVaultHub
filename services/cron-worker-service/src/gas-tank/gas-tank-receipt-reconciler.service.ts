@@ -1,21 +1,29 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EvmProviderService } from '../blockchain/evm-provider.service';
 
 const MAX_AGE_MS = 10 * 60 * 1000; // 10 minutes
 const BATCH_SIZE = 50;
+const TICK_MS = 30_000;
 
 @Injectable()
-export class GasTankReceiptReconcilerService {
+export class GasTankReceiptReconcilerService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(GasTankReceiptReconcilerService.name);
+  private timer: NodeJS.Timeout | null = null;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly evmProvider: EvmProviderService,
   ) {}
 
-  @Cron(CronExpression.EVERY_30_SECONDS)
+  onModuleInit(): void {
+    this.timer = setInterval(() => void this.reconcile(), TICK_MS);
+  }
+
+  onModuleDestroy(): void {
+    if (this.timer) clearInterval(this.timer);
+  }
+
   async reconcile(): Promise<void> {
     try {
       await this.reconcileBatch();
