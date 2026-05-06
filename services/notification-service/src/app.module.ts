@@ -9,6 +9,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { WebhookModule } from './webhook/webhook.module';
 import { EmailModule } from './email/email.module';
 import { EventConsumerModule } from './event-consumer/event-consumer.module';
+import { GasTankAlertsModule } from './gas-tank-alerts/gas-tank-alerts.module';
 import { InternalServiceGuard } from './common/guards/internal-service.guard';
 import { HealthController } from './common/health.controller';
 
@@ -42,6 +43,7 @@ import { HealthController } from './common/health.controller';
     WebhookModule,
     EmailModule,
     EventConsumerModule,
+    GasTankAlertsModule,
   ],
   controllers: [HealthController],
   providers: [
