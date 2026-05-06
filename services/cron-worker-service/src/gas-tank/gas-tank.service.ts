@@ -149,13 +149,11 @@ export class GasTankService extends WorkerHost implements OnModuleInit {
         if (!recentlyAlerted) {
           // Publish alert to Redis Stream
           await this.redis.publishToStream('gas_tank:alerts', {
-            event: 'gas_tank.low',
-            chainId: chainId.toString(),
-            clientId: tank.clientId.toString(),
+            projectId: tank.projectId.toString(),
+            chainId: chainId as unknown as string,
             address: tank.address,
-            balance: balance.toString(),
-            balanceEth,
-            threshold: thresholdEth,
+            balanceWei: balance.toString(),
+            thresholdWei: thresholdWei.toString(),
             timestamp: new Date().toISOString(),
           });
 

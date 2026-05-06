@@ -127,9 +127,12 @@ describe('GasTankService.checkGasTanks', () => {
     expect(redis.publishToStream).toHaveBeenCalledWith(
       'gas_tank:alerts',
       expect.objectContaining({
-        event: 'gas_tank.low',
-        chainId: CHAIN_ID.toString(),
+        projectId: expect.any(String),
+        chainId: CHAIN_ID,
         address: TANK_ADDRESS,
+        balanceWei: expect.any(String),
+        thresholdWei: expect.any(String),
+        timestamp: expect.any(String),
       }),
     );
     expect(prisma.gasTankAlertConfig.update).toHaveBeenCalledWith({
