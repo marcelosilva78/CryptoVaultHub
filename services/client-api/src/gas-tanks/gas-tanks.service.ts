@@ -265,6 +265,63 @@ export class GasTanksService {
   }
 
   // --------------------------------------------------------------------------
+  // getAlertConfig
+  // --------------------------------------------------------------------------
+
+  async getAlertConfig(
+    projectId: number,
+    chainId: number,
+  ): Promise<{ thresholdWei: string; emailEnabled: boolean; webhookEnabled: boolean }> {
+    const rows = await this.db.query<{
+      threshold_wei: string;
+      email_enabled: number;
+      webhook_enabled: number;
+    }>(
+      `SELECT threshold_wei, email_enabled, webhook_enabled
+       FROM cvh_wallets.gas_tank_alert_config
+       WHERE project_id = ? AND chain_id = ? LIMIT 1`,
+      [projectId, chainId],
+    );
+    if (rows.length === 0) {
+      return { thresholdWei: '0', emailEnabled: false, webhookEnabled: true };
+    }
+    return {
+      thresholdWei: rows[0].threshold_wei,
+      emailEnabled: !!rows[0].email_enabled,
+      webhookEnabled: !!rows[0].webhook_enabled,
+    };
+  }
+
+  // --------------------------------------------------------------------------
+  // updateAlertConfig
+  // --------------------------------------------------------------------------
+
+  async updateAlertConfig(
+    projectId: number,
+    chainId: number,
+    patch: { thresholdWei?: string; emailEnabled?: boolean; webhookEnabled?: boolean },
+  ): Promise<{ thresholdWei: string; emailEnabled: boolean; webhookEnabled: boolean }> {
+    const current = await this.getAlertConfig(projectId, chainId);
+    const merged = {
+      thresholdWei: patch.thresholdWei ?? current.thresholdWei ?? '0',
+      emailEnabled: patch.emailEnabled ?? current.emailEnabled ?? false,
+      webhookEnabled: patch.webhookEnabled ?? current.webhookEnabled ?? true,
+    };
+
+    await this.db.query(
+      `INSERT INTO cvh_wallets.gas_tank_alert_config
+         (project_id, chain_id, threshold_wei, email_enabled, webhook_enabled)
+       VALUES (?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         threshold_wei = VALUES(threshold_wei),
+         email_enabled = VALUES(email_enabled),
+         webhook_enabled = VALUES(webhook_enabled)`,
+      [projectId, chainId, merged.thresholdWei, merged.emailEnabled, merged.webhookEnabled],
+    );
+    return this.getAlertConfig(projectId, chainId);
+  }
+
+  // --------------------------------------------------------------------------
   // getTopupUri
   // --------------------------------------------------------------------------
 

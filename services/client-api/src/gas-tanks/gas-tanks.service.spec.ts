@@ -266,4 +266,53 @@ describe('GasTanksService', () => {
 
     await expect(svc.getTopupUri(9, 999)).rejects.toThrow('No gas tank wallet found');
   });
+
+  // --------------------------------------------------------------------------
+  // getAlertConfig
+  // --------------------------------------------------------------------------
+
+  it('getAlertConfig returns existing row', async () => {
+    (db.query as jest.Mock).mockResolvedValueOnce([
+      { threshold_wei: '500', email_enabled: 0, webhook_enabled: 1 },
+    ]);
+
+    const out = await svc.getAlertConfig(9, 137);
+
+    expect(out).toEqual({ thresholdWei: '500', emailEnabled: false, webhookEnabled: true });
+  });
+
+  it('getAlertConfig returns defaults when row missing', async () => {
+    (db.query as jest.Mock).mockResolvedValueOnce([]);
+
+    const out = await svc.getAlertConfig(9, 137);
+
+    expect(out.webhookEnabled).toBe(true);
+    expect(out.emailEnabled).toBe(false);
+    expect(out.thresholdWei).toBe('0');
+  });
+
+  // --------------------------------------------------------------------------
+  // updateAlertConfig
+  // --------------------------------------------------------------------------
+
+  it('updateAlertConfig upserts the row', async () => {
+    // First call: getAlertConfig (reads current values inside updateAlertConfig)
+    (db.query as jest.Mock).mockResolvedValueOnce([
+      { threshold_wei: '0', email_enabled: 0, webhook_enabled: 1 },
+    ]);
+    // Second call: the upsert INSERT ... ON DUPLICATE KEY UPDATE
+    (db.query as jest.Mock).mockResolvedValueOnce([]);
+    // Third call: getAlertConfig at the end to return the persisted values
+    (db.query as jest.Mock).mockResolvedValueOnce([
+      { threshold_wei: '999', email_enabled: 0, webhook_enabled: 0 },
+    ]);
+
+    await svc.updateAlertConfig(9, 137, { thresholdWei: '999', webhookEnabled: false });
+
+    const upsertCall = (db.query as jest.Mock).mock.calls[1];
+    expect(upsertCall[0]).toMatch(/INSERT INTO[\s\S]+ON DUPLICATE KEY UPDATE/i);
+    expect(upsertCall[1]).toEqual(
+      expect.arrayContaining([9, 137, '999', expect.anything(), false]),
+    );
+  });
 });

@@ -1,8 +1,10 @@
 import {
   Controller,
   Get,
+  Patch,
   Param,
   Query,
+  Body,
   ParseIntPipe,
 } from '@nestjs/common';
 import {
@@ -15,6 +17,7 @@ import {
 } from '@nestjs/swagger';
 import { ClientAuthWithProject, ProjectId } from '../common/decorators';
 import { GasTanksService } from './gas-tanks.service';
+import { UpdateAlertConfigDto } from './dto/update-alert-config.dto';
 
 @ApiTags('Gas Tanks')
 @ApiSecurity('ApiKey')
@@ -198,5 +201,85 @@ Example: \`ethereum:0xGasTankAddr@137\`
     @Param('chainId', ParseIntPipe) chainId: number,
   ) {
     return { success: true, ...(await this.service.getTopupUri(projectId, chainId)) };
+  }
+
+  @Get(':chainId/alert-config')
+  @ClientAuthWithProject('read')
+  @ApiOperation({
+    summary: 'Get the gas-tank low-balance alert configuration for a chain',
+    description: `Returns the current threshold (in wei) and the channel toggles (email, webhook) for low-balance alerts for the gas tank on the given chain.`,
+  })
+  @ApiParam({
+    name: 'chainId',
+    type: Number,
+    description: 'Chain ID of the blockchain network to retrieve the alert configuration for.',
+    example: 137,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Alert configuration retrieved successfully.',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        config: {
+          type: 'object',
+          properties: {
+            thresholdWei: { type: 'string', example: '1000000000000000000' },
+            emailEnabled: { type: 'boolean', example: false },
+            webhookEnabled: { type: 'boolean', example: true },
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 401, description: 'Missing or invalid API key.' })
+  @ApiResponse({ status: 403, description: 'API key does not have the `read` scope.' })
+  async getAlertConfig(
+    @ProjectId() projectId: number,
+    @Param('chainId', ParseIntPipe) chainId: number,
+  ) {
+    return { success: true, config: await this.service.getAlertConfig(projectId, chainId) };
+  }
+
+  @Patch(':chainId/alert-config')
+  @ClientAuthWithProject('write')
+  @ApiOperation({
+    summary: 'Update the gas-tank low-balance alert configuration',
+    description: `Upserts the threshold (in wei) and/or the channel toggles. Any field omitted from the body is left unchanged.`,
+  })
+  @ApiParam({
+    name: 'chainId',
+    type: Number,
+    description: 'Chain ID of the blockchain network to update the alert configuration for.',
+    example: 137,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Alert configuration updated successfully.',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        config: {
+          type: 'object',
+          properties: {
+            thresholdWei: { type: 'string', example: '999' },
+            emailEnabled: { type: 'boolean', example: false },
+            webhookEnabled: { type: 'boolean', example: false },
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'Validation error in request body.' })
+  @ApiResponse({ status: 401, description: 'Missing or invalid API key.' })
+  @ApiResponse({ status: 403, description: 'API key does not have the `write` scope.' })
+  async updateAlertConfig(
+    @ProjectId() projectId: number,
+    @Param('chainId', ParseIntPipe) chainId: number,
+    @Body() body: UpdateAlertConfigDto,
+  ) {
+    return { success: true, config: await this.service.updateAlertConfig(projectId, chainId, body) };
   }
 }
