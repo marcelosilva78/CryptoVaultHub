@@ -5,6 +5,7 @@ import { TransactionSubmitterService } from './transaction-submitter.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { EvmProviderService } from '../blockchain/evm-provider.service';
+import { GasTankTxLoggerService } from '../gas-tank/gas-tank-tx-logger.service';
 
 describe('SweepService', () => {
   let service: SweepService;
@@ -126,6 +127,10 @@ describe('SweepService', () => {
         {
           provide: TransactionSubmitterService,
           useValue: mockTxSubmitter,
+        },
+        {
+          provide: GasTankTxLoggerService,
+          useValue: { logSubmit: jest.fn() },
         },
         { provide: getQueueToken('sweep'), useValue: mockQueue },
       ],

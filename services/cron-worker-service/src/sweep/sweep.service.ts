@@ -6,6 +6,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { EvmProviderService } from '../blockchain/evm-provider.service';
 import { TransactionSubmitterService } from './transaction-submitter.service';
+import { GasTankTxLoggerService } from '../gas-tank/gas-tank-tx-logger.service';
 
 const ERC20_ABI = [
   'function balanceOf(address account) external view returns (uint256)',
@@ -39,6 +40,7 @@ export class SweepService extends WorkerHost implements OnModuleInit {
     private readonly redis: RedisService,
     private readonly evmProvider: EvmProviderService,
     private readonly txSubmitter: TransactionSubmitterService,
+    private readonly gasTankTxLogger: GasTankTxLoggerService,
   ) {
     super();
   }
@@ -351,6 +353,17 @@ export class SweepService extends WorkerHost implements OnModuleInit {
               data: calldata,
             });
 
+            await this.gasTankTxLogger.logSubmit({
+              walletId: gasTank.id,
+              projectId: gasTank.projectId,
+              chainId,
+              txHash: sweepTxHash,
+              operationType: 'sweep',
+              toAddress: forwarderAddress,
+              gasPriceWei: '0',
+              metadata: { clientId, forwarderAddress, tokenSymbol: entry.token.symbol, depositCount: entry.depositCount },
+            });
+
             await this.prisma.deposit.updateMany({
               where: { id: { in: entry.depositIds } },
               data: {
@@ -405,6 +418,17 @@ export class SweepService extends WorkerHost implements OnModuleInit {
               data: calldata,
             });
 
+            await this.gasTankTxLogger.logSubmit({
+              walletId: gasTank.id,
+              projectId: gasTank.projectId,
+              chainId,
+              txHash: sweepTxHash,
+              operationType: 'sweep',
+              toAddress: forwarderAddress,
+              gasPriceWei: '0',
+              metadata: { clientId, forwarderAddress, tokenSymbol: entry.token.symbol, tokenAddress: entry.token.contractAddress, depositCount: entry.depositCount },
+            });
+
             await this.prisma.deposit.updateMany({
               where: { id: { in: entry.depositIds } },
               data: {
@@ -456,6 +480,17 @@ export class SweepService extends WorkerHost implements OnModuleInit {
               to: forwarderAddress,
               data: calldata,
               gasLimit,
+            });
+
+            await this.gasTankTxLogger.logSubmit({
+              walletId: gasTank.id,
+              projectId: gasTank.projectId,
+              chainId,
+              txHash: sweepTxHash,
+              operationType: 'sweep',
+              toAddress: forwarderAddress,
+              gasPriceWei: '0',
+              metadata: { clientId, forwarderAddress, tokenAddresses, tokenCount: erc20Tokens.length },
             });
 
             // All ERC-20 deposits on this forwarder share the same sweep tx
