@@ -13,5 +13,6 @@ import { WebhookModule } from '../webhook/webhook.module';
 @Module({
   imports: [WebhookModule],
   providers: [GasTankAlertsConsumer],
+  exports: [GasTankAlertsConsumer],
 })
 export class GasTankAlertsModule {}

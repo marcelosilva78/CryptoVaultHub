@@ -1,6 +1,7 @@
 import { ConfigService } from '@nestjs/config';
 import { EventConsumerService } from './event-consumer.service';
 import { WebhookDeliveryService } from '../webhook/webhook-delivery.service';
+import { GasTankAlertsConsumer } from '../gas-tank-alerts/gas-tank-alerts.consumer';
 
 // Mock ioredis before imports
 jest.mock('ioredis', () => {
@@ -16,6 +17,7 @@ jest.mock('ioredis', () => {
 describe('EventConsumerService', () => {
   let mockConfig: Partial<ConfigService>;
   let mockDeliveryService: Partial<WebhookDeliveryService>;
+  let mockGasTankAlertsConsumer: Partial<GasTankAlertsConsumer>;
   let mockKafkaConsumer: any;
 
   beforeEach(() => {
@@ -36,6 +38,10 @@ describe('EventConsumerService', () => {
       createDeliveries: jest.fn().mockResolvedValue(undefined),
     };
 
+    mockGasTankAlertsConsumer = {
+      handleAlert: jest.fn().mockResolvedValue(undefined),
+    };
+
     mockKafkaConsumer = {
       subscribe: jest.fn().mockResolvedValue(undefined),
     };
@@ -45,6 +51,7 @@ describe('EventConsumerService', () => {
     return new EventConsumerService(
       mockConfig as ConfigService,
       mockDeliveryService as WebhookDeliveryService,
+      mockGasTankAlertsConsumer as GasTankAlertsConsumer,
       withKafka ? mockKafkaConsumer : undefined,
     );
   }
@@ -139,6 +146,34 @@ describe('EventConsumerService', () => {
       expect(warnSpy).toHaveBeenCalledWith(
         expect.stringContaining('missing clientId'),
       );
+    });
+
+    it('should delegate gas_tank.low_balance to GasTankAlertsConsumer', async () => {
+      const service = createService(false);
+
+      await (service as any).processStreamEntry(
+        'gas_tank:alerts',
+        '9999-0',
+        [
+          'projectId', '7',
+          'chainId', '137',
+          'address', '0xabc',
+          'balanceWei', '100',
+          'thresholdWei', '1000',
+          'timestamp', '2026-05-06T00:00:00Z',
+        ],
+        'gas_tank.low_balance',
+      );
+
+      expect(mockGasTankAlertsConsumer.handleAlert).toHaveBeenCalledWith({
+        projectId: '7',
+        chainId: '137',
+        address: '0xabc',
+        balanceWei: '100',
+        thresholdWei: '1000',
+        timestamp: '2026-05-06T00:00:00Z',
+      });
+      expect(mockDeliveryService.createDeliveries).not.toHaveBeenCalled();
     });
   });
 });

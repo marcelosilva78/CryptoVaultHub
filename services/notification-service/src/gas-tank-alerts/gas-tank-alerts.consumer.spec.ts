@@ -5,7 +5,10 @@ import { PrismaService } from '../prisma/prisma.service';
 
 describe('GasTankAlertsConsumer', () => {
   const deliveryService = { createDeliveries: jest.fn() };
-  const prisma = { gasTankAlertConfig: { findUnique: jest.fn() } };
+  const prisma = {
+    gasTankAlertConfig: { findUnique: jest.fn() },
+    project: { findUnique: jest.fn() },
+  };
   let consumer: GasTankAlertsConsumer;
 
   beforeEach(async () => {
@@ -35,12 +38,13 @@ describe('GasTankAlertsConsumer', () => {
       webhookEnabled: true,
       emailEnabled: false,
     });
+    prisma.project.findUnique.mockResolvedValue({ clientId: 42n });
     deliveryService.createDeliveries.mockResolvedValue([]);
 
     await consumer.handleAlert(event);
 
     expect(deliveryService.createDeliveries).toHaveBeenCalledWith(
-      BigInt(7),
+      42n,
       'gas_tank.low_balance',
       {
         projectId: 7,
@@ -52,6 +56,18 @@ describe('GasTankAlertsConsumer', () => {
       },
       BigInt(7),
     );
+  });
+
+  it('skips when project lookup fails', async () => {
+    prisma.gasTankAlertConfig.findUnique.mockResolvedValue({
+      webhookEnabled: true,
+      emailEnabled: false,
+    });
+    prisma.project.findUnique.mockResolvedValue(null);
+
+    await consumer.handleAlert(event);
+
+    expect(deliveryService.createDeliveries).not.toHaveBeenCalled();
   });
 
   it('skips webhook when webhookEnabled=false', async () => {
@@ -94,6 +110,7 @@ describe('GasTankAlertsConsumer', () => {
       webhookEnabled: true,
       emailEnabled: true,
     });
+    prisma.project.findUnique.mockResolvedValue({ clientId: 42n });
     deliveryService.createDeliveries.mockResolvedValue([]);
 
     const logSpy = jest.spyOn((consumer as any).logger, 'log');

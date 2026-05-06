@@ -65,6 +65,18 @@ export class GasTankAlertsConsumer implements OnModuleInit {
     }
 
     if (cfg.webhookEnabled) {
+      const project = await this.prisma.project.findUnique({
+        where: { id: BigInt(projectId) },
+        select: { clientId: true },
+      });
+
+      if (!project) {
+        this.logger.warn(
+          `gas_tank.low_balance: project ${projectId} not found, skipping dispatch`,
+        );
+        return;
+      }
+
       const payload = {
         projectId,
         chainId,
@@ -75,7 +87,7 @@ export class GasTankAlertsConsumer implements OnModuleInit {
       };
 
       await this.deliveryService.createDeliveries(
-        BigInt(projectId),
+        project.clientId,
         EVENT_TYPE,
         payload,
         BigInt(projectId),

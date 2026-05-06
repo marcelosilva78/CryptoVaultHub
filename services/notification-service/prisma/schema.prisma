@@ -192,6 +192,17 @@ model GasTankTransaction {
   @@map("gas_tank_transactions")
 }
 
+// ---------------------------------------------------------------------------
+// Project lookup — minimal mirror of cvh_admin.projects (id + clientId only)
+// ---------------------------------------------------------------------------
+
+model Project {
+  id       BigInt @id @default(autoincrement())
+  clientId BigInt @map("client_id")
+
+  @@map("projects")
+}
+
 // Gas Tank Alert Configuration (cvh_wallets)
 model GasTankAlertConfig {
   id              BigInt    @id @default(autoincrement())
