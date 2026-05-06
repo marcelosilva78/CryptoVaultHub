@@ -166,3 +166,44 @@ model WebhookDeadLetter {
   @@index([eventType, deadLetteredAt], name: "idx_event_time")
   @@map("webhook_dead_letters")
 }
+
+// Gas Tank Transaction History (cvh_wallets)
+model GasTankTransaction {
+  id            BigInt    @id @default(autoincrement())
+  walletId      BigInt    @map("wallet_id")
+  projectId     BigInt    @map("project_id")
+  chainId       Int       @map("chain_id")
+  txHash        String    @db.VarChar(66) @map("tx_hash")
+  operationType String    @db.VarChar(32) @map("operation_type")
+  toAddress     String?   @db.VarChar(42) @map("to_address")
+  gasUsed       BigInt?   @map("gas_used")
+  gasPriceWei   String    @db.VarChar(80) @map("gas_price_wei")
+  gasCostWei    String?   @db.VarChar(80) @map("gas_cost_wei")
+  status        String    @default("submitted") @db.VarChar(16)
+  blockNumber   BigInt?   @map("block_number")
+  metadata      Json?
+  submittedAt   DateTime  @default(now()) @map("submitted_at")
+  confirmedAt   DateTime? @map("confirmed_at")
+
+  @@index([projectId, chainId, submittedAt(sort: Desc)], name: "idx_proj_chain_time")
+  @@index([walletId, submittedAt(sort: Desc)], name: "idx_wallet_time")
+  @@index([txHash], name: "idx_tx_hash")
+  @@index([status, submittedAt], name: "idx_status_submitted")
+  @@map("gas_tank_transactions")
+}
+
+// Gas Tank Alert Configuration (cvh_wallets)
+model GasTankAlertConfig {
+  id              BigInt    @id @default(autoincrement())
+  projectId       BigInt    @map("project_id")
+  chainId         Int       @map("chain_id")
+  thresholdWei    String    @db.VarChar(80) @map("threshold_wei")
+  emailEnabled    Boolean   @default(false) @map("email_enabled")
+  webhookEnabled  Boolean   @default(true)  @map("webhook_enabled")
+  lastAlertAt     DateTime? @map("last_alert_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@unique([projectId, chainId])
+  @@map("gas_tank_alert_config")
+}
