@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import axios from 'axios';
 import { AdminDatabaseService } from '../prisma/admin-database.service';
+import { deriveGasTankKeystore } from './keystore.helper';
 
 export interface BalanceProvider {
   getNativeBalance(chainId: number, address: string): Promise<string>;
@@ -319,6 +320,33 @@ export class GasTanksService {
       [projectId, chainId, merged.thresholdWei, merged.emailEnabled, merged.webhookEnabled],
     );
     return this.getAlertConfig(projectId, chainId);
+  }
+
+  // --------------------------------------------------------------------------
+  // getTopupUri
+  // --------------------------------------------------------------------------
+
+  // --------------------------------------------------------------------------
+  // exportKeystore
+  // --------------------------------------------------------------------------
+
+  async exportKeystore(
+    projectId: number,
+    chainId: number,
+    mnemonic: string,
+    password: string,
+    clientId?: number,
+  ): Promise<{ keystore: object }> {
+    const json = await deriveGasTankKeystore(mnemonic, chainId, password);
+    // Audit log — mnemonic and password are NEVER included in the payload
+    this.logger.log({
+      event: 'gas_tank.keystore_exported',
+      projectId,
+      chainId,
+      clientId,
+      timestamp: new Date().toISOString(),
+    });
+    return { keystore: JSON.parse(json) };
   }
 
   // --------------------------------------------------------------------------

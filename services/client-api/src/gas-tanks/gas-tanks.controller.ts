@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Patch,
+  Post,
   Param,
   Query,
   Body,
@@ -15,9 +16,10 @@ import {
   ApiParam,
   ApiQuery,
 } from '@nestjs/swagger';
-import { ClientAuthWithProject, ProjectId } from '../common/decorators';
+import { ClientAuthWithProject, ProjectId, CurrentClientId } from '../common/decorators';
 import { GasTanksService } from './gas-tanks.service';
 import { UpdateAlertConfigDto } from './dto/update-alert-config.dto';
+import { ExportKeystoreDto } from './dto/export-keystore.dto';
 
 @ApiTags('Gas Tanks')
 @ApiSecurity('ApiKey')
@@ -240,6 +242,78 @@ Example: \`ethereum:0xGasTankAddr@137\`
     @Param('chainId', ParseIntPipe) chainId: number,
   ) {
     return { success: true, config: await this.service.getAlertConfig(projectId, chainId) };
+  }
+
+  @Post(':chainId/export-keystore')
+  @ClientAuthWithProject('write')
+  @ApiOperation({
+    summary: 'Encrypt the gas-tank private key as a Web3 Secret Storage v3 JSON',
+    description: `Derives the gas-tank private key from the provided project mnemonic in-memory only, encrypts it with the provided password using PBKDF2 + AES-128-CTR, and returns the resulting Web3 Secret Storage v3 keystore JSON.
+
+**Security guarantees:**
+- The mnemonic is never persisted, never logged, and is discarded after the request completes.
+- The password is never persisted or logged.
+- The private key exists in memory only for the duration of the encryption call.
+- The endpoint is audit-logged (projectId, chainId, clientId, timestamp — no secret material).
+- Requires \`write\` scope.
+
+**Derivation path:** \`m/44'/60'/1000'/<chainId>/0\``,
+  })
+  @ApiParam({
+    name: 'chainId',
+    type: Number,
+    description: 'Chain ID of the blockchain network whose gas-tank key to export.',
+    example: 137,
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Keystore JSON generated and returned successfully.',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        keystore: {
+          type: 'object',
+          description: 'Web3 Secret Storage v3 keystore JSON object.',
+          properties: {
+            address: { type: 'string', example: '742d35cc6634c0532925a3b844bc9e7595f2bd68' },
+            id: { type: 'string', example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890' },
+            version: { type: 'integer', example: 3 },
+            Crypto: {
+              type: 'object',
+              properties: {
+                cipher: { type: 'string', example: 'aes-128-ctr' },
+                cipherparams: { type: 'object' },
+                ciphertext: { type: 'string' },
+                kdf: { type: 'string', example: 'scrypt' },
+                kdfparams: { type: 'object' },
+                mac: { type: 'string' },
+              },
+            },
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'Validation error — mnemonic too short or password too short.' })
+  @ApiResponse({ status: 401, description: 'Missing or invalid API key.' })
+  @ApiResponse({ status: 403, description: 'API key does not have the `write` scope.' })
+  async exportKeystore(
+    @ProjectId() projectId: number,
+    @CurrentClientId() clientId: number,
+    @Param('chainId', ParseIntPipe) chainId: number,
+    @Body() body: ExportKeystoreDto,
+  ) {
+    return {
+      success: true,
+      ...(await this.service.exportKeystore(
+        projectId,
+        chainId,
+        body.mnemonic,
+        body.password,
+        clientId,
+      )),
+    };
   }
 
   @Patch(':chainId/alert-config')
