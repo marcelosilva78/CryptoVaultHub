@@ -210,6 +210,17 @@ export class WalletService implements OnModuleInit {
       },
     });
 
+    // Seed default alert config for the new gas tank (idempotent via INSERT IGNORE)
+    const DEFAULT_THRESHOLD_WEI = '1000000000000000'; // 0.001 ETH in wei
+    await this.prisma.$executeRaw`
+      INSERT IGNORE INTO cvh_wallets.gas_tank_alert_config
+        (project_id, chain_id, threshold_wei, email_enabled, webhook_enabled)
+      VALUES (${defaultProjectId}, ${chainId}, ${DEFAULT_THRESHOLD_WEI}, 0, 1)
+    `;
+    this.logger.log(
+      `Gas tank alert config seeded for project ${defaultProjectId}, chain ${chainId}`,
+    );
+
     // Publish to address:registered stream for chain-indexer monitoring
     try {
       await this.publishAddressRegistered(chainId, hotWalletAddress, clientId, defaultProjectId, 'hot');
@@ -301,6 +312,20 @@ export class WalletService implements OnModuleInit {
         walletType,
       },
     });
+
+    // Seed default alert config when registering a gas tank wallet (idempotent via INSERT IGNORE)
+    if (walletType === 'gas_tank') {
+      const DEFAULT_THRESHOLD_WEI = '1000000000000000'; // 0.001 ETH in wei
+      const projectIdBig = BigInt(projectId);
+      await this.prisma.$executeRaw`
+        INSERT IGNORE INTO cvh_wallets.gas_tank_alert_config
+          (project_id, chain_id, threshold_wei, email_enabled, webhook_enabled)
+        VALUES (${projectIdBig}, ${chainId}, ${DEFAULT_THRESHOLD_WEI}, 0, 1)
+      `;
+      this.logger.log(
+        `Gas tank alert config seeded for project ${projectId}, chain ${chainId}`,
+      );
+    }
 
     // Publish to address:registered stream for chain-indexer monitoring
     try {
