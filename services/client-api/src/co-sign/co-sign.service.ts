@@ -37,7 +37,9 @@ export class CoSignService {
         params,
         timeout: 10000,
       });
-      return data;
+      // core-wallet returns { operations: [...] } — unwrap so the controller
+      // can return { success, operations } without double-nesting.
+      return data?.operations ?? [];
     } catch (error: any) {
       this.logger.error(
         `Failed to list pending co-sign operations: ${error.message}`,
