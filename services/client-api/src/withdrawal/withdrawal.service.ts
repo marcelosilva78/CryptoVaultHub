@@ -84,7 +84,7 @@ export class WithdrawalService {
   async getWithdrawal(clientId: number, withdrawalId: string) {
     try {
       const { data } = await axios.get(
-        `${this.coreWalletUrl}/withdrawals/${withdrawalId}`,
+        `${this.coreWalletUrl}/withdrawals/detail/${withdrawalId}`,
         {
           headers: this.headers,
           params: { clientId },
