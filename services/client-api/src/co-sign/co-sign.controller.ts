@@ -24,9 +24,8 @@ import { CoSignService } from './co-sign.service';
 export class CoSignController {
   constructor(private readonly coSignService: CoSignService) {}
 
-  @Post('pending')
+  @Get('pending')
   @ClientAuthWithProject('read')
-  @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'List pending co-sign operations',
     description: `Returns all operations awaiting the client's co-signature. This endpoint is only relevant for clients configured with **co-sign custody mode**, where both the platform and the client must sign transactions before broadcast.
@@ -36,7 +35,7 @@ In co-sign mode, CryptoVaultHub manages one key share and the client manages the
 1. Client creates a withdrawal request via \`POST /withdrawals\`
 2. The platform performs KYT screening and signs with its key share
 3. The withdrawal enters \`pending_cosign\` status
-4. The client retrieves pending operations via this endpoint
+4. The client retrieves pending operations via \`GET /co-sign/pending\`
 5. The client signs the transaction hash with their key share
 6. The client submits their signature via \`POST /co-sign/:operationId/sign\`
 7. The platform combines both signatures and broadcasts the transaction
@@ -104,7 +103,7 @@ In co-sign mode, CryptoVaultHub manages one key share and the client manages the
     description: `Submits the client's co-signature for a pending operation. After successful submission, the platform combines both signatures and proceeds to broadcast the transaction.
 
 **Signing process:**
-1. Retrieve the \`txHash\` from the pending operation via \`POST /co-sign/pending\`
+1. Retrieve the \`txHash\` from the pending operation via \`GET /co-sign/pending\`
 2. Sign the transaction hash using your private key share (ECDSA secp256k1)
 3. Submit the signature as a hex-encoded string via this endpoint
 4. Optionally include the \`publicKey\` for verification (recommended)
