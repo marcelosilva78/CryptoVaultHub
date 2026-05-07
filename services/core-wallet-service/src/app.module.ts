@@ -17,6 +17,7 @@ import { FlushModule } from './flush/flush.module';
 import { DeployTraceModule } from './deploy-trace/deploy-trace.module';
 import { DeployModule } from './deploy/deploy.module';
 import { AddressGroupModule } from './address-group/address-group.module';
+import { AddressBookModule } from './address-book/address-book.module';
 import { CoSignModule } from './co-sign/co-sign.module';
 import { InternalServiceGuard } from './common/guards/internal-service.guard';
 import { HealthController } from './common/health.controller';
@@ -44,6 +45,7 @@ import { HealthController } from './common/health.controller';
     DeployTraceModule,
     DeployModule,
     AddressGroupModule,
+    AddressBookModule,
     CoSignModule,
   ],
   controllers: [HealthController],
