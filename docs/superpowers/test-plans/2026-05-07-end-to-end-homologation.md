@@ -1,707 +1,541 @@
-# End-to-End Homologation Plan — CryptoVaultHub Client Portal
+# Homologação End-to-End — Projeto BrPay (existente)
 
-**Date:** 2026-05-07
-**Target environment:** `https://portal.vaulthub.live` (production) + `https://api.vaulthub.live` (auth)
-**Test account:** `wallet@grupogreen.org` (clientId=8, project BrPay id=6998)
-**Active chain for tests:** BNB Smart Chain (chainId 56)
-
----
-
-## Status Geral do Projeto
-
-### O que está pronto e funcional
-
-| Camada | Componente | Status |
-|---|---|---|
-| **Database** | 43 migrations aplicadas (incluindo gas_tank tables) | ✅ |
-| **Smart contracts (BSC chain 56)** | hot_wallet, forwarder_factory, wallet_factory, forwarder_impl, wallet_impl deployados | ✅ |
-| **Backend services (6)** | client-api, core-wallet, auth, key-vault, cron-worker, notification — todos healthy | ✅ |
-| **Frontend** | Next.js client em produção, 5 commits recentes pós-audit | ✅ |
-| **Gas Tank (BrPay)** | 0.0095 BNB no wallet `0x54f55b...C37A1` (gas tank), suficiente para ~9k operações de transfer simples | ✅ |
-| **Auditoria de contratos API** | 24+ bugs corrigidos (ver `docs/superpowers/audits/2026-05-06-client-portal-audit-summary.md`) | ✅ |
-| **Endpoints críticos** | Todos respondendo 200 (projects, gas-tanks, addresses, co-sign/pending, withdrawals, exports, security) | ✅ |
-| **Project selector dropdown** | Funcionando (3 mecanismos de mitigação para race de cookie) | ✅ |
-| **Gas Tank UX** | Page, history, alerts, keystore export, dashboard widget, sidebar entry | ✅ |
-
-### Pendências conhecidas (não bloqueiam homologação)
-
-| Item | Severidade | Mitigação atual |
-|---|---|---|
-| Email channel para `gas_tank.low_balance` | Low | Webhook + banner cobrem; email só loga `[email-stub]` |
-| Histórico de gas tank pré-2026-05-06 | Low | UI banner explica; backfill de `deploy_traces`/`flush_operations` é follow-up |
-| CORS no `api.vaulthub.live/auth/validate` | Low | Não impede uso (catch silencioso, redirect via middleware funciona) — issue de infra |
-
-### O que ainda precisa ser validado em produção (este plano)
-
-A maioria das fixes foi confirmada via curl probes + Playwright UI. Mas o fluxo end-to-end de **custódia full** (gerar endereço → receber BNB → indexer detectar → webhook disparar → sweep automático → withdrawal) **ainda não foi exercido pós-fixes** porque:
-
-- Não há endereços de depósito provisionados ainda (wallet count = 1, só o gas tank)
-- Não há webhook registrado pra capturar os eventos
-- Não há depósitos/sacks históricos pra comparar
-
-**Veredicto:** **PRONTO PARA HOMOLOGAÇÃO** — todas as superfícies estáticas estão verificadas; falta exercer o golden path em runtime. Este plano cobre exatamente isso.
+**Data:** 2026-05-07
+**Ambiente:** `https://portal.vaulthub.live` + `https://api.vaulthub.live`
+**Conta:** `wallet@grupogreen.org` (clientId=8)
+**Projeto sob teste:** **BrPay** (id 6998), modo `full_custody`, BSC mainnet (chainId 56)
 
 ---
 
-## Pré-requisitos para homologar
+## Estado do projeto BrPay (ponto de partida)
 
-### Ambiente
-- Conta cliente: `wallet@grupogreen.org` (já existe)
-- Projeto: BrPay (id=6998) com smart contracts já deployados em BSC mainnet (chain 56)
-- BNB para testes: ~0.05-0.1 BNB em uma carteira externa controlada por você (Trust Wallet / Metamask), suficiente para fazer 5-10 depósitos pequenos + cobrir gas dos saques de volta
-- Acesso SSH ao servidor (já configurado via `green@vaulthub.live`)
+✅ Smart contracts deployados em BSC mainnet (chain 56):
 
-### Ferramentas necessárias
-- Browser (Firefox ou Chrome) com console aberto
-- `curl` no terminal local
-- Acesso ao MySQL via `docker exec cryptovaulthub-mysql-1` (já temos)
-- **Endpoint de teste de webhook:** recomendo `https://webhook.site` (cria URL única instantaneamente, mostra payload em tempo real). Alternativa: pequeno servidor local com ngrok.
-- Explorador BSC: `https://bscscan.com` para confirmar txs
+| Contrato | Endereço |
+|---|---|
+| `hot_wallet` | `0x17193A58d73825485393E00ecE33051Fa2536415` |
+| `forwarder_factory` | `0x16fE538d48E739031EA840eC91D1EdC384299A2d` |
+| `wallet_factory` | `0x5819fF9612Af78b832926E1e0E954e0510d0B524` |
+| `forwarder_impl` | `0x31de8569c09a04C308d794577F451D9ae7a11e41` |
+| `wallet_impl` | `0x9D781965c813B12f5be0450a119Dd9A34Ebce149` |
+| `gas_tank` (EOA) | `0x54f55b4e7428519dC0A8643dA92E7B27CabC37A1` |
 
-### Cuidados de produção
-- Estamos em **mainnet BSC**, fundos reais. Use valores pequenos (0.005-0.01 BNB por teste).
-- O botão "Discard Project" tem efeito real — não clicar.
-- 2FA está OFF para este usuário (verificado). A relaxação de `verify2fa` permite add/remove de address book sem código TOTP.
+✅ Gas tank com `0.00952 BNB` (status `ok`, suficiente para ~9k operações de transfer simples).
+✅ 2FA desabilitado (verificado).
+✅ Custódia: `full_custody` (sem co-sign).
+❌ Nenhum endereço de depósito provisionado ainda.
+❌ Nenhum webhook registrado.
+❌ Sem histórico de depósitos / saques.
+
+**Premissa:** o roteiro abaixo NÃO cria o projeto, NÃO deploya contratos. Apenas exercita as funcionalidades operacionais sobre o BrPay já configurado.
 
 ---
 
-## Roadmap de Homologação — 12 Fases
+## Pré-requisitos para começar
 
-A ordem é importante: cada fase pressupõe que a anterior passou. Cada teste tem **Setup**, **Steps**, **Expected**, **Evidence**, **Pass/Fail**.
+1. **Carteira externa** (Trust Wallet / Metamask / Rabby) com **0.05 BNB** na BSC mainnet.
+2. **Aba aberta em `https://webhook.site`** — copiar a URL única gerada (será o `WEBHOOK_URL` em todos os testes).
+3. **Browser** (incógnito recomendado) + **terminal** com `curl`.
+4. **Acesso SSH** já configurado: `ssh green@vaulthub.live`.
+5. **BSCscan** aberto (`https://bscscan.com`) para confirmar txs.
 
-### Fase 0 — Smoke pre-flight (5 min)
+> ⚠️ Estamos em **mainnet com fundos reais.** Usar valores entre 0.003 e 0.01 BNB por teste. **Não clicar "Discard Project".**
 
-**Objetivo:** Confirmar que todos os serviços estão saudáveis e endpoints básicos respondem.
+---
 
-#### T0.1 — Health check (API)
+## Cheatsheet de variáveis usadas no roteiro
 
-**Setup:** terminal com `curl` instalado.
+```bash
+# No terminal, exporte uma vez no início:
+export COOKIE=/tmp/cvh_cookies.txt
+export PORTAL=https://portal.vaulthub.live
+export PROJECT_ID=6998
+export CHAIN_ID=56
+export GAS_TANK=0x54f55b4e7428519dC0A8643dA92E7B27CabC37A1
+export HOT_WALLET=0x17193A58d73825485393E00ecE33051Fa2536415
+export FWD_FACTORY=0x16fE538d48E739031EA840eC91D1EdC384299A2d
+export WEBHOOK_URL=<cole-a-url-do-webhook.site>
+```
 
-**Steps:**
+---
+
+## Fase 1 — Smoke pre-flight (5 min)
+
+### T1.1 — Saúde dos serviços
+
 ```bash
 ssh green@vaulthub.live "cd /docker/CryptoVaultHub && docker compose ps client client-api auth-service core-wallet-service cron-worker-service key-vault-service notification-service chain-indexer-service mysql redis --format 'table {{.Name}}\t{{.Status}}'"
 ```
 
-**Expected:** Todos os containers `Up ... (healthy)`.
+- [ ] Todos os 10 containers `Up ... (healthy)`.
 
-**Evidence:** screenshot da tabela ou copy-paste do output.
+### T1.2 — Login e sessão
 
-**Pass/Fail:** PASS se todos healthy. FAIL se qualquer um for `unhealthy`/`Restarting`/`Exited`.
-
----
-
-#### T0.2 — Login UI + dropdown de projeto
-
-**Setup:** browser limpo (sessão privada / incógnito).
-
-**Steps:**
-1. Acessar `https://portal.vaulthub.live/login`
-2. Email: `wallet@grupogreen.org`, senha: a fornecida
-3. Clicar "Sign in"
-4. Aguardar 5s
-5. Clicar no dropdown "Select Project" / "BrPay" (canto superior direito)
-
-**Expected:**
-- Login redireciona para `/`
-- Dashboard renderiza
-- Dropdown lista "BrPay" (não vazio)
-- Trigger button mostra "BrPay" após carregar
-
-**Evidence:** screenshot do dashboard com dropdown aberto.
-
-**Pass/Fail:** PASS se BrPay aparece na lista; FAIL se "Create New Project" for o único item após 5s + clique no dropdown.
-
----
-
-### Fase 1 — Auth & Sessão (10 min)
-
-**Objetivo:** Validar login, refresh de token, logout e proteção de rotas.
-
-#### T1.1 — Login com credencial inválida
-
-**Steps:** Tentar login com senha errada.
-**Expected:** Mensagem de erro visível no UI; sem cookies setados.
-**Pass/Fail:** PASS se erro user-friendly.
-
-#### T1.2 — Refresh automático de token
-
-**Steps:**
-1. Login normal
-2. No browser dev console: `document.cookie` (verifica se `cvh_client_token` existe como HttpOnly — não deve aparecer no JS)
-3. Aguardar 1h ou simular expiração mudando o `expires` do cookie via dev tools / hammering refresh
-4. Recarregar dashboard
-
-**Expected:** Sessão se mantém via refresh silencioso; usuário não é deslogado.
-
-**Pass/Fail:** PASS se a página recarrega sem redirect para `/login`.
-
-#### T1.3 — Logout limpa sessão
-
-**Steps:** Clicar em "Logout" (canto inferior esquerdo do sidebar). Tentar acessar `/` direto.
-
-**Expected:** Redirect para `/login`. Cookies limpos.
-
-**Pass/Fail:** PASS se redirect funciona.
-
----
-
-### Fase 2 — Smart Contracts & Provisionamento (15 min)
-
-**Objetivo:** Confirmar que os contratos do projeto BrPay estão deployados e operacionais on-chain.
-
-#### T2.1 — Listar deploy traces (API)
-
-**Steps:**
 ```bash
-COOKIE=/tmp/cvh_cookies.txt
-curl -s -c $COOKIE -X POST https://portal.vaulthub.live/api/auth/login \
+curl -s -c $COOKIE -X POST $PORTAL/api/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"email":"wallet@grupogreen.org","password":"<senha>"}' > /dev/null
-
-curl -s -b $COOKIE "https://portal.vaulthub.live/api/proxy/v1/projects/6998/deploy/traces" \
-  | python3 -c "import sys, json; [print(t['contractType'], t['chainId'], t.get('contractAddress', 'N/A')) for t in json.load(sys.stdin).get('traces', [])]"
+  -d '{"email":"wallet@grupogreen.org","password":"<senha>"}' | python3 -m json.tool
 ```
 
-**Expected:** Lista contendo (mínimo) `hot_wallet`, `forwarder_factory`, `wallet_factory`, `forwarder_impl`, `wallet_impl` em chain 56.
+- [ ] Resposta `{ "user": { "id": "6", "clientId": "8", ... } }` em <2s.
 
-**Evidence:** Captura do output. Validar cada `contractAddress` no BSCscan (deve ter código deployado).
+### T1.3 — Login no UI + dropdown
 
-**Pass/Fail:** PASS se todos 5 estão presentes com endereços ON-CHAIN reais.
+1. Abrir incógnito → `$PORTAL/login` → login → aguardar redirect.
+2. Aguardar 5s, clicar no dropdown "BrPay" no canto superior direito.
 
-#### T2.2 — Verificar `forwarder_factory` on-chain
+- [ ] Trigger button mostra **BrPay** (não "Select Project").
+- [ ] Dropdown lista BrPay com badge `Active`.
 
-**Steps:** Abrir `https://bscscan.com/address/0x16fE538d48E739031EA840eC91D1EdC384299A2d` (forwarder_factory).
+### T1.4 — Confirmar estado do projeto BrPay via API
 
-**Expected:** Contract verified ou pelo menos `Contract Creation` tx visível, code ≠ `0x`.
-
-**Pass/Fail:** PASS se código existe.
-
-#### T2.3 — Hot wallet existe e tem dono correto
-
-**Steps:** Abrir `0x17193A58d73825485393E00ecE33051Fa2536415` no BSCscan.
-
-**Expected:** EOA (não contrato) ou Smart Wallet com owner = key managed pelo CryptoVaultHub.
-
-**Pass/Fail:** PASS se address ativo.
-
----
-
-### Fase 3 — Geração de Endereços de Depósito (Forwarders) (15 min)
-
-**Objetivo:** Cliente gera N forwarders via UI/API; sistema computa endereço CREATE2 + (em algum momento) deploya o forwarder.
-
-#### T3.1 — Gerar 3 endereços de depósito (UI)
-
-**Setup:** logado, projeto BrPay ativo.
-
-**Steps:**
-1. Sidebar → **Wallets** ou **Address Groups** (verificar qual fluxo está ativo no UI atual)
-2. Clicar "Generate Deposit Address" (ou "+ New Address")
-3. Selecionar chain BSC (56)
-4. Label: `homolog-deposit-1`
-5. Repetir 2x mais com labels `homolog-deposit-2`, `homolog-deposit-3`
-
-**Expected:**
-- 3 addresses retornados, cada um único, todos começando com `0x`
-- Status inicial: `pending_deployment` (forwarder ainda não deployado on-chain)
-- API GET `/v1/deposit-addresses` retorna 3 rows
-
-**Evidence:** screenshot da listagem + outputs da API.
-
-**Pass/Fail:** PASS se 3 endereços únicos foram gerados.
-
-#### T3.2 — Confirmar via API
-
-**Steps:**
 ```bash
-curl -s -b $COOKIE "https://portal.vaulthub.live/api/proxy/v1/deposit-addresses?limit=10" | python3 -m json.tool
+curl -s -b $COOKIE "$PORTAL/api/proxy/v1/projects/$PROJECT_ID/deploy/traces" \
+  | python3 -c "import sys,json; [print(t['contractType'].ljust(20), t['contractAddress']) for t in json.load(sys.stdin).get('traces',[]) if t.get('contractAddress')]"
 ```
 
-**Expected:** JSON com 3 addresses + `meta.total: 3`.
+- [ ] Lista contém os 5 contratos esperados (hot_wallet, forwarder_factory, wallet_factory, forwarder_impl, wallet_impl).
 
-#### T3.3 — Deploy automático do forwarder na primeira tx (não testar agora)
+```bash
+curl -s -b $COOKIE "$PORTAL/api/proxy/v1/wallets" | python3 -m json.tool
+curl -s -b $COOKIE "$PORTAL/api/proxy/v1/gas-tanks" | python3 -m json.tool
+```
 
-**Note:** os forwarders são deployados sob demanda na primeira tx que recebem. Não há deploy explícito agora — deixar para Fase 4.
+- [ ] `wallets` retorna 1 row tipo `gas_tank` no `$GAS_TANK`.
+- [ ] `gas-tanks` retorna 1 entry para chain 56 com `balanceWei > 0` e `status: 'ok'`.
 
 ---
 
-### Fase 4 — Depósito + Detecção (Indexer) (25 min)
+## Fase 2 — Registrar webhook receiver (5 min)
 
-**Objetivo:** Mandar BNB para um forwarder, ver o sistema detectar.
+Pré-condição: nenhum webhook em BrPay (será criado agora).
 
-#### T4.1 — Registrar webhook receiver
+### T2.1 — Criar webhook via UI
 
-**Setup:** abrir `https://webhook.site` em outra aba — copia a URL única gerada.
+1. Sidebar → **Webhooks** → "+ Create Webhook".
+2. URL: `$WEBHOOK_URL`.
+3. Marcar **todos** os events disponíveis na lista.
+4. Salvar — anotar o `secret` exibido (pode aparecer só uma vez).
 
-**Steps (UI):**
-1. Sidebar → **Webhooks** → "+ Create Webhook"
-2. URL: a do webhook.site
-3. Events: marcar TODOS (`deposit.detected`, `deposit.confirmed`, `withdrawal.broadcast`, `withdrawal.confirmed`, `forwarder.deployed`, `gas_tank.low_balance`, etc.)
-4. Salvar
-5. Clicar "Test webhook" → confirmar `test.ping` chega no webhook.site
+- [ ] Webhook listado em `Webhooks` page com status `enabled`.
 
-**Expected:**
-- Webhook listado em GET `/v1/webhooks`
-- Test ping arrived no webhook.site com header `x-webhook-signature` válido (HMAC-SHA256 do body com o secret)
+### T2.2 — Test ping
 
-**Pass/Fail:** PASS se test.ping chega.
+1. Na linha do webhook, clicar **"Send test event"**.
 
-#### T4.2 — Mandar 0.005 BNB para `homolog-deposit-1`
-
-**Setup:** carteira externa (Trust Wallet / Metamask) conectada à BSC mainnet com saldo.
-
-**Steps:** Send 0.005 BNB para o endereço `homolog-deposit-1`. Anotar o tx hash.
-
-**Expected na blockchain:** tx incluída em <30s no BSC.
-
-**Evidence:** tx hash + link no BSCscan.
-
-#### T4.3 — Sistema detecta e dispara webhook
-
-**Steps após a tx confirmar (3 confirmações ~9s):**
-1. Aguardar até 60s
-2. Refresh `webhook.site` — espera-se receber `deposit.detected` (e depois `deposit.confirmed` quando atingir confirmações configuradas)
-3. UI: Sidebar → **Deposits** — espera-se ver row novo com status `pending` ou `confirmed`
-4. UI: **Wallets / Address** — saldo do `homolog-deposit-1` mostra 0.005 BNB
-
-**Expected:**
-- Webhook `deposit.detected` recebido com:
-  ```json
-  { "eventType": "deposit.detected", "data": { "address": "0x...", "amount": "0.005", "tokenSymbol": "BNB", "txHash": "0x...", "chainId": 56 } }
+- [ ] No `webhook.site` chega um POST com:
+  - `eventType: "test.ping"`
+  - Header `x-webhook-signature: sha256=...` (HMAC do body com o secret)
+  - Header `x-webhook-event: test.ping`
+- [ ] Validar HMAC — comando para conferir manualmente:
+  ```bash
+  echo -n '<body-recebido-no-webhook.site>' | openssl dgst -sha256 -hmac '<secret>'
   ```
-- HMAC signature válida (verificar com o secret do webhook)
-- Deposits page lista o depósito
-- API: `GET /v1/deposits` retorna 1 row
+  deve bater com a parte após `sha256=` no header.
 
-**Evidence:**
-- Screenshot do webhook.site mostrando o payload completo + headers
-- Screenshot da page Deposits
-- Output da API
+### T2.3 — Confirmar via API
 
-**Pass/Fail:**
-- PASS se webhook chega < 90s e payload tem todos os campos
-- FAIL se webhook não chega ou Deposits page fica vazia
-- WARNING se chega mas com delay > 90s (possível indexer atrasado)
-
-#### T4.4 — Verificar event no indexer (DB)
-
-**Steps:**
 ```bash
-ssh green@vaulthub.live 'docker exec cryptovaulthub-mysql-1 mysql -uroot -p"bwQiwepxfvq83nfFLcZh8Wtj" cvh_indexer -e "SELECT * FROM indexed_events ORDER BY created_at DESC LIMIT 3 \\G" 2>&1 | grep -v "Using a password"'
+curl -s -b $COOKIE "$PORTAL/api/proxy/v1/webhooks" | python3 -m json.tool
 ```
 
-**Expected:** Pelo menos 1 row recente com `chain_id=56` e `from_address` da carteira de origem.
+- [ ] `count: 1`, webhook tem `events: [...]` com a lista marcada.
 
 ---
 
-### Fase 5 — Sweep Automático (Forwarder → Hot Wallet) (15 min)
+## Fase 3 — Gerar endereços de depósito (5 min)
 
-**Objetivo:** Cron-worker detecta saldo no forwarder, deploya o forwarder (se ainda não estava) e sweepa para hot wallet.
+### T3.1 — Gerar 3 forwarders (UI)
 
-#### T5.1 — Aguardar sweep automático
+1. Sidebar → **Wallets** → "Generate Deposit Address" (ou Address Groups → criar grupo + provisionar).
+2. Chain: BSC (56). Label: `homolog-1`.
+3. Repetir 2x: `homolog-2`, `homolog-3`.
 
-**Steps:**
-1. Manter o BNB no `homolog-deposit-1` (não mover manualmente)
-2. Aguardar até 5 min (cron-worker roda em ciclos)
-3. Atualizar a tela / chamar API
+- [ ] 3 endereços únicos retornados, todos `0x...` (40 hex chars).
+- [ ] Status: `pending_deployment` (forwarder será deployado on-the-fly na primeira tx).
+- [ ] Anotar os 3 endereços para usar nas próximas fases.
 
-**Expected:**
-- BSCscan: tx do gas_tank (`0x54f55b4e...C37A1`) deployando o forwarder
-- BSCscan: tx do forwarder mandando BNB para hot_wallet (`0x17193A58...6415`)
-- Webhook `forwarder.deployed` chega
-- Saldo do `homolog-deposit-1` no UI: 0
-- Saldo do hot_wallet (em Wallets page): aumenta em ~0.005 BNB (menos gas)
-
-**Evidence:**
-- Screenshot do BSCscan do hot_wallet com saldo
-- Screenshots dos webhooks `forwarder.deployed` e (talvez) `deposit.confirmed`
-
-**Pass/Fail:**
-- PASS se sweep aconteceu < 5min e saldo apareceu no hot wallet
-- FAIL se forwarder não foi deployado ou saldo não foi movido
-
-#### T5.2 — Verificar entrada em `gas_tank_transactions`
-
-**Steps:** Após o sweep,
 ```bash
-ssh green@vaulthub.live 'docker exec cryptovaulthub-mysql-1 mysql -uroot -p"bwQiwepxfvq83nfFLcZh8Wtj" cvh_wallets -e "SELECT operation_type, status, gas_used, gas_cost_wei, submitted_at FROM gas_tank_transactions ORDER BY submitted_at DESC LIMIT 5 \\G" 2>&1 | grep -v "Using a password"'
+# Exporta para reusar:
+export FWD1=0x...
+export FWD2=0x...
+export FWD3=0x...
 ```
 
-**Expected:** Pelo menos 2 rows: `deploy_forwarder` (status confirmed) e `sweep` (status confirmed) com `gas_cost_wei` populado.
+### T3.2 — Confirmar via API
 
-**Pass/Fail:** PASS se ambas operações aparecem.
+```bash
+curl -s -b $COOKIE "$PORTAL/api/proxy/v1/deposit-addresses?limit=10" \
+  | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'total={d[\"meta\"][\"total\"]}'); [print(f'  {a[\"address\"]} {a.get(\"label\")} {a[\"status\"]}') for a in d.get('addresses',[])]"
+```
 
-#### T5.3 — Confirmar via Gas Tanks UI
-
-**Steps:** Sidebar → **Gas Tanks** → clicar "History" no card BNB.
-
-**Expected:** Modal mostra as 2 operações recém-feitas (sweep + forwarder deploy) com tipo e custo.
-
-**Pass/Fail:** PASS se aparecem.
+- [ ] `total: 3` (ou ≥ 3 se já houvesse).
+- [ ] Os 3 labels aparecem.
 
 ---
 
-### Fase 6 — Múltiplos Depósitos + Flush Manual (20 min)
+## Fase 4 — Depósito + Detecção pelo Indexer (25 min)
 
-**Objetivo:** Validar a operação de **flush** — cliente força sweep de TODOS os forwarders com saldo de uma vez.
+### T4.1 — Mandar 0.005 BNB para `homolog-1`
 
-#### T6.1 — Mandar BNB para `homolog-deposit-2` e `-3`
+Da carteira externa, enviar **0.005 BNB → `$FWD1`**. Anotar o tx hash.
 
-**Steps:** Send 0.005 BNB para cada um dos 2 forwarders restantes.
+- [ ] Tx confirmada no BSCscan (3 confs ~9s).
 
-**Expected:** Detecção via webhook (Fase 4). Aguardar webhooks `deposit.detected`.
+### T4.2 — Aguardar webhook `deposit.detected`
 
-#### T6.2 — INTERROMPER o sweep automático antes de testar flush
+Tempo máximo: **90s** após a tx confirmar.
 
-**Important:** se você esperar 5 min, o sweep automático vai mover tudo. Para testar flush, há que ser ágil OU desligar o cron-worker temporariamente:
+- [ ] No `webhook.site`, chega payload `eventType: deposit.detected` com:
+  ```json
+  { "address": "<FWD1>", "amount": "0.005", "tokenSymbol": "BNB", "txHash": "0x...", "chainId": 56 }
+  ```
+- [ ] Header `x-webhook-signature` válido.
+
+> Se não chegar em 2 min, conferir logs do indexer:
+> ```bash
+> ssh green@vaulthub.live "cd /docker/CryptoVaultHub && docker compose logs --tail 30 chain-indexer-service | grep -i '<FWD1>'"
+> ```
+
+### T4.3 — UI mostra o depósito
+
+1. Sidebar → **Deposits**.
+
+- [ ] Aparece row com address `$FWD1`, amount `0.005`, status `pending` ou `confirmed`.
+
+### T4.4 — Confirmação após N blocks
+
+Aguardar até 60s adicionais.
+
+- [ ] Webhook `deposit.confirmed` chega.
+- [ ] UI: status do depósito muda para `confirmed`.
+
+### T4.5 — Indexer DB sanity check
+
+```bash
+ssh green@vaulthub.live 'docker exec cryptovaulthub-mysql-1 mysql -uroot -p"bwQiwepxfvq83nfFLcZh8Wtj" cvh_indexer -e "SELECT COUNT(*) AS events FROM indexed_events WHERE chain_id=56 AND created_at > NOW() - INTERVAL 10 MINUTE;" 2>&1 | grep -v Using'
+```
+
+- [ ] `events ≥ 1`.
+
+---
+
+## Fase 5 — Sweep automático (15 min)
+
+O cron-worker faz sweep dos forwarders com saldo a cada N minutos. Vai usar gas do `$GAS_TANK`.
+
+### T5.1 — Aguardar sweep
+
+Tempo: até **5 min** após T4.4.
+
+Esperado on-chain:
+- TX 1: Gas tank deploya o forwarder no `$FWD1` (CREATE2).
+- TX 2: Forwarder transfere o BNB para `$HOT_WALLET`.
+
+Verificar via BSCscan: `https://bscscan.com/address/$FWD1` → "Internal Txns" ou "Erc20 Token Txns".
+
+- [ ] BSCscan mostra o forwarder como contrato deployado (code != `0x`).
+- [ ] Saldo do `$FWD1` agora 0.
+- [ ] Saldo do `$HOT_WALLET` aumentou ~0.005 BNB.
+
+### T5.2 — Eventos esperados
+
+- [ ] Webhook `forwarder.deployed` chega em `webhook.site` com `address: $FWD1`.
+- [ ] (Opcionalmente) `deposit.swept` ou `sweep.completed` se configurado.
+
+### T5.3 — `gas_tank_transactions` populado
+
+```bash
+ssh green@vaulthub.live 'docker exec cryptovaulthub-mysql-1 mysql -uroot -p"bwQiwepxfvq83nfFLcZh8Wtj" cvh_wallets -e "SELECT operation_type, status, gas_used, gas_cost_wei, submitted_at FROM gas_tank_transactions WHERE project_id=6998 ORDER BY submitted_at DESC LIMIT 5;" 2>&1 | grep -v Using'
+```
+
+- [ ] Pelo menos 2 rows recentes: `deploy_forwarder` e `sweep`, ambas `status: confirmed` com `gas_cost_wei > 0`.
+
+### T5.4 — UI Gas Tanks → History
+
+1. Sidebar → **Gas Tanks** → click "History" no card BNB.
+
+- [ ] Modal mostra as 2 operações recentes com status `confirmed`, custo formatado em BNB, link clicável para BSCscan.
+
+### T5.5 — UI Wallets mostra hot_wallet com saldo
+
+1. Sidebar → **Wallets**.
+
+- [ ] `$HOT_WALLET` aparece com balance ~0.005 BNB (menos custo de sweep).
+
+---
+
+## Fase 6 — Múltiplos depósitos + Flush manual (20 min)
+
+Para testar flush, precisamos de saldo parado em forwarders. Vamos pausar o sweep automático.
+
+### T6.1 — Parar cron-worker
 
 ```bash
 ssh green@vaulthub.live 'cd /docker/CryptoVaultHub && docker compose stop cron-worker-service'
 ```
 
-Mande os depósitos. Confirme que ficaram parados nos forwarders (Wallets page mostra saldo).
+- [ ] `docker compose ps cron-worker-service` mostra `Exited`.
 
-#### T6.3 — Flush via UI
+### T6.2 — Mandar 0.005 BNB para `homolog-2` e `homolog-3`
 
-**Steps:**
-1. Sidebar → **Flush**
-2. Selecionar BSC (chain 56)
-3. Selecionar todos os 2 forwarders com saldo (ou "Select all")
-4. Confirmar — exigirá 2FA se ativo, mas como está OFF, deve passar
-5. Aguardar completar (UI mostra spinner / status)
+Da carteira externa: dois sends, um para `$FWD2`, outro para `$FWD3`.
 
-**Expected:**
-- API call `POST /v1/flush` retorna `flushOperationId` e status `pending`
-- BSCscan: txs sweep dos forwarders selecionados → hot_wallet
-- UI Flush page atualiza para `completed`
-- Webhooks `flush.completed` chegam
+- [ ] Webhook `deposit.detected` chega para ambos.
+- [ ] UI Deposits mostra 3 rows totais (1 da Fase 4 + 2 novos).
+- [ ] Saldo dos 2 forwarders **NÃO** é movido (cron parado).
 
-**Evidence:** screenshot da Flush page completa + webhook.site.
+### T6.3 — Flush via UI
 
-**Pass/Fail:** PASS se todos selecionados foram movidos para hot_wallet.
+1. Sidebar → **Flush** → "+ Start Flush".
+2. Chain: BSC.
+3. Selecionar `$FWD2` e `$FWD3` (ou "Select all forwarders with balance").
+4. Submit.
 
-#### T6.4 — Religar cron-worker
+- [ ] API retorna 200 com `flushOperationId`.
+- [ ] BSCscan: 2 sweep txs do gas tank → forwarders → hot wallet (algumas operações sequenciais).
+- [ ] Webhook `flush.completed` chega.
+- [ ] Saldo do hot_wallet aumenta para ~0.014 BNB total.
+- [ ] UI Flush page mostra operação como `completed`.
+
+### T6.4 — Religar cron-worker
 
 ```bash
-ssh green@vaulthub.live 'cd /docker/CryptoVaultHub && docker compose start cron-worker-service'
+ssh green@vaulthub.live 'cd /docker/CryptoVaultHub && docker compose start cron-worker-service && sleep 8 && docker compose ps cron-worker-service'
 ```
 
----
-
-### Fase 7 — Withdrawal (Hot Wallet → External) (15 min)
-
-**Objetivo:** Validar saída de BNB do hot_wallet para um endereço externo.
-
-#### T7.1 — Whitelist do address de destino
-
-**Pré-condição (em projeto custódia full):** o address de destino precisa estar na whitelist (via Address Book).
-
-**Steps:**
-1. Sidebar → **Address Book** → "+ Add Address"
-2. Address: a sua carteira externa (não o forwarder!)
-3. Label: `homolog-withdraw-target`
-4. Chain: BSC (56)
-5. Salvar
-
-**Expected:** address aparece na lista, status `active` (após cooldown se houver).
-
-**Pass/Fail:** PASS se address foi adicionado sem 403 (era o bug original — agora corrigido com 2FA permissivo).
-
-#### T7.2 — Criar withdrawal
-
-**Steps:**
-1. Sidebar → **Withdrawals** → "+ New Withdrawal"
-2. From: hot_wallet BSC
-3. To: `homolog-withdraw-target` (do whitelist)
-4. Amount: 0.003 BNB
-5. Submit
-
-**Expected:**
-- Withdrawal criado com status `pending` ou `pending_kyt`
-- KYT screening passa (se ativo) — pode levar segundos
-- Webhook `withdrawal.created`
-- Eventualmente: `withdrawal.broadcast` quando broadcast no BSC
-- Eventualmente: `withdrawal.confirmed` após N confirmações
-
-**Pass/Fail:** PASS se a tx final aparece na carteira de destino.
-
-#### T7.3 — Confirmar saldo na carteira externa
-
-**Steps:** verificar a carteira externa.
-
-**Expected:** ~0.003 BNB recebido.
+- [ ] Status: `Up ... (healthy)`.
 
 ---
 
-### Fase 8 — Co-Sign (Skip se mode=full_custody) (15 min)
+## Fase 7 — Withdrawal (Hot Wallet → externo) (15 min)
 
-**Cenário:** o projeto BrPay está em `full_custody` (verificado via `/v1/security/settings`). Não há co-sign para esta conta.
+### T7.1 — Adicionar address externo no whitelist
 
-**Recomendação:** criar projeto separado em modo `co_sign` para testar este fluxo. Não é blocker para homologação do BrPay.
+1. Sidebar → **Address Book** → "+ Add Address".
+2. Address: a sua carteira externa (a que enviou os depósitos).
+3. Label: `homolog-target`. Chain: BSC. Notes opcionais.
+4. Submit.
 
-**Se for testar:**
-- T8.1 — Criar withdrawal em projeto co-sign → status `pending_cosign`
-- T8.2 — `GET /v1/co-sign/pending` retorna 1 op
-- T8.3 — Cliente assina off-chain com sua chave privada (Shamir share)
-- T8.4 — `POST /v1/co-sign/{id}/sign` com `signature` hex
-- T8.5 — Plataforma combina e broadcasts
+- [ ] **Sem 403** (era o bug do `verify2fa`; agora deve passar com 2FA off).
+- [ ] Address aparece em `Address Book` com status `active` (após cooldown de 24h se aplicável).
+
+> Se o address tiver cooldown de 24h, veja o status — pode aparecer como `pending` ou `cooldown`. Para os testes, isso pode bloquear o saque.
+> Se for blocker: ajustar via DB temporariamente:
+> ```bash
+> ssh green@vaulthub.live 'docker exec cryptovaulthub-mysql-1 mysql -uroot -p"bwQiwepxfvq83nfFLcZh8Wtj" cvh_wallets -e "UPDATE whitelisted_addresses SET status=\"active\", cooldown_until=NULL WHERE label=\"homolog-target\";"'
+> ```
+
+### T7.2 — Criar withdrawal
+
+1. Sidebar → **Withdrawals** → "+ New Withdrawal".
+2. From: hot_wallet BSC. To: `homolog-target`. Amount: `0.003`. Token: BNB.
+3. Submit.
+
+- [ ] Withdrawal criado com status `pending` ou `pending_kyt`.
+- [ ] Webhook `withdrawal.created`.
+- [ ] Após KYT (segundos a 1 min): webhook `withdrawal.broadcast`.
+- [ ] Após confirmações: webhook `withdrawal.confirmed`.
+
+### T7.3 — Conferir saldo na carteira externa
+
+- [ ] Recebeu ~0.003 BNB.
+- [ ] BSCscan mostra a tx FROM `$HOT_WALLET` TO sua carteira.
 
 ---
 
-### Fase 9 — Gas Tank Operacional (10 min)
+## Fase 8 — Gas Tank operacional (15 min)
 
-**Objetivo:** Validar UX do gas tank pós-operações.
+### T8.1 — History mostra ops das fases anteriores
 
-#### T9.1 — History populado
+1. Sidebar → **Gas Tanks** → "View full history".
 
-**Steps:** Sidebar → **Gas Tanks** → "View full history".
+- [ ] Tabela tem rows recentes: `deploy_forwarder`, `sweep`, `flush` (vários), `deploy_wallet` (se houver), todos `confirmed`.
+- [ ] Filtros funcionam: filter por type "sweep" → mostra só sweeps.
 
-**Expected:** Tabela tem rows recentes (deploy_forwarder, sweep, flush) com status, tipo e custo.
+### T8.2 — Forçar low-balance alert
 
-**Pass/Fail:** PASS se as ops das fases 5 e 6 aparecem.
+1. Card BNB → "Alerts" → mudar threshold para **0.05 BNB** (acima do balance atual ~0.0095).
+2. Salvar.
 
-#### T9.2 — Forçar low-balance alert
+- [ ] Card BNB no `Gas Tanks` page muda para status `critical` (vermelho) na próxima refresh (30s).
+- [ ] Dashboard mostra **banner vermelho** "1 gas tank below threshold" no topo.
 
-**Steps:**
-1. Gas Tanks page → card BNB → "Alerts"
-2. Mudar threshold para `0.05` BNB (acima do balance atual)
-3. Salvar
-4. Aguardar até 5 min (próximo ciclo do cron)
+Aguardar até 5 min (cron de balance check):
 
-**Expected:**
-- Webhook `gas_tank.low_balance` chega no webhook.site
-- Banner vermelho aparece no dashboard avisando "1 gas tank below threshold"
-- API: `GET /v1/gas-tanks` retorna a chain com `status: 'critical'`
+- [ ] Webhook `gas_tank.low_balance` chega no `webhook.site`:
+  ```json
+  { "projectId": 6998, "chainId": 56, "address": "<GAS_TANK>", "balanceWei": "...", "thresholdWei": "50000000000000000" }
+  ```
 
-**Evidence:** screenshot do dashboard com banner vermelho + webhook payload.
+### T8.3 — Top-up flow
 
-**Pass/Fail:** PASS se webhook chega + banner aparece.
+1. Card BNB → "Top Up" → modal abre com QR EIP-681.
+2. Mandar 0.01 BNB da carteira externa para `$GAS_TANK` (ou escanear QR no celular).
+3. Aguardar confirmação on-chain (15-30s).
 
-#### T9.3 — Top-up flow
+- [ ] Modal mostra "✓ Funded! Closing automatically" em até 30s pós-confirmação.
+- [ ] Card volta para status `ok` (verde) no próximo refresh.
 
-**Steps:**
-1. Click "Top Up" no card BNB
-2. QR aparece (EIP-681)
-3. Mandar 0.01 BNB para o endereço do gas tank de uma carteira externa
-4. Aguardar 15-30s
+### T8.4 — Reset do threshold
 
-**Expected:**
-- Modal mostra "✓ Funded! Closing automatically" após detectar saldo aumentar
-- Status volta a `ok` no card
+1. Alerts modal → threshold de volta para `0.001 BNB` (default).
+2. Salvar.
 
-**Pass/Fail:** PASS se o auto-poll detecta.
+- [ ] Status volta a `ok` imediatamente.
 
-#### T9.4 — Reset threshold
+### T8.5 — Export keystore
 
-**Steps:** voltar para `0.001` BNB para não ficar pingando.
+1. Card BNB → "Keystore" → aceitar aviso de segurança → step 2.
+2. Inserir mnemonic do projeto (a frase mostrada no Step 4 do wizard original).
+3. Senha forte (≥ 8 chars). Click "Download keystore".
 
-#### T9.5 — Export keystore
+- [ ] Browser baixa `gas-tank-56-0x54f55b4e74.json`.
+- [ ] Validação local:
+  ```bash
+  node -e "const{Wallet}=require('ethers');const fs=require('fs');\
+  Wallet.fromEncryptedJson(fs.readFileSync('gas-tank-56-0x54f55b4e74.json','utf8'),'<senha>')\
+    .then(w => console.log('Address:', w.address))"
+  ```
+- [ ] Output: `Address: 0x54f55b4e7428519dC0A8643dA92E7B27CabC37A1` (bate com `$GAS_TANK`).
 
-**Steps:**
-1. Click "Keystore" no card BNB
-2. Aceitar o aviso de segurança
-3. Inserir mnemonic do projeto (Step 4 do wizard original)
-4. Senha mínima 8 chars
-5. Click "Download keystore"
+---
 
-**Expected:** Download de arquivo `.json` v3.
+## Fase 9 — Resiliência de webhooks (15 min)
 
-**Validação:** decryptar localmente:
+### T9.1 — Endpoint que retorna 500
+
+No `webhook.site`, configurar **Edit response** → status code `500`, salvar.
+
+Trigger qualquer event (recriar um forwarder, ou fazer outro depósito pequeno).
+
+- [ ] Webhook é tentado.
+- [ ] Sistema faz retries automáticos com backoff (esperado: 3-5 tentativas).
+- [ ] UI: Webhooks → click no webhook → tab "Deliveries" → entrada com `attempt_count > 1` e status `failed`.
+
+### T9.2 — Manual retry
+
+Reverter o `webhook.site` para status `200`. UI Webhooks → Deliveries → botão "Retry" na delivery falhada.
+
+- [ ] Novo attempt agora retorna 200, status muda para `delivered`.
+
+### T9.3 — Validar HMAC explicitamente
+
+Pegar 1 payload do `webhook.site` (botão "View raw") + secret do webhook:
+
 ```bash
-node -e "
-const { Wallet } = require('ethers');
-const fs = require('fs');
-const json = fs.readFileSync('gas-tank-56-0x54f55b4e74.json', 'utf8');
-Wallet.fromEncryptedJson(json, 'sua-senha').then(w => console.log('Address:', w.address));
-"
+SECRET='<secret-do-webhook>'
+BODY='<paste-do-raw-body>'
+echo -n "$BODY" | openssl dgst -sha256 -hmac "$SECRET" | awk '{print $2}'
 ```
 
-**Expected:** Address recuperado bate com `0x54f55b4e7428519dC0A8643dA92E7B27CabC37A1`.
-
-**Pass/Fail:** PASS se decryptar e endereço bate.
+- [ ] Output bate com o valor após `sha256=` no header `x-webhook-signature` recebido.
 
 ---
 
-### Fase 10 — Webhooks Resiliência (15 min)
+## Fase 10 — Notifications + Address Groups (10 min)
 
-**Objetivo:** Validar retry/dead-letter quando o endpoint do webhook falha.
+### T10.1 — Criar notification rule
 
-#### T10.1 — Endpoint que retorna 500
+1. Sidebar → **Notifications** → "+ New Rule".
+2. Event: `deposit.detected`. Channel: webhook (mesmo `$WEBHOOK_URL`). Filter: amount > 0.001. Enabled: ✓.
+3. Salvar.
 
-**Setup:** `https://webhook.site` permite configurar respostas custom (status code 500). Ou usar um servidor local que sempre retorna 500.
+- [ ] Rule criada e habilitada.
 
-**Steps:**
-1. Configurar webhook URL para retornar 500
-2. Trigger qualquer event (ex: novo depósito)
+### T10.2 — Toggle a rule (testar fix do PATCH/PUT)
 
-**Expected:**
-- Sistema tenta entregar
-- Recebe 500
-- Retry com backoff (3-5 tentativas conforme config)
-- Eventualmente entra em dead-letter
-- UI: Webhooks page → click no webhook → "Deliveries" mostra entries com status `failed` e `attempt_count` > 1
+1. Toggle a rule para off via UI.
 
-**Pass/Fail:** PASS se retries acontecem e dead-letter visível.
+- [ ] Sem 404 silencioso (era o bug original).
+- [ ] Estado persistente após refresh.
 
-#### T10.2 — Manual retry
+### T10.3 — Address Groups: criar + provisionar
 
-**Steps:** UI → Webhook deliveries → "Retry" em uma falha.
+1. Sidebar → **Address Groups** → "+ Create Group". Nome: `homolog-group-bsc`.
+2. Após criação, click no grupo → "Provision Chain" → selecionar BSC.
 
-**Expected:** novo attempt iniciado; se endpoint agora retorna 200, fica `delivered`.
-
-**Pass/Fail:** PASS se retry manual funciona.
-
-#### T10.3 — Validar HMAC
-
-**Steps:** No endpoint receiver, calcular HMAC-SHA256 do body com o webhook secret. Comparar com header `x-webhook-signature`.
-
-**Expected:** match exato.
-
-**Pass/Fail:** PASS se assinaturas batem.
+- [ ] Provision endpoint retorna 200 (era 404 antes do fix).
+- [ ] Em até 60s, addresses do grupo deployadas via factory aparecem.
 
 ---
 
-### Fase 11 — Notificações & Address Groups (10 min)
+## Fase 11 — Exports (5 min)
 
-#### T11.1 — Criar notification rule
+### T11.1 — Criar export de transações
 
-**Steps:** Sidebar → **Notifications** → "+ New Rule"
-- Event: `deposit.detected`
-- Channel: webhook (mesmo URL do webhook.site)
-- Filter: amount > 0.001
-- Toggle enabled = true
-- Save
+1. Sidebar → **Exports** → "+ New Export".
+2. Tipo: `transactions`. Chain: BSC. Período: últimos 7 dias.
+3. Submit.
 
-**Expected:** rule criada; após próximo deposit > 0.001, webhook recebe notification adicional (além do webhook canônico).
+- [ ] API retorna `requestUid` e `status: queued`.
+- [ ] Em ~10-30s, status muda para `completed` (refresh da página ou polling).
 
-**Pass/Fail:** PASS se rule funciona como filtro.
+### T11.2 — Download
 
-#### T11.2 — Toggle rule (PATCH/PUT fix)
+1. Click "Download" na linha do export.
 
-**Steps:** Toggle a rule off via UI.
-
-**Expected:** API call não retorna 404 (era o bug); rule fica desabilitada.
-
-**Pass/Fail:** PASS se toggle funciona — sem 404 silencioso.
-
-#### T11.3 — Address Groups: criar + provisionar
-
-**Steps:**
-1. Sidebar → **Address Groups** → "+ Create Group"
-2. Nome: `homolog-group-1`
-3. Após criação, click "Provision Chain" / selecionar BSC
-
-**Expected:**
-- Grupo criado
-- Provision endpoint retorna 200 (era 404)
-- Dentro de 30s, endereços do grupo deployados via factory
-
-**Pass/Fail:** PASS se provision não dá 404.
+- [ ] Arquivo `.csv` baixa.
+- [ ] Abrir → tem headers + rows com depósitos/saques recentes (ao menos os feitos nas Fases 4-7).
 
 ---
 
-### Fase 12 — Exports (5 min)
+## Critérios de aceite — promover para produção?
 
-#### T12.1 — Criar export de transactions
+A homologação é **APROVADA** quando:
 
-**Steps:**
-1. Sidebar → **Exports**
-2. Tipo: transactions
-3. Filtros: Chain BSC, últimos 7 dias
-4. Submit
+- [ ] **Fases 1-7** todas PASS (golden path: login → endereço → depósito → sweep → flush → withdrawal).
+- [ ] **Fase 8** (Gas Tank) PASS — operações críticas dependem disso.
+- [ ] **Fase 9.1 e 9.3** PASS — webhooks com retry + HMAC válida são contrato com integradores.
+- [ ] **Fases 10-11** PASS (validação dos fixes pós-audit).
 
-**Expected:**
-- API retorna `requestUid`, status `queued`
-- Após alguns segundos: status `completed`
-- Botão Download fica clicável
-
-#### T12.2 — Download
-
-**Steps:** click Download.
-
-**Expected:** arquivo `.csv` com headers + rows.
-
-**Pass/Fail:** PASS se CSV abre e tem dados.
+**Falhas aceitáveis (não bloqueiam):**
+- Email channel em `gas_tank.low_balance` ainda é stub — webhook + banner cobrem.
+- Histórico de gas pré-2026-05-06 vazio — banner UI explica.
+- CORS no `auth/validate` (issue de infra, não impede uso).
 
 ---
 
-## Matriz de Cobertura UI vs API
+## Quando algo der FAIL
 
-| Funcionalidade | UI | API direta | Webhook |
-|---|---|---|---|
-| Login + JWT cookie | T0.2 | T1.* | — |
-| Listar projetos | T0.2 dropdown | `GET /v1/projects` | — |
-| Listar deploy traces | indireto via Deploy History | T2.1 | — |
-| Gerar deposit address | T3.1 | `GET/POST /v1/deposit-addresses` | `forwarder.deployed` |
-| Detecção de depósito | T4.* Deposits page | `GET /v1/deposits` | `deposit.detected/confirmed` |
-| Sweep automático | T5.* via balance change | DB `gas_tank_transactions` | `deposit.confirmed` |
-| Flush manual | T6.3 | `POST /v1/flush` | `flush.completed` |
-| Withdrawal | T7.* | `POST /v1/withdrawals` | `withdrawal.broadcast/confirmed` |
-| Co-sign | T8.* | `GET /v1/co-sign/pending`, `POST /v1/co-sign/:id/sign` | — |
-| Gas tank low alert | T9.2 | DB `gas_tank_alert_config` | `gas_tank.low_balance` |
-| Gas tank top-up | T9.3 | balance polling | — |
-| Keystore export | T9.5 | `POST /v1/gas-tanks/:chainId/export-keystore` | — |
-| Webhook retries | T10.1 | `GET /v1/webhooks/:id/deliveries` | — |
-| Notification rules | T11.* | `PUT /v1/notifications/rules/:id` | — |
-| Address groups | T11.3 | `POST /v1/address-groups/:groupUid/provision` | — |
-| Exports | T12.* | `POST /v1/exports`, `GET /v1/exports/:id/download` | — |
+Procedimento padrão:
 
----
+1. **Capturar evidência** — screenshot, output de curl, logs.
+2. **Logs do serviço relevante:**
+   ```bash
+   ssh green@vaulthub.live "cd /docker/CryptoVaultHub && docker compose logs --tail 100 <serviço>"
+   ```
+3. **Me chamar** (ou registrar issue) com: fase + teste, evidência, logs.
 
-## Critérios de aceite para promoção a produção
-
-**A homologação é considerada APROVADA quando:**
-
-1. ✅ Fases 0–7 inteiramente PASS (golden path: login → endereço → depósito → sweep → withdrawal)
-2. ✅ Fase 9 (Gas Tank) PASS — operações criticas dependem desse fluxo
-3. ✅ Fase 10.1 + 10.3 PASS — webhooks são contrato com integradores
-4. ⚠️ Fase 11 PASS — funcional para todos os endpoints recém-corrigidos
-5. ⚠️ Fase 12 PASS — exports usados pra reconciliação contábil
-
-Itens marcados ⚠️ são desejáveis mas não bloqueantes se ainda houver follow-ups planejados.
-
-**Falhas aceitáveis (com plano de ação documentado):**
-- Email channel (Fase 9.2) chegando como log apenas — já é stub aceito
-- Histórico de gas pré-2026-05-06 vazio — já tem banner explicativo
+Serviços por sintoma:
+| Sintoma | Serviço a olhar |
+|---|---|
+| Login falha / refresh quebra | `auth-service` |
+| API endpoint retorna 5xx | `client-api` (proxy) + serviço downstream |
+| Depósito não detectado | `chain-indexer-service` |
+| Sweep/flush não roda | `cron-worker-service` |
+| Webhook não chega | `notification-service` |
+| Operação on-chain falha | `core-wallet-service` + verificar saldo gas tank |
 
 ---
 
-## Próximos passos sugeridos pós-homologação
+## Comandos úteis durante a execução
 
-1. **Backfill de gas_tank_transactions** para mostrar histórico completo desde a deployment do projeto.
-2. **Implementar email delivery** para `gas_tank.low_balance` (atualmente stub).
-3. **Resolver CORS no `auth/validate`** — adicionar header `Access-Control-Allow-Origin: https://portal.vaulthub.live` na auth-service para evitar erros no console.
-4. **Adicionar integração com testnet** (BSC Testnet 97) para testes de regressão sem fundos reais.
-5. **Suite automatizada** desses testes (Playwright + curl scripts) rodando no CI antes de cada deploy.
-
----
-
-## Apêndice — Comandos úteis durante os testes
-
-### Login e cookies
 ```bash
-COOKIE=/tmp/cvh_cookies.txt
-curl -s -c $COOKIE -X POST https://portal.vaulthub.live/api/auth/login \
+# Login + cookie
+curl -s -c $COOKIE -X POST $PORTAL/api/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"email":"wallet@grupogreen.org","password":"<senha>"}'
-```
+  -d '{"email":"wallet@grupogreen.org","password":"<senha>"}' > /dev/null
 
-### Probe de qualquer endpoint
-```bash
-curl -s -b $COOKIE "https://portal.vaulthub.live/api/proxy/v1/<path>" | python3 -m json.tool
-```
+# Probe genérico
+curl -s -b $COOKIE "$PORTAL/api/proxy/v1/<path>" | python3 -m json.tool
 
-### Logs ao vivo de um serviço
-```bash
-ssh green@vaulthub.live 'cd /docker/CryptoVaultHub && docker compose logs -f --tail 30 client-api'
-```
+# Logs ao vivo
+ssh green@vaulthub.live "cd /docker/CryptoVaultHub && docker compose logs -f --tail 30 <service>"
 
-### Restart pontual
-```bash
-ssh green@vaulthub.live 'cd /docker/CryptoVaultHub && docker compose restart cron-worker-service'
-```
+# Restart pontual
+ssh green@vaulthub.live "cd /docker/CryptoVaultHub && docker compose restart <service>"
 
-### Querar DB pra debug
-```bash
-ssh green@vaulthub.live 'docker exec cryptovaulthub-mysql-1 mysql -uroot -p"bwQiwepxfvq83nfFLcZh8Wtj" -e "USE cvh_wallets; SELECT * FROM wallets WHERE project_id=6998;"'
+# Query DB
+ssh green@vaulthub.live 'docker exec cryptovaulthub-mysql-1 mysql -uroot -p"bwQiwepxfvq83nfFLcZh8Wtj" -e "<sql>"'
 ```
