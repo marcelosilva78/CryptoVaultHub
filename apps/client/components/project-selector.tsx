@@ -18,10 +18,22 @@ const statusLabels: Record<Project["status"], string> = {
 };
 
 export function ProjectSelector() {
-  const { projects, activeProject, setActiveProject, isLoading } =
+  const { projects, activeProject, setActiveProject, isLoading, refetchProjects } =
     useProject();
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // If the dropdown opens with an empty list, kick off a refetch — covers
+  // the race where the initial mount fetch lost the cookie window.
+  const handleToggle = () => {
+    setIsOpen((v) => {
+      const next = !v;
+      if (next && projects.length === 0) {
+        void refetchProjects();
+      }
+      return next;
+    });
+  };
 
   // Close on outside click
   useEffect(() => {
@@ -63,7 +75,7 @@ export function ProjectSelector() {
     <div ref={containerRef} className="relative">
       {/* Trigger */}
       <button
-        onClick={() => setIsOpen((v) => !v)}
+        onClick={handleToggle}
         className={cn(
           "flex items-center gap-2 px-3 py-1.5 rounded-button text-body font-display transition-all duration-fast",
           "border border-border-subtle hover:border-border-default hover:bg-surface-hover",

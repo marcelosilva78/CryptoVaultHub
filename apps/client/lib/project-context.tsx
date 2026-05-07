@@ -29,6 +29,7 @@ interface ProjectContextType {
   activeProject: Project | null;
   setActiveProject: (project: Project) => void;
   isLoading: boolean;
+  refetchProjects: () => Promise<void>;
 }
 
 const STORAGE_KEY = 'cvh_active_project';
@@ -43,6 +44,30 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const queryClient = useQueryClient();
 
+  const attemptFetch = useCallback(async (): Promise<Project[]> => {
+    const res = await clientFetch<{ projects?: Project[]; data?: Project[] }>('/v1/projects');
+    const raw: Project[] = res.projects ?? res.data ?? (Array.isArray(res) ? res : []);
+    return raw.map((p) => ({ ...p, id: String(p.id) }));
+  }, []);
+
+  const refetchProjects = useCallback(async () => {
+    try {
+      const normalized = await attemptFetch();
+      setProjects(normalized);
+      const storedId = localStorage.getItem(STORAGE_KEY);
+      const restored = storedId ? normalized.find((p) => p.id === storedId) : null;
+      const defaultProject = normalized.find((p) => p.isDefault) ?? normalized[0] ?? null;
+      const selected = restored ?? defaultProject;
+      setActiveProjectState((prev) => prev ?? selected);
+      if (selected) localStorage.setItem(STORAGE_KEY, selected.id);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('ProjectProvider: refetch failed', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [attemptFetch]);
+
   // Fetch projects on mount (skip on public pages)
   useEffect(() => {
     const path = window.location.pathname;
@@ -52,12 +77,6 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     }
 
     let cancelled = false;
-
-    const attemptFetch = async (): Promise<Project[]> => {
-      const res = await clientFetch<{ projects?: Project[]; data?: Project[] }>('/v1/projects');
-      const raw: Project[] = res.projects ?? res.data ?? (Array.isArray(res) ? res : []);
-      return raw.map((p) => ({ ...p, id: String(p.id) }));
-    };
 
     const fetchProjects = async () => {
       // Up to 3 attempts: race conditions on first load (cookie not yet attached,
@@ -92,10 +111,31 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     };
 
     fetchProjects();
+
+    // Re-fetch when the tab regains focus (covers cases where the initial
+    // load lost the auth-cookie race and we settled on an empty list).
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible' && !cancelled) {
+        attemptFetch()
+          .then((normalized) => {
+            if (cancelled) return;
+            if (normalized.length === 0) return;
+            setProjects(normalized);
+            const storedId = localStorage.getItem(STORAGE_KEY);
+            const restored = storedId ? normalized.find((p) => p.id === storedId) : null;
+            const defaultProject = normalized.find((p) => p.isDefault) ?? normalized[0] ?? null;
+            setActiveProjectState((prev) => prev ?? restored ?? defaultProject);
+          })
+          .catch(() => {});
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+
     return () => {
       cancelled = true;
+      document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, []);
+  }, [attemptFetch]);
 
   const setActiveProject = useCallback(
     (project: Project) => {
@@ -110,7 +150,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
 
   return (
     <ProjectContext.Provider
-      value={{ projects, activeProject, setActiveProject, isLoading }}
+      value={{ projects, activeProject, setActiveProject, isLoading, refetchProjects }}
     >
       {children}
     </ProjectContext.Provider>
