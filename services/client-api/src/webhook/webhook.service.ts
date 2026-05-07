@@ -25,6 +25,7 @@ export class WebhookService {
 
   async createWebhook(
     clientId: number,
+    projectId: number,
     data: {
       url: string;
       events: string[];
@@ -35,7 +36,7 @@ export class WebhookService {
     try {
       const { data: result } = await axios.post(
         `${this.notificationUrl}/webhooks`,
-        { clientId, ...data },
+        { clientId, projectId, ...data },
         { headers: this.headers, timeout: 10000 },
       );
       return result;

@@ -25,10 +25,11 @@ export class WebhookService {
    */
   async createWebhook(params: {
     clientId: number;
+    projectId: number;
     url: string;
     events: string[];
   }) {
-    const { clientId, url, events } = params;
+    const { clientId, projectId, url, events } = params;
 
     // Check for duplicate
     const existing = await this.prisma.webhook.findUnique({
@@ -50,6 +51,7 @@ export class WebhookService {
     const webhook = await this.prisma.webhook.create({
       data: {
         clientId: BigInt(clientId),
+        projectId: BigInt(projectId),
         url,
         secret,
         events: events as any,

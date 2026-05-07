@@ -14,6 +14,10 @@ export class CreateWebhookDto {
   @IsPositive()
   clientId: number;
 
+  @IsInt()
+  @IsPositive()
+  projectId: number;
+
   @IsUrl({ require_tld: false })
   url: string;
 

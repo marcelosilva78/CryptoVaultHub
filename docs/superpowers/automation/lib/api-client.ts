@@ -12,7 +12,9 @@ export class CvhApiClient {
     this.http = axios.create({
       baseURL: baseUrl,
       timeout: 30_000,
-      headers: { 'X-API-Key': apiKey, 'Content-Type': 'application/json' },
+      // NOTE: Content-Type is set per-request (only when there's a body).
+      // Setting it unconditionally on GETs triggers WAF rejection (403) at the edge.
+      headers: { 'X-API-Key': apiKey, 'Accept': '*/*', 'User-Agent': 'cvh-homologation/1.0' },
       validateStatus: () => true,
     });
   }
@@ -21,8 +23,14 @@ export class CvhApiClient {
     const fullPath = params ? `${path}?${new URLSearchParams(params as Record<string, string>).toString()}` : path;
     const headers: Record<string, string> = {
       'X-API-Key': this.apiKey,
-      'Content-Type': 'application/json',
+      'Accept': '*/*',
+      'User-Agent': 'cvh-homologation/1.0',
     };
+    const requestHeaders: Record<string, string> = { ...headers };
+    if (body !== undefined && body !== null) {
+      headers['Content-Type'] = 'application/json';
+      requestHeaders['Content-Type'] = 'application/json';
+    }
     const rec = curlRecorder.beforeRequest({
       method,
       baseUrl: this.baseUrl,
@@ -32,7 +40,7 @@ export class CvhApiClient {
     });
 
     const t0 = Date.now();
-    const res = await this.http.request({ method, url: path, data: body, params });
+    const res = await this.http.request({ method, url: path, data: body, params, headers: requestHeaders });
     const dur = Date.now() - t0;
 
     curlRecorder.afterRequest(rec, {

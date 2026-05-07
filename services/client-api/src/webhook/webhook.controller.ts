@@ -18,7 +18,7 @@ import {
   ApiParam,
   ApiBody,
 } from '@nestjs/swagger';
-import { ClientAuth, CurrentClientId } from '../common/decorators';
+import { ClientAuth, ClientAuthWithProject, CurrentClientId, ProjectId } from '../common/decorators';
 import { WebhookService } from './webhook.service';
 import {
   CreateWebhookDto,
@@ -34,7 +34,7 @@ export class WebhookController {
   constructor(private readonly webhookService: WebhookService) {}
 
   @Post()
-  @ClientAuth('write')
+  @ClientAuthWithProject('write')
   @ApiOperation({
     summary: 'Create a webhook endpoint',
     description: `Registers a new webhook endpoint to receive real-time event notifications. When events occur (deposits, withdrawals, forwarder deployments, gas tank low-balance alerts), the system sends signed HTTP POST requests to the configured URL.
@@ -126,8 +126,12 @@ if (expectedSignature !== req.headers['x-cvh-signature']) {
   @ApiResponse({ status: 401, description: 'Missing or invalid API key.' })
   @ApiResponse({ status: 403, description: 'API key does not have the `write` scope.' })
   @ApiResponse({ status: 422, description: 'Maximum webhook limit (10) reached for this client.' })
-  async createWebhook(@Body() dto: CreateWebhookDto, @CurrentClientId() clientId: number) {
-    const result = await this.webhookService.createWebhook(clientId, dto);
+  async createWebhook(
+    @Body() dto: CreateWebhookDto,
+    @CurrentClientId() clientId: number,
+    @ProjectId() projectId: number,
+  ) {
+    const result = await this.webhookService.createWebhook(clientId, projectId, dto);
     return { success: true, ...result };
   }
 

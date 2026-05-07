@@ -183,6 +183,7 @@ export class ApiKeyService {
     return {
       valid: true,
       clientId: Number(key.clientId),
+      projectId: key.projectId ? Number(key.projectId) : undefined,
       scopes: key.scopes as string[],
       ipAllowlist: key.ipAllowlist as string[] | undefined,
       allowedChains: key.allowedChains as number[] | undefined,

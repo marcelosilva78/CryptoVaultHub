@@ -35,6 +35,7 @@ export class WebhookController {
   async createWebhook(@Body() dto: CreateWebhookDto) {
     const webhook = await this.webhookService.createWebhook({
       clientId: dto.clientId,
+      projectId: dto.projectId,
       url: dto.url,
       events: dto.events,
     });

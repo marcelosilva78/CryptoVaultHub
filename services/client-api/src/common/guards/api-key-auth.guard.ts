@@ -15,6 +15,7 @@ export const SCOPES_KEY = 'required_scopes';
 export interface ApiKeyValidation {
   valid: boolean;
   clientId?: number;
+  projectId?: number;
   scopes?: string[];
   ipAllowlist?: string[];
   allowedChains?: number[];
@@ -70,6 +71,9 @@ export class ApiKeyAuthGuard implements CanActivate {
     request.clientId = validation.clientId;
     request.scopes = validation.scopes;
     request.allowedChains = validation.allowedChains;
+    if (validation.projectId) {
+      request.projectId = validation.projectId;
+    }
 
     return true;
   }

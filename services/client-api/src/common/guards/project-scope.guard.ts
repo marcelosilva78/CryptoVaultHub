@@ -54,6 +54,13 @@ export class ProjectScopeGuard implements CanActivate {
       );
     }
 
+    // Fast path: if API-key auth already resolved a projectId for this request
+    // (from api_keys.project_id), trust it and skip the projects-table lookup.
+    if (request.projectId && typeof request.projectId === 'number') {
+      this.logger.debug(`Project pre-resolved by ApiKeyAuthGuard: ${request.projectId}`);
+      return true;
+    }
+
     const projectIdHeader = request.headers['x-project-id'];
 
     if (projectIdHeader) {

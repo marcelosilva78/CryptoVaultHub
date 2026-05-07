@@ -99,17 +99,16 @@ export async function runApiSuite(config: Config) {
     }
 
     webhook = await reporter.step('Register webhook receiver', async () => {
-    const r = await api.post<Webhook & { secret: string }>('/webhooks', {
-      url: config.webhookUrl,
-      events: [
-        'deposit.detected', 'deposit.confirmed',
-        'withdrawal.created', 'withdrawal.broadcast', 'withdrawal.confirmed',
-        'forwarder.deployed', 'flush.completed',
-        'gas_tank.low_balance',
-      ],
-      description: 'Homologation auto-test',
-    });
-      api.noteLastRequest('A resposta inclui o campo `secret` UMA ÚNICA VEZ — guarde-o para validar HMAC nos webhooks recebidos.');
+      const r = await api.post<Webhook & { secret: string }>('/webhooks', {
+        url: config.webhookUrl,
+        events: [
+          'deposit.detected', 'deposit.confirmed', 'deposit.swept',
+          'forwarder.deployed',
+          'gas_tank.low_balance',
+          'withdrawal.submitted', 'withdrawal.confirmed', 'withdrawal.failed',
+        ],
+      });
+      api.noteLastRequest('Eventos válidos: deposit.detected, deposit.confirmed, deposit.swept, forwarder.deployed, gas_tank.low_balance, withdrawal.submitted, withdrawal.confirmed, withdrawal.failed. Endpoint NÃO aceita campo `description`. Resposta inclui `secret` UMA ÚNICA VEZ — guardar para validar HMAC.');
       webhookSecret = (r as any).secret;
       if (webhookSecret) reporter.highlight('webhook secret', webhookSecret.slice(0, 12) + '…');
       return r;
