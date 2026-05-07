@@ -16,7 +16,24 @@ export class ShamirController {
   @Get(':clientId/status')
   async getStatus(@Param('clientId', ParseIntPipe) clientId: number) {
     const status = await this.shamirService.getShareStatus(clientId);
-    return { success: true, ...status };
+    return {
+      success: true,
+      clientId: status.clientId,
+      projectId: status.projectId ?? null,
+      totalShares: status.totalShares,
+      distributedCount: status.distributedCount,
+      shares: status.shares.map((s: any) => ({
+        shareIndex: s.shareIndex,
+        custodian: s.custodian,
+        isDistributed: s.isDistributed,
+        distributedAt: s.distributedAt ?? null,
+        createdAt: s.createdAt ?? null,
+        // Coerce any BigInt fields (projectId) to string for JSON serialization
+        projectId: s.projectId != null
+          ? (typeof s.projectId === 'bigint' ? s.projectId.toString() : s.projectId)
+          : null,
+      })),
+    };
   }
 
   @Post(':clientId/split')
