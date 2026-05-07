@@ -8,7 +8,7 @@ import {
   Req,
 } from '@nestjs/common';
 import { Request } from 'express';
-import { ApiTags, ApiSecurity } from '@nestjs/swagger';
+import { ApiTags, ApiSecurity, ApiOperation } from '@nestjs/swagger';
 import { ClientAuth, CurrentClientId } from '../common/decorators';
 import { AddressGroupService } from './address-group.service';
 import { CreateAddressGroupDto } from '../common/dto/address-group.dto';
@@ -65,5 +65,19 @@ export class AddressGroupController {
       id,
     );
     return { success: true, ...result };
+  }
+
+  @Post(':groupUid/provision')
+  @ClientAuth('write')
+  @ApiOperation({
+    summary: 'Provision an address group on selected chains',
+    description: 'Triggers forwarder/wallet provisioning for the address group on the given chains.',
+  })
+  async provision(
+    @CurrentClientId() clientId: number,
+    @Param('groupUid') groupUid: string,
+    @Body() body: { chainIds: number[] },
+  ) {
+    return this.addressGroupService.provision(clientId, groupUid, body.chainIds ?? []);
   }
 }

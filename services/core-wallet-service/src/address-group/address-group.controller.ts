@@ -25,32 +25,20 @@ export class AddressGroupController {
     return { success: true, group: result };
   }
 
-  @Post(':groupId/provision')
-  async provision(
-    @Param('groupId', ParseIntPipe) groupId: number,
-    @Body() body: { clientId: number; chainIds: number[] },
-  ) {
-    const result = await this.addressGroupService.provisionOnChains({
-      clientId: body.clientId,
-      groupId,
-      chainIds: body.chainIds,
-    });
-    return { success: true, ...result };
-  }
-
   /**
-   * POST /address-groups/:groupUid/provision-by-uid
+   * POST /address-groups/:groupUid/provision
    * Provision an address group by its string UID across the specified chain IDs.
-   * Body: { chainIds: number[] }
+   * Body: { clientId: number; chainIds: number[] }
    */
-  @Post(':groupUid/provision-by-uid')
+  @Post(':groupUid/provision')
   async provisionByUid(
     @Param('groupUid') groupUid: string,
-    @Body() body: { chainIds: number[] },
+    @Body() body: { clientId: number; chainIds: number[] },
   ) {
     const result = await this.addressGroupService.provisionGroup(
       groupUid,
-      body.chainIds,
+      body.chainIds ?? [],
+      body.clientId,
     );
     return result;
   }

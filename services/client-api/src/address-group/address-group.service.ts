@@ -93,4 +93,18 @@ export class AddressGroupService {
       throw new InternalServerErrorException('Downstream service unavailable');
     }
   }
+
+  async provision(clientId: number, groupUid: string, chainIds: number[]) {
+    try {
+      const { data } = await axios.post(
+        `${this.coreWalletUrl}/address-groups/${groupUid}/provision`,
+        { clientId, chainIds },
+        { headers: this.headers, timeout: 30000 },
+      );
+      return data;
+    } catch (error: any) {
+      this.logger.warn(`Failed to provision group ${groupUid}: ${error.message}`);
+      throw new InternalServerErrorException('Failed to provision address group');
+    }
+  }
 }

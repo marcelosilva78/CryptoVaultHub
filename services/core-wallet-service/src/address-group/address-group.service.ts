@@ -3,6 +3,7 @@ import {
   Logger,
   NotFoundException,
   ConflictException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { ethers } from 'ethers';
@@ -343,8 +344,9 @@ export class AddressGroupService {
   /**
    * Provision an address group by its groupUid string on specific chains.
    * Delegates to the existing provisionOnChains pipeline after resolving the group.
+   * Optional clientId enforces ownership when supplied by an authenticated caller.
    */
-  async provisionGroup(groupUid: string, chainIds: number[]) {
+  async provisionGroup(groupUid: string, chainIds: number[], clientId?: number) {
     // Validate group exists
     const group = await this.prisma.addressGroup.findUnique({
       where: { groupUid },
@@ -353,6 +355,11 @@ export class AddressGroupService {
       throw new NotFoundException(
         `Address group with UID "${groupUid}" not found`,
       );
+    }
+
+    // Enforce ownership when clientId is provided by the caller
+    if (clientId !== undefined && group.clientId !== BigInt(clientId)) {
+      throw new ForbiddenException('Address group does not belong to this client');
     }
 
     // Validate each chainId is supported (present in chains table)
