@@ -60,7 +60,7 @@ export class WalletService {
         this.logger.log(`No balances data available for chain ${chainId} (endpoint not found in downstream service)`);
         return [];
       }
-      this.logger.warn(`Failed to fetch balances for chain ${chainId}: ${error.message}`);
+      this.logger.warn(`Failed to fetch balances for chain ${chainId} (status ${error.response?.status}): ${error.message}`);
       return [];
     }
   }

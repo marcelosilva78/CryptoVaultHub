@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ethers } from 'ethers';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
@@ -42,6 +42,24 @@ export class BalanceService {
     walletAddress: string;
     balances: TokenBalance[];
   }> {
+    try {
+      return await this._fetchWalletBalances(clientId, chainId);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      this.logger.warn(
+        `Failed to fetch balances for client ${clientId} on chain ${chainId}: ${msg}`,
+      );
+      return { walletAddress: '', balances: [] };
+    }
+  }
+
+  private async _fetchWalletBalances(
+    clientId: number,
+    chainId: number,
+  ): Promise<{
+    walletAddress: string;
+    balances: TokenBalance[];
+  }> {
     // Get hot wallet
     const wallet = await this.prisma.wallet.findUnique({
       where: {
@@ -53,9 +71,10 @@ export class BalanceService {
       },
     });
     if (!wallet) {
-      throw new NotFoundException(
-        `Hot wallet not found for client ${clientId} on chain ${chainId}`,
+      this.logger.warn(
+        `Hot wallet not found for client ${clientId} on chain ${chainId} — returning empty balances`,
       );
+      return { walletAddress: '', balances: [] };
     }
 
     // Check cache
