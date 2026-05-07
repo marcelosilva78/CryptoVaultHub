@@ -38,6 +38,23 @@ export class AddressGroupController {
     return { success: true, ...result };
   }
 
+  /**
+   * POST /address-groups/:groupUid/provision-by-uid
+   * Provision an address group by its string UID across the specified chain IDs.
+   * Body: { chainIds: number[] }
+   */
+  @Post(':groupUid/provision-by-uid')
+  async provisionByUid(
+    @Param('groupUid') groupUid: string,
+    @Body() body: { chainIds: number[] },
+  ) {
+    const result = await this.addressGroupService.provisionGroup(
+      groupUid,
+      body.chainIds,
+    );
+    return result;
+  }
+
   @Get(':clientId')
   async listGroups(
     @Param('clientId', ParseIntPipe) clientId: number,

@@ -340,6 +340,56 @@ export class AddressGroupService {
     };
   }
 
+  /**
+   * Provision an address group by its groupUid string on specific chains.
+   * Delegates to the existing provisionOnChains pipeline after resolving the group.
+   */
+  async provisionGroup(groupUid: string, chainIds: number[]) {
+    // Validate group exists
+    const group = await this.prisma.addressGroup.findUnique({
+      where: { groupUid },
+    });
+    if (!group) {
+      throw new NotFoundException(
+        `Address group with UID "${groupUid}" not found`,
+      );
+    }
+
+    // Validate each chainId is supported (present in chains table)
+    const chains = await this.prisma.chain.findMany({
+      where: { id: { in: chainIds }, isActive: true },
+      select: { id: true },
+    });
+    const supportedChainIds = new Set(chains.map((c) => c.id));
+    const unsupported = chainIds.filter((id) => !supportedChainIds.has(id));
+    if (unsupported.length > 0) {
+      throw new NotFoundException(
+        `Unsupported or inactive chain IDs: ${unsupported.join(', ')}`,
+      );
+    }
+
+    // Delegate to existing provisioning pipeline (which handles idempotency,
+    // hot-wallet lookup, forwarder address computation, and deposit address creation).
+    // TODO: Replace with async queue dispatch once a job queue is introduced.
+    this.logger.log(
+      `Provisioning group ${groupUid} (id=${group.id}) on chains: ${chainIds.join(', ')}`,
+    );
+
+    const result = await this.provisionOnChains({
+      clientId: Number(group.clientId),
+      groupId: Number(group.id),
+      chainIds,
+    });
+
+    return {
+      success: true,
+      groupUid,
+      chainIds,
+      status: 'queued',
+      ...result,
+    };
+  }
+
   private serializeGroup(group: Record<string, unknown>) {
     return {
       id: Number(group.id),
