@@ -51,32 +51,50 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    let cancelled = false;
+
+    const attemptFetch = async (): Promise<Project[]> => {
+      const res = await clientFetch<{ projects?: Project[]; data?: Project[] }>('/v1/projects');
+      const raw: Project[] = res.projects ?? res.data ?? (Array.isArray(res) ? res : []);
+      return raw.map((p) => ({ ...p, id: String(p.id) }));
+    };
+
     const fetchProjects = async () => {
-      try {
-        const res = await clientFetch<{ projects?: Project[]; data?: Project[] }>('/v1/projects');
-        const raw: Project[] = res.projects ?? res.data ?? (Array.isArray(res) ? res : []);
-
-        // Normalize IDs to strings for consistent comparison
-        const normalized = raw.map(p => ({ ...p, id: String(p.id) }));
-        setProjects(normalized);
-
-        // Restore from localStorage or auto-select first/default
-        const storedId = localStorage.getItem(STORAGE_KEY);
-        const restored = storedId ? normalized.find((p) => p.id === storedId) : null;
-        const defaultProject = normalized.find((p) => p.isDefault) ?? normalized[0] ?? null;
-        const selected = restored ?? defaultProject;
-        setActiveProjectState(selected);
-        // Persist selection so it's available immediately on next load
-        if (selected) localStorage.setItem(STORAGE_KEY, selected.id);
-      } catch {
-        // If projects endpoint fails, continue with empty list
-        setProjects([]);
-      } finally {
-        setIsLoading(false);
+      // Up to 3 attempts: race conditions on first load (cookie not yet attached,
+      // auth context still validating) can return 401 transiently.
+      let normalized: Project[] = [];
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          normalized = await attemptFetch();
+          break;
+        } catch (err) {
+          if (cancelled) return;
+          if (attempt === 3) {
+            // eslint-disable-next-line no-console
+            console.warn('ProjectProvider: failed to load projects after 3 attempts', err);
+            break;
+          }
+          await new Promise((r) => setTimeout(r, attempt * 500));
+        }
       }
+      if (cancelled) return;
+
+      setProjects(normalized);
+
+      // Restore from localStorage or auto-select first/default
+      const storedId = localStorage.getItem(STORAGE_KEY);
+      const restored = storedId ? normalized.find((p) => p.id === storedId) : null;
+      const defaultProject = normalized.find((p) => p.isDefault) ?? normalized[0] ?? null;
+      const selected = restored ?? defaultProject;
+      setActiveProjectState(selected);
+      if (selected) localStorage.setItem(STORAGE_KEY, selected.id);
+      setIsLoading(false);
     };
 
     fetchProjects();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const setActiveProject = useCallback(
