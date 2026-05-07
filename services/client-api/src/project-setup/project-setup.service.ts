@@ -1033,7 +1033,7 @@ export class ProjectSetupService {
     let webhookCount = 0;
     try {
       const { data: webhooksData } = await axios.get(
-        `${this.notificationUrl}/webhooks?clientId=${clientId}`,
+        `${this.notificationUrl}/webhooks/client/${clientId}`,
         { headers: this.headers, timeout: 10000 },
       );
       const allWebhooks = webhooksData.webhooks ?? webhooksData ?? [];
