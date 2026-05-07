@@ -3,6 +3,25 @@ import { Config } from '../lib/config.js';
 import { reporter } from '../lib/reporter.js';
 import { pressEnter, askText, isEvmAddress } from '../lib/prompts.js';
 import chalk from 'chalk';
+import fs from 'node:fs';
+import path from 'node:path';
+
+const STATE_FILE = path.join(process.cwd(), 'evidence', 'state.json');
+
+interface SuiteState {
+  depositAddress?: string;
+  webhookId?: string;
+  webhookUrl?: string;
+}
+
+function loadState(): SuiteState {
+  try { return JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8')); }
+  catch { return {}; }
+}
+function saveState(s: SuiteState) {
+  fs.mkdirSync(path.dirname(STATE_FILE), { recursive: true });
+  fs.writeFileSync(STATE_FILE, JSON.stringify(s, null, 2));
+}
 
 interface Project { id: string; name: string; slug: string; status: string; isDefault?: boolean; }
 interface Wallet { id: number | string; chainId: number; address: string; walletType: string; }
@@ -25,6 +44,15 @@ export async function runApiSuite(config: Config) {
 
   if (!config.apiKey) {
     throw new Error('No API key available. Provide CVH_API_KEY via .env or run UI suite first to auto-generate.');
+  }
+
+  // Phase control: pre = stop after generating deposit address; post = resume from existing state
+  const phaseLimit = process.env.CVH_PHASE_LIMIT;       // "address" → exit after generate
+  const phaseResume = process.env.CVH_PHASE_RESUME;     // "true" → reuse depositAddress from state.json
+
+  const state: SuiteState = phaseResume === 'true' ? loadState() : {};
+  if (phaseResume === 'true') {
+    reporter.info(`Resumindo de state anterior — depositAddress=${state.depositAddress ?? '<n/a>'} webhookId=${state.webhookId ?? '<n/a>'}`);
   }
 
   const api = new CvhApiClient(config.apiBaseUrl, config.apiKey);
@@ -59,13 +87,18 @@ export async function runApiSuite(config: Config) {
   let webhook: Webhook | undefined;
   let webhookSecret: string | undefined;
 
-  if (!config.webhookUrl) {
-    reporter.warn('webhook', 'CVH_WEBHOOK_URL not set — generating disposable receiver via webhook.site');
-    config.webhookUrl = await generateWebhookSiteUrl();
-    reporter.highlight('webhookUrl', config.webhookUrl);
-  }
+  if (phaseResume === 'true' && state.webhookUrl) {
+    config.webhookUrl = state.webhookUrl;
+    webhook = { id: state.webhookId!, url: state.webhookUrl, events: [] };
+    reporter.info(`Reutilizando webhook ${state.webhookId} → ${state.webhookUrl}`);
+  } else {
+    if (!config.webhookUrl) {
+      reporter.warn('webhook', 'CVH_WEBHOOK_URL not set — generating disposable receiver via webhook.site');
+      config.webhookUrl = await generateWebhookSiteUrl();
+      reporter.highlight('webhookUrl', config.webhookUrl);
+    }
 
-  webhook = await reporter.step('Register webhook receiver', async () => {
+    webhook = await reporter.step('Register webhook receiver', async () => {
     const r = await api.post<Webhook & { secret: string }>('/webhooks', {
       url: config.webhookUrl,
       events: [
@@ -76,32 +109,58 @@ export async function runApiSuite(config: Config) {
       ],
       description: 'Homologation auto-test',
     });
-    api.noteLastRequest('A resposta inclui o campo `secret` UMA ÚNICA VEZ — guarde-o para validar HMAC nos webhooks recebidos.');
-    webhookSecret = (r as any).secret;
-    if (webhookSecret) reporter.highlight('webhook secret', webhookSecret.slice(0, 12) + '…');
-    return r;
-  });
+      api.noteLastRequest('A resposta inclui o campo `secret` UMA ÚNICA VEZ — guarde-o para validar HMAC nos webhooks recebidos.');
+      webhookSecret = (r as any).secret;
+      if (webhookSecret) reporter.highlight('webhook secret', webhookSecret.slice(0, 12) + '…');
+      return r;
+    });
 
-  await reporter.step('Send webhook test ping', async () => {
-    if (!webhook) throw new Error('webhook not created');
-    await api.post(`/webhooks/${webhook.id}/test`);
-  });
+    await reporter.step('Send webhook test ping', async () => {
+      if (!webhook) throw new Error('webhook not created');
+      await api.post(`/webhooks/${webhook.id}/test`);
+    });
+    state.webhookId = String(webhook!.id);
+    state.webhookUrl = config.webhookUrl;
+  }
 
   // ─── B.3 Generate deposit address (INTERACTION 1) ──────────────────
-  const depositAddress = await reporter.step('Generate deposit address (forwarder)', async () => {
-    const r = await api.post<DepositAddress | { depositAddress: DepositAddress; address?: string }>(
-      '/deposit-addresses',
-      {
-        chainId: config.chainId,
-        label: `homolog-${Date.now()}`,
-      },
-    );
-    api.noteLastRequest('O endereço retornado é determinístico (CREATE2). O contrato forwarder é deployado on-the-fly na primeira tx de entrada — não há custo de gas até o sweep.');
-    const addr = (r as any).address ?? (r as any).depositAddress?.address;
-    if (!addr) throw new Error('Generated payload missing address: ' + JSON.stringify(r).slice(0, 200));
-    return addr as string;
-  });
-  if (!depositAddress) throw new Error('aborted: address not generated');
+  let depositAddress: string | undefined;
+  if (phaseResume === 'true' && state.depositAddress) {
+    depositAddress = state.depositAddress;
+    reporter.info(`Reutilizando depositAddress do state: ${depositAddress}`);
+  } else {
+    depositAddress = await reporter.step('Generate deposit address (forwarder)', async () => {
+      const r = await api.post<DepositAddress | { depositAddress: DepositAddress; address?: string }>(
+        '/deposit-addresses',
+        {
+          chainId: config.chainId,
+          label: `homolog-${Date.now()}`,
+        },
+      );
+      api.noteLastRequest('O endereço retornado é determinístico (CREATE2). O contrato forwarder é deployado on-the-fly na primeira tx de entrada — não há custo de gas até o sweep.');
+      const addr = (r as any).address ?? (r as any).depositAddress?.address;
+      if (!addr) throw new Error('Generated payload missing address: ' + JSON.stringify(r).slice(0, 200));
+      return addr as string;
+    });
+    if (!depositAddress) throw new Error('aborted: address not generated');
+    state.depositAddress = depositAddress;
+  }
+  saveState(state);
+
+  // Phase limit: stop here if user wants to do the deposit out-of-band
+  if (phaseLimit === 'address') {
+    console.log('\n' + chalk.bold.green('━'.repeat(80)));
+    console.log(chalk.bold.green('  PHASE-LIMIT=address — Aguardando depósito off-band'));
+    console.log(chalk.bold.green('━'.repeat(80)));
+    console.log(chalk.bold.white('  Chain:    ') + chalk.cyan(`${config.chainId} (BSC)`));
+    console.log(chalk.bold.white('  Address:  ') + chalk.cyan.bold(depositAddress));
+    console.log(chalk.bold.white('  State:    ') + chalk.dim(STATE_FILE));
+    console.log('');
+    console.log(chalk.bold.white('  Próxima etapa após o depósito:'));
+    console.log(chalk.cyan('    CVH_PHASE_RESUME=true CVH_AUTO_CONTINUE=true CVH_PROMPT_ANSWER=<seu-endereco-saque> npm run api-only'));
+    console.log(chalk.bold.green('━'.repeat(80)));
+    return;
+  }
 
   // === USER INTERACTION 1 ===
   console.log('\n');
