@@ -29,6 +29,7 @@ import {
   UpdateAddressDto,
   ListAddressesQueryDto,
 } from '../common/dto/address-book.dto';
+import { SecurityService } from '../security/security.service';
 import axios from 'axios';
 
 @ApiTags('Address Book')
@@ -38,25 +39,48 @@ export class AddressBookController {
   private readonly logger = new Logger(AddressBookController.name);
   private readonly authServiceUrl: string;
 
-  constructor(private readonly addressBookService: AddressBookService) {
+  constructor(
+    private readonly addressBookService: AddressBookService,
+    private readonly securityService: SecurityService,
+  ) {
     this.authServiceUrl =
       process.env.AUTH_SERVICE_URL || 'http://localhost:3003';
   }
 
   /**
    * Verify a TOTP code against the auth-service.
-   * The caller must supply the code via the `X-2FA-Code` header.
+   *
+   * - If the user does NOT have 2FA enabled, the check is skipped entirely
+   *   (no header required).
+   * - If the user DOES have 2FA enabled, the `X-2FA-Code` header is required
+   *   and validated against the auth-service.
    */
-  private async verify2fa(req: Request): Promise<void> {
-    const totpCode =
-      req.headers['x-2fa-code'] as string | undefined;
+  private async verify2fa(req: Request, clientId: number): Promise<void> {
+    // Step 1: check whether 2FA is enabled for this client.
+    // get2faStatus throws on hard errors; treat best-effort failures as
+    // "enabled" so we never accidentally skip verification on an outage.
+    let twoFaEnabled = true;
+    try {
+      const status = await this.securityService.get2faStatus(clientId);
+      twoFaEnabled = status?.enabled === true;
+    } catch {
+      this.logger.warn(
+        `Could not fetch 2FA status for client ${clientId}; defaulting to required`,
+      );
+    }
 
+    // Step 2: users without 2FA skip verification entirely.
+    if (!twoFaEnabled) return;
+
+    // Step 3: users with 2FA must supply the header.
+    const totpCode = req.headers['x-2fa-code'] as string | undefined;
     if (!totpCode) {
       throw new ForbiddenException(
         '2FA verification required. Provide a valid TOTP code in the X-2FA-Code header.',
       );
     }
 
+    // Step 4: verify the code against the auth-service.
     const token = req.headers.authorization;
     try {
       const { data } = await axios.post(
@@ -77,9 +101,7 @@ export class AddressBookController {
     } catch (error: any) {
       if (error instanceof ForbiddenException) throw error;
       this.logger.warn(`2FA verification failed: ${error.message}`);
-      throw new ForbiddenException(
-        '2FA verification required',
-      );
+      throw new ForbiddenException('2FA verification required');
     }
   }
 
@@ -164,7 +186,7 @@ Newly added addresses enter a mandatory 24-hour cooldown period. During this win
   @ApiResponse({ status: 403, description: 'API key does not have the `write` scope.' })
   @ApiResponse({ status: 409, description: 'Address+chain combination already exists and is active or in cooldown.' })
   async addAddress(@Body() dto: AddAddressDto, @Req() req: Request, @CurrentClientId() clientId: number) {
-    await this.verify2fa(req);
+    await this.verify2fa(req, clientId);
     const result = await this.addressBookService.addAddress(clientId, dto);
     return { success: true, ...result };
   }
@@ -349,7 +371,7 @@ This endpoint requires a valid TOTP code in the \`X-2FA-Code\` header.
   @ApiResponse({ status: 403, description: 'API key does not have the `write` scope.' })
   @ApiResponse({ status: 404, description: 'Address not found, already disabled, or does not belong to the authenticated client.' })
   async disableAddress(@Param('id') id: string, @Req() req: Request, @CurrentClientId() clientId: number) {
-    await this.verify2fa(req);
+    await this.verify2fa(req, clientId);
     await this.addressBookService.disableAddress(clientId, id);
     return { success: true, message: 'Address disabled' };
   }
