@@ -26,20 +26,27 @@ interface Project {
   walletsCount: number;
   createdAt: string;
   updatedAt: string;
-  deletionRequestedAt?: string;
-  deletionScheduledFor?: string;
+  deletionRequestedAt?: string | null;
+  deletionScheduledFor?: string | null;
 }
 
 interface DeletionImpact {
-  deposits: number;
-  withdrawals: number;
-  wallets: number;
-  webhooks: number;
-  apiKeys: number;
-  balances: { chain: string; amount: string; symbol: string }[];
-  gracePeriodDays: number;
-  scheduledFor: string;
-  immediate: boolean;
+  projectId?: number;
+  projectName?: string;
+  status?: string;
+  depositCount: number;
+  withdrawalCount: number;
+  transactionCount?: number;
+  walletCount: number;
+  webhookCount: number;
+  apiKeyCount: number;
+  hasNonZeroBalance?: boolean;
+  balances: { chainId: number; address?: string; balanceFormatted: string }[];
+  // NOTE: gracePeriodDays, scheduledFor, immediate are NOT returned by getDeletionImpact —
+  // they come from requestDeletion. Kept optional here for forward compatibility.
+  gracePeriodDays?: number;
+  scheduledFor?: string;
+  immediate?: boolean;
   error?: string;
 }
 
@@ -130,11 +137,11 @@ function DeletionImpactModal({
                 </p>
                 <div className="bg-surface-elevated rounded-card p-4 space-y-1.5">
                   {[
-                    { label: "Deposits", value: `${impactData.deposits} transactions` },
-                    { label: "Withdrawals", value: `${impactData.withdrawals} transactions` },
-                    { label: "Wallets", value: `${impactData.wallets} deployed` },
-                    { label: "Webhooks", value: `${impactData.webhooks} configured` },
-                    { label: "API Keys", value: `${impactData.apiKeys} active` },
+                    { label: "Deposits", value: `${impactData.depositCount} transactions` },
+                    { label: "Withdrawals", value: `${impactData.withdrawalCount} transactions` },
+                    { label: "Wallets", value: `${impactData.walletCount} deployed` },
+                    { label: "Webhooks", value: `${impactData.webhookCount} configured` },
+                    { label: "API Keys", value: `${impactData.apiKeyCount} active` },
                   ].map((row) => (
                     <div
                       key={row.label}
@@ -156,14 +163,14 @@ function DeletionImpactModal({
                     Balances
                   </p>
                   <div className="bg-surface-elevated rounded-card p-4 space-y-1.5">
-                    {impactData.balances.map((b) => (
+                    {impactData.balances.map((b, idx) => (
                       <div
-                        key={b.chain}
+                        key={`${b.chainId}-${b.address ?? idx}`}
                         className="flex items-center justify-between text-caption font-display"
                       >
-                        <span className="text-text-muted">{b.chain}</span>
+                        <span className="text-text-muted">Chain {b.chainId}{b.address ? ` · ${b.address.slice(0, 8)}…` : ""}</span>
                         <span className="text-text-primary font-mono">
-                          {b.amount} {b.symbol}
+                          {b.balanceFormatted}
                         </span>
                       </div>
                     ))}
