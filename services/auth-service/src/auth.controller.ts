@@ -267,6 +267,23 @@ export class AuthController {
     return { enabled: false, method: null, verifiedAt: null };
   }
 
+  @Get('clients/:clientId/2fa-status')
+  @UseGuards(InternalServiceGuard)
+  async get2faStatusByClient(@Param('clientId', ParseIntPipe) clientId: number) {
+    const user = await this.prisma.user.findFirst({
+      where: { clientId: BigInt(clientId) },
+      select: { totpEnabled: true },
+    });
+    if (!user) {
+      return { enabled: false, method: null, verifiedAt: null };
+    }
+    return {
+      enabled: user.totpEnabled,
+      method: user.totpEnabled ? 'totp' : null,
+      verifiedAt: null,
+    };
+  }
+
   // ─── API Keys ──────────────────────────────────────────
 
   @Post('api-keys')

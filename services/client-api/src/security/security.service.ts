@@ -53,7 +53,7 @@ export class SecurityService {
     let twoFactorEnabled = false;
     try {
       const { data } = await axios.get(
-        `${this.authServiceUrl}/auth/users/${clientId}/2fa-status`,
+        `${this.authServiceUrl}/auth/clients/${clientId}/2fa-status`,
         { headers: this.headers, timeout: 5000 },
       );
       twoFactorEnabled = data?.enabled === true;
@@ -90,7 +90,7 @@ export class SecurityService {
   async get2faStatus(clientId: number) {
     try {
       const { data } = await axios.get(
-        `${this.authServiceUrl}/auth/users/${clientId}/2fa-status`,
+        `${this.authServiceUrl}/auth/clients/${clientId}/2fa-status`,
         { headers: this.headers, timeout: 5000 },
       );
       return {
