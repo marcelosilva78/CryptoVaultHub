@@ -10,6 +10,7 @@ import {
   ParseIntPipe,
   HttpCode,
   HttpStatus,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
@@ -248,6 +249,24 @@ export class AuthController {
     return { success: true, message: '2FA disabled' };
   }
 
+  // ─── 2FA Status (internal) ─────────────────────────────
+
+  @Get('users/:userId/2fa-status')
+  @UseGuards(InternalServiceGuard)
+  async get2faStatus(@Param('userId', ParseIntPipe) userId: number) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: BigInt(userId) },
+      select: { totpEnabled: true },
+    });
+    if (!user) {
+      throw new NotFoundException(`User ${userId} not found`);
+    }
+    if (user.totpEnabled) {
+      return { enabled: true, method: 'totp' as const, verifiedAt: null };
+    }
+    return { enabled: false, method: null, verifiedAt: null };
+  }
+
   // ─── API Keys ──────────────────────────────────────────
 
   @Post('api-keys')
@@ -280,6 +299,13 @@ export class AuthController {
       clientId = parseInt(user.clientId || '0', 10);
     }
 
+    const keys = await this.apiKeyService.listApiKeys(clientId);
+    return { success: true, keys };
+  }
+
+  @Get('internal/api-keys/by-client/:clientId')
+  @UseGuards(InternalServiceGuard)
+  async listApiKeysByClient(@Param('clientId', ParseIntPipe) clientId: number) {
     const keys = await this.apiKeyService.listApiKeys(clientId);
     return { success: true, keys };
   }
