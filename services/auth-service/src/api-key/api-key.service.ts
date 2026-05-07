@@ -20,6 +20,7 @@ export interface ApiKeyResult {
 export interface ApiKeyValidation {
   valid: boolean;
   clientId?: number;
+  projectId?: number;
   scopes?: string[];
   ipAllowlist?: string[];
   allowedChains?: number[];

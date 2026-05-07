@@ -49,6 +49,7 @@ model Session {
 model ApiKey {
   id           BigInt    @id @default(autoincrement())
   clientId     BigInt    @map("client_id")
+  projectId    BigInt    @map("project_id")
   keyPrefix    String    @map("key_prefix") @db.VarChar(20)
   keyHash      String    @unique @map("key_hash") @db.VarChar(64)
   scopes       Json      @default("[\"read\"]")
