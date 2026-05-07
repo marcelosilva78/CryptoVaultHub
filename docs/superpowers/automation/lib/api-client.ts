@@ -1,9 +1,14 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
+import { curlRecorder } from './curl-recorder.js';
 
 export class CvhApiClient {
   private http: AxiosInstance;
+  private baseUrl: string;
+  private apiKey: string;
 
   constructor(baseUrl: string, apiKey: string) {
+    this.baseUrl = baseUrl;
+    this.apiKey = apiKey;
     this.http = axios.create({
       baseURL: baseUrl,
       timeout: 30_000,
@@ -13,7 +18,30 @@ export class CvhApiClient {
   }
 
   private async req<T>(method: string, path: string, body?: unknown, params?: unknown): Promise<T> {
+    const fullPath = params ? `${path}?${new URLSearchParams(params as Record<string, string>).toString()}` : path;
+    const headers: Record<string, string> = {
+      'X-API-Key': this.apiKey,
+      'Content-Type': 'application/json',
+    };
+    const rec = curlRecorder.beforeRequest({
+      method,
+      baseUrl: this.baseUrl,
+      path: fullPath,
+      headers,
+      body,
+    });
+
+    const t0 = Date.now();
     const res = await this.http.request({ method, url: path, data: body, params });
+    const dur = Date.now() - t0;
+
+    curlRecorder.afterRequest(rec, {
+      status: res.status,
+      durationMs: dur,
+      data: res.data,
+      headers: Object.fromEntries(Object.entries(res.headers ?? {}).map(([k, v]) => [k, String(v)])),
+    });
+
     if (res.status >= 400) {
       const e = new Error(`${method} ${path} → ${res.status} ${JSON.stringify(res.data).slice(0, 200)}`) as AxiosError;
       (e as any).response = res;
@@ -43,5 +71,10 @@ export class CvhApiClient {
       await new Promise((r) => setTimeout(r, interval));
     }
     throw new Error(`${opts.label ?? 'pollUntil'} timed out after ${opts.timeoutMs}ms (${attempt} attempts)`);
+  }
+
+  /** Add a free-form note to the last request recorded — visible in evidence/curl-log-detailed.md. */
+  noteLastRequest(note: string) {
+    curlRecorder.addNote(note);
   }
 }

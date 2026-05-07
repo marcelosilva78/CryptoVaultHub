@@ -76,6 +76,7 @@ export async function runApiSuite(config: Config) {
       ],
       description: 'Homologation auto-test',
     });
+    api.noteLastRequest('A resposta inclui o campo `secret` UMA ÚNICA VEZ — guarde-o para validar HMAC nos webhooks recebidos.');
     webhookSecret = (r as any).secret;
     if (webhookSecret) reporter.highlight('webhook secret', webhookSecret.slice(0, 12) + '…');
     return r;
@@ -95,6 +96,7 @@ export async function runApiSuite(config: Config) {
         label: `homolog-${Date.now()}`,
       },
     );
+    api.noteLastRequest('O endereço retornado é determinístico (CREATE2). O contrato forwarder é deployado on-the-fly na primeira tx de entrada — não há custo de gas até o sweep.');
     const addr = (r as any).address ?? (r as any).depositAddress?.address;
     if (!addr) throw new Error('Generated payload missing address: ' + JSON.stringify(r).slice(0, 200));
     return addr as string;
@@ -253,7 +255,13 @@ export async function runApiSuite(config: Config) {
     } catch (e: any) {
       const status = e?.response?.status;
       // 409 = already whitelisted; treat as success
-      if (status === 409) return;
+      if (status === 409) {
+        api.noteLastRequest('Server returned 409 Conflict — address já no whitelist; treat as success.');
+        return;
+      }
+      if (status === 403) {
+        api.noteLastRequest('Server returned 403 — exige header X-2FA-Code (TOTP) quando 2FA está ativo. Adicionar `-H "X-2FA-Code: <6-digit-code>"` no curl.');
+      }
       throw e;
     }
   });
@@ -267,6 +275,7 @@ export async function runApiSuite(config: Config) {
       tokenAddress: null,
       externalReference: `homolog-${Date.now()}`,
     });
+    api.noteLastRequest('`tokenAddress: null` = native (BNB/ETH/MATIC); para ERC-20, passar o endereço do contrato. `externalReference` é a sua chave de idempotência (recomendado).');
     const id = r.withdrawalId ?? r.id;
     if (!id) throw new Error('Withdrawal response missing id: ' + JSON.stringify(r).slice(0, 200));
     reporter.highlight('withdrawalId', String(id));

@@ -114,6 +114,43 @@ Cada execução cria uma pasta em `evidence/<timestamp>/` com:
 - `report.md` — relatório PASS/FAIL por fase + tempo de cada step
 - `ui-01-dashboard.png`, `ui-02-gas-tank-history.png` — screenshots
 - (em caso de falha) screenshots adicionais para debug
+- **`curl-log-detailed.md`** — log cronológico de TODAS as requests da Phase B com:
+  - O `curl` exato (com secrets redigidos como `<X_API_KEY>`)
+  - Cada attempt (status code, tempo, body excerpt)
+  - Notes sobre adaptações (ex: "exige `X-2FA-Code` se 2FA estiver ativo")
+- **`api-canonical-reference.md`** — referência limpa: 1 entry por operação, com curl + sample response, pronto pra virar documentação oficial
+- **`run.sh`** — script bash standalone que reproduz todo o fluxo (preencha `CVH_API_KEY` e rode)
+
+## Promovendo evidence → documentação canônica
+
+Após uma run bem-sucedida, copie os artefatos para a pasta canônica de documentação:
+
+```bash
+pnpm promote
+```
+
+Isso copia (da run mais recente):
+- `api-canonical-reference.md` → `docs/superpowers/api-reference/curl-examples.md`
+- `run.sh` → `docs/superpowers/api-reference/replay.sh`
+- `report.md` → `docs/superpowers/api-reference/last-homolog-report.md`
+- `curl-log-detailed.md` → `docs/superpowers/api-reference/curl-log-detailed.md`
+
+Depois é só revisar e commitar:
+```bash
+git diff docs/superpowers/api-reference/
+git add docs/superpowers/api-reference/ && git commit -m "docs: refresh API reference from homologation run"
+```
+
+## Adicionando notes durante a homologação
+
+Se durante uma run você descobrir um quirk novo (ex: um endpoint que pede um header não-óbvio, ou um body que o servidor aceita em formatos diferentes), adicione uma nota no código:
+
+```typescript
+// dentro de qualquer reporter.step(...)
+api.noteLastRequest('A response inclui `secret` apenas na criação — guarde fora.');
+```
+
+Essas notes aparecem em `curl-log-detailed.md` e também na referência canônica, garantindo que a documentação reflita as adaptações descobertas durante a homologação.
 
 Exemplo de output:
 

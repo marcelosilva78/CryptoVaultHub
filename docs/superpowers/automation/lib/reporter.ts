@@ -1,6 +1,7 @@
 import chalk from 'chalk';
 import fs from 'node:fs';
 import path from 'node:path';
+import { curlRecorder } from './curl-recorder.js';
 
 interface StepResult {
   phase: string;
@@ -38,6 +39,7 @@ class Reporter {
   }
 
   async step<T>(name: string, fn: () => Promise<T>, opts: { skipOnFail?: boolean } = {}): Promise<T | undefined> {
+    curlRecorder.setStep(name);
     const t0 = Date.now();
     process.stdout.write(chalk.dim('   ▸ ') + name + ' ... ');
     try {
@@ -110,6 +112,17 @@ class Reporter {
     const md = this.toMarkdown(passed, failed, warned, skipped, totalDur);
     this.saveEvidence('report.md', md);
     console.log(chalk.dim(`   Report saved: ${path.join(this.evidenceDir, 'report.md')}`));
+
+    // Save curl artifacts (detailed log + canonical reference + replay script)
+    try {
+      curlRecorder.writeArtifacts(this.evidenceDir);
+      console.log(chalk.dim(`   Curl artifacts: curl-log-detailed.md / api-canonical-reference.md / run.sh`));
+      if (curlRecorder.hasAdaptationNotes()) {
+        console.log(chalk.yellow(`   ⚠  Adaptation notes were recorded — review them in curl-log-detailed.md before promoting.`));
+      }
+    } catch (e: any) {
+      console.log(chalk.red(`   curl artifacts failed: ${e.message}`));
+    }
 
     if (failed > 0) {
       console.log('\n' + chalk.red.bold('  ✘ Homologation FAILED — see failures above and report.md'));
