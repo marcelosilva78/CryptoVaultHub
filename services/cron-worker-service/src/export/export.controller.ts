@@ -12,7 +12,8 @@ import {
   DefaultValuePipe,
   Logger,
 } from '@nestjs/common';
-import { Response } from 'express';
+// Avoid @types/express dependency — http.ServerResponse covers the surface we use.
+import type { ServerResponse } from 'http';
 import * as fs from 'fs';
 import { ExportService, CreateExportRequest } from './export.service';
 
@@ -81,7 +82,7 @@ export class ExportController {
   @Get(':id/download')
   async download(
     @Param('id') id: string,
-    @Res() res: Response,
+    @Res() res: ServerResponse,
     @Query('clientId', new DefaultValuePipe(0), ParseIntPipe) clientId: number,
   ) {
     const fileInfo = await this.service.recordDownload(id, clientId || undefined);
@@ -117,7 +118,8 @@ export class ExportController {
     stream.on('error', (err) => {
       this.logger.error(`Stream error for ${filePath}: ${err.message}`);
       if (!res.headersSent) {
-        res.status(HttpStatus.INTERNAL_SERVER_ERROR).end();
+        res.statusCode = HttpStatus.INTERNAL_SERVER_ERROR;
+        res.end();
       }
     });
     stream.pipe(res);
