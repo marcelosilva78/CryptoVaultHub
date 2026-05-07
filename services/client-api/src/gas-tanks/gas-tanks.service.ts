@@ -76,6 +76,7 @@ export interface HistoryOptions {
 }
 
 export interface TopupUriResult {
+  chainId: number;
   address: string;
   eip681Uri: string;
 }
@@ -379,6 +380,6 @@ export class GasTanksService {
     const { address } = rows[0];
     const eip681Uri = `ethereum:${address}@${chainId}`;
 
-    return { address, eip681Uri };
+    return { chainId, address, eip681Uri };
   }
 }
