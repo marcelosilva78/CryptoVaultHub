@@ -318,7 +318,9 @@ export class CoSignOrchestratorService {
       SELECT co.*, c.name AS chain_name, t.symbol AS token_symbol
       FROM cvh_transactions.co_sign_operations co
       LEFT JOIN cvh_admin.chains c ON co.chain_id = c.id
-      LEFT JOIN cvh_admin.tokens t ON t.contract_address = co.token_contract_address AND t.chain_id = co.chain_id
+      LEFT JOIN cvh_admin.tokens t
+        ON t.contract_address COLLATE utf8mb4_unicode_ci = co.token_contract_address COLLATE utf8mb4_unicode_ci
+       AND t.chain_id = co.chain_id
       WHERE co.client_id = ${BigInt(clientId)}
         AND co.project_id = ${BigInt(projectId)}
         AND co.status = 'pending'
@@ -337,7 +339,9 @@ export class CoSignOrchestratorService {
       SELECT co.*, c.name AS chain_name, t.symbol AS token_symbol
       FROM cvh_transactions.co_sign_operations co
       LEFT JOIN cvh_admin.chains c ON co.chain_id = c.id
-      LEFT JOIN cvh_admin.tokens t ON t.contract_address = co.token_contract_address AND t.chain_id = co.chain_id
+      LEFT JOIN cvh_admin.tokens t
+        ON t.contract_address COLLATE utf8mb4_unicode_ci = co.token_contract_address COLLATE utf8mb4_unicode_ci
+       AND t.chain_id = co.chain_id
       WHERE co.operation_id = ${operationId} AND co.client_id = ${BigInt(clientId)}
     `;
     if (!rows[0]) throw new NotFoundException('Operation not found');
