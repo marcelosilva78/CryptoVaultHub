@@ -26,7 +26,7 @@ export class DepositService {
   async generateDepositAddress(
     clientId: number,
     chainId: number,
-    data: { label?: string; callbackUrl?: string },
+    data: { externalId: string; label?: string; callbackUrl?: string },
   ) {
     try {
       const { data: result } = await axios.post(

@@ -10,6 +10,16 @@ import {
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class GenerateDepositAddressDto {
+  @ApiProperty({
+    description: `Idempotency / external reference. Unique string from your side that ties this deposit address to one of your business entities (customer ID, invoice ID, order ID). Required because the address is derived deterministically from this value via CREATE2.`,
+    example: 'order-12345',
+    maxLength: 64,
+    type: String,
+  })
+  @IsString()
+  @MaxLength(64)
+  externalId!: string;
+
   @ApiPropertyOptional({
     description: `Human-readable label for identifying this deposit address. Useful for associating addresses with specific customers, orders, or purposes within your system. Labels are not unique — multiple addresses can share the same label.`,
     example: 'customer-12345',
