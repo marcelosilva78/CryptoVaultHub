@@ -15,6 +15,7 @@ import { WithdrawalModule } from './withdrawal/withdrawal.module';
 import { ChainListenerModule } from './chain-listener/chain-listener.module';
 import { ClientDeletionModule } from './client-deletion/client-deletion.module';
 import { ProjectDeletionModule } from './project-deletion/project-deletion.module';
+import { ExportModule } from './export/export.module';
 import { HealthController } from './common/health.controller';
 import { InternalServiceGuard } from './common/guards/internal-service.guard';
 
@@ -54,6 +55,7 @@ import { InternalServiceGuard } from './common/guards/internal-service.guard';
     ChainListenerModule,
     ClientDeletionModule,
     ProjectDeletionModule,
+    ExportModule,
   ],
   controllers: [HealthController],
   providers: [
