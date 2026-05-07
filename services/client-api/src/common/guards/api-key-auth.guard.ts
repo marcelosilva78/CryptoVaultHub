@@ -166,7 +166,14 @@ export class ApiKeyAuthGuard implements CanActivate {
       const response = await axios.post(
         `${this.authServiceUrl}/auth/api-keys/validate`,
         { apiKey, ip: requestIp },
-        { timeout: 5000 },
+        {
+          timeout: 5000,
+          headers: {
+            'X-Internal-Service-Key':
+              process.env.INTERNAL_SERVICE_KEY ??
+              this.configService.get<string>('INTERNAL_SERVICE_KEY', ''),
+          },
+        },
       );
       return response.data;
     } catch (err) {
