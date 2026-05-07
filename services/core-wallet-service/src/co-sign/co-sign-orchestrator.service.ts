@@ -317,7 +317,7 @@ export class CoSignOrchestratorService {
     return this.prisma.$queryRaw<any[]>`
       SELECT co.*, c.name AS chain_name, t.symbol AS token_symbol
       FROM cvh_transactions.co_sign_operations co
-      LEFT JOIN cvh_admin.chains c ON co.chain_id = c.id
+      LEFT JOIN cvh_admin.chains c ON co.chain_id = c.chain_id
       LEFT JOIN cvh_admin.tokens t
         ON t.contract_address COLLATE utf8mb4_unicode_ci = co.token_contract_address COLLATE utf8mb4_unicode_ci
        AND t.chain_id = co.chain_id
@@ -338,7 +338,7 @@ export class CoSignOrchestratorService {
     const rows = await this.prisma.$queryRaw<any[]>`
       SELECT co.*, c.name AS chain_name, t.symbol AS token_symbol
       FROM cvh_transactions.co_sign_operations co
-      LEFT JOIN cvh_admin.chains c ON co.chain_id = c.id
+      LEFT JOIN cvh_admin.chains c ON co.chain_id = c.chain_id
       LEFT JOIN cvh_admin.tokens t
         ON t.contract_address COLLATE utf8mb4_unicode_ci = co.token_contract_address COLLATE utf8mb4_unicode_ci
        AND t.chain_id = co.chain_id
