@@ -10,12 +10,12 @@ import axios from 'axios';
 @Injectable()
 export class CoSignService {
   private readonly logger = new Logger(CoSignService.name);
-  private readonly keyVaultUrl: string;
+  private readonly coreWalletUrl: string;
 
   constructor(private readonly config: ConfigService) {
-    this.keyVaultUrl = this.config.get<string>(
-      'KEY_VAULT_SERVICE_URL',
-      'http://key-vault-service:3005',
+    this.coreWalletUrl = this.config.get<string>(
+      'CORE_WALLET_SERVICE_URL',
+      'http://localhost:3004',
     );
   }
 
@@ -32,7 +32,7 @@ export class CoSignService {
       const params: Record<string, any> = { clientId };
       if (projectId !== undefined) params.projectId = projectId;
 
-      const { data } = await axios.get(`${this.keyVaultUrl}/co-sign/pending`, {
+      const { data } = await axios.get(`${this.coreWalletUrl}/co-sign/pending`, {
         headers: this.headers,
         params,
         timeout: 10000,
@@ -49,7 +49,7 @@ export class CoSignService {
   async getOperation(operationId: string, clientId: number) {
     try {
       const { data } = await axios.get(
-        `${this.keyVaultUrl}/co-sign/${operationId}`,
+        `${this.coreWalletUrl}/co-sign/${operationId}`,
         {
           headers: this.headers,
           params: { clientId },
@@ -70,7 +70,7 @@ export class CoSignService {
   ) {
     try {
       const { data: result } = await axios.post(
-        `${this.keyVaultUrl}/co-sign/${operationId}/sign`,
+        `${this.coreWalletUrl}/co-sign/${operationId}/sign`,
         { clientId, signature: body.signature, ...(body.publicKey ? { publicKey: body.publicKey } : {}) },
         { headers: this.headers, timeout: 30000 },
       );
