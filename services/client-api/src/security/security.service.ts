@@ -202,7 +202,7 @@ export class SecurityService {
   async getShamirShares(clientId: number) {
     try {
       const { data } = await axios.get(
-        `${this.keyVaultUrl}/keys/${clientId}/shamir-status`,
+        `${this.keyVaultUrl}/shamir/${clientId}/status`,
         { headers: this.headers, timeout: 5000 },
       );
       return {
