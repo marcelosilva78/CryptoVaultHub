@@ -275,7 +275,7 @@ export default function NotificationsPage() {
   const handleSave = async (data: RuleFormData, id?: string) => {
     if (id) {
       await clientFetch(`/v1/notifications/rules/${id}`, {
-        method: "PATCH",
+        method: "PUT",
         body: JSON.stringify(data),
       });
     } else {
@@ -302,7 +302,7 @@ export default function NotificationsPage() {
     setTogglingId(rule.id);
     try {
       await clientFetch(`/v1/notifications/rules/${rule.id}`, {
-        method: "PATCH",
+        method: "PUT",
         body: JSON.stringify({ isEnabled: !rule.isEnabled }),
       });
       setRules((prev) =>
