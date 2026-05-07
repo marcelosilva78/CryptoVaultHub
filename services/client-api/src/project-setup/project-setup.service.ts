@@ -1046,7 +1046,7 @@ export class ProjectSetupService {
     let apiKeyCount = 0;
     try {
       const { data: keysData } = await axios.get(
-        `${this.authServiceUrl}/auth/api-keys?clientId=${clientId}`,
+        `${this.authServiceUrl}/auth/internal/api-keys/by-client/${clientId}`,
         { headers: this.headers, timeout: 10000 },
       );
       const allKeys = keysData.apiKeys ?? keysData ?? [];
