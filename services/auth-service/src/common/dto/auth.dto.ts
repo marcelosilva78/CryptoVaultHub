@@ -63,6 +63,9 @@ export class CreateApiKeyDto {
   @IsNumber()
   clientId!: number;
 
+  @IsNumber()
+  projectId!: number;
+
   @IsArray()
   @IsString({ each: true })
   @IsOptional()

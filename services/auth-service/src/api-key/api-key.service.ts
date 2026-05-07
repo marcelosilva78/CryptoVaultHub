@@ -38,6 +38,7 @@ export class ApiKeyService {
    */
   async createApiKey(
     clientId: number,
+    projectId: number,
     scopes: string[] = ['read'],
     options?: {
       ipAllowlist?: string[];
@@ -54,6 +55,7 @@ export class ApiKeyService {
     const apiKey = await this.prisma.apiKey.create({
       data: {
         clientId: BigInt(clientId),
+        projectId: BigInt(projectId),
         keyPrefix: prefix,
         keyHash: hash,
         scopes: scopes,

@@ -291,6 +291,7 @@ export class AuthController {
   async createApiKey(@Body() dto: CreateApiKeyDto) {
     const result = await this.apiKeyService.createApiKey(
       dto.clientId,
+      dto.projectId,
       dto.scopes,
       {
         ipAllowlist: dto.ipAllowlist,
