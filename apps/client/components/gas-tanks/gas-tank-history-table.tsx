@@ -40,6 +40,12 @@ export function GasTankHistoryTable({ tank, onClose }: Props) {
           <button onClick={onClose} aria-label="Close"><X className="h-5 w-5 text-zinc-400" /></button>
         </header>
 
+        <div className="rounded-lg border border-blue-500/30 bg-blue-500/10 p-3 text-xs text-blue-200">
+          Gas spend tracking started on May 6, 2026. Earlier operations are visible in the
+          {' '}<Link href="/projects" className="underline hover:text-blue-100">Deploy History</Link>{' '}
+          and{' '}<Link href="/flush" className="underline hover:text-blue-100">Flush</Link>{' '}pages.
+        </div>
+
         {isLoading && <p className="text-zinc-500">Loading…</p>}
         {error && <p className="text-red-400">Failed to load history.</p>}
 

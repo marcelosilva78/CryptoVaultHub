@@ -86,6 +86,12 @@ export default function GasTankHistoryPage() {
           </div>
         </div>
 
+        <div className="rounded-lg border border-blue-500/30 bg-blue-500/10 p-3 text-xs text-blue-200">
+          Gas spend tracking started on May 6, 2026. Earlier operations are visible in the
+          {' '}<Link href="/projects" className="underline hover:text-blue-100">Deploy History</Link>{' '}
+          and{' '}<Link href="/flush" className="underline hover:text-blue-100">Flush</Link>{' '}pages.
+        </div>
+
         <div className="rounded-xl border border-white/10 bg-zinc-900/60">
           {isLoading && <p className="p-4 text-zinc-500">Loading…</p>}
           {data && (
