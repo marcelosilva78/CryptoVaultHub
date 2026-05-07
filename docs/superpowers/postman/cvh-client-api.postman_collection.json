@@ -1,0 +1,669 @@
+{
+  "info": {
+    "_postman_id": "cvh-client-api-2026-05-07",
+    "name": "CryptoVaultHub Client API — Day-to-Day Homologation",
+    "description": "End-to-end homologation suite for the CryptoVaultHub Client API.\n\n## Prerequisites\n\n1. Customer account (already provisioned project)\n2. **API Key** generated via portal UI (Sidebar → API Keys → Create) with scope `read,write`\n3. Test BNB on the relevant chain\n\n## Environment variables\n\nUse the `CryptoVaultHub Production` environment (cvh-production.postman_environment.json). Required:\n- `apiKey` — your API key from the portal\n- `baseUrl` — `https://api.vaulthub.live/client/v1` (production) or `https://portal.vaulthub.live/api/proxy/v1` (alt via portal proxy)\n- `chainId` — chain to use (e.g. `56` for BSC)\n- `webhookUrl` — your endpoint to receive events (e.g. webhook.site URL)\n\n## Day-to-day operation order\n\nFolders are sequenced. For first-time homologation, run them in order. For ongoing day-to-day, the most-used endpoints are in the **Operations** folder.\n\n## Auth\n\nAll requests use `X-API-Key: {{apiKey}}` (set at collection level).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "apikey",
+    "apikey": [
+      { "key": "key", "value": "X-API-Key", "type": "string" },
+      { "key": "value", "value": "{{apiKey}}", "type": "string" },
+      { "key": "in", "value": "header", "type": "string" }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": { "type": "text/javascript", "exec": ["// Collection-level pre-request — runs before every request"] }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Collection-level test — runs after every request",
+          "pm.test('No 5xx server error', () => pm.expect(pm.response.code).to.be.below(500));"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "00 Sanity",
+      "description": "Quick checks before running anything else.",
+      "item": [
+        {
+          "name": "Auth — verify API key",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/projects", "host": ["{{baseUrl}}"], "path": ["projects"] },
+            "description": "If this returns 200 with a `projects` array, your API key is valid and the connection is healthy."
+          },
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "pm.test('Has projects array', () => pm.expect(pm.response.json().projects).to.be.an('array'));",
+              "// Auto-set first project as default if not set",
+              "const data = pm.response.json();",
+              "if (data.projects && data.projects.length && !pm.environment.get('projectId')) {",
+              "  pm.environment.set('projectId', data.projects[0].id);",
+              "  console.log('projectId set to:', data.projects[0].id);",
+              "}"
+            ]}
+          }]
+        },
+        {
+          "name": "List supported chains",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/chains", "host": ["{{baseUrl}}"], "path": ["chains"] },
+            "description": "List all chains supported by the platform with their explorer URLs and native currency."
+          }
+        }
+      ]
+    },
+    {
+      "name": "01 Projects",
+      "description": "List and inspect projects belonging to your account.",
+      "item": [
+        {
+          "name": "List projects",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/projects", "host": ["{{baseUrl}}"], "path": ["projects"] }
+          }
+        },
+        {
+          "name": "Get project deletion impact (dry-run)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/deletion-impact", "host": ["{{baseUrl}}"], "path": ["projects","{{projectId}}","deletion-impact"] },
+            "description": "Returns counts of wallets/deposits/withdrawals/webhooks/api-keys that would be affected by deletion. Read-only."
+          }
+        },
+        {
+          "name": "Get deploy traces (smart contracts)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/deploy/traces", "host": ["{{baseUrl}}"], "path": ["projects","{{projectId}}","deploy","traces"] },
+            "description": "List of contract deployments for the project (hot_wallet, forwarder_factory, wallet_factory, forwarder_impl, wallet_impl) per chain."
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 Wallets",
+      "description": "Hot wallets and gas tank wallets associated with the project.",
+      "item": [
+        {
+          "name": "List wallets",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/wallets", "host": ["{{baseUrl}}"], "path": ["wallets"] },
+            "description": "Returns hot/gas_tank wallets for all chains."
+          }
+        },
+        {
+          "name": "Get balances on chain",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/wallets/{{chainId}}/balances", "host": ["{{baseUrl}}"], "path": ["wallets","{{chainId}}","balances"] },
+            "description": "Native + ERC20 balances for the project's hot wallet on the given chain."
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 Deposit Addresses (Forwarders)",
+      "description": "Generate forwarders to receive deposits from end users.",
+      "item": [
+        {
+          "name": "Generate deposit address",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"chainId\": {{chainId}},\n  \"label\": \"homolog-{{$timestamp}}\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/deposit-addresses", "host": ["{{baseUrl}}"], "path": ["deposit-addresses"] },
+            "description": "Creates a new forwarder address (CREATE2). Address is computed deterministically; the underlying contract is deployed on first inbound tx. The label is free-form (use customer ID, invoice ID, etc.)."
+          },
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "pm.test('Status 200/201', () => pm.expect(pm.response.code).to.be.oneOf([200,201]));",
+              "const data = pm.response.json();",
+              "if (data && (data.address || data.depositAddress?.address)) {",
+              "  const addr = data.address || data.depositAddress.address;",
+              "  pm.environment.set('depositAddress', addr);",
+              "  console.log('depositAddress set to:', addr);",
+              "}"
+            ]}
+          }]
+        },
+        {
+          "name": "List deposit addresses",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/deposit-addresses?limit=50&page=1",
+              "host": ["{{baseUrl}}"],
+              "path": ["deposit-addresses"],
+              "query": [
+                { "key": "limit", "value": "50" },
+                { "key": "page", "value": "1" },
+                { "key": "chainId", "value": "{{chainId}}", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get deposit address detail",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/deposit-addresses/{{depositAddress}}", "host": ["{{baseUrl}}"], "path": ["deposit-addresses","{{depositAddress}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 Deposits",
+      "description": "Detected on-chain inbound transactions to your deposit addresses.",
+      "item": [
+        {
+          "name": "List deposits",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/deposits?limit=50&page=1",
+              "host": ["{{baseUrl}}"],
+              "path": ["deposits"],
+              "query": [
+                { "key": "limit", "value": "50" },
+                { "key": "page", "value": "1" },
+                { "key": "chainId", "value": "{{chainId}}", "disabled": true },
+                { "key": "status", "value": "confirmed", "disabled": true },
+                { "key": "fromDate", "value": "2026-05-01T00:00:00Z", "disabled": true }
+              ]
+            },
+            "description": "Most-polled endpoint in production. Use webhooks for real-time, this for reconciliation. Filters: chainId, status (pending|confirmed|swept), fromDate, toDate."
+          }
+        },
+        {
+          "name": "Get deposit detail",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/deposits/{{depositId}}", "host": ["{{baseUrl}}"], "path": ["deposits","{{depositId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 Withdrawals",
+      "description": "Outbound transactions from hot wallet to whitelisted addresses.",
+      "item": [
+        {
+          "name": "List withdrawals",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/withdrawals?limit=50&page=1",
+              "host": ["{{baseUrl}}"],
+              "path": ["withdrawals"],
+              "query": [
+                { "key": "limit", "value": "50" },
+                { "key": "page", "value": "1" },
+                { "key": "status", "value": "broadcast", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create withdrawal",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"chainId\": {{chainId}},\n  \"toAddress\": \"{{withdrawalTarget}}\",\n  \"amount\": \"0.003\",\n  \"tokenAddress\": null,\n  \"externalReference\": \"homolog-test-{{$timestamp}}\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/withdrawals", "host": ["{{baseUrl}}"], "path": ["withdrawals"] },
+            "description": "Sends `amount` from the hot wallet on `chainId` to `toAddress` (must be whitelisted). `tokenAddress` null = native token; for ERC20, pass the contract address. `externalReference` is your idempotency key (recommended).\n\n**Status flow:**\n- `pending` → `pending_kyt` (if KYT enabled) → `broadcast` → `confirmed`\n- `pending_cosign` (if co-sign mode) requires `POST /co-sign/:id/sign`\n\nWebhooks fire at: `withdrawal.created`, `withdrawal.broadcast`, `withdrawal.confirmed`."
+          },
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "const data = pm.response.json();",
+              "if (data && data.withdrawalId) pm.environment.set('withdrawalId', data.withdrawalId);"
+            ]}
+          }]
+        },
+        {
+          "name": "Get withdrawal status",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/withdrawals/{{withdrawalId}}", "host": ["{{baseUrl}}"], "path": ["withdrawals","{{withdrawalId}}"] },
+            "description": "Poll this for status updates if you don't have webhooks set up."
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 Flush (manual sweep)",
+      "description": "Force sweep of all forwarders with balance to the hot wallet (vs. the automatic cron).",
+      "item": [
+        {
+          "name": "List flush operations",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/flush?limit=20", "host": ["{{baseUrl}}"], "path": ["flush"], "query": [{ "key": "limit", "value": "20" }] }
+          }
+        },
+        {
+          "name": "Initiate flush",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"chainId\": {{chainId}},\n  \"addressIds\": []\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/flush", "host": ["{{baseUrl}}"], "path": ["flush"] },
+            "description": "Empty `addressIds` flushes ALL forwarders with balance on `chainId`. Pass specific IDs to flush selectively."
+          }
+        },
+        {
+          "name": "Get flush operation detail",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/flush/{{flushId}}", "host": ["{{baseUrl}}"], "path": ["flush","{{flushId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "07 Address Book (Whitelist)",
+      "description": "Whitelist of addresses allowed as withdrawal targets. Add/delete may require 2FA (X-2FA-Code header) when 2FA is enabled on the user.",
+      "item": [
+        {
+          "name": "List whitelisted addresses",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/addresses?limit=50",
+              "host": ["{{baseUrl}}"],
+              "path": ["addresses"],
+              "query": [{ "key": "limit", "value": "50" }, { "key": "chainId", "value": "{{chainId}}", "disabled": true }]
+            }
+          }
+        },
+        {
+          "name": "Add address to whitelist",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-2FA-Code", "value": "{{totpCode}}", "disabled": true, "description": "Required only if user has 2FA enabled." }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"address\": \"{{withdrawalTarget}}\",\n  \"chainId\": {{chainId}},\n  \"label\": \"homolog-target\",\n  \"notes\": \"Test target for homologation\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/addresses", "host": ["{{baseUrl}}"], "path": ["addresses"] }
+          }
+        },
+        {
+          "name": "Update address label",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"label\": \"new-label\"\n}" },
+            "url": { "raw": "{{baseUrl}}/addresses/{{addressId}}", "host": ["{{baseUrl}}"], "path": ["addresses","{{addressId}}"] }
+          }
+        },
+        {
+          "name": "Delete (disable) address",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "X-2FA-Code", "value": "{{totpCode}}", "disabled": true }],
+            "url": { "raw": "{{baseUrl}}/addresses/{{addressId}}", "host": ["{{baseUrl}}"], "path": ["addresses","{{addressId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "08 Address Groups",
+      "description": "Group multiple deposit addresses (e.g., per customer, per branch) for easier management.",
+      "item": [
+        {
+          "name": "List groups",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/address-groups?limit=50", "host": ["{{baseUrl}}"], "path": ["address-groups"], "query": [{ "key": "limit", "value": "50" }] }
+          }
+        },
+        {
+          "name": "Create group",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"homolog-group\",\n  \"description\": \"Test group\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/address-groups", "host": ["{{baseUrl}}"], "path": ["address-groups"] }
+          },
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "const d = pm.response.json();",
+              "if (d && (d.groupUid || d.group?.groupUid)) pm.environment.set('groupUid', d.groupUid || d.group.groupUid);"
+            ]}
+          }]
+        },
+        {
+          "name": "Get group detail",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/address-groups/{{groupUid}}", "host": ["{{baseUrl}}"], "path": ["address-groups","{{groupUid}}"] }
+          }
+        },
+        {
+          "name": "Provision group on chain",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"chainIds\": [{{chainId}}]\n}" },
+            "url": { "raw": "{{baseUrl}}/address-groups/{{groupUid}}/provision", "host": ["{{baseUrl}}"], "path": ["address-groups","{{groupUid}}","provision"] },
+            "description": "Provision the group's forwarders on the specified chains."
+          }
+        }
+      ]
+    },
+    {
+      "name": "09 Gas Tanks",
+      "description": "Wallets that fund deploys, sweeps, flushes, and forwarder operations.",
+      "item": [
+        {
+          "name": "List gas tanks (live balance)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/gas-tanks", "host": ["{{baseUrl}}"], "path": ["gas-tanks"] },
+            "description": "Live balance, status (ok|low|critical), estimated operations remaining, derivation path."
+          }
+        },
+        {
+          "name": "Gas tank history (paginated)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/gas-tanks/{{chainId}}/history?limit=50&offset=0",
+              "host": ["{{baseUrl}}"],
+              "path": ["gas-tanks","{{chainId}}","history"],
+              "query": [
+                { "key": "limit", "value": "50" },
+                { "key": "offset", "value": "0" },
+                { "key": "type", "value": "sweep", "disabled": true, "description": "Filter: deploy_wallet|deploy_forwarder|sweep|flush|topup_internal|other" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get top-up URI (EIP-681)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/gas-tanks/{{chainId}}/topup-uri", "host": ["{{baseUrl}}"], "path": ["gas-tanks","{{chainId}}","topup-uri"] },
+            "description": "Returns address + EIP-681 URI for QR code."
+          }
+        },
+        {
+          "name": "Get alert config",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/gas-tanks/{{chainId}}/alert-config", "host": ["{{baseUrl}}"], "path": ["gas-tanks","{{chainId}}","alert-config"] }
+          }
+        },
+        {
+          "name": "Update alert config",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"thresholdWei\": \"1000000000000000\",\n  \"webhookEnabled\": true,\n  \"emailEnabled\": false\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/gas-tanks/{{chainId}}/alert-config", "host": ["{{baseUrl}}"], "path": ["gas-tanks","{{chainId}}","alert-config"] },
+            "description": "Set the low-balance threshold (in wei) and enable/disable webhook + email channels for `gas_tank.low_balance` events."
+          }
+        },
+        {
+          "name": "Export keystore (Web3 v3 JSON)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mnemonic\": \"<your-12-or-24-word-mnemonic>\",\n  \"password\": \"<keystore-password-min-8>\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/gas-tanks/{{chainId}}/export-keystore", "host": ["{{baseUrl}}"], "path": ["gas-tanks","{{chainId}}","export-keystore"] },
+            "description": "Encrypts the gas tank private key as a Web3 Secret Storage v3 JSON. Mnemonic is processed in-memory only and never persisted/logged. Rate-limited."
+          }
+        }
+      ]
+    },
+    {
+      "name": "10 Webhooks",
+      "description": "Register endpoints to receive event notifications.",
+      "item": [
+        {
+          "name": "List webhooks",
+          "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/webhooks", "host": ["{{baseUrl}}"], "path": ["webhooks"] } }
+        },
+        {
+          "name": "Create webhook",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"{{webhookUrl}}\",\n  \"events\": [\n    \"deposit.detected\",\n    \"deposit.confirmed\",\n    \"withdrawal.created\",\n    \"withdrawal.broadcast\",\n    \"withdrawal.confirmed\",\n    \"forwarder.deployed\",\n    \"flush.completed\",\n    \"gas_tank.low_balance\"\n  ],\n  \"description\": \"Homologation webhook\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/webhooks", "host": ["{{baseUrl}}"], "path": ["webhooks"] },
+            "description": "Returns `secret` ONCE — store it; used to verify HMAC-SHA256 signatures on the `x-webhook-signature` header."
+          },
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "const d = pm.response.json();",
+              "if (d && d.id) pm.environment.set('webhookId', d.id);",
+              "if (d && d.secret) console.log('IMPORTANT — webhook secret (save in env):', d.secret);"
+            ]}
+          }]
+        },
+        {
+          "name": "Send test ping",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/webhooks/{{webhookId}}/test", "host": ["{{baseUrl}}"], "path": ["webhooks","{{webhookId}}","test"] }
+          }
+        },
+        {
+          "name": "List deliveries",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/webhooks/{{webhookId}}/deliveries?limit=50",
+              "host": ["{{baseUrl}}"],
+              "path": ["webhooks","{{webhookId}}","deliveries"],
+              "query": [{ "key": "limit", "value": "50" }]
+            }
+          }
+        },
+        {
+          "name": "Retry failed delivery",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/webhooks/deliveries/{{deliveryId}}/retry", "host": ["{{baseUrl}}"], "path": ["webhooks","deliveries","{{deliveryId}}","retry"] }
+          }
+        },
+        {
+          "name": "Delete webhook",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{baseUrl}}/webhooks/{{webhookId}}", "host": ["{{baseUrl}}"], "path": ["webhooks","{{webhookId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "11 Notification Rules",
+      "description": "Conditional event filtering on top of webhooks.",
+      "item": [
+        {
+          "name": "List rules",
+          "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/notifications/rules", "host": ["{{baseUrl}}"], "path": ["notifications","rules"] } }
+        },
+        {
+          "name": "Create rule",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event\": \"deposit.detected\",\n  \"channel\": \"webhook\",\n  \"filter\": { \"minAmount\": \"0.001\" },\n  \"enabled\": true\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/notifications/rules", "host": ["{{baseUrl}}"], "path": ["notifications","rules"] }
+          },
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "const d = pm.response.json();",
+              "if (d && d.id) pm.environment.set('ruleId', d.id);"
+            ]}
+          }]
+        },
+        {
+          "name": "Update rule (toggle enabled)",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"enabled\": false\n}" },
+            "url": { "raw": "{{baseUrl}}/notifications/rules/{{ruleId}}", "host": ["{{baseUrl}}"], "path": ["notifications","rules","{{ruleId}}"] }
+          }
+        },
+        {
+          "name": "Delete rule",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{baseUrl}}/notifications/rules/{{ruleId}}", "host": ["{{baseUrl}}"], "path": ["notifications","rules","{{ruleId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "12 Co-Sign (full custody clientes ignoram)",
+      "description": "Only relevant if the project is in `co_sign` custody mode. Skip for `full_custody`.",
+      "item": [
+        {
+          "name": "List pending operations",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/co-sign/pending", "host": ["{{baseUrl}}"], "path": ["co-sign","pending"] }
+          }
+        },
+        {
+          "name": "Get operation detail",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/co-sign/{{operationId}}", "host": ["{{baseUrl}}"], "path": ["co-sign","{{operationId}}"] }
+          }
+        },
+        {
+          "name": "Submit signature",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"signature\": \"0x<r-32B><s-32B><v-1B>\",\n  \"publicKey\": \"0x<optional-public-key-hex>\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/co-sign/{{operationId}}/sign", "host": ["{{baseUrl}}"], "path": ["co-sign","{{operationId}}","sign"] },
+            "description": "Sign the `txHash` from the pending operation with your key share, submit hex."
+          }
+        }
+      ]
+    },
+    {
+      "name": "13 Exports (reconciliation)",
+      "description": "Generate downloadable CSV/JSON reports.",
+      "item": [
+        {
+          "name": "List exports",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/exports?limit=20", "host": ["{{baseUrl}}"], "path": ["exports"], "query": [{ "key": "limit", "value": "20" }] }
+          }
+        },
+        {
+          "name": "Create export request",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"transactions\",\n  \"format\": \"csv\",\n  \"chainId\": {{chainId}},\n  \"fromDate\": \"2026-05-01T00:00:00Z\",\n  \"toDate\": \"2026-05-31T23:59:59Z\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/exports", "host": ["{{baseUrl}}"], "path": ["exports"] }
+          },
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "const d = pm.response.json();",
+              "if (d && d.requestUid) pm.environment.set('exportId', d.requestUid);"
+            ]}
+          }]
+        },
+        {
+          "name": "Get export status",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/exports/{{exportId}}", "host": ["{{baseUrl}}"], "path": ["exports","{{exportId}}"] }
+          }
+        },
+        {
+          "name": "Download export file",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/exports/{{exportId}}/download", "host": ["{{baseUrl}}"], "path": ["exports","{{exportId}}","download"] },
+            "description": "Streams the file. Use Postman's 'Save Response → Save to file'."
+          }
+        }
+      ]
+    },
+    {
+      "name": "14 Security",
+      "description": "Read-only security state.",
+      "item": [
+        {
+          "name": "Get security settings",
+          "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/security/settings", "host": ["{{baseUrl}}"], "path": ["security","settings"] } }
+        },
+        {
+          "name": "Get 2FA status",
+          "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/security/2fa-status", "host": ["{{baseUrl}}"], "path": ["security","2fa-status"] } }
+        },
+        {
+          "name": "Get Shamir shares status",
+          "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/security/shamir-shares", "host": ["{{baseUrl}}"], "path": ["security","shamir-shares"] } }
+        }
+      ]
+    }
+  ],
+  "variable": []
+}
