@@ -90,4 +90,8 @@ export class CreateApiKeyDto {
 export class ValidateApiKeyDto {
   @IsString()
   apiKey!: string;
+
+  @IsString()
+  @IsOptional()
+  ip?: string;
 }
