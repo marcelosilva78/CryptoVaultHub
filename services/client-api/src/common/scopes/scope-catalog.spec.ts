@@ -2,6 +2,7 @@ import {
   GRANULAR_SCOPES,
   expandLegacyScopes,
   isKnownScope,
+  isGranularScope,
   ALL_READ_SCOPES,
   LEGACY_WRITE_SCOPES,
   LEGACY_WITHDRAW_SCOPES,
@@ -58,5 +59,14 @@ describe('scope-catalog', () => {
 
   it('handles undefined input gracefully', () => {
     expect(expandLegacyScopes(undefined)).toEqual([]);
+  });
+
+  it('isGranularScope accepts granular scopes and rejects legacy aliases', () => {
+    expect(isGranularScope('wallets:create')).toBe(true);
+    expect(isGranularScope('forwarders:flush')).toBe(true);
+    expect(isGranularScope('read')).toBe(false);
+    expect(isGranularScope('write')).toBe(false);
+    expect(isGranularScope('withdraw')).toBe(false);
+    expect(isGranularScope('totally:bogus')).toBe(false);
   });
 });

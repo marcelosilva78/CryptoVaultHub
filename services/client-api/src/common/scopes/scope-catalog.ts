@@ -87,3 +87,13 @@ export function isKnownScope(s: string): boolean {
     s in LEGACY_ALIASES
   );
 }
+
+/**
+ * Stricter than isKnownScope — accepts ONLY granular scope strings, rejecting
+ * the legacy macros (`read`/`write`/`withdraw`). Use this for self-service
+ * key creation so portal users cannot mint over-broad keys via the macro
+ * aliases.
+ */
+export function isGranularScope(s: string): boolean {
+  return (GRANULAR_SCOPES as readonly string[]).includes(s);
+}

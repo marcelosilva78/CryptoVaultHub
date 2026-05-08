@@ -107,4 +107,13 @@ describe('ApiKeyService (client-api)', () => {
     const svc = new ApiKeyService(cfg, projects);
     await expect(svc.revoke(7, 99)).rejects.toThrow(ForbiddenException);
   });
+
+  it('create rejects legacy alias scopes (read/write/withdraw)', async () => {
+    const svc = new ApiKeyService(cfg, projects);
+    for (const macro of ['read', 'write', 'withdraw']) {
+      await expect(
+        svc.create(7, { projectId: 11, scopes: [macro] }),
+      ).rejects.toThrow(BadRequestException);
+    }
+  });
 });

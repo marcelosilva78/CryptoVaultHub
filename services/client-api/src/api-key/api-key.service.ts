@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
-import { isKnownScope } from '../common/scopes/scope-catalog';
+import { isGranularScope } from '../common/scopes/scope-catalog';
 import { ProjectService } from '../project/project.service';
 
 export interface CreateApiKeyInput {
@@ -70,8 +70,8 @@ export class ApiKeyService {
 
   async create(clientId: number, input: CreateApiKeyInput) {
     for (const s of input.scopes) {
-      if (!isKnownScope(s)) {
-        throw new BadRequestException(`Unknown scope: ${s}`);
+      if (!isGranularScope(s)) {
+        throw new BadRequestException(`Unknown or non-granular scope: ${s}`);
       }
     }
     const projects = await this.projectService.listProjects(clientId);
