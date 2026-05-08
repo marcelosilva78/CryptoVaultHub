@@ -6,6 +6,7 @@ import {
   Body,
   Query,
   ParseIntPipe,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -16,7 +17,8 @@ import {
   ApiQuery,
   ApiBody,
 } from '@nestjs/swagger';
-import { ClientAuth, CurrentClientId } from '../common/decorators';
+import { ClientAuth, ClientAuthWithProject, CurrentClientId } from '../common/decorators';
+import { ProjectChainReadyGuard } from '../common/guards/project-chain-ready.guard';
 import { DepositService } from './deposit.service';
 import {
   GenerateDepositAddressDto,
@@ -31,7 +33,8 @@ export class DepositController {
   constructor(private readonly depositService: DepositService) {}
 
   @Post('wallets/:chainId/deposit-address')
-  @ClientAuth('write')
+  @ClientAuthWithProject('write')
+  @UseGuards(ProjectChainReadyGuard)
   @ApiOperation({
     summary: 'Generate a new deposit address',
     description: `Generates a deterministic deposit address (forwarder) on the specified chain for receiving deposits.

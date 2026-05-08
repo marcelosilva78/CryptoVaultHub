@@ -5,6 +5,7 @@ import {
   Param,
   Body,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -14,7 +15,8 @@ import {
   ApiParam,
   ApiBody,
 } from '@nestjs/swagger';
-import { ClientAuth, CurrentClientId } from '../common/decorators';
+import { ClientAuth, ClientAuthWithProject, CurrentClientId } from '../common/decorators';
+import { ProjectChainReadyGuard } from '../common/guards/project-chain-ready.guard';
 import { WithdrawalService } from './withdrawal.service';
 import {
   CreateWithdrawalDto,
@@ -28,7 +30,8 @@ export class WithdrawalController {
   constructor(private readonly withdrawalService: WithdrawalService) {}
 
   @Post()
-  @ClientAuth('write')
+  @ClientAuthWithProject('write')
+  @UseGuards(ProjectChainReadyGuard)
   @ApiOperation({
     summary: 'Create a withdrawal request',
     description: `Submits a withdrawal request to send funds from the client's hot wallet to a whitelisted destination address.
