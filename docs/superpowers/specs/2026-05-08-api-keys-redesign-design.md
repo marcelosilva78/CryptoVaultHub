@@ -89,6 +89,7 @@ Grouped by domain, with a one-line description suitable for the wizard's helper 
 | Wallets | `wallets:read` | List wallets, balances, addresses. |
 | Wallets | `wallets:create` | Generate / deploy new wallet contracts on chain. |
 | Forwarders | `forwarders:read` | List deposit forwarders and their state. |
+| Forwarders | `forwarders:create` | Generate / provision deposit forwarder addresses. |
 | Forwarders | `forwarders:flush` | Execute flush of deposit forwarders to hot wallet. |
 | Address Book | `address-book:read` | List whitelisted withdrawal destinations. |
 | Address Book | `address-book:write` | Register / update / delete withdrawal destinations. |
@@ -131,7 +132,7 @@ The wizard tags scopes with one of three sensitivity levels for visual treatment
 When the guard authenticates a request, scopes on the key are expanded:
 
 - `read` → all `*:read` scopes (every entry above ending in `:read`).
-- `write` → `wallets:create`, `forwarders:flush`, `address-book:write`, `address-groups:write`, `webhooks:write`, `gas-tanks:write`, `co-sign:write`, `project-setup:write`, `notifications:write`, `security:write`, `export:read`.
+- `write` → `wallets:create`, `forwarders:create`, `forwarders:flush`, `address-book:write`, `address-groups:write`, `webhooks:write`, `gas-tanks:write`, `co-sign:write`, `project-setup:write`, `notifications:write`, `security:write`, `export:read`.
 - `withdraw` → `withdrawals:hot`, `withdrawals:gas-tank`.
 
 Guard pseudo-code:

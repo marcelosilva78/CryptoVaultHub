@@ -34,9 +34,9 @@ export class DepositController {
 
   @Post('wallets/:chainId/deposit-address')
   @UseGuards(ProjectChainReadyGuard)
-  @ClientAuthWithProject('forwarders:flush')
+  @ClientAuthWithProject('forwarders:create')
   @ApiOperation({
-    summary: 'Generate a new deposit address (scope: forwarders:flush)',
+    summary: 'Generate a new deposit address (scope: forwarders:create)',
     description: `Generates a deterministic deposit address (forwarder) on the specified chain for receiving deposits.
 
 **How it works:**
@@ -123,9 +123,9 @@ export class DepositController {
   }
 
   @Post('wallets/:chainId/deposit-addresses/batch')
-  @ClientAuth('forwarders:flush')
+  @ClientAuth('forwarders:create')
   @ApiOperation({
-    summary: 'Batch generate deposit addresses (scope: forwarders:flush)',
+    summary: 'Batch generate deposit addresses (scope: forwarders:create)',
     description: `Generates multiple deposit addresses in a single request. This is more efficient than calling the single-address endpoint multiple times.
 
 **How batch generation works:**

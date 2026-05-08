@@ -8,6 +8,7 @@ export const GRANULAR_SCOPES = [
   'wallets:read',
   'wallets:create',
   'forwarders:read',
+  'forwarders:create',
   'forwarders:flush',
   'address-book:read',
   'address-book:write',
@@ -44,6 +45,7 @@ export const ALL_READ_SCOPES: string[] = GRANULAR_SCOPES.filter((s) =>
 
 export const LEGACY_WRITE_SCOPES: string[] = [
   'wallets:create',
+  'forwarders:create',
   'forwarders:flush',
   'address-book:write',
   'address-groups:write',

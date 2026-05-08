@@ -9,9 +9,9 @@ import {
 } from './scope-catalog';
 
 describe('scope-catalog', () => {
-  it('GRANULAR_SCOPES has 29 entries and no duplicates', () => {
-    expect(GRANULAR_SCOPES.length).toBe(29);
-    expect(new Set(GRANULAR_SCOPES).size).toBe(29);
+  it('GRANULAR_SCOPES has 30 entries and no duplicates', () => {
+    expect(GRANULAR_SCOPES.length).toBe(30);
+    expect(new Set(GRANULAR_SCOPES).size).toBe(30);
   });
 
   it('does not include the legacy "admin" pseudo-scope (set only by JWT auth path)', () => {
@@ -68,5 +68,9 @@ describe('scope-catalog', () => {
     expect(isGranularScope('write')).toBe(false);
     expect(isGranularScope('withdraw')).toBe(false);
     expect(isGranularScope('totally:bogus')).toBe(false);
+  });
+
+  it('LEGACY_WRITE_SCOPES includes forwarders:create', () => {
+    expect(LEGACY_WRITE_SCOPES).toContain('forwarders:create');
   });
 });
