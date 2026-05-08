@@ -30,8 +30,8 @@ export class WithdrawalController {
   constructor(private readonly withdrawalService: WithdrawalService) {}
 
   @Post()
-  @ClientAuthWithProject('write')
   @UseGuards(ProjectChainReadyGuard)
+  @ClientAuthWithProject('write')
   @ApiOperation({
     summary: 'Create a withdrawal request',
     description: `Submits a withdrawal request to send funds from the client's hot wallet to a whitelisted destination address.

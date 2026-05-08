@@ -33,8 +33,8 @@ export class DepositController {
   constructor(private readonly depositService: DepositService) {}
 
   @Post('wallets/:chainId/deposit-address')
-  @ClientAuthWithProject('write')
   @UseGuards(ProjectChainReadyGuard)
+  @ClientAuthWithProject('write')
   @ApiOperation({
     summary: 'Generate a new deposit address',
     description: `Generates a deterministic deposit address (forwarder) on the specified chain for receiving deposits.
