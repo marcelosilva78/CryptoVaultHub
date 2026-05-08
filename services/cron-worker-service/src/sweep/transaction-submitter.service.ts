@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { ethers } from 'ethers';
 import axios from 'axios';
 import { EvmProviderService } from '../blockchain/evm-provider.service';
+import { PrismaService } from '../prisma/prisma.service';
 
 /** ABI fragments for CvhForwarder flush operations */
 const FORWARDER_IFACE = new ethers.Interface([
@@ -14,10 +15,14 @@ const FORWARDER_IFACE = new ethers.Interface([
 export interface SignAndSubmitParams {
   chainId: number;
   clientId: number;
-  from: string; // Gas Tank address
+  from: string; // Gas Tank address (or '' to derive from keyType)
   to: string; // Forwarder address
   data: string; // Encoded calldata
   gasLimit?: bigint;
+  /** Amount of native token to send (default 0) */
+  value?: bigint;
+  /** Key type to use for signing (default 'gas_tank') */
+  keyType?: 'gas_tank' | 'platform' | 'client' | 'backup';
 }
 
 interface KeyVaultSignResponse {
@@ -46,6 +51,7 @@ export class TransactionSubmitterService {
   constructor(
     private readonly config: ConfigService,
     private readonly evmProvider: EvmProviderService,
+    private readonly prisma: PrismaService,
   ) {
     this.keyVaultUrl = this.config.getOrThrow<string>('KEY_VAULT_URL');
   }
@@ -93,7 +99,27 @@ export class TransactionSubmitterService {
    * 5. Return the real tx hash
    */
   async signAndSubmit(params: SignAndSubmitParams): Promise<string> {
-    const { chainId, clientId, from, to, data, gasLimit } = params;
+    const { chainId, clientId, to, data, gasLimit } = params;
+    const keyType = params.keyType ?? 'gas_tank';
+
+    // Resolve 'from' address: if empty, look up the key address from cvh_keyvault.derived_keys
+    let from = params.from;
+    if (!from) {
+      const rows = await this.prisma.$queryRaw<{ address: string }[]>`
+        SELECT address FROM cvh_keyvault.derived_keys
+        WHERE client_id = ${clientId}
+          AND key_type = ${keyType}
+          AND is_active = 1
+        LIMIT 1
+      `;
+      if (!rows.length) {
+        throw new Error(
+          `No active ${keyType} key found for client ${clientId}`,
+        );
+      }
+      from = rows[0].address;
+    }
+
     const provider = await this.evmProvider.getProvider(chainId);
 
     // 1. Get nonce (include pending txs to avoid nonce collisions)
@@ -126,7 +152,7 @@ export class TransactionSubmitterService {
     const txData: Record<string, any> = {
       to,
       data,
-      value: '0',
+      value: (params.value ?? 0n).toString(),
       gasLimit: finalGasLimit.toString(),
       nonce,
       chainId,
@@ -158,7 +184,7 @@ export class TransactionSubmitterService {
       {
         clientId,
         chainId,
-        keyType: 'gas_tank',
+        keyType,
         txData,
         requestedBy: 'sweep-service',
       },
