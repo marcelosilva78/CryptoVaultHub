@@ -59,6 +59,8 @@ model Chain {
   statusChangedAt         DateTime? @map("status_changed_at")
   isActive                Boolean   @default(true) @map("is_active")
   isTestnet               Boolean   @default(false) @map("is_testnet")
+  platformTopupThresholdWei String? @map("platform_topup_threshold_wei") @db.VarChar(78)
+  platformTopupAmountWei    String? @map("platform_topup_amount_wei")    @db.VarChar(78)
   createdAt               DateTime  @default(now()) @map("created_at")
   updatedAt               DateTime  @updatedAt @map("updated_at")
 
