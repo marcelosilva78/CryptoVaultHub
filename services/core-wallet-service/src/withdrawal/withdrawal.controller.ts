@@ -23,6 +23,7 @@ export class WithdrawalController {
       toAddressId: dto.toAddressId,
       amount: dto.amount,
       idempotencyKey: dto.idempotencyKey,
+      sourceWallet: dto.sourceWallet,
     });
     return {
       success: true,

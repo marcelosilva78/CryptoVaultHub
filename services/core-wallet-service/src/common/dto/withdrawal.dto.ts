@@ -2,6 +2,8 @@ import {
   IsInt,
   IsString,
   IsPositive,
+  IsOptional,
+  IsIn,
   Min,
   Matches,
 } from 'class-validator';
@@ -14,6 +16,11 @@ export class CreateWithdrawalDto {
   @IsInt()
   @Min(1)
   chainId: number;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['hot', 'gas_tank'])
+  sourceWallet?: 'hot' | 'gas_tank';
 
   @IsInt()
   @IsPositive()
