@@ -3,6 +3,7 @@ import {
   Logger,
   HttpException,
   InternalServerErrorException,
+  BadRequestException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
@@ -35,10 +36,29 @@ export class WithdrawalService {
       callbackUrl?: string;
     },
   ) {
+    // Resolve tokenId from (chainId, tokenSymbol)
+    const tokenId = await this.resolveTokenId(data.chainId, data.tokenSymbol);
+
+    // Resolve toAddressId from (clientId, chainId, toAddress)
+    const toAddressId = await this.resolveAddressId(
+      clientId,
+      data.chainId,
+      data.toAddress,
+    );
+
     try {
       const { data: result } = await axios.post(
         `${this.coreWalletUrl}/withdrawals/create`,
-        { clientId, ...data },
+        {
+          clientId,
+          chainId: data.chainId,
+          tokenId,
+          toAddressId,
+          amount: data.amount,
+          memo: data.memo,
+          idempotencyKey: data.idempotencyKey,
+          callbackUrl: data.callbackUrl,
+        },
         { headers: this.headers, timeout: 30000 },
       );
       return result;
@@ -47,6 +67,60 @@ export class WithdrawalService {
         throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
       }
       throw new InternalServerErrorException('Downstream service unavailable');
+    }
+  }
+
+  private async resolveTokenId(chainId: number, tokenSymbol: string): Promise<number> {
+    try {
+      const { data } = await axios.get(`${this.coreWalletUrl}/tokens`, {
+        headers: this.headers,
+        params: { chainId },
+        timeout: 10_000,
+      });
+      const tokens: Array<{ id: number | string; symbol: string }> =
+        data?.tokens ?? data ?? [];
+      const match = tokens.find(
+        (t) => String(t.symbol).toUpperCase() === tokenSymbol.toUpperCase(),
+      );
+      if (!match) {
+        throw new BadRequestException(
+          `Token symbol '${tokenSymbol}' not found on chain ${chainId}`,
+        );
+      }
+      return Number(match.id);
+    } catch (e: any) {
+      if (e instanceof BadRequestException) throw e;
+      this.logger.warn(`resolveTokenId failed: ${e.message}`);
+      throw new InternalServerErrorException('Failed to resolve token');
+    }
+  }
+
+  private async resolveAddressId(
+    clientId: number,
+    chainId: number,
+    address: string,
+  ): Promise<number> {
+    try {
+      const { data } = await axios.get(`${this.coreWalletUrl}/address-book`, {
+        headers: this.headers,
+        params: { clientId, chainId, limit: 200 },
+        timeout: 10_000,
+      });
+      const addresses: Array<{ id: number | string; address: string; status?: string }> =
+        data?.addresses ?? data ?? [];
+      const match = addresses.find(
+        (a) => String(a.address).toLowerCase() === address.toLowerCase(),
+      );
+      if (!match) {
+        throw new BadRequestException(
+          `Address ${address} is not whitelisted for client ${clientId} on chain ${chainId}`,
+        );
+      }
+      return Number(match.id);
+    } catch (e: any) {
+      if (e instanceof BadRequestException) throw e;
+      this.logger.warn(`resolveAddressId failed: ${e.message}`);
+      throw new InternalServerErrorException('Failed to resolve address');
     }
   }
 

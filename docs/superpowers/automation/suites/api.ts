@@ -358,10 +358,9 @@ export async function runApiSuite(config: Config) {
       chainId: config.chainId,
       toAddress: withdrawalTarget,
       amount: withdrawalAmount,
-      tokenAddress: null,
-      externalReference: `homolog-${Date.now()}`,
+      tokenSymbol: 'BNB',
     });
-    api.noteLastRequest('`tokenAddress: null` = native (BNB/ETH/MATIC); para ERC-20, passar o endereço do contrato. `externalReference` é a sua chave de idempotência (recomendado).');
+    api.noteLastRequest('Use `tokenSymbol` (BNB/ETH/MATIC/USDT/USDC). For ERC-20 the token must be in `GET /client/v1/tokens?chainId=…`.');
     const id = r.withdrawalId ?? r.id;
     if (!id) throw new Error('Withdrawal response missing id: ' + JSON.stringify(r).slice(0, 200));
     reporter.highlight('withdrawalId', String(id));
