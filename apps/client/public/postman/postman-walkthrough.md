@@ -190,6 +190,32 @@ Content-Type: application/json
 - `toAddress` deve estar com `status: "active"` no whitelist (ou seja, fora do cooldown). Se estiver em cooldown → HTTP 422.
 - Se `project_chains.deploy_status != "ready"` → HTTP 422 (defesa em profundidade).
 
+### 10b. Variant — sacar do Gas Tank
+
+Mesmo endpoint, com `sourceWallet:'gas_tank'`. A API força o token para o nativo da chain (BNB na BSC, ETH na Ethereum, etc.) e aplica um *reserve* sobre o saldo do gas tank igual a `2 × platform_topup_amount_wei` (0.02 BNB no default da BSC). Use para operações administrativas — recuperar saldo residual, consolidar fundos antes de manutenção. Para pagamentos rotineiros, prefira o caminho default `hot`.
+
+```http
+POST {{baseUrl}}/withdrawals
+X-API-Key: {{apiKey}}
+Content-Type: application/json
+
+{
+  "chainId": {{chainId}},
+  "sourceWallet": "gas_tank",
+  "tokenSymbol": "{{tokenSymbol}}",
+  "toAddress": "{{withdrawalTarget}}",
+  "amount": "0.001",
+  "idempotencyKey": "wd-gt-…"
+}
+```
+
+**Erros específicos do gas_tank:**
+
+| HTTP | Mensagem | Causa |
+|---|---|---|
+| 422 | `Gas Tank source only supports the chain native token` | Enviou `tokenSymbol` diferente do nativo |
+| 422 | `Insufficient gas tank balance after reserve` | Pediu mais que `balance − reserved`. O body da resposta inclui `details: {requested, available, reserved}` |
+
 ---
 
 ## 11. Self-approve (full-custody only)

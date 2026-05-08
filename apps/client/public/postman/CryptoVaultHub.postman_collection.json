@@ -34,6 +34,12 @@
       "type": "string"
     },
     {
+      "key": "sourceWallet",
+      "value": "hot",
+      "type": "string",
+      "description": "Source of funds: 'hot' (default, multisig) or 'gas_tank' (EOA, native-only)."
+    },
+    {
       "key": "withdrawalTarget",
       "value": "0x0000000000000000000000000000000000000000",
       "type": "string",
@@ -440,6 +446,48 @@
               "path": ["withdrawals"]
             },
             "description": "Cria o saque. Estado inicial = pending_approval. Em modo full-custody, próximo passo é o self-approve."
+          }
+        },
+        {
+          "name": "Create withdrawal (gas tank)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const idem = `wd-gt-${Date.now()}`;",
+                  "pm.collectionVariables.set('idempotencyKey', idem);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const j = pm.response.json();",
+                  "const wd = j.withdrawal?.withdrawal || j.withdrawal || j;",
+                  "pm.collectionVariables.set('withdrawalId', wd.id);",
+                  "console.log('gas_tank withdrawalId =', wd.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"chainId\": {{chainId}},\n  \"sourceWallet\": \"gas_tank\",\n  \"tokenSymbol\": \"{{tokenSymbol}}\",\n  \"toAddress\": \"{{withdrawalTarget}}\",\n  \"amount\": \"{{withdrawalAmount}}\",\n  \"memo\": \"Postman gas-tank test\",\n  \"idempotencyKey\": \"{{idempotencyKey}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/withdrawals",
+              "host": ["{{baseUrl}}"],
+              "path": ["withdrawals"]
+            },
+            "description": "Variant of 'Create withdrawal' that explicitly uses sourceWallet='gas_tank'. Token is forced to the chain native by the API regardless of what is sent. The 422 errors specific to this path are: 'Gas Tank source only supports the chain native token' and 'Insufficient gas tank balance after reserve' (reserve = 2 × platform_topup_amount_wei)."
           }
         },
         {
