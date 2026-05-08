@@ -9,6 +9,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { Reflector } from '@nestjs/core';
+import { expandLegacyScopes } from '../scopes/scope-catalog';
 
 export const SCOPES_KEY = 'required_scopes';
 
@@ -137,15 +138,14 @@ export class ApiKeyAuthGuard implements CanActivate {
       [context.getHandler(), context.getClass()],
     );
 
-    if (requiredScopes && requiredScopes.length > 0) {
-      const hasScope = requiredScopes.some((scope) =>
-        userScopes?.includes(scope),
+    if (!requiredScopes || requiredScopes.length === 0) return;
+
+    const expanded = expandLegacyScopes(userScopes);
+    const hasScope = requiredScopes.some((scope) => expanded.includes(scope));
+    if (!hasScope) {
+      throw new ForbiddenException(
+        `Insufficient scopes. Required: ${requiredScopes.join(' | ')}`,
       );
-      if (!hasScope) {
-        throw new ForbiddenException(
-          `Insufficient scopes. Required: ${requiredScopes.join(' | ')}`,
-        );
-      }
     }
   }
 

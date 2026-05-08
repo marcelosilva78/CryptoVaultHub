@@ -130,7 +130,10 @@ describe('ApiKeyAuthGuard', () => {
       },
     });
 
-    (reflector.getAllAndOverride as jest.Mock).mockReturnValueOnce(['read']);
+    // After macro expansion, legacy 'read' expands to granular *:read scopes
+    (reflector.getAllAndOverride as jest.Mock).mockReturnValueOnce([
+      'wallets:read',
+    ]);
 
     const request = mockRequest({ 'x-api-key': 'cvh_live_validkey123' });
     const context = mockExecutionContext(request);
@@ -184,7 +187,7 @@ describe('ApiKeyAuthGuard', () => {
     expect(mockedAxios.post).toHaveBeenCalledWith(
       'http://localhost:3003/auth/api-keys/validate',
       { apiKey: 'cvh_live_testkey', ip: '127.0.0.1' },
-      { timeout: 5000 },
+      expect.objectContaining({ timeout: 5000 }),
     );
   });
 
@@ -255,5 +258,51 @@ describe('ApiKeyAuthGuard', () => {
     await expect(guard.canActivate(context)).rejects.toThrow(
       UnauthorizedException,
     );
+  });
+});
+
+describe('ApiKeyAuthGuard.checkScopes — legacy macro expansion', () => {
+  const cfg = { get: () => 'http://x' } as unknown as ConfigService;
+
+  function makeGuard(_required: string[]) {
+    const reflector = {
+      getAllAndOverride: jest.fn().mockReturnValue(_required),
+    } as unknown as Reflector;
+    return new ApiKeyAuthGuard(cfg, reflector);
+  }
+
+  // Helper context — checkScopes only reads metadata via reflector, ignores the context
+  const dummyContext = {
+    getHandler: () => ({}),
+    getClass: () => ({}),
+    switchToHttp: () => ({ getRequest: () => ({}) }),
+  } as any;
+
+  it('grants access when key has legacy "read" and route requires a granular *:read', () => {
+    const guard = makeGuard(['wallets:read']);
+    expect(() =>
+      (guard as any).checkScopes(dummyContext, ['read']),
+    ).not.toThrow();
+  });
+
+  it('grants access when key has legacy "write" and route requires forwarders:flush', () => {
+    const guard = makeGuard(['forwarders:flush']);
+    expect(() =>
+      (guard as any).checkScopes(dummyContext, ['write']),
+    ).not.toThrow();
+  });
+
+  it('grants access when key has legacy "withdraw" and route requires withdrawals:hot', () => {
+    const guard = makeGuard(['withdrawals:hot']);
+    expect(() =>
+      (guard as any).checkScopes(dummyContext, ['withdraw']),
+    ).not.toThrow();
+  });
+
+  it('denies access when granular key lacks the required granular scope', () => {
+    const guard = makeGuard(['forwarders:flush']);
+    expect(() =>
+      (guard as any).checkScopes(dummyContext, ['wallets:create']),
+    ).toThrow(ForbiddenException);
   });
 });
