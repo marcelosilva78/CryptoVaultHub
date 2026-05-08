@@ -6,6 +6,12 @@ import { ethers } from 'ethers';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { EvmProviderService } from '../blockchain/evm-provider.service';
+import { KeyResolverService } from './key-resolver.service';
+import {
+  buildNativeOperationHash,
+  buildErc20OperationHash,
+  applyEthSignedMessagePrefix,
+} from './operation-hash';
 
 /**
  * Minimal ABI for CvhWalletSimple: only the functions needed for withdrawal execution.
@@ -82,6 +88,7 @@ export class WithdrawalWorkerService extends WorkerHost implements OnModuleInit 
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
     private readonly evmProvider: EvmProviderService,
+    private readonly keyResolver: KeyResolverService,
   ) {
     super();
     // L-3: Use getOrThrow to fail fast if KEY_VAULT_URL is missing,
@@ -273,22 +280,6 @@ export class WithdrawalWorkerService extends WorkerHost implements OnModuleInit 
         );
       }
 
-      // Load gas tank wallet (msg.sender for the multisig tx)
-      const gasTank = await this.prisma.wallet.findUnique({
-        where: {
-          uq_client_chain_type: {
-            clientId: BigInt(clientId),
-            chainId,
-            walletType: 'gas_tank',
-          },
-        },
-      });
-      if (!gasTank) {
-        throw new Error(
-          `Gas tank wallet not found for client ${clientId} on chain ${chainId}`,
-        );
-      }
-
       const provider = await this.evmProvider.getProvider(chainId);
 
       // Get next sequence ID from the contract
@@ -306,45 +297,26 @@ export class WithdrawalWorkerService extends WorkerHost implements OnModuleInit 
 
       // Build operationHash
       const value = BigInt(withdrawal.amountRaw);
-      const abiCoder = ethers.AbiCoder.defaultAbiCoder();
-      let operationHash: string;
 
-      if (token.isNative) {
-        // sendMultiSig: abi.encode(getNetworkId(), toAddress, value, data, expireTime, sequenceId)
-        const encoded = abiCoder.encode(
-          ['string', 'address', 'uint256', 'bytes', 'uint256', 'uint256'],
-          [
-            chainId.toString(),
-            withdrawal.toAddress,
+      const operationHash = token.isNative
+        ? buildNativeOperationHash({
+            chainId,
+            walletAddress: hotWallet.address,
+            toAddress: withdrawal.toAddress,
             value,
-            '0x',
+            data: '0x',
             expireTime,
             sequenceId,
-          ],
-        );
-        operationHash = ethers.keccak256(encoded);
-      } else {
-        // sendMultiSigToken: abi.encode(getTokenNetworkId(), toAddress, value, tokenContractAddress, expireTime, sequenceId)
-        const encoded = abiCoder.encode(
-          [
-            'string',
-            'address',
-            'uint256',
-            'address',
-            'uint256',
-            'uint256',
-          ],
-          [
-            `${chainId}-ERC20`,
-            withdrawal.toAddress,
+          })
+        : buildErc20OperationHash({
+            chainId,
+            walletAddress: hotWallet.address,
+            toAddress: withdrawal.toAddress,
             value,
-            token.contractAddress,
+            tokenContractAddress: token.contractAddress,
             expireTime,
             sequenceId,
-          ],
-        );
-        operationHash = ethers.keccak256(encoded);
-      }
+          });
 
       this.logger.log(
         `Withdrawal ${withdrawalId}: operationHash=${operationHash}, seqId=${sequenceId}, expire=${expireTime}`,
@@ -353,18 +325,15 @@ export class WithdrawalWorkerService extends WorkerHost implements OnModuleInit 
       // Sign the operationHash via Key Vault (platform key).
       // The contract applies "\x19Ethereum Signed Message:\n32" prefix before ecrecover,
       // so we must sign the prefixed hash (since Key Vault uses raw ECDSA sign).
-      const prefixedHash = ethers.solidityPackedKeccak256(
-        ['string', 'bytes32'],
-        ['\x19Ethereum Signed Message:\n32', operationHash],
-      );
+      const prefixedHash = applyEthSignedMessagePrefix(operationHash);
 
-      const signResult = await this.signViaKeyVault(
+      const cosignResult = await this.signViaKeyVault(
         clientId,
         prefixedHash,
       );
 
       this.logger.log(
-        `Withdrawal ${withdrawalId}: signed by platform key ${signResult.address}`,
+        `Withdrawal ${withdrawalId}: co-signed by backup key ${cosignResult.address}`,
       );
 
       // Build calldata for the contract call
@@ -378,7 +347,7 @@ export class WithdrawalWorkerService extends WorkerHost implements OnModuleInit 
             '0x',
             expireTime,
             sequenceId,
-            signResult.signature,
+            cosignResult.signature,
           ],
         );
       } else {
@@ -390,20 +359,21 @@ export class WithdrawalWorkerService extends WorkerHost implements OnModuleInit 
             token.contractAddress,
             expireTime,
             sequenceId,
-            signResult.signature,
+            cosignResult.signature,
           ],
         );
       }
 
-      // Sign and broadcast the outer transaction via Key Vault (gas_tank key)
+      // Sign and broadcast the outer transaction via Key Vault (platform key)
       // Uses the same sign-transaction pattern as TransactionSubmitterService (sweep).
-      const nonce = await provider.getTransactionCount(gasTank.address, 'pending');
+      const platformAddress = await this.keyResolver.resolveAddress(clientId, 'platform');
+      const nonce = await provider.getTransactionCount(platformAddress, 'pending');
       const feeData = await provider.getFeeData();
 
       let gasEstimate: bigint;
       try {
         const estimated = await provider.estimateGas({
-          from: gasTank.address,
+          from: platformAddress,
           to: hotWallet.address,
           data: txData,
         });
@@ -448,7 +418,7 @@ export class WithdrawalWorkerService extends WorkerHost implements OnModuleInit 
             body: JSON.stringify({
               clientId,
               chainId,
-              keyType: 'gas_tank',
+              keyType: 'platform',
               txData: outerTxData,
               requestedBy: 'withdrawal-worker',
             }),
@@ -590,7 +560,7 @@ export class WithdrawalWorkerService extends WorkerHost implements OnModuleInit 
         },
         body: JSON.stringify({
           hash: operationHash,
-          keyType: 'platform',
+          keyType: 'backup',
           requestedBy: 'withdrawal-worker',
         }),
         signal: controller.signal,
