@@ -218,9 +218,11 @@ export async function runApiSuite(config: Config) {
   }
 
   // ─── B.5 Wait for deposit.confirmed ────────────────────────────────
+  // Accept any post-pending status as "confirmed" — swept/sweep_pending imply confirmed already happened.
+  const POST_PENDING = new Set(['confirmed', 'sweep_pending', 'swept']);
   await reporter.step('Aguardar deposit.confirmed (até 3 min)', async () => {
     if (!detectedDeposit) throw new Error('no deposit to wait on');
-    if (detectedDeposit.status === 'confirmed') return;
+    if (POST_PENDING.has(detectedDeposit.status)) return;
     return await api.pollUntil(
       async () => {
         const r = await api.get<{ deposits: Deposit[] }>(
@@ -228,7 +230,7 @@ export async function runApiSuite(config: Config) {
           { limit: 20, page: 1 },
         );
         const d = r.deposits.find((x) => x.txHash === detectedDeposit.txHash);
-        return d?.status === 'confirmed' ? d : null;
+        return d && POST_PENDING.has(d.status) ? d : null;
       },
       { timeoutMs: 180_000, intervalMs: 6_000, label: 'deposit.confirmed' },
     );

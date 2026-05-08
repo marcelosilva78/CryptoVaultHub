@@ -22,7 +22,7 @@ import {
   ApiBody,
   ApiHeader,
 } from '@nestjs/swagger';
-import { ClientAuth, CurrentClientId } from '../common/decorators';
+import { ClientAuth, ClientAuthWithProject, CurrentClientId, ProjectId } from '../common/decorators';
 import { AddressBookService } from './address-book.service';
 import {
   AddAddressDto,
@@ -106,7 +106,7 @@ export class AddressBookController {
   }
 
   @Post()
-  @ClientAuth('write')
+  @ClientAuthWithProject('write')
   @ApiOperation({
     summary: 'Add a whitelisted address',
     description: `Adds a new address to the client's whitelisted address book. Only whitelisted addresses can be used as withdrawal destinations. This is a critical security feature that prevents unauthorized fund transfers.
@@ -185,9 +185,14 @@ Newly added addresses enter a mandatory 24-hour cooldown period. During this win
   @ApiResponse({ status: 401, description: 'Missing or invalid API key.' })
   @ApiResponse({ status: 403, description: 'API key does not have the `write` scope.' })
   @ApiResponse({ status: 409, description: 'Address+chain combination already exists and is active or in cooldown.' })
-  async addAddress(@Body() dto: AddAddressDto, @Req() req: Request, @CurrentClientId() clientId: number) {
+  async addAddress(
+    @Body() dto: AddAddressDto,
+    @Req() req: Request,
+    @CurrentClientId() clientId: number,
+    @ProjectId() projectId: number,
+  ) {
     await this.verify2fa(req, clientId);
-    const result = await this.addressBookService.addAddress(clientId, dto);
+    const result = await this.addressBookService.addAddress(clientId, projectId, dto);
     return { success: true, ...result };
   }
 

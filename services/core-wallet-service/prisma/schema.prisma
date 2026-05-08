@@ -127,6 +127,7 @@ model DepositAddress {
 model WhitelistedAddress {
   id             BigInt    @id @default(autoincrement())
   clientId       BigInt    @map("client_id")
+  projectId      BigInt    @map("project_id")
   address        String    @db.VarChar(42)
   label          String    @db.VarChar(200)
   chainId        Int       @map("chain_id")

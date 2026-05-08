@@ -41,6 +41,7 @@ export class AddressBookController {
     @Body()
     body: {
       clientId: number;
+      projectId: number;
       address: string;
       label?: string;
       chainId?: number;

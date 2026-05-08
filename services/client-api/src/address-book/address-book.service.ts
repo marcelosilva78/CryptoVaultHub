@@ -25,6 +25,7 @@ export class AddressBookService {
 
   async addAddress(
     clientId: number,
+    projectId: number,
     data: {
       address: string;
       chainId: number;
@@ -35,7 +36,7 @@ export class AddressBookService {
     try {
       const { data: result } = await axios.post(
         `${this.coreWalletUrl}/address-book`,
-        { clientId, ...data },
+        { clientId, projectId, ...data },
         { headers: this.headers, timeout: 10000 },
       );
       return result;

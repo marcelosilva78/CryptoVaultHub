@@ -44,12 +44,14 @@ export class AddressBookService {
 
   async addAddress(data: {
     clientId: number;
+    projectId: number;
     address: string;
     label?: string;
     chainId?: number;
     notes?: string;
   }) {
     const clientIdBig = BigInt(data.clientId);
+    const projectIdBig = BigInt(data.projectId);
     const chainId = data.chainId ?? 1;
 
     // Check for existing active/cooldown entry for the same address+chain
@@ -72,6 +74,7 @@ export class AddressBookService {
     const created = await this.prisma.whitelistedAddress.create({
       data: {
         clientId: clientIdBig,
+        projectId: projectIdBig,
         address: data.address,
         label: data.label ?? '',
         chainId,
