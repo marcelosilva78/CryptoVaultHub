@@ -453,6 +453,62 @@ export async function runApiSuite(config: Config) {
     reporter.info(`Conferir no BSCscan: https://bscscan.com/tx/${gtFinalTxHash}`);
   }
 
+  // ─── B.15 List API keys (self-service) ────────────────────────────
+  await reporter.step('List API keys (self-service)', async () => {
+    const r = await api.get<{ keys: unknown[] }>('/api-keys');
+    if (!Array.isArray(r.keys)) throw new Error('keys[] missing in response: ' + JSON.stringify(r).slice(0, 200));
+    reporter.highlight('api-keys count', String(r.keys.length));
+  });
+
+  // ─── B.16 Create API key (granular scopes, exercise + 403) ─────────
+  let tempKeyId: string | undefined;
+  let tempKeyRaw: string | undefined;
+
+  await reporter.step('Create API key (granular scopes, exercise + 403)', async () => {
+    const created = await api.post<{ apiKey: { id: string; key: string } }>('/api-keys', {
+      projectId: project.id,
+      scopes: ['wallets:read'],
+      label: 'homolog-suite',
+      expiresAt: new Date(Date.now() + 90 * 86_400_000).toISOString(),
+    });
+    const apiKey = created.apiKey;
+    if (!apiKey?.id || !apiKey?.key) throw new Error('create response missing apiKey.id/key: ' + JSON.stringify(created).slice(0, 200));
+    tempKeyId = apiKey.id;
+    tempKeyRaw = apiKey.key;
+    reporter.highlight('new key id', tempKeyId);
+
+    // wallets:read should allow GET /v1/wallets
+    const okWallets = await fetch(`${config.apiBaseUrl}/wallets`, {
+      headers: { 'X-API-Key': tempKeyRaw, 'Accept': '*/*' },
+    });
+    if (!okWallets.ok) throw new Error(`granular key denied wallets:read (${okWallets.status})`);
+
+    // POST /v1/withdrawals must 403 — key has no withdrawals:hot
+    const denied = await fetch(`${config.apiBaseUrl}/withdrawals`, {
+      method: 'POST',
+      headers: { 'X-API-Key': tempKeyRaw, 'Content-Type': 'application/json', 'Accept': '*/*' },
+      body: JSON.stringify({
+        chainId: config.chainId,
+        tokenSymbol: 'BNB',
+        toAddress: '0x0000000000000000000000000000000000000000',
+        amount: '0',
+      }),
+    });
+    if (denied.status !== 403) throw new Error(`expected 403 for missing scope, got ${denied.status}`);
+  });
+
+  // ─── B.17 Revoke API key ──────────────────────────────────────────
+  await reporter.step('Revoke API key', async () => {
+    if (!tempKeyId || !tempKeyRaw) throw new Error('B.16 did not store key — cannot revoke');
+
+    await api.delete(`/api-keys/${tempKeyId}`);
+
+    const after = await fetch(`${config.apiBaseUrl}/wallets`, {
+      headers: { 'X-API-Key': tempKeyRaw, 'Accept': '*/*' },
+    });
+    if (after.status !== 401) throw new Error(`expected 401 after revoke, got ${after.status}`);
+  });
+
   // ─── B.14 Cleanup webhook ──────────────────────────────────────────
   if (webhook) {
     await reporter.step('Cleanup: remover webhook de teste', async () => {
