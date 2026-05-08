@@ -39,13 +39,11 @@ export class WithdrawalService {
   ) {
     const sourceWallet = data.sourceWallet ?? 'hot';
 
-    // For gas_tank source, force the chain's native token regardless of what
-    // the client sent. Hot wallet path uses tokenSymbol verbatim.
-    const tokenSymbol =
-      sourceWallet === 'gas_tank'
-        ? await this.resolveNativeSymbol(data.chainId)
-        : data.tokenSymbol;
-    const tokenId = await this.resolveTokenId(data.chainId, tokenSymbol);
+    // Resolve tokenId from the client-supplied tokenSymbol. We do NOT silently
+    // coerce non-native to native for gas_tank source — core-wallet rejects
+    // the mismatch with a 422 'Gas Tank source only supports the chain native
+    // token' so the client gets a clear explicit error and can fix the request.
+    const tokenId = await this.resolveTokenId(data.chainId, data.tokenSymbol);
 
     // Resolve toAddressId from (clientId, chainId, toAddress)
     const toAddressId = await this.resolveAddressId(
@@ -103,31 +101,6 @@ export class WithdrawalService {
       if (e instanceof BadRequestException) throw e;
       this.logger.warn(`resolveTokenId failed: ${e.message}`);
       throw new InternalServerErrorException('Failed to resolve token');
-    }
-  }
-
-  private async resolveNativeSymbol(chainId: number): Promise<string> {
-    try {
-      const { data } = await axios.get(`${this.coreWalletUrl}/tokens`, {
-        headers: this.headers,
-        params: { chainId },
-        timeout: 10_000,
-      });
-      const tokens: Array<{ symbol: string; isNative: boolean }> =
-        data?.tokens ?? data ?? [];
-      const native = tokens.find((t) => t.isNative);
-      if (!native) {
-        throw new BadRequestException(
-          `Native token not configured for chain ${chainId}`,
-        );
-      }
-      return native.symbol;
-    } catch (e: any) {
-      if (e instanceof BadRequestException) throw e;
-      this.logger.warn(`resolveNativeSymbol failed: ${e.message}`);
-      throw new InternalServerErrorException(
-        `Failed to resolve native token for chain ${chainId}`,
-      );
     }
   }
 
