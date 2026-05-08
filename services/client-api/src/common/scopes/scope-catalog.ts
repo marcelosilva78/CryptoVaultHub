@@ -34,7 +34,6 @@ export const GRANULAR_SCOPES = [
   'security:write',
   'deploy-trace:read',
   'export:read',
-  'admin',
 ] as const;
 
 export type GranularScope = (typeof GRANULAR_SCOPES)[number];

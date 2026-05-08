@@ -1,15 +1,21 @@
 import {
   GRANULAR_SCOPES,
   expandLegacyScopes,
+  isKnownScope,
   ALL_READ_SCOPES,
   LEGACY_WRITE_SCOPES,
   LEGACY_WITHDRAW_SCOPES,
 } from './scope-catalog';
 
 describe('scope-catalog', () => {
-  it('GRANULAR_SCOPES has 30 entries and no duplicates', () => {
-    expect(GRANULAR_SCOPES.length).toBe(30);
-    expect(new Set(GRANULAR_SCOPES).size).toBe(30);
+  it('GRANULAR_SCOPES has 29 entries and no duplicates', () => {
+    expect(GRANULAR_SCOPES.length).toBe(29);
+    expect(new Set(GRANULAR_SCOPES).size).toBe(29);
+  });
+
+  it('does not include the legacy "admin" pseudo-scope (set only by JWT auth path)', () => {
+    expect((GRANULAR_SCOPES as readonly string[]).includes('admin')).toBe(false);
+    expect(isKnownScope('admin')).toBe(false);
   });
 
   it('every ALL_READ_SCOPES entry ends with :read', () => {
