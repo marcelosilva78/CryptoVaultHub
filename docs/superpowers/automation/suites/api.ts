@@ -415,7 +415,45 @@ export async function runApiSuite(config: Config) {
     reporter.info(`Conferir no BSCscan: https://bscscan.com/tx/${finalTxHash}`);
   }
 
-  // ─── B.10 Cleanup webhook ──────────────────────────────────────────
+  // ─── B.13 Variant — Gas Tank withdrawal ────────────────────────────
+  const gtAmount = '0.0005';
+  const gtWithdrawalId = await reporter.step(`Criar withdrawal (gas tank) de ${gtAmount} BNB`, async () => {
+    const r = await api.post<any>('/withdrawals', {
+      chainId: config.chainId,
+      sourceWallet: 'gas_tank',
+      tokenSymbol: 'BNB',
+      toAddress: withdrawalTarget,
+      amount: gtAmount,
+    });
+    api.noteLastRequest('sourceWallet=gas_tank — saque single-sig direto do gas tank do projeto. Token forçado pra nativo no backend.');
+    const id = (r as any).withdrawalId ?? (r as any).withdrawal?.id ?? (r as any).id;
+    if (!id) throw new Error('Gas-tank withdrawal response missing id: ' + JSON.stringify(r).slice(0, 200));
+    try {
+      await api.post(`/withdrawals/${id}/approve`, {});
+    } catch (e: any) {
+      if (e?.response?.status !== 409 && e?.response?.status !== 400) throw e;
+    }
+    reporter.highlight('gas-tank withdrawalId', String(id));
+    return String(id);
+  });
+
+  const gtFinalWd = await reporter.step('Aguardar gas-tank withdrawal.confirmed (até 5 min)', async () => {
+    return await api.pollUntil<any>(
+      async () => {
+        const r = await api.get<any>(`/withdrawals/${gtWithdrawalId}`);
+        const status = wdStatus(r);
+        return ['confirmed', 'failed', 'rejected'].includes(status) ? r : null;
+      },
+      { timeoutMs: 300_000, intervalMs: 8_000, label: 'gas_tank.withdrawal.confirmed' },
+    );
+  });
+  const gtFinalTxHash = gtFinalWd?.withdrawal?.withdrawal?.txHash ?? gtFinalWd?.withdrawal?.txHash ?? gtFinalWd?.txHash;
+  if (gtFinalTxHash) {
+    reporter.highlight('gas-tank withdrawal txHash', gtFinalTxHash);
+    reporter.info(`Conferir no BSCscan: https://bscscan.com/tx/${gtFinalTxHash}`);
+  }
+
+  // ─── B.14 Cleanup webhook ──────────────────────────────────────────
   if (webhook) {
     await reporter.step('Cleanup: remover webhook de teste', async () => {
       await api.delete(`/webhooks/${webhook!.id}`);
