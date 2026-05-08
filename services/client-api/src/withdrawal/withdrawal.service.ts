@@ -56,7 +56,9 @@ export class WithdrawalService {
           toAddressId,
           amount: data.amount,
           memo: data.memo,
-          idempotencyKey: data.idempotencyKey,
+          idempotencyKey:
+            data.idempotencyKey ??
+            `cvh-${clientId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
           callbackUrl: data.callbackUrl,
         },
         { headers: this.headers, timeout: 30000 },
