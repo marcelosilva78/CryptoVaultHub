@@ -34,6 +34,19 @@ function nativeSymbolForChain(chainId: number): string {
   return NATIVE_SYMBOLS[chainId] ?? "NATIVE";
 }
 
+// Convert a wei string (18-decimal native EVM balance) to a human-readable
+// decimal string. Trims trailing zeros but keeps at least one fractional digit
+// so "0" displays as "0.0" (matches the wallet-balances API formatting).
+function weiToEthString(wei: string | undefined | null): string | null {
+  if (!wei) return null;
+  const s = String(wei).replace(/^0+/, "") || "0";
+  if (s === "0") return "0.0";
+  const padded = s.length <= 18 ? s.padStart(19, "0") : s;
+  const intPart = padded.slice(0, padded.length - 18);
+  const fracPart = padded.slice(padded.length - 18).replace(/0+$/, "");
+  return fracPart.length === 0 ? `${intPart}.0` : `${intPart}.${fracPart}`;
+}
+
 /* ─── API response types ────────────────────────────────────── */
 interface ApiWithdrawal {
   id: string;
@@ -64,11 +77,16 @@ interface ApiAddressBookEntry {
 }
 
 interface ApiBalance {
-  tokenSymbol: string;
-  tokenAddress: string;
-  balance: string;
-  balanceUsd: string;
+  // Server actually returns these field names (see GET /v1/wallets/:chainId/balances).
+  // Older mappings used `tokenSymbol` + `balance` which never matched and silently
+  // produced empty TokenBalance rows.
+  symbol: string;
+  contractAddress: string;
+  balanceRaw: string;
+  balanceFormatted: string;
   decimals: number;
+  isNative?: boolean;
+  tokenId?: number;
 }
 
 interface ApiWallet {
@@ -200,8 +218,8 @@ export default function WithdrawalsPage() {
           const chain = chainNames[uniqueChainIds[idx]] || `Chain ${uniqueChainIds[idx]}`;
           res.balances.forEach(b => {
             allBalances.push({
-              symbol: b.tokenSymbol,
-              balance: b.balance,
+              symbol: b.symbol,
+              balance: b.balanceFormatted,
               chain,
               chainId: uniqueChainIds[idx],
             });
@@ -332,19 +350,24 @@ export default function WithdrawalsPage() {
     const hot = allWallets.find((w) => w.walletType === "hot" && w.chainId === formChain);
     if (!cancelled) setHotAddress(hot?.address ?? null);
 
-    // Fetch gas tank balance
+    // Fetch gas tank balance — client-api exposes the LIST endpoint /v1/gas-tanks
+    // (no per-chain GET), so we filter by chainId. Native EVM is 18 decimals,
+    // so balanceWei is converted by trimming the last 18 digits (with padding).
     (async () => {
       try {
-        const gt = await clientFetch<{ success: boolean; balanceFormatted?: string; address?: string }>(
-          `/v1/gas-tanks/${formChain}`,
-        );
+        const gt = await clientFetch<{
+          success: boolean;
+          gasTanks: Array<{ chainId: number; address: string; balanceWei: string }>;
+        }>(`/v1/gas-tanks`);
         if (cancelled) return;
-        setGasTankBalance(gt?.balanceFormatted ?? null);
-        if (gt?.address) setGasTankAddress(gt.address);
-        else {
-          // Fall back to wallet list
+        const entry = gt?.gasTanks?.find((g) => g.chainId === formChain);
+        if (entry) {
+          setGasTankAddress(entry.address);
+          setGasTankBalance(weiToEthString(entry.balanceWei));
+        } else {
+          setGasTankBalance(null);
           const gas = allWallets.find((w) => w.walletType === "gas_tank" && w.chainId === formChain);
-          if (!cancelled) setGasTankAddress(gas?.address ?? null);
+          setGasTankAddress(gas?.address ?? null);
         }
       } catch {
         if (!cancelled) {
