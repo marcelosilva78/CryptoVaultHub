@@ -773,4 +773,154 @@ export const integrationsArticles: Article[] = [
       },
     ],
   },
+  {
+    slug: "api-keys-granular",
+    title: "API Keys — escopo granular e melhores práticas",
+    description:
+      "Como gerar API Keys com escopos granulares, restringir por IP/CIDR, configurar expiração e migrar chaves legadas.",
+    category: "integrations",
+    icon: "ShieldCheck",
+    difficulty: "intermediate",
+    tags: ["integrations", "api-keys", "security", "escopos", "ip-allowlist"],
+    updatedAt: "08 Mai 2026",
+    readingTime: 7,
+    blocks: [
+      {
+        type: "heading",
+        level: 2,
+        text: "API Keys — escopo granular e melhores práticas",
+      },
+      {
+        type: "paragraph",
+        text: "Cada chave de API é vinculada a um projeto, recebe um conjunto de escopos granulares (não mais só read/write/withdraw) e pode ser restringida por IP/CIDR e prazo de expiração.",
+      },
+      {
+        type: "heading",
+        level: 3,
+        text: "Geração",
+      },
+      {
+        type: "steps",
+        items: [
+          {
+            title: "Acessar API Keys",
+            description:
+              "Acesse Portal → Integration → API Keys.",
+          },
+          {
+            title: "Abrir o assistente",
+            description:
+              "Clique em + Create Key e preencha o assistente.",
+          },
+          {
+            title: "Identificação",
+            description:
+              "Defina o label e selecione o projeto ao qual a chave será vinculada.",
+          },
+          {
+            title: "Permissões",
+            description:
+              "Marque exatamente os escopos necessários. Use o atalho 'Read-only key' para uma chave de auditoria. Escopos sensíveis (com escudo) movem fundos ou alteram custódia — combine com IP allowlist.",
+          },
+          {
+            title: "Restrições",
+            description:
+              "Adicione IPs ou CIDRs (digite e tecle Enter para virar chip). Vazio = qualquer IP. Escolha expiração em dias, data fixa ou 'Indefinite'.",
+          },
+          {
+            title: "Revisão e criação",
+            description:
+              "Confira os dados e clique em Create Key. A chave bruta aparece uma única vez — copie e guarde em local seguro. O sistema só armazena o hash.",
+          },
+        ],
+      },
+      {
+        type: "callout",
+        variant: "danger",
+        title: "A chave bruta aparece uma única vez",
+        text: "Após fechar o modal de criação, a chave não pode ser recuperada. O sistema armazena apenas o hash. Guarde-a imediatamente em um secret manager ou variável de ambiente.",
+      },
+      {
+        type: "heading",
+        level: 3,
+        text: "Escopos disponíveis",
+      },
+      {
+        type: "table",
+        headers: ["Domínio", "Escopos"],
+        rows: [
+          ["Wallets", "wallets:read, wallets:create"],
+          ["Forwarders (depósitos)", "forwarders:read, forwarders:create, forwarders:flush"],
+          ["Address Book / Whitelist", "address-book:read, address-book:write"],
+          ["Address Groups", "address-groups:read, address-groups:write"],
+          ["Withdrawals", "withdrawals:read, withdrawals:hot, withdrawals:gas-tank"],
+          ["Webhooks", "webhooks:read, webhooks:write"],
+          ["Deposits", "deposits:read"],
+          ["Tokens / Chains", "tokens:read, chains:read"],
+          ["Gas Tanks", "gas-tanks:read, gas-tanks:write"],
+          ["Co-sign", "co-sign:read, co-sign:write"],
+          ["Projects / Setup", "projects:read, project-setup:read, project-setup:write"],
+          ["Notifications", "notifications:read, notifications:write"],
+          ["Security", "security:read, security:write"],
+          ["Deploy Trace", "deploy-trace:read"],
+          ["Knowledge Base", "kb:read"],
+          ["Export", "export:read"],
+        ],
+      },
+      {
+        type: "heading",
+        level: 3,
+        text: "Compatibilidade com chaves antigas",
+      },
+      {
+        type: "paragraph",
+        text: "Chaves criadas antes desta release com escopos legados (read, write, withdraw) continuam funcionando — o gateway expande os macros automaticamente. Não é necessário recriar.",
+      },
+      {
+        type: "callout",
+        variant: "info",
+        title: "Expansão automática de macros",
+        text: "O macro 'read' expande para todos os escopos ':read'. O macro 'write' inclui os escopos ':write' e ':create'. O macro 'withdraw' inclui withdrawals:hot e withdrawals:gas-tank.",
+      },
+      {
+        type: "heading",
+        level: 3,
+        text: "IP allowlist com CIDR",
+      },
+      {
+        type: "paragraph",
+        text: "Aceita IPs exatos (203.0.113.7) e blocos CIDR (203.0.113.0/24). Vazio = qualquer IP. Para alterar a allowlist de uma chave existente, revogue-a e crie uma nova — não há edição in-place.",
+      },
+      {
+        type: "heading",
+        level: 3,
+        text: "Rotação",
+      },
+      {
+        type: "paragraph",
+        text: "A v1 não tem rotação automática. O fluxo recomendado é: criar nova chave → migrar integrações → revogar a antiga.",
+      },
+      {
+        type: "heading",
+        level: 3,
+        text: "Troubleshooting",
+      },
+      {
+        type: "table",
+        headers: ["Sintoma", "Causa", "Como corrigir"],
+        rows: [
+          ["\"Failed to fetch\" no portal", "O portal usa o backend em api.vaulthub.live; sessão expirada ou rede bloqueada", "Verifique se está autenticado e atualize a página"],
+          ["403 com \"Insufficient scopes\"", "A chave não tem o escopo exigido pela rota", "Crie uma nova chave com o escopo correto e migre"],
+          ["401 em request a partir de IP novo", "O IP não está na allowlist da chave", "Revogue a chave e crie uma nova com a allowlist atualizada"],
+        ],
+      },
+      {
+        type: "link-card",
+        href: "/support/kb/integrations/gerenciar-api-keys",
+        title: "Gerenciar API Keys",
+        description:
+          "Fluxos de criação, rotação e revogação de API keys na plataforma.",
+      },
+    ],
+  },
 ];
