@@ -361,7 +361,7 @@ export async function runApiSuite(config: Config) {
       tokenSymbol: 'BNB',
     });
     api.noteLastRequest('Use `tokenSymbol` (BNB/ETH/MATIC/USDT/USDC). For ERC-20 the token must be in `GET /client/v1/tokens?chainId=…`.');
-    const id = r.withdrawalId ?? r.id;
+    const id = (r as any).withdrawalId ?? (r as any).withdrawal?.id ?? (r as any).id;
     if (!id) throw new Error('Withdrawal response missing id: ' + JSON.stringify(r).slice(0, 200));
     reporter.highlight('withdrawalId', String(id));
     return String(id);

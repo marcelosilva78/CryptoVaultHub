@@ -212,17 +212,39 @@ export class WithdrawalWorkerService extends WorkerHost implements OnModuleInit 
       };
     }
 
-    // Fetch the full withdrawal row now that we own it
-    const [withdrawal] = await this.prisma.$queryRaw<any[]>`
+    // Fetch the full withdrawal row now that we own it. Raw query returns snake_case columns;
+    // map them to the camelCase shape the rest of this method assumes.
+    const [rawWithdrawal] = await this.prisma.$queryRaw<any[]>`
       SELECT * FROM cvh_transactions.withdrawals WHERE id = ${BigInt(withdrawalId)}
     `;
 
-    if (!withdrawal) {
+    if (!rawWithdrawal) {
       throw new Error(`Withdrawal ${withdrawalId} not found after claiming`);
     }
 
+    const withdrawal: any = {
+      ...rawWithdrawal,
+      clientId: rawWithdrawal.client_id,
+      projectId: rawWithdrawal.project_id,
+      chainId: rawWithdrawal.chain_id,
+      tokenId: rawWithdrawal.token_id,
+      fromWallet: rawWithdrawal.from_wallet,
+      toAddressId: rawWithdrawal.to_address_id,
+      toAddress: rawWithdrawal.to_address,
+      toLabel: rawWithdrawal.to_label,
+      amountRaw: rawWithdrawal.amount_raw,
+      txHash: rawWithdrawal.tx_hash,
+      sequenceId: rawWithdrawal.sequence_id,
+      gasCost: rawWithdrawal.gas_cost,
+      kytResult: rawWithdrawal.kyt_result,
+      idempotencyKey: rawWithdrawal.idempotency_key,
+      createdAt: rawWithdrawal.created_at,
+      submittedAt: rawWithdrawal.submitted_at,
+      confirmedAt: rawWithdrawal.confirmed_at,
+    };
+
     const clientId = Number(withdrawal.clientId);
-    const chainId = withdrawal.chainId;
+    const chainId = Number(withdrawal.chainId);
 
     try {
       // Load token
