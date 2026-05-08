@@ -6,7 +6,10 @@ import {
   Body,
   Query,
   UseGuards,
+  ForbiddenException,
+  Req,
 } from '@nestjs/common';
+import { Request } from 'express';
 import {
   ApiTags,
   ApiSecurity,
@@ -16,6 +19,7 @@ import {
   ApiBody,
 } from '@nestjs/swagger';
 import { ClientAuth, ClientAuthWithProject, CurrentClientId } from '../common/decorators';
+import { expandLegacyScopes } from '../common/scopes/scope-catalog';
 import { ProjectChainReadyGuard } from '../common/guards/project-chain-ready.guard';
 import { WithdrawalService } from './withdrawal.service';
 import {
@@ -31,9 +35,9 @@ export class WithdrawalController {
 
   @Post()
   @UseGuards(ProjectChainReadyGuard)
-  @ClientAuthWithProject('write')
+  @ClientAuthWithProject('withdrawals:hot', 'withdrawals:gas-tank')
   @ApiOperation({
-    summary: 'Create a withdrawal request',
+    summary: 'Create a withdrawal (scope: withdrawals:hot for hot wallet OR withdrawals:gas-tank for gas tank)',
     description: `Submits a withdrawal request to send funds from the client's hot wallet to a whitelisted destination address.
 
 **Withdrawal Flow:**
@@ -65,7 +69,7 @@ The amount should be provided as a decimal string in the token's standard unit (
 
 **Gas fees:** Gas is automatically estimated and paid from the client's gas tank wallet. If gas is insufficient, the withdrawal will remain in \`pending_broadcast\` status until the gas tank is refilled.
 
-**Required scope:** \`write\``,
+**Required scope:** \`withdrawals:hot\` (hot wallet) or \`withdrawals:gas-tank\` (gas tank). The guard accepts either scope, but the in-handler check enforces the precise match based on \`sourceWallet\`.`,
   })
   @ApiBody({
     type: CreateWithdrawalDto,
@@ -153,7 +157,7 @@ The amount should be provided as a decimal string in the token's standard unit (
   })
   @ApiResponse({ status: 400, description: 'Invalid request body (validation error).' })
   @ApiResponse({ status: 401, description: 'Missing or invalid API key.' })
-  @ApiResponse({ status: 403, description: 'API key does not have the `write` scope.' })
+  @ApiResponse({ status: 403, description: 'API key does not have the required scope (`withdrawals:hot` or `withdrawals:gas-tank`), or has the wrong scope for the requested `sourceWallet`.' })
   @ApiResponse({
     status: 409,
     description: 'Conflict — idempotency key already used for a different withdrawal.',
@@ -172,13 +176,26 @@ The amount should be provided as a decimal string in the token's standard unit (
   async createWithdrawal(
     @Body() dto: CreateWithdrawalDto,
     @CurrentClientId() clientId: number,
+    @Req() req: Request,
   ) {
+    const scopes = (req as any).scopes as string[] | undefined;
+    const expanded = expandLegacyScopes(scopes);
+    const required =
+      dto.sourceWallet === 'gas_tank'
+        ? 'withdrawals:gas-tank'
+        : 'withdrawals:hot';
+    if (!expanded.includes(required)) {
+      throw new ForbiddenException(
+        `This key cannot withdraw from ${dto.sourceWallet ?? 'hot'} (missing scope ${required})`,
+      );
+    }
+
     const result = await this.withdrawalService.createWithdrawal(clientId, dto);
     return { success: true, ...result };
   }
 
   @Get()
-  @ClientAuth('read')
+  @ClientAuth('withdrawals:read')
   @ApiOperation({
     summary: 'List withdrawals',
     description: `Returns a paginated list of all withdrawals for the authenticated client. Supports filtering by status, chain, and date range.
@@ -187,7 +204,7 @@ The amount should be provided as a decimal string in the token's standard unit (
 
 **Performance tip:** Use the \`status\` filter to query only active withdrawals (\`pending_approval\`, \`pending_kyt\`, \`pending_signing\`, \`pending_broadcast\`, \`broadcasted\`, \`confirming\`) for real-time dashboards. Query \`confirmed\` and \`failed\` for historical reporting.
 
-**Required scope:** \`read\``,
+**Required scope:** \`withdrawals:read\``,
   })
   @ApiResponse({
     status: 200,
@@ -229,7 +246,7 @@ The amount should be provided as a decimal string in the token's standard unit (
     },
   })
   @ApiResponse({ status: 401, description: 'Missing or invalid API key.' })
-  @ApiResponse({ status: 403, description: 'API key does not have the `read` scope.' })
+  @ApiResponse({ status: 403, description: 'API key does not have the `withdrawals:read` scope.' })
   async listWithdrawals(
     @Query() query: ListWithdrawalsQueryDto,
     @CurrentClientId() clientId: number,
@@ -246,7 +263,7 @@ The amount should be provided as a decimal string in the token's standard unit (
   }
 
   @Post(':id/approve')
-  @ClientAuth('write')
+  @ClientAuth('withdrawals:hot', 'withdrawals:gas-tank')
   @ApiOperation({
     summary: 'Approve a pending withdrawal (full-custody only)',
     description: `Self-approves a withdrawal in pending_approval status. Available only for clients with custodyMode=full_custody, where the API key already represents the client's full authority over funds. The withdrawal moves from pending_approval → approved and the cron worker will pick it up for signing/broadcasting on its next 30-second tick.`,
@@ -261,7 +278,7 @@ The amount should be provided as a decimal string in the token's standard unit (
   }
 
   @Get(':id')
-  @ClientAuth('read')
+  @ClientAuth('withdrawals:read')
   @ApiOperation({
     summary: 'Get withdrawal details',
     description: `Returns the full details of a specific withdrawal, including its current status, transaction details, confirmation progress, fee breakdown, and all lifecycle timestamps.
@@ -279,7 +296,7 @@ The amount should be provided as a decimal string in the token's standard unit (
 - \`failureReason\` — On-chain failure reason if status is \`failed\`
 - \`createdAt\` / \`broadcastedAt\` / \`confirmedAt\` — Lifecycle timestamps
 
-**Required scope:** \`read\``,
+**Required scope:** \`withdrawals:read\``,
   })
   @ApiParam({
     name: 'id',
@@ -326,7 +343,7 @@ The amount should be provided as a decimal string in the token's standard unit (
     },
   })
   @ApiResponse({ status: 401, description: 'Missing or invalid API key.' })
-  @ApiResponse({ status: 403, description: 'API key does not have the `read` scope.' })
+  @ApiResponse({ status: 403, description: 'API key does not have the `withdrawals:read` scope.' })
   @ApiResponse({ status: 404, description: 'Withdrawal not found or does not belong to the authenticated client.' })
   async getWithdrawal(@Param('id') id: string, @CurrentClientId() clientId: number) {
     const withdrawal = await this.withdrawalService.getWithdrawal(clientId, id);
