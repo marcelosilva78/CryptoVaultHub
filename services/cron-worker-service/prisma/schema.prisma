@@ -140,6 +140,34 @@ model Deposit {
 // cvh_transactions.withdrawals since that table is in a different database.
 // ---------------------------------------------------------------------------
 
+model Withdrawal {
+  id             BigInt    @id @default(autoincrement())
+  clientId       BigInt    @map("client_id")
+  projectId      BigInt    @map("project_id")
+  sourceWallet   String    @default("hot") @map("source_wallet") @db.VarChar(16)
+  chainId        Int       @map("chain_id")
+  tokenId        BigInt    @map("token_id")
+  fromWallet     String    @db.VarChar(42) @map("from_wallet")
+  toAddressId    BigInt    @map("to_address_id")
+  toAddress      String    @db.VarChar(42) @map("to_address")
+  toLabel        String    @db.VarChar(200) @map("to_label")
+  amount         String    @db.VarChar(78)
+  amountRaw      String    @db.VarChar(78) @map("amount_raw")
+  txHash         String?   @db.VarChar(66) @map("tx_hash")
+  status         String    @default("pending_approval") @db.VarChar(30)
+  sequenceId     Int?      @map("sequence_id")
+  gasCost        String?   @db.VarChar(78) @map("gas_cost")
+  kytResult      String?   @db.VarChar(20) @map("kyt_result")
+  idempotencyKey String    @unique @db.VarChar(200) @map("idempotency_key")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  submittedAt    DateTime? @map("submitted_at")
+  confirmedAt    DateTime? @map("confirmed_at")
+
+  @@index([clientId, status])
+  @@index([clientId, projectId])
+  @@map("withdrawals")
+}
+
 // ---------------------------------------------------------------------------
 // Project-Isolated Contract Deployment (read-only for sweep routing)
 // ---------------------------------------------------------------------------

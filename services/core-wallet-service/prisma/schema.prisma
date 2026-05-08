@@ -176,6 +176,7 @@ model Withdrawal {
   id             BigInt    @id @default(autoincrement())
   clientId       BigInt    @map("client_id")
   projectId      BigInt    @map("project_id")
+  sourceWallet   String    @default("hot") @map("source_wallet") @db.VarChar(16)
   chainId        Int       @map("chain_id")
   tokenId        BigInt    @map("token_id")
   fromWallet     String    @db.VarChar(42) @map("from_wallet")
