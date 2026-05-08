@@ -227,6 +227,21 @@ The amount should be provided as a decimal string in the token's standard unit (
     return { success: true, ...result };
   }
 
+  @Post(':id/approve')
+  @ClientAuth('write')
+  @ApiOperation({
+    summary: 'Approve a pending withdrawal (full-custody only)',
+    description: `Self-approves a withdrawal in pending_approval status. Available only for clients with custodyMode=full_custody, where the API key already represents the client's full authority over funds. The withdrawal moves from pending_approval → approved and the cron worker will pick it up for signing/broadcasting on its next 30-second tick.`,
+  })
+  @ApiParam({ name: 'id', type: String, description: 'Withdrawal id (numeric).' })
+  async approveWithdrawal(
+    @Param('id') id: string,
+    @CurrentClientId() clientId: number,
+  ) {
+    const result = await this.withdrawalService.approveWithdrawal(clientId, id);
+    return { success: true, ...result };
+  }
+
   @Get(':id')
   @ClientAuth('read')
   @ApiOperation({

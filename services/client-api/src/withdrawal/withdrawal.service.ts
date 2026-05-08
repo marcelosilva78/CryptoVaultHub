@@ -157,6 +157,22 @@ export class WithdrawalService {
     }
   }
 
+  async approveWithdrawal(clientId: number, withdrawalId: string) {
+    try {
+      const { data } = await axios.post(
+        `${this.coreWalletUrl}/withdrawals/${withdrawalId}/approve`,
+        { clientId },
+        { headers: this.headers, timeout: 10_000 },
+      );
+      return data;
+    } catch (error: any) {
+      if (error.response) {
+        throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
+      }
+      throw new InternalServerErrorException('Downstream service unavailable');
+    }
+  }
+
   async getWithdrawal(clientId: number, withdrawalId: string) {
     try {
       const { data } = await axios.get(

@@ -363,6 +363,14 @@ export async function runApiSuite(config: Config) {
     api.noteLastRequest('Use `tokenSymbol` (BNB/ETH/MATIC/USDT/USDC). For ERC-20 the token must be in `GET /client/v1/tokens?chainId=…`.');
     const id = (r as any).withdrawalId ?? (r as any).withdrawal?.id ?? (r as any).id;
     if (!id) throw new Error('Withdrawal response missing id: ' + JSON.stringify(r).slice(0, 200));
+    // Self-approve so the cron worker picks it up at the next polling tick (full-custody flow).
+    try {
+      await api.post(`/withdrawals/${id}/approve`, {});
+      api.noteLastRequest('full-custody self-approve: pending_approval → approved');
+    } catch (e: any) {
+      // tolerate already-approved or non-pending-approval statuses
+      if (e?.response?.status !== 409 && e?.response?.status !== 400) throw e;
+    }
     reporter.highlight('withdrawalId', String(id));
     return String(id);
   });
