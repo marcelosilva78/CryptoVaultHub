@@ -7,6 +7,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { EvmProviderService } from '../blockchain/evm-provider.service';
 import { KeyResolverService } from './key-resolver.service';
+import { TransactionSubmitterService } from '../sweep/transaction-submitter.service';
 import {
   buildNativeOperationHash,
   buildErc20OperationHash,
@@ -89,6 +90,7 @@ export class WithdrawalWorkerService extends WorkerHost implements OnModuleInit 
     private readonly redis: RedisService,
     private readonly evmProvider: EvmProviderService,
     private readonly keyResolver: KeyResolverService,
+    private readonly txSubmitter: TransactionSubmitterService,
   ) {
     super();
     // L-3: Use getOrThrow to fail fast if KEY_VAULT_URL is missing,
@@ -236,6 +238,7 @@ export class WithdrawalWorkerService extends WorkerHost implements OnModuleInit 
       chainId: rawWithdrawal.chain_id,
       tokenId: rawWithdrawal.token_id,
       fromWallet: rawWithdrawal.from_wallet,
+      sourceWallet: rawWithdrawal.source_wallet ?? 'hot',
       toAddressId: rawWithdrawal.to_address_id,
       toAddress: rawWithdrawal.to_address,
       toLabel: rawWithdrawal.to_label,
@@ -249,6 +252,10 @@ export class WithdrawalWorkerService extends WorkerHost implements OnModuleInit 
       submittedAt: rawWithdrawal.submitted_at,
       confirmedAt: rawWithdrawal.confirmed_at,
     };
+
+    if (withdrawal.sourceWallet === 'gas_tank') {
+      return this.executeGasTankWithdrawal(withdrawal, withdrawalId, job);
+    }
 
     const clientId = Number(withdrawal.clientId);
     const chainId = Number(withdrawal.chainId);
@@ -577,5 +584,68 @@ export class WithdrawalWorkerService extends WorkerHost implements OnModuleInit 
     } finally {
       clearTimeout(timeout);
     }
+  }
+
+  /**
+   * Sign and broadcast a single-sig value-transfer from the gas tank EOA.
+   * Used when withdrawal.source_wallet='gas_tank'. Reuses the sweep submitter,
+   * which already supports value + keyType.
+   */
+  private async executeGasTankWithdrawal(
+    withdrawal: any,
+    withdrawalId: string,
+    job: Job,
+  ): Promise<WithdrawalJobResult> {
+    const submittedAt = new Date();
+    const txHash = await this.txSubmitter.signAndSubmit({
+      chainId: Number(withdrawal.chainId),
+      clientId: Number(withdrawal.clientId),
+      from: '', // submitter resolves it from the gas_tank key
+      to: withdrawal.toAddress,
+      data: '0x',
+      value: BigInt(withdrawal.amountRaw),
+      keyType: 'gas_tank',
+    });
+
+    this.logger.log(
+      `Withdrawal ${withdrawalId} (gas_tank) broadcast: txHash=${txHash}`,
+    );
+
+    await this.prisma.$executeRaw`
+      UPDATE cvh_transactions.withdrawals
+      SET tx_hash = ${txHash}, submitted_at = ${submittedAt}
+      WHERE id = ${BigInt(withdrawalId)}
+    `;
+
+    await this.confirmQueue.add(
+      'track-confirmation',
+      { withdrawalId, txHash, chainId: Number(withdrawal.chainId) } as WithdrawalConfirmJobData,
+      {
+        jobId: `confirm-withdrawal-${withdrawalId}`,
+        delay: 15_000,
+        attempts: 60,
+        backoff: { type: 'fixed', delay: 15_000 },
+        removeOnComplete: 100,
+        removeOnFail: 200,
+      },
+    );
+
+    const broadcastPayload = {
+      withdrawalId,
+      clientId: String(withdrawal.clientId),
+      chainId: String(withdrawal.chainId),
+      sourceWallet: 'gas_tank',
+      txHash,
+      timestamp: submittedAt.toISOString(),
+    };
+    await this.redis.publishToStream('withdrawals:broadcasting', broadcastPayload);
+    await this.redis.publishToStream('withdrawals:submitted', broadcastPayload);
+
+    return {
+      withdrawalId,
+      txHash,
+      sequenceId: 0,
+      status: 'broadcasting',
+    };
   }
 }
