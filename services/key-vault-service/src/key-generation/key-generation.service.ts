@@ -315,15 +315,26 @@ export class KeyGenerationService {
     keyType: string,
     chainId: number,
   ): Promise<{ privateKey: Buffer; address: string; keyId: bigint }> {
-    const chainScope = `evm:${chainId}`;
-    const key = await this.prisma.derivedKey.findFirst({
-      where: {
-        clientId: BigInt(clientId),
-        keyType: keyType as any,
-        chainScope,
-        isActive: true,
-      },
-    });
+    // Try chain-specific key first (gas_tank uses chainScope=evm:<chainId>),
+    // then fall back to the EVM-shared scope (platform/client/backup keys
+    // are reused across all EVM chains).
+    const key =
+      (await this.prisma.derivedKey.findFirst({
+        where: {
+          clientId: BigInt(clientId),
+          keyType: keyType as any,
+          chainScope: `evm:${chainId}`,
+          isActive: true,
+        },
+      })) ||
+      (await this.prisma.derivedKey.findFirst({
+        where: {
+          clientId: BigInt(clientId),
+          keyType: keyType as any,
+          chainScope: 'evm',
+          isActive: true,
+        },
+      }));
 
     if (!key || !key.isActive) {
       throw new NotFoundException(
