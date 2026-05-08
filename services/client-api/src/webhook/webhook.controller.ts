@@ -34,9 +34,9 @@ export class WebhookController {
   constructor(private readonly webhookService: WebhookService) {}
 
   @Post()
-  @ClientAuthWithProject('write')
+  @ClientAuthWithProject('webhooks:write')
   @ApiOperation({
-    summary: 'Create a webhook endpoint',
+    summary: 'Create a webhook endpoint (scope: webhooks:write)',
     description: `Registers a new webhook endpoint to receive real-time event notifications. When events occur (deposits, withdrawals, forwarder deployments, gas tank low-balance alerts), the system sends signed HTTP POST requests to the configured URL.
 
 **Webhook Security:**
