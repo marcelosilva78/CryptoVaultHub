@@ -106,6 +106,19 @@ The amount should be provided as a decimal string in the token's standard unit (
           callbackUrl: 'https://myapp.com/webhooks/withdrawal',
         },
       },
+      gas_tank_native: {
+        summary: 'Gas Tank Withdrawal (native only)',
+        description: 'Withdraw native BNB directly from the project gas tank. Source must be set explicitly.',
+        value: {
+          chainId: 56,
+          sourceWallet: 'gas_tank',
+          tokenSymbol: 'BNB',
+          toAddress: '0x95DEda8f5FCB60bf02656b226950329e67c605a4',
+          amount: '0.0005',
+          memo: 'Gas tank ops withdrawal',
+          idempotencyKey: 'gt-ops-2026-05-08-001',
+        },
+      },
     },
   })
   @ApiResponse({
@@ -152,7 +165,9 @@ The amount should be provided as a decimal string in the token's standard unit (
 - Destination address still in 24-hour cooldown
 - Insufficient wallet balance
 - Daily withdrawal limit exceeded
-- Token not supported on the specified chain`,
+- Token not supported on the specified chain
+- 'gas_tank' source with a non-native token (only the chain's native asset is allowed)
+- 'gas_tank' source with amount above (balance − reserved); reserve = 2 × platform_topup_amount_wei`,
   })
   async createWithdrawal(
     @Body() dto: CreateWithdrawalDto,

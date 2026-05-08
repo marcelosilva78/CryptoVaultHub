@@ -1,6 +1,7 @@
 import {
   IsString,
   IsOptional,
+  IsIn,
   IsInt,
   IsNumber,
   IsUrl,
@@ -30,6 +31,17 @@ export class CreateWithdrawalDto {
   })
   @IsInt()
   chainId!: number;
+
+  @ApiProperty({
+    description: `Source of funds. 'hot' (default) withdraws from the project's hot wallet via 2-of-3 multisig; 'gas_tank' withdraws from the project's gas tank EOA via a single-sig value transfer. Gas Tank source supports only the chain's native token and applies a balance reserve to keep platform-key top-ups funded.`,
+    example: 'hot',
+    enum: ['hot', 'gas_tank'],
+    default: 'hot',
+    required: false,
+  })
+  @IsOptional()
+  @IsIn(['hot', 'gas_tank'])
+  sourceWallet?: 'hot' | 'gas_tank';
 
   @ApiProperty({
     description: `Symbol of the token to withdraw. For native currency, use the chain's native token symbol (ETH, BNB, MATIC, AVAX). For ERC-20 tokens, use the standard token symbol (USDT, USDC, WBTC, DAI, etc.). The token must be supported on the specified chain. Use the \`GET /client/v1/tokens\` endpoint to retrieve the full list of supported tokens per chain.`,
