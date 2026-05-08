@@ -162,7 +162,13 @@ export class TransactionSubmitterService {
         txData,
         requestedBy: 'sweep-service',
       },
-      { timeout: 10_000 },
+      {
+        timeout: 10_000,
+        headers: {
+          'X-Internal-Service-Key':
+            process.env.INTERNAL_SERVICE_KEY ?? '',
+        },
+      },
     );
 
     if (!signResponse.data.success || !signResponse.data.signedTransaction) {
