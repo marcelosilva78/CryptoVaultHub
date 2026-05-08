@@ -215,6 +215,19 @@ export class PollingDetectorService extends WorkerHost implements OnModuleInit {
     // Compare with cached balances
     const currentBlock = await provider.getBlockNumber();
 
+    // Advance the sync cursor — this is the only place that does so on the HTTP-only path.
+    // Without this, GapDetector sees lastBlock=0 and refuses to schedule backfills,
+    // and any consumer reading sync_cursors thinks the indexer is dead.
+    try {
+      await this.prisma.syncCursor.upsert({
+        where: { chainId },
+        update: { lastBlock: BigInt(currentBlock) },
+        create: { chainId, lastBlock: BigInt(currentBlock), latestFinalizedBlock: BigInt(0) },
+      });
+    } catch (err) {
+      this.logger.warn(`Failed to advance syncCursor for chain ${chainId}: ${(err as Error).message}`);
+    }
+
     for (let i = 0; i < results.length; i++) {
       const result = results[i];
       const meta = callMeta[i];

@@ -306,6 +306,17 @@ export async function runApiSuite(config: Config) {
     else reporter.highlight('history rows', String(r.total));
   });
 
+  // Phase limit: stop here if user wants to ask the withdrawal target out-of-band
+  if (phaseLimit === 'before-withdrawal') {
+    console.log('\n' + chalk.bold.green('━'.repeat(80)));
+    console.log(chalk.bold.green('  PHASE-LIMIT=before-withdrawal — Pronto para Interação 2'));
+    console.log(chalk.bold.green('━'.repeat(80)));
+    console.log(chalk.bold.white('  Próxima etapa: peça ao usuário o endereço de saque.'));
+    console.log(chalk.cyan('    CVH_PHASE_RESUME=true CVH_AUTO_CONTINUE=true CVH_PROMPT_ANSWER=<endereço-saque> npm run api-only'));
+    console.log(chalk.bold.green('━'.repeat(80)));
+    return;
+  }
+
   // ─── B.9 Withdrawal (INTERACTION 2) ────────────────────────────────
   // === USER INTERACTION 2 ===
   const withdrawalTarget = await askText(
