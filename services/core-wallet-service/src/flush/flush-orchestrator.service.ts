@@ -1,9 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 
 interface FlushItem {
   walletId: bigint;
+  clientId: bigint;
   chainId: number;
   tokenId: bigint;
   forwarderAddress: string;
@@ -16,11 +19,14 @@ interface FlushResult {
   failedCount: number;
   skippedCount: number;
   finalStatus: string;
+  sweepJobIds: string[];
 }
 
 /**
  * Orchestrates batch flush operations across forwarder wallets.
- * Collects pending flush items, groups by chain/token, and executes.
+ * Collects pending flush items and enqueues real sweep jobs on the cron-worker
+ * 'sweep' BullMQ queue. The cron-worker SweepService picks up the job, signs
+ * the flush tx via Key Vault, and submits it on-chain.
  */
 @Injectable()
 export class FlushOrchestratorService {
@@ -29,10 +35,14 @@ export class FlushOrchestratorService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
+    @InjectQueue('sweep') private readonly sweepQueue: Queue,
   ) {}
 
   /**
    * Execute a flush operation for a client on a specific chain.
+   * Collects eligible deposits, then enqueues one immediate sweep job per
+   * (clientId, chainId) pair. The actual on-chain flush is performed by the
+   * cron-worker SweepService.
    */
   async executeFlush(
     clientId: number,
@@ -43,10 +53,12 @@ export class FlushOrchestratorService {
     let succeededCount = 0;
     let failedCount = 0;
     let skippedCount = 0;
+    const sweepJobIds: string[] = [];
 
+    // Group items by (chainId, clientId) — one sweep job covers all forwarders for that pair.
+    const groupKeys = new Set<string>();
     for (const item of items) {
       try {
-        // Skip items with zero balance or locked forwarders
         const balance = BigInt(item.amount);
         if (balance <= 0n) {
           skippedCount++;
@@ -59,27 +71,47 @@ export class FlushOrchestratorService {
           continue;
         }
 
-        await this.flushItem(item);
+        const groupKey = `${item.chainId}:${item.clientId}`;
+        if (groupKeys.has(groupKey)) {
+          succeededCount++;
+          continue;
+        }
+        groupKeys.add(groupKey);
+
+        const jobId = `flush-${item.chainId}-${item.clientId}-${Date.now()}`;
+        await this.sweepQueue.add(
+          'execute-sweep',
+          { chainId: item.chainId, clientId: Number(item.clientId) },
+          {
+            jobId,
+            removeOnComplete: 100,
+            removeOnFail: 200,
+          },
+        );
+        sweepJobIds.push(jobId);
         succeededCount++;
+
+        this.logger.log(
+          `Enqueued flush sweep job ${jobId} for client ${item.clientId} chain ${item.chainId}`,
+        );
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
         this.logger.error(
-          `Flush failed for forwarder ${item.forwarderAddress}: ${msg}`,
+          `Flush enqueue failed for forwarder ${item.forwarderAddress}: ${msg}`,
         );
         failedCount++;
       }
     }
 
-    // Determine final status based on actual outcomes
     let finalStatus: string;
     if (failedCount === 0 && succeededCount > 0) {
-      finalStatus = 'succeeded';
+      finalStatus = 'enqueued';
     } else if (succeededCount === 0 && failedCount > 0) {
       finalStatus = 'failed';
     } else if (succeededCount > 0 && failedCount > 0) {
-      finalStatus = 'partially_succeeded';
+      finalStatus = 'partially_enqueued';
     } else if (succeededCount === 0 && failedCount === 0) {
-      finalStatus = 'canceled'; // all items were skipped (zero balance or locked)
+      finalStatus = 'canceled';
     } else {
       finalStatus = 'failed';
     }
@@ -90,20 +122,21 @@ export class FlushOrchestratorService {
       failedCount,
       skippedCount,
       finalStatus,
+      sweepJobIds,
     };
 
     this.logger.log(
       `Flush completed for client ${clientId}, chain ${chainId}: ${JSON.stringify(result)}`,
     );
 
-    // Publish result event
-    await this.redis.publishToStream('flush:completed', {
+    await this.redis.publishToStream('flush:enqueued', {
       clientId: clientId.toString(),
       chainId: chainId.toString(),
       totalItems: items.length.toString(),
       succeeded: succeededCount.toString(),
       failed: failedCount.toString(),
       skipped: skippedCount.toString(),
+      sweepJobIds: sweepJobIds.join(','),
       finalStatus,
       timestamp: new Date().toISOString(),
     });
@@ -111,9 +144,6 @@ export class FlushOrchestratorService {
     return result;
   }
 
-  /**
-   * Collect items eligible for flushing.
-   */
   private async collectFlushItems(
     clientId: number,
     chainId: number,
@@ -129,6 +159,7 @@ export class FlushOrchestratorService {
 
     return deposits.map((d) => ({
       walletId: d.clientId,
+      clientId: d.clientId,
       chainId: d.chainId,
       tokenId: d.tokenId,
       forwarderAddress: d.forwarderAddress,
@@ -136,38 +167,9 @@ export class FlushOrchestratorService {
     }));
   }
 
-  /**
-   * Check if a forwarder address is currently locked (e.g., pending sweep).
-   * Includes chainId to prevent cross-chain lock contamination.
-   */
   private async isForwarderLocked(chainId: number, address: string): Promise<boolean> {
     const lockKey = `flush:lock:${chainId}:${address.toLowerCase()}`;
     const locked = await this.redis.getCache(lockKey);
     return locked !== null;
-  }
-
-  /**
-   * Execute flush for a single item.
-   */
-  private async flushItem(item: FlushItem): Promise<void> {
-    // Lock the forwarder during flush (include chainId to prevent cross-chain contamination)
-    const lockKey = `flush:lock:${item.chainId}:${item.forwarderAddress.toLowerCase()}`;
-    await this.redis.setCache(lockKey, '1', 300); // 5 minute lock
-
-    try {
-      // Record flush intent (actual on-chain tx handled by signing service)
-      await this.redis.publishToStream('flush:execute', {
-        forwarderAddress: item.forwarderAddress,
-        chainId: item.chainId.toString(),
-        tokenId: item.tokenId.toString(),
-        amount: item.amount,
-        timestamp: new Date().toISOString(),
-      });
-    } catch (error) {
-      throw error;
-    } finally {
-      // Always release lock — whether flush succeeded or failed
-      await this.redis.deleteCache(lockKey);
-    }
   }
 }

@@ -79,6 +79,34 @@ export class GasTankReceiptReconcilerService implements OnModuleInit, OnModuleDe
           `Gas-tank tx ${row.txHash} on chain ${row.chainId} → ${newStatus} ` +
             `(gasUsed=${receipt.gasUsed}, gasCost=${gasCostWei} wei)`,
         );
+
+        // Cascade reconciliation to deposits whose sweep_tx_hash matches this gas-tank tx.
+        // When a sweep/flush tx confirms, transition deposits from 'sweep_pending' → 'swept' (or 'sweep_failed').
+        if (row.operationType === 'sweep' || row.operationType === 'flush') {
+          try {
+            const depositStatus = newStatus === 'confirmed' ? 'swept' : 'sweep_failed';
+            const updated = await this.prisma.deposit.updateMany({
+              where: {
+                sweepTxHash: row.txHash,
+                chainId: row.chainId,
+                status: 'sweep_pending',
+              },
+              data: {
+                status: depositStatus,
+                sweptAt: newStatus === 'confirmed' ? new Date() : null,
+              },
+            });
+            if (updated.count > 0) {
+              this.logger.log(
+                `Cascaded ${updated.count} deposit(s) to '${depositStatus}' for sweep tx ${row.txHash}`,
+              );
+            }
+          } catch (cascadeErr) {
+            this.logger.warn(
+              `Deposit cascade reconciliation failed for tx ${row.txHash}: ${(cascadeErr as Error).message}`,
+            );
+          }
+        }
       } catch (err) {
         this.logger.warn(
           `Failed to reconcile tx ${row.txHash} on chain ${row.chainId}: ${(err as Error).message}`,

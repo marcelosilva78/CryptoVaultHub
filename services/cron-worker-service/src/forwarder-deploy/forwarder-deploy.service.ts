@@ -245,6 +245,45 @@ export class ForwarderDeployService extends WorkerHost implements OnModuleInit {
           data: { isDeployed: true },
         });
 
+        // CvhForwarder's constructor auto-forwards any pre-existing native balance
+        // to the parent. So after a deploy, if the forwarder is empty and we have
+        // confirmed native deposits referencing it, the deploy tx itself is the sweep.
+        // Reconcile: mark those native deposits as swept using the deploy tx hash.
+        try {
+          const postDeployBalance = await provider.getBalance(addr.address);
+          if (postDeployBalance === 0n) {
+            const nativeToken = await this.prisma.token.findFirst({
+              where: { chainId, isNative: true },
+              select: { id: true },
+            });
+            if (nativeToken) {
+              const reconciled = await this.prisma.deposit.updateMany({
+                where: {
+                  forwarderAddress: addr.address,
+                  chainId,
+                  status: 'confirmed',
+                  sweepTxHash: null,
+                  tokenId: nativeToken.id,
+                },
+                data: {
+                  status: 'swept',
+                  sweepTxHash: txHash,
+                  sweptAt: new Date(),
+                },
+              });
+              if (reconciled.count > 0) {
+                this.logger.log(
+                  `Reconciled ${reconciled.count} native deposit(s) on ${addr.address} as swept via deploy tx ${txHash}`,
+                );
+              }
+            }
+          }
+        } catch (reconcileErr) {
+          this.logger.warn(
+            `Post-deploy reconciliation skipped for ${addr.address}: ${(reconcileErr as Error).message}`,
+          );
+        }
+
         deployed++;
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
