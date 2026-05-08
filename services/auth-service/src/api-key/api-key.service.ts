@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { createHash, randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
+import { matchesAllowlist } from './cidr';
 
 export interface ApiKeyResult {
   id: string;
@@ -158,12 +159,12 @@ export class ApiKeyService {
       return { valid: false };
     }
 
-    // Check IP allowlist
-    if (key.ipAllowlist && requestIp) {
-      const allowlist = key.ipAllowlist as string[];
-      if (allowlist.length > 0 && !allowlist.includes(requestIp)) {
+    // Check IP allowlist (CIDR-aware; entries may be exact IPs or CIDR blocks)
+    const allowlist = (key.ipAllowlist as string[] | null) ?? null;
+    if (allowlist && allowlist.length > 0) {
+      if (!matchesAllowlist(requestIp, allowlist)) {
         this.logger.warn(
-          `API key ${key.keyPrefix} rejected: IP ${requestIp} not in allowlist`,
+          `API key ${key.keyPrefix} rejected: IP ${requestIp} not in allowlist ${JSON.stringify(allowlist)}`,
         );
         return { valid: false };
       }

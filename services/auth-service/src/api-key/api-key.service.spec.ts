@@ -210,3 +210,53 @@ describe('ApiKeyService', () => {
     });
   });
 });
+
+describe('validateApiKey IP allowlist (CIDR)', () => {
+  let service: ApiKeyService;
+  const prismaMock = {
+    apiKey: {
+      findUnique: jest.fn(),
+      update: jest.fn().mockResolvedValue({}),
+    },
+  } as any;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    service = new ApiKeyService(prismaMock);
+  });
+
+  it('rejects when request IP is outside the CIDR block', async () => {
+    prismaMock.apiKey.findUnique.mockResolvedValue({
+      id: 1n,
+      keyPrefix: 'cvh_live_x',
+      isActive: true,
+      expiresAt: null,
+      ipAllowlist: ['203.0.113.0/24'],
+      clientId: 7n,
+      projectId: 11n,
+      scopes: ['read'],
+      allowedChains: null,
+    });
+
+    const result = await service.validateApiKey('cvh_live_xx', '198.51.100.7');
+    expect(result.valid).toBe(false);
+  });
+
+  it('accepts when request IP is inside the CIDR block', async () => {
+    prismaMock.apiKey.findUnique.mockResolvedValue({
+      id: 1n,
+      keyPrefix: 'cvh_live_x',
+      isActive: true,
+      expiresAt: null,
+      ipAllowlist: ['203.0.113.0/24'],
+      clientId: 7n,
+      projectId: 11n,
+      scopes: ['read'],
+      allowedChains: null,
+    });
+
+    const result = await service.validateApiKey('cvh_live_xx', '203.0.113.42');
+    expect(result.valid).toBe(true);
+    expect(result.clientId).toBe(7);
+  });
+});
