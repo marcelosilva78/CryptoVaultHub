@@ -7,6 +7,11 @@ import {
   IsArray,
   IsNumber,
   IsBoolean,
+  IsInt,
+  IsPositive,
+  ArrayMinSize,
+  IsDateString,
+  ArrayUnique,
 } from 'class-validator';
 
 export class LoginDto {
@@ -97,4 +102,38 @@ export class ValidateApiKeyDto {
   @IsString()
   @IsOptional()
   ip?: string;
+}
+
+export class CreateInternalApiKeyDto {
+  @IsInt()
+  @IsPositive()
+  clientId!: number;
+
+  @IsInt()
+  @IsPositive()
+  projectId!: number;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayUnique()
+  @IsString({ each: true })
+  scopes!: string[];
+
+  @IsOptional()
+  @IsString()
+  label?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  ipAllowlist?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsInt({ each: true })
+  allowedChains?: number[];
+
+  @IsOptional()
+  @IsDateString()
+  expiresAt?: string;
 }

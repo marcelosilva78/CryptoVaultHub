@@ -31,6 +31,7 @@ import {
   Disable2faDto,
   CreateApiKeyDto,
   ValidateApiKeyDto,
+  CreateInternalApiKeyDto,
 } from './common/dto/auth.dto';
 import { PrismaService } from './prisma/prisma.service';
 import { InternalServiceGuard } from './common/guards/internal-service.guard';
@@ -347,5 +348,31 @@ export class AuthController {
       req.ip,
     );
     return result;
+  }
+
+  // ─── Internal API key endpoints (called by client-api on behalf of clients) ───
+
+  @Post('internal/api-keys')
+  @UseGuards(InternalServiceGuard)
+  async createInternalApiKey(@Body() dto: CreateInternalApiKeyDto) {
+    const result = await this.apiKeyService.createApiKey(
+      dto.clientId,
+      dto.projectId,
+      dto.scopes,
+      {
+        ipAllowlist: dto.ipAllowlist,
+        allowedChains: dto.allowedChains,
+        label: dto.label,
+        expiresAt: dto.expiresAt,
+      },
+    );
+    return { success: true, apiKey: result };
+  }
+
+  @Delete('internal/api-keys/:id')
+  @UseGuards(InternalServiceGuard)
+  async revokeInternalApiKey(@Param('id', ParseIntPipe) id: number) {
+    await this.apiKeyService.revokeApiKey(id);
+    return { success: true, message: 'API key revoked' };
   }
 }

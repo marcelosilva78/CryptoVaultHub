@@ -392,3 +392,58 @@ describe('AuthController', () => {
     });
   });
 });
+
+describe('Internal API key endpoints', () => {
+  let controller: AuthController;
+  const apiKeyService = {
+    createApiKey: jest.fn(),
+    revokeApiKey: jest.fn(),
+    listApiKeys: jest.fn(),
+    validateApiKey: jest.fn(),
+  } as any;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    // AuthController constructor: (JwtAuthService, ApiKeyService, TotpService, ConfigService, PrismaService)
+    controller = new AuthController(
+      { checkAndTrackLoginAttempt: jest.fn(), login: jest.fn(), resetLoginAttempts: jest.fn(), completeLoginAfter2fa: jest.fn(), checkTotpAttempt: jest.fn(), refresh: jest.fn(), logout: jest.fn() } as any,
+      apiKeyService,
+      { validateCode: jest.fn(), setup2fa: jest.fn(), verify2fa: jest.fn(), disable2fa: jest.fn() } as any,
+      { get: jest.fn().mockReturnValue('test-value'), getOrThrow: jest.fn().mockReturnValue('test-secret') } as any,
+      { user: { findUnique: jest.fn(), findFirst: jest.fn() } } as any,
+    );
+  });
+
+  it('POST /internal/api-keys forwards to ApiKeyService.createApiKey', async () => {
+    apiKeyService.createApiKey.mockResolvedValue({
+      id: '1',
+      key: 'cvh_live_abc',
+      prefix: 'cvh_live_a',
+      clientId: 7,
+      scopes: ['wallets:read'],
+    });
+
+    const dto = {
+      clientId: 7,
+      projectId: 11,
+      scopes: ['wallets:read'],
+      label: 'Test',
+    } as any;
+
+    const result = await controller.createInternalApiKey(dto);
+    expect(apiKeyService.createApiKey).toHaveBeenCalledWith(
+      7,
+      11,
+      ['wallets:read'],
+      expect.objectContaining({ label: 'Test' }),
+    );
+    expect(result.success).toBe(true);
+    expect(result.apiKey.key).toBe('cvh_live_abc');
+  });
+
+  it('DELETE /internal/api-keys/:id forwards to ApiKeyService.revokeApiKey', async () => {
+    apiKeyService.revokeApiKey.mockResolvedValue(undefined);
+    await controller.revokeInternalApiKey(42);
+    expect(apiKeyService.revokeApiKey).toHaveBeenCalledWith(42);
+  });
+});
