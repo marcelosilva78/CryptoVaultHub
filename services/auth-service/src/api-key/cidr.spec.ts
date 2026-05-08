@@ -43,4 +43,12 @@ describe('matchesAllowlist', () => {
       true,
     );
   });
+
+  it('rejects entries with multiple slashes', () => {
+    expect(matchesAllowlist('1.2.3.4', ['1.2.3.0/24/extra'])).toBe(false);
+  });
+
+  it('strips uppercase IPv6-mapped IPv4 prefix from requestIp', () => {
+    expect(matchesAllowlist('::FFFF:203.0.113.4', ['203.0.113.0/24'])).toBe(true);
+  });
 });

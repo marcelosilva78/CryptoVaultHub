@@ -14,7 +14,7 @@
 const IPV4_MAPPED_PREFIX = '::ffff:';
 
 function normalizeIp(ip: string): string {
-  return ip.startsWith(IPV4_MAPPED_PREFIX)
+  return ip.toLowerCase().startsWith(IPV4_MAPPED_PREFIX)
     ? ip.slice(IPV4_MAPPED_PREFIX.length)
     : ip;
 }
@@ -33,9 +33,9 @@ function ipToInt(ip: string): number | null {
 }
 
 function entryMatches(ip: string, entry: string): boolean {
-  const [addr, prefixStr] = entry.includes('/')
-    ? entry.split('/')
-    : [entry, '32'];
+  const parts = entry.split('/');
+  if (parts.length > 2) return false;
+  const [addr, prefixStr] = parts.length === 2 ? parts : [entry, '32'];
   const prefix = Number(prefixStr);
   if (!Number.isInteger(prefix) || prefix < 0 || prefix > 32) return false;
 
@@ -60,7 +60,9 @@ export function matchesAllowlist(
 
 export function isValidIpOrCidr(value: string): boolean {
   if (!value) return false;
-  const [addr, prefixStr] = value.includes('/') ? value.split('/') : [value, '32'];
+  const parts = value.split('/');
+  if (parts.length > 2) return false;
+  const [addr, prefixStr] = parts.length === 2 ? parts : [value, '32'];
   const prefix = Number(prefixStr);
   if (!Number.isInteger(prefix) || prefix < 0 || prefix > 32) return false;
   return ipToInt(addr) !== null;
