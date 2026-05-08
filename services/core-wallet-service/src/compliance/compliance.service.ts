@@ -660,9 +660,10 @@ export class ComplianceService {
     }
 
     // Insert via raw SQL to satisfy the project_id NOT NULL column on the cross-DB view.
+    // `trigger` is a reserved word in MySQL, must be backticked.
     await this.prisma.$executeRaw`
       INSERT INTO cvh_compliance.screening_results
-        (client_id, project_id, address, direction, trigger, tx_hash,
+        (client_id, project_id, address, direction, \`trigger\`, tx_hash,
          lists_checked, result, match_details, action, screened_at)
       VALUES
         (${BigInt(params.clientId)}, ${projectIdRaw}, ${params.address},
