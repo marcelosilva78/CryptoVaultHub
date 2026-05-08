@@ -28,9 +28,9 @@ export class ProjectSetupController {
   // POST /client/v1/projects/setup
   // ---------------------------------------------------------------------------
   @Post('setup')
-  @ClientAuth('write')
+  @ClientAuth('project-setup:write')
   @ApiOperation({
-    summary: 'Create a new project',
+    summary: 'Create a new project [project-setup:write]',
     description: `Creates a new project for the authenticated client with the specified chains and custody mode.
 
 **Custody modes:**
@@ -88,9 +88,9 @@ After creation, use the \`/keys\`, \`/gas-check\`, and \`/deploy\` endpoints to 
   // POST /client/v1/projects/:id/keys
   // ---------------------------------------------------------------------------
   @Post(':id/keys')
-  @ClientAuth('write')
+  @ClientAuth('project-setup:write')
   @ApiOperation({
-    summary: 'Initialize project keys (key ceremony)',
+    summary: 'Initialize project keys (key ceremony) [project-setup:write]',
     description: `Generates the HD seed (24-word mnemonic), derives platform/client/backup keys, and returns the mnemonic + public keys.
 
 **IMPORTANT:** The mnemonic is shown exactly **once**. Store it securely. It will not be returned again.
@@ -151,9 +151,9 @@ After storing the mnemonic, call \`POST /projects/:id/confirm-seed\` to confirm 
   // POST /client/v1/projects/:id/confirm-seed
   // ---------------------------------------------------------------------------
   @Post(':id/confirm-seed')
-  @ClientAuth('write')
+  @ClientAuth('project-setup:write')
   @ApiOperation({
-    summary: 'Confirm seed phrase has been saved',
+    summary: 'Confirm seed phrase has been saved [project-setup:write]',
     description: `Marks the seed phrase as shown to the client. Call this endpoint **after** the user has confirmed they have securely stored their mnemonic.
 
 This is a one-way flag and cannot be undone.
@@ -191,9 +191,9 @@ This is a one-way flag and cannot be undone.
   // GET /client/v1/projects/:id/gas-check
   // ---------------------------------------------------------------------------
   @Get(':id/gas-check')
-  @ClientAuth('read')
+  @ClientAuth('project-setup:read')
   @ApiOperation({
-    summary: 'Check gas tank balances for deploy',
+    summary: 'Check gas tank balances for deploy [project-setup:read]',
     description: `Returns the gas tank balance and estimated required gas for each chain in the project. Use this before \`/deploy\` to verify sufficient funding.
 
 Estimated gas per chain: ~5.65M gas units (5 contract deployments).
@@ -247,9 +247,9 @@ Estimated gas per chain: ~5.65M gas units (5 contract deployments).
   // POST /client/v1/projects/:id/deploy
   // ---------------------------------------------------------------------------
   @Post(':id/deploy')
-  @ClientAuth('write')
+  @ClientAuth('project-setup:write')
   @ApiOperation({
-    summary: 'Start contract deployment',
+    summary: 'Start contract deployment [project-setup:write]',
     description: `Triggers the deployment of all 5 contracts (wallet impl, forwarder impl, wallet factory, forwarder factory, hot wallet) on each chain.
 
 **Prerequisites:**
@@ -305,9 +305,9 @@ Deployment may take several minutes per chain. Use \`GET /projects/:id/deploy/st
   // GET /client/v1/projects/:id/deploy/status
   // ---------------------------------------------------------------------------
   @Get(':id/deploy/status')
-  @ClientAuth('read')
+  @ClientAuth('project-setup:read')
   @ApiOperation({
-    summary: 'Get deployment status per chain',
+    summary: 'Get deployment status per chain [project-setup:read]',
     description: `Returns the current deploy status and contract addresses for each chain in the project.
 
 **Deploy statuses:**
@@ -373,9 +373,9 @@ Deployment may take several minutes per chain. Use \`GET /projects/:id/deploy/st
   // GET /client/v1/projects/:id/deploy/traces
   // ---------------------------------------------------------------------------
   @Get(':id/deploy/traces')
-  @ClientAuth('read')
+  @ClientAuth('project-setup:read')
   @ApiOperation({
-    summary: 'Get all deploy traces for a project',
+    summary: 'Get all deploy traces for a project [project-setup:read]',
     description: `Returns the full on-chain deployment audit trail for all chains in the project. Each trace includes calldata, signed transaction, RPC request/response, ABI, gas costs, and verification proof.
 
 **Required scope:** \`read\``,
@@ -427,9 +427,9 @@ Deployment may take several minutes per chain. Use \`GET /projects/:id/deploy/st
   // GET /client/v1/projects/:id/export
   // ---------------------------------------------------------------------------
   @Get(':id/export')
-  @ClientAuth('read')
+  @ClientAuth('project-setup:read')
   @ApiOperation({
-    summary: 'Export full project data',
+    summary: 'Export full project data [project-setup:read]',
     description: `Exports the complete project data for portability: public keys, contract addresses, ABIs, deploy traces, and forwarder list.
 
 **Note:** The seed phrase is NOT included in the export. The client should already have it from the initial key ceremony.
@@ -480,9 +480,9 @@ The response is a JSON object suitable for download.
   // GET /client/v1/projects/:id/deploy/traces/:chainId
   // ---------------------------------------------------------------------------
   @Get(':id/deploy/traces/:chainId')
-  @ClientAuth('read')
+  @ClientAuth('project-setup:read')
   @ApiOperation({
-    summary: 'Get deploy traces for a specific chain',
+    summary: 'Get deploy traces for a specific chain [project-setup:read]',
     description: `Returns the deployment audit trail filtered by chain ID. Includes all 5 contract deployment traces for the specified chain.
 
 **Required scope:** \`read\``,
@@ -527,9 +527,9 @@ The response is a JSON object suitable for download.
   // GET /client/v1/projects/:id/deletion-impact
   // ---------------------------------------------------------------------------
   @Get(':id/deletion-impact')
-  @ClientAuth('read')
+  @ClientAuth('project-setup:read')
   @ApiOperation({
-    summary: 'Get deletion impact summary for a project',
+    summary: 'Get deletion impact summary for a project [project-setup:read]',
     description: `Returns a summary of all resources that would be affected by deleting this project: wallets, deposits, withdrawals, webhooks, API keys, and balances.
 
 Use this endpoint to preview the impact before initiating deletion.
@@ -587,9 +587,9 @@ Use this endpoint to preview the impact before initiating deletion.
   // DELETE /client/v1/projects/:id
   // ---------------------------------------------------------------------------
   @Delete(':id')
-  @ClientAuth('write')
+  @ClientAuth('project-setup:write')
   @ApiOperation({
-    summary: 'Request project deletion',
+    summary: 'Request project deletion [project-setup:write]',
     description: `Initiates the deletion process for a project. The behavior depends on the project's resources:
 
 - **No wallets and no transactions:** Immediate hard-delete (removed from database).
@@ -636,9 +636,9 @@ During the grace period, deletion can be cancelled via \`POST /projects/:id/canc
   // POST /client/v1/projects/:id/cancel-deletion
   // ---------------------------------------------------------------------------
   @Post(':id/cancel-deletion')
-  @ClientAuth('write')
+  @ClientAuth('project-setup:write')
   @ApiOperation({
-    summary: 'Cancel a pending project deletion',
+    summary: 'Cancel a pending project deletion [project-setup:write]',
     description: `Cancels a pending deletion request and restores the project to \`active\` status. Only works if the project is currently in \`pending_deletion\` status.
 
 **Required scope:** \`write\``,

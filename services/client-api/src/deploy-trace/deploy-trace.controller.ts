@@ -22,9 +22,9 @@ export class DeployTraceController {
   constructor(private readonly deployTraceService: DeployTraceService) {}
 
   @Get()
-  @ClientAuth('read')
+  @ClientAuth('deploy-trace:read')
   @ApiOperation({
-    summary: 'List deploy traces',
+    summary: 'List deploy traces [deploy-trace:read]',
     description: `Returns a paginated list of deployment traces for the authenticated client. Each trace contains full on-chain details: transaction hash, block info, gas costs, deployer address, factory address, salt, and event logs.
 
 **Resource types:**
@@ -53,9 +53,9 @@ export class DeployTraceController {
   }
 
   @Get(':id')
-  @ClientAuth('read')
+  @ClientAuth('deploy-trace:read')
   @ApiOperation({
-    summary: 'Get deploy trace details',
+    summary: 'Get deploy trace details [deploy-trace:read]',
     description: `Returns the full details of a deployment trace, including the complete transaction receipt, block information, gas breakdown, event logs, and explorer URL.
 
 **Response includes:**

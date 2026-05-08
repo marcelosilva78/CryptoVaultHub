@@ -24,9 +24,9 @@ export class ProjectController {
   constructor(private readonly projectService: ProjectService) {}
 
   @Get()
-  @ClientAuth('read')
+  @ClientAuth('projects:read')
   @ApiOperation({
-    summary: 'List client projects',
+    summary: 'List client projects [projects:read]',
     description: `Returns all projects belonging to the authenticated client, ordered by default status and creation date.
 
 **Project statuses:**
@@ -71,9 +71,9 @@ export class ProjectController {
   }
 
   @Get('current')
-  @ClientAuthWithProject('read')
+  @ClientAuthWithProject('projects:read')
   @ApiOperation({
-    summary: 'Get current project',
+    summary: 'Get current project [projects:read]',
     description: `Returns the project that is currently active for this request, as resolved from the \`X-Project-Id\` header.
 
 If the client has only one active project, it is auto-selected and no header is needed. If the client has multiple projects and the header is absent, a 400 response is returned with the available project list.
@@ -125,9 +125,9 @@ If the client has only one active project, it is auto-selected and no header is 
   }
 
   @Get(':id')
-  @ClientAuth('read')
+  @ClientAuth('projects:read')
   @ApiOperation({
-    summary: 'Get project details',
+    summary: 'Get project details [projects:read]',
     description: `Returns detailed information about a specific project belonging to the authenticated client.
 
 **Required scope:** \`read\``,

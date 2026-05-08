@@ -21,9 +21,9 @@ export class TokenController {
   constructor(private readonly tokenService: TokenService) {}
 
   @Get()
-  @ClientAuth('read')
+  @ClientAuth('tokens:read')
   @ApiOperation({
-    summary: 'List active tokens',
+    summary: 'List active tokens [tokens:read]',
     description: `Returns all active tokens available for the client's enabled chains. Includes native tokens and ERC-20 tokens registered in the platform token registry.
 
 **Required scope:** \`read\``,
@@ -62,9 +62,9 @@ export class TokenController {
   }
 
   @Get(':chainId')
-  @ClientAuth('read')
+  @ClientAuth('tokens:read')
   @ApiOperation({
-    summary: 'List tokens for a specific chain',
+    summary: 'List tokens for a specific chain [tokens:read]',
     description: `Returns all active tokens for a specific blockchain network. Use this to discover which tokens are available for deposits and withdrawals on a given chain.
 
 **Required scope:** \`read\``,

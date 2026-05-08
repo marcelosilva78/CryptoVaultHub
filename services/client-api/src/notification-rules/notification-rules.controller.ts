@@ -26,9 +26,9 @@ export class NotificationRulesController {
   constructor(private readonly service: NotificationRulesService) {}
 
   @Get()
-  @ClientAuth('read')
+  @ClientAuth('notifications:read')
   @ApiOperation({
-    summary: 'List notification rules',
+    summary: 'List notification rules [notifications:read]',
     description:
       'Returns all active notification rules for the authenticated client.',
   })
@@ -40,9 +40,9 @@ export class NotificationRulesController {
   }
 
   @Post()
-  @ClientAuth('write')
+  @ClientAuth('notifications:write')
   @ApiOperation({
-    summary: 'Create a notification rule',
+    summary: 'Create a notification rule [notifications:write]',
     description:
       'Creates a new notification rule for the authenticated client.',
   })
@@ -101,9 +101,9 @@ export class NotificationRulesController {
   }
 
   @Put(':id')
-  @ClientAuth('write')
+  @ClientAuth('notifications:write')
   @ApiOperation({
-    summary: 'Update a notification rule',
+    summary: 'Update a notification rule [notifications:write]',
     description:
       'Updates an existing notification rule. Only provided fields are modified.',
   })
@@ -130,9 +130,9 @@ export class NotificationRulesController {
   }
 
   @Delete(':id')
-  @ClientAuth('write')
+  @ClientAuth('notifications:write')
   @ApiOperation({
-    summary: 'Delete a notification rule (soft-delete)',
+    summary: 'Delete a notification rule (soft-delete) [notifications:write]',
     description: 'Soft-deletes a notification rule by setting deleted_at.',
   })
   @ApiParam({ name: 'id', type: Number, description: 'Rule ID' })

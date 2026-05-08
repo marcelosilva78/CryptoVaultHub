@@ -11,9 +11,9 @@ export class ChainController {
   constructor(private readonly chainService: ChainService) {}
 
   @Get()
-  @ClientAuth('read')
+  @ClientAuth('chains:read')
   @ApiOperation({
-    summary: 'List available blockchain networks',
+    summary: 'List available blockchain networks [chains:read]',
     description: `Returns all active chains configured by the administrator, with RPC node availability status.
 Chains with \`rpcConfigured: false\` have no active RPC nodes and cannot be used for project deployment.
 

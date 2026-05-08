@@ -26,9 +26,9 @@ export class ExportController {
   constructor(private readonly exportService: ExportApiService) {}
 
   @Post()
-  @ClientAuth('read')
+  @ClientAuth('export:read')
   @ApiOperation({
-    summary: 'Request a data export',
+    summary: 'Request a data export [export:read]',
     description: `Creates an export request for the specified data type and format. Small exports (< 5000 rows) are processed with high priority.
 
 **Supported export types:**
@@ -81,9 +81,9 @@ Each export can be downloaded up to 10 times.
   }
 
   @Get()
-  @ClientAuth('read')
+  @ClientAuth('export:read')
   @ApiOperation({
-    summary: 'List export requests',
+    summary: 'List export requests [export:read]',
     description: `Returns a paginated list of all export requests for the authenticated client, ordered by creation date (newest first).
 
 **Required scope:** \`read\``,
@@ -117,9 +117,9 @@ Each export can be downloaded up to 10 times.
   }
 
   @Get(':id')
-  @ClientAuth('read')
+  @ClientAuth('export:read')
   @ApiOperation({
-    summary: 'Get export request status',
+    summary: 'Get export request status [export:read]',
     description: `Returns the current status and details of a specific export request.
 
 **Required scope:** \`read\``,
@@ -148,9 +148,9 @@ Each export can be downloaded up to 10 times.
   }
 
   @Get(':id/download')
-  @ClientAuth('read')
+  @ClientAuth('export:read')
   @ApiOperation({
-    summary: 'Download export file',
+    summary: 'Download export file [export:read]',
     description: `Downloads the generated export file. Only available when status is \`completed\`.
 
 **Limits:**
