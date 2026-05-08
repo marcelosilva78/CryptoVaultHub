@@ -480,8 +480,11 @@ export class WithdrawalWorkerService extends WorkerHost implements OnModuleInit 
         },
       );
 
-      // Publish broadcasting event
-      await this.redis.publishToStream('withdrawals:broadcasting', {
+      // Publish broadcasting event — emit to both 'withdrawals:broadcasting' and
+      // 'withdrawals:submitted' streams so that customers subscribing to the
+      // documented `withdrawal.submitted` event also get it. Both refer to the
+      // same lifecycle moment (tx successfully broadcast to mempool).
+      const broadcastPayload = {
         withdrawalId,
         clientId: clientId.toString(),
         chainId: chainId.toString(),
@@ -491,7 +494,9 @@ export class WithdrawalWorkerService extends WorkerHost implements OnModuleInit 
         amountRaw: withdrawal.amountRaw,
         sequenceId: sequenceId.toString(),
         timestamp: submittedAt.toISOString(),
-      });
+      };
+      await this.redis.publishToStream('withdrawals:broadcasting', broadcastPayload);
+      await this.redis.publishToStream('withdrawals:submitted', broadcastPayload);
 
       this.evmProvider.reportSuccess(chainId);
 

@@ -7,6 +7,7 @@ import {
 import { ethers } from 'ethers';
 import { PrismaService } from '../prisma/prisma.service';
 import { ContractService } from '../blockchain/contract.service';
+import { RedisService } from '../redis/redis.service';
 
 export interface DepositAddressResult {
   address: string;
@@ -28,6 +29,7 @@ export class DepositAddressService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly contractService: ContractService,
+    private readonly redis: RedisService,
   ) {}
 
   /**
@@ -106,7 +108,7 @@ export class DepositAddressService {
     const projectId = hotWallet.projectId;
 
     // Save to DB
-    await this.prisma.depositAddress.create({
+    const created = await this.prisma.depositAddress.create({
       data: {
         clientId: BigInt(clientId),
         projectId,
@@ -123,6 +125,22 @@ export class DepositAddressService {
     this.logger.log(
       `Deposit address generated for client ${clientId} on chain ${chainId}: ${forwarderAddress}`,
     );
+
+    // Publish to chain-indexer so the address starts being monitored on-chain.
+    // The chain-indexer's AddressRegistrationHandler upserts monitored_addresses
+    // and seeds sync_cursors. Without this, deposits to the address are invisible.
+    try {
+      await this.redis.publishToStream('address:registered', {
+        chainId: String(chainId),
+        address: forwarderAddress.toLowerCase(),
+        clientId: String(clientId),
+        projectId: String(projectId),
+        walletId: String(created.id),
+        addressType: 'forwarder',
+      });
+    } catch (err) {
+      this.logger.warn(`Failed to publish address:registered for ${forwarderAddress}: ${(err as Error).message}`);
+    }
 
     return {
       address: forwarderAddress,

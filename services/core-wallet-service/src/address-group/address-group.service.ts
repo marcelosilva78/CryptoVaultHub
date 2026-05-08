@@ -9,6 +9,7 @@ import { randomUUID } from 'crypto';
 import { ethers } from 'ethers';
 import { PrismaService } from '../prisma/prisma.service';
 import { ContractService } from '../blockchain/contract.service';
+import { RedisService } from '../redis/redis.service';
 
 export interface CreateAddressGroupDto {
   clientId: number;
@@ -34,6 +35,7 @@ export class AddressGroupService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly contractService: ContractService,
+    private readonly redis: RedisService,
   ) {}
 
   /**
@@ -213,7 +215,7 @@ export class AddressGroupService {
           );
 
         // Create the deposit address
-        await this.prisma.depositAddress.create({
+        const created = await this.prisma.depositAddress.create({
           data: {
             clientId: BigInt(dto.clientId),
             projectId: hotWallet.projectId,
@@ -227,6 +229,22 @@ export class AddressGroupService {
             addressGroupId: group.id,
           },
         });
+
+        // Notify chain-indexer to start monitoring this on-chain.
+        try {
+          await this.redis.publishToStream('address:registered', {
+            chainId: String(chainId),
+            address: forwarderAddress.toLowerCase(),
+            clientId: String(dto.clientId),
+            projectId: String(hotWallet.projectId),
+            walletId: String(created.id),
+            addressType: 'forwarder',
+          });
+        } catch (err) {
+          this.logger.warn(
+            `Failed to publish address:registered for ${forwarderAddress} on chain ${chainId}: ${(err as Error).message}`,
+          );
+        }
 
         results.push({
           chainId,
