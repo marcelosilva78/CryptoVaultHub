@@ -1,6 +1,5 @@
 import { JwtOnlyAuthGuard } from './jwt-only-auth.guard';
 import { ConfigService } from '@nestjs/config';
-import { Reflector } from '@nestjs/core';
 import { UnauthorizedException } from '@nestjs/common';
 
 describe('JwtOnlyAuthGuard', () => {
@@ -16,7 +15,6 @@ describe('JwtOnlyAuthGuard', () => {
   function makeGuard() {
     return new JwtOnlyAuthGuard(
       { get: () => 'http://auth' } as unknown as ConfigService,
-      { getAllAndOverride: () => null } as unknown as Reflector,
     );
   }
 

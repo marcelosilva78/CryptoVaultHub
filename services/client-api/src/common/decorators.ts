@@ -11,6 +11,7 @@ import {
   TierRateLimitGuard,
   SKIP_RATE_LIMIT,
 } from './guards/tier-rate-limit.guard';
+import { JwtOnlyAuthGuard } from './guards/jwt-only-auth.guard';
 
 export const RequireScopes = (...scopes: string[]) =>
   SetMetadata(SCOPES_KEY, scopes);
@@ -93,3 +94,11 @@ export const CurrentClientId = createParamDecorator(
     return Number(clientId);
   },
 );
+
+/**
+ * Decorator for self-service account endpoints — e.g. API key management.
+ * Authenticates exclusively via the portal JWT cookie path. Programmatic
+ * API keys are rejected.
+ */
+export const PortalAuth = () =>
+  applyDecorators(UseGuards(JwtOnlyAuthGuard));

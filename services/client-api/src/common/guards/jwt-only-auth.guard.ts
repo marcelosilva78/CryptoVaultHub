@@ -6,7 +6,6 @@ import {
   Logger,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Reflector } from '@nestjs/core';
 import axios from 'axios';
 
 /**
@@ -22,7 +21,6 @@ export class JwtOnlyAuthGuard implements CanActivate {
 
   constructor(
     private readonly configService: ConfigService,
-    private readonly reflector: Reflector,
   ) {
     this.authServiceUrl = this.configService.get<string>(
       'AUTH_SERVICE_URL',
