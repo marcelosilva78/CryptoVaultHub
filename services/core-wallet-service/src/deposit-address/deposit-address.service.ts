@@ -89,12 +89,16 @@ export class DepositAddressService {
     // Compute CREATE2 salt
     const salt = this.computeSalt(clientId, chainId, externalId);
 
-    // Compute the forwarder address via factory
+    // Compute the forwarder address via factory.
+    // Factory derives final salt as keccak256(deployer, parent, feeAddress, salt).
+    // The deployer must match the address that will sign createForwarder (gas tank);
+    // parent is the destination wallet (hot wallet); feeAddress same as parent for full custody.
     const forwarderAddress =
       await this.contractService.computeForwarderAddress(
         chainId,
-        hotWallet.address,
-        gasTank.address,
+        gasTank.address,        // deployer
+        hotWallet.address,      // parent
+        hotWallet.address,      // feeAddress (full custody)
         salt,
       );
 

@@ -12,7 +12,7 @@ const WALLET_FACTORY_ABI = [
 
 const FORWARDER_FACTORY_ABI = [
   'function createForwarder(address parent, address feeAddress, bytes32 salt, bool _autoFlush721, bool _autoFlush1155) external returns (address payable forwarder)',
-  'function computeForwarderAddress(address parent, address feeAddress, bytes32 salt) external view returns (address)',
+  'function computeForwarderAddress(address deployer, address parent, address feeAddress, bytes32 salt) external view returns (address)',
   'function implementationAddress() external view returns (address)',
 ];
 
@@ -169,6 +169,7 @@ export class ContractService {
    */
   async computeForwarderAddress(
     chainId: number,
+    deployerAddress: string,
     parentAddress: string,
     feeAddress: string,
     salt: string,
@@ -179,7 +180,10 @@ export class ContractService {
         `ForwarderFactory not deployed on chain ${chainId}`,
       );
     }
+    // The factory derives the salt as keccak256(abi.encode(msg.sender, parent, feeAddress, salt)).
+    // `deployerAddress` MUST match the wallet that will call createForwarder() — typically the gas tank.
     const address: string = await forwarderFactory.computeForwarderAddress(
+      deployerAddress,
       parentAddress,
       feeAddress,
       salt,

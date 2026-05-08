@@ -87,8 +87,9 @@ export class AddressGroupService {
       if (hotWallet && gasTank) {
         computedAddress = await this.contractService.computeForwarderAddress(
           hotWallet.chainId,
-          hotWallet.address,
-          gasTank.address,
+          gasTank.address,        // deployer
+          hotWallet.address,      // parent
+          hotWallet.address,      // feeAddress (full custody)
           derivationSalt,
         );
       } else {
@@ -205,8 +206,9 @@ export class AddressGroupService {
         const forwarderAddress =
           await this.contractService.computeForwarderAddress(
             chainId,
-            hotWallet.address,
-            gasTank.address,
+            gasTank.address,        // deployer
+            hotWallet.address,      // parent
+            hotWallet.address,      // feeAddress (full custody)
             group.derivationSalt,
           );
 
