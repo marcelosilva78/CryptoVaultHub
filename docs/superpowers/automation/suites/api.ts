@@ -456,7 +456,12 @@ export async function runApiSuite(config: Config) {
   // ─── B.14 Cleanup webhook ──────────────────────────────────────────
   if (webhook) {
     await reporter.step('Cleanup: remover webhook de teste', async () => {
-      await api.delete(`/webhooks/${webhook!.id}`);
+      try {
+        await api.delete(`/webhooks/${webhook!.id}`);
+      } catch (e: any) {
+        // Treat 404 as success — webhook may have been removed by a previous run.
+        if (e?.response?.status !== 404) throw e;
+      }
     }, { skipOnFail: true });
   }
 }
