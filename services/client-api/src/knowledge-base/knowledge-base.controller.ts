@@ -22,16 +22,16 @@ export class KnowledgeBaseController {
   constructor(private readonly kbService: KnowledgeBaseService) {}
 
   @Get('categories')
-  @ClientAuth('read')
-  @ApiOperation({ summary: 'List knowledge base categories with article counts (published only)' })
+  @ClientAuth('kb:read')
+  @ApiOperation({ summary: 'List knowledge base categories with article counts (published only) (scope: kb:read)' })
   @ApiResponse({ status: 200, description: 'Categories with counts' })
   async listCategories() {
     return this.kbService.listCategories();
   }
 
   @Get('slug/:slug')
-  @ClientAuth('read')
-  @ApiOperation({ summary: 'Get a published article by slug' })
+  @ClientAuth('kb:read')
+  @ApiOperation({ summary: 'Get a published article by slug (scope: kb:read)' })
   @ApiParam({ name: 'slug', type: 'string', example: 'getting-started-with-wallets' })
   @ApiResponse({ status: 200, description: 'Article details' })
   @ApiResponse({ status: 404, description: 'Article not found' })
@@ -40,8 +40,8 @@ export class KnowledgeBaseController {
   }
 
   @Get()
-  @ClientAuth('read')
-  @ApiOperation({ summary: 'List published knowledge base articles' })
+  @ClientAuth('kb:read')
+  @ApiOperation({ summary: 'List published knowledge base articles (scope: kb:read)' })
   @ApiQuery({ name: 'category', required: false, type: String })
   @ApiQuery({ name: 'search', required: false, type: String })
   @ApiQuery({ name: 'page', required: false, type: Number })

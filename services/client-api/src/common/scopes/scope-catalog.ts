@@ -34,6 +34,7 @@ export const GRANULAR_SCOPES = [
   'security:read',
   'security:write',
   'deploy-trace:read',
+  'kb:read',
   'export:read',
 ] as const;
 

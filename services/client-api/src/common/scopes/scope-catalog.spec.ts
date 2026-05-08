@@ -9,9 +9,9 @@ import {
 } from './scope-catalog';
 
 describe('scope-catalog', () => {
-  it('GRANULAR_SCOPES has 30 entries and no duplicates', () => {
-    expect(GRANULAR_SCOPES.length).toBe(30);
-    expect(new Set(GRANULAR_SCOPES).size).toBe(30);
+  it('GRANULAR_SCOPES has 31 entries and no duplicates', () => {
+    expect(GRANULAR_SCOPES.length).toBe(31);
+    expect(new Set(GRANULAR_SCOPES).size).toBe(31);
   });
 
   it('does not include the legacy "admin" pseudo-scope (set only by JWT auth path)', () => {

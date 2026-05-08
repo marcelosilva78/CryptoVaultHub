@@ -115,9 +115,10 @@ Grouped by domain, with a one-line description suitable for the wizard's helper 
 | Security | `security:read` | Read security settings (custody mode, 2FA status, Shamir shares metadata). |
 | Security | `security:write` | Change custody mode, toggle safe mode. |
 | Deploy Trace | `deploy-trace:read` | Read on-chain deploy traces. |
+| Knowledge Base | `kb:read` | Read knowledge base articles and categories. |
 | Export | `export:read` | Generate exports (CSV/JSON). |
 
-That is **30 granular scopes**. No others exist or are pending in the current codebase. Anything added later (e.g., `gas-tanks:topup` if a self-service top-up endpoint ships) is a one-line entry to this enum + a controller decoration.
+That is **31 granular scopes**. No others exist or are pending in the current codebase. Anything added later (e.g., `gas-tanks:topup` if a self-service top-up endpoint ships) is a one-line entry to this enum + a controller decoration.
 
 ### 4.2 Sensitivity classification
 
