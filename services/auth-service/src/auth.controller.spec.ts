@@ -443,7 +443,18 @@ describe('Internal API key endpoints', () => {
 
   it('DELETE /internal/api-keys/:id forwards to ApiKeyService.revokeApiKey', async () => {
     apiKeyService.revokeApiKey.mockResolvedValue(undefined);
-    await controller.revokeInternalApiKey(42);
+    const result = await controller.revokeInternalApiKey(42);
     expect(apiKeyService.revokeApiKey).toHaveBeenCalledWith(42);
+    expect(result).toEqual({ success: true, message: 'API key revoked' });
+  });
+
+  it('createInternalApiKey is guarded by InternalServiceGuard', () => {
+    const guards = Reflect.getMetadata('__guards__', AuthController.prototype.createInternalApiKey);
+    expect(guards).toContainEqual(InternalServiceGuard);
+  });
+
+  it('revokeInternalApiKey is guarded by InternalServiceGuard', () => {
+    const guards = Reflect.getMetadata('__guards__', AuthController.prototype.revokeInternalApiKey);
+    expect(guards).toContainEqual(InternalServiceGuard);
   });
 });
