@@ -352,8 +352,8 @@ export async function runApiSuite(config: Config) {
     }
   });
 
-  const withdrawalAmount = '0.003';
-  const withdrawalId = await reporter.step('Criar withdrawal de 0.003 BNB', async () => {
+  const withdrawalAmount = '0.001';
+  const withdrawalId = await reporter.step(`Criar withdrawal de ${withdrawalAmount} BNB`, async () => {
     const r = await api.post<Withdrawal>('/withdrawals', {
       chainId: config.chainId,
       toAddress: withdrawalTarget,
@@ -376,13 +376,22 @@ export async function runApiSuite(config: Config) {
   });
   if (!withdrawalId) throw new Error('aborted: withdrawal not created');
 
+  // Status accessor that handles both the flat shape and the
+  // double-nested `{success, withdrawal: {success, withdrawal: {…}}}` shape
+  // currently emitted by the API.
+  const wdStatus = (r: any): string => {
+    return r?.withdrawal?.withdrawal?.status ?? r?.withdrawal?.status ?? r?.status ?? '';
+  };
+
+  const POST_PENDING_WD = ['broadcast', 'broadcasting', 'confirmed', 'failed', 'rejected'];
+
   await reporter.step(
     `Aguardar withdrawal.broadcast (até ${config.withdrawalTimeoutMs / 1000}s)`,
     async () => {
       return await api.pollUntil(
         async () => {
-          const r = await api.get<Withdrawal>(`/withdrawals/${withdrawalId}`);
-          if (['broadcast', 'confirmed', 'failed', 'rejected'].includes(r.status)) return r;
+          const r = await api.get<any>(`/withdrawals/${withdrawalId}`);
+          if (POST_PENDING_WD.includes(wdStatus(r))) return r;
           return null;
         },
         { timeoutMs: config.withdrawalTimeoutMs, intervalMs: 6_000, label: 'withdrawal.broadcast' },
@@ -391,18 +400,19 @@ export async function runApiSuite(config: Config) {
   );
 
   const finalWd = await reporter.step('Aguardar withdrawal.confirmed (até 5 min)', async () => {
-    return await api.pollUntil<Withdrawal>(
+    return await api.pollUntil<any>(
       async () => {
-        const r = await api.get<Withdrawal>(`/withdrawals/${withdrawalId}`);
-        if (['confirmed', 'failed', 'rejected'].includes(r.status)) return r;
+        const r = await api.get<any>(`/withdrawals/${withdrawalId}`);
+        if (['confirmed', 'failed', 'rejected'].includes(wdStatus(r))) return r;
         return null;
       },
       { timeoutMs: 300_000, intervalMs: 8_000, label: 'withdrawal.confirmed' },
     );
   });
-  if (finalWd?.txHash) {
-    reporter.highlight('withdrawal txHash', finalWd.txHash);
-    reporter.info(`Conferir no BSCscan: https://bscscan.com/tx/${finalWd.txHash}`);
+  const finalTxHash = finalWd?.withdrawal?.withdrawal?.txHash ?? finalWd?.withdrawal?.txHash ?? finalWd?.txHash;
+  if (finalTxHash) {
+    reporter.highlight('withdrawal txHash', finalTxHash);
+    reporter.info(`Conferir no BSCscan: https://bscscan.com/tx/${finalTxHash}`);
   }
 
   // ─── B.10 Cleanup webhook ──────────────────────────────────────────
