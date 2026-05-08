@@ -11,6 +11,7 @@ import { ChainModule } from './chain/chain.module';
 import { TokenModule } from './token/token.module';
 import { WalletModule } from './wallet/wallet.module';
 import { DepositAddressModule } from './deposit-address/deposit-address.module';
+import { DepositModule } from './deposit/deposit.module';
 import { WithdrawalModule } from './withdrawal/withdrawal.module';
 import { BalanceModule } from './balance/balance.module';
 import { ComplianceModule } from './compliance/compliance.module';
@@ -49,6 +50,7 @@ import { HealthController } from './common/health.controller';
     TokenModule,
     WalletModule,
     DepositAddressModule,
+    DepositModule,
     WithdrawalModule,
     BalanceModule,
     ComplianceModule,
