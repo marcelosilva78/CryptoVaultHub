@@ -43,13 +43,17 @@ export class TokenService {
   }
 
   async listTokens(chainId?: number) {
-    return this.prisma.token.findMany({
+    const tokens = await this.prisma.token.findMany({
       where: {
         isActive: true,
         ...(chainId ? { chainId } : {}),
       },
       orderBy: [{ chainId: 'asc' }, { symbol: 'asc' }],
     });
+    return tokens.map((t) => ({
+      ...t,
+      id: Number(t.id),
+    }));
   }
 
   async getTokenById(tokenId: bigint) {
