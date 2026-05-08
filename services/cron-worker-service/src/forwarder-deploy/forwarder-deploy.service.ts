@@ -5,11 +5,19 @@ import { ethers } from 'ethers';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { EvmProviderService } from '../blockchain/evm-provider.service';
+import { TransactionSubmitterService } from '../sweep/transaction-submitter.service';
+import { GasTankTxLoggerService } from '../gas-tank/gas-tank-tx-logger.service';
 
 const FORWARDER_FACTORY_ABI = [
   'function createForwarder(address parent, address feeAddress, bytes32 salt, bool _autoFlush721, bool _autoFlush1155) external returns (address payable forwarder)',
   'function computeForwarderAddress(address parent, address feeAddress, bytes32 salt) external view returns (address)',
 ];
+
+/** Gas limit for a createForwarder call (factory deploys a minimal proxy ~300k gas, use 800k to be safe) */
+const DEPLOY_GAS_LIMIT = 800_000n;
+
+/** Max forwarder deploys per job run to avoid overloading the gas tank */
+const BATCH_SIZE = 10;
 
 export interface ForwarderDeployJobData {
   chainId: number;
@@ -24,12 +32,17 @@ export interface ForwarderDeployJobData {
 export class ForwarderDeployService extends WorkerHost implements OnModuleInit {
   private readonly logger = new Logger(ForwarderDeployService.name);
 
+  /** ABI for encoding createForwarder calldata */
+  private readonly factoryIface = new ethers.Interface(FORWARDER_FACTORY_ABI);
+
   constructor(
     @InjectQueue('forwarder-deploy')
     private readonly deployQueue: Queue,
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
     private readonly evmProvider: EvmProviderService,
+    private readonly txSubmitter: TransactionSubmitterService,
+    private readonly gasTankTxLogger: GasTankTxLoggerService,
   ) {
     super();
   }
@@ -84,7 +97,8 @@ export class ForwarderDeployService extends WorkerHost implements OnModuleInit {
   }
 
   /**
-   * Find undeployed deposit addresses that have received deposits, and deploy them.
+   * Find undeployed deposit addresses that have received deposits, and deploy them
+   * by sending a real createForwarder transaction signed by the gas tank key.
    */
   async deployPendingForwarders(chainId: number): Promise<number> {
     // Find deposit addresses that are not deployed and have confirmed deposits
@@ -93,6 +107,7 @@ export class ForwarderDeployService extends WorkerHost implements OnModuleInit {
         chainId,
         isDeployed: false,
       },
+      take: BATCH_SIZE,
     });
 
     if (undeployed.length === 0) return 0;
@@ -132,7 +147,7 @@ export class ForwarderDeployService extends WorkerHost implements OnModuleInit {
 
     for (const addr of addressesWithDeposits) {
       try {
-        // Get the hot wallet (parent) and gas tank (feeAddress) for this client
+        // Lookup wallets for this client on this chain
         const hotWallet = await this.prisma.wallet.findUnique({
           where: {
             uq_client_chain_type: {
@@ -160,10 +175,13 @@ export class ForwarderDeployService extends WorkerHost implements OnModuleInit {
           continue;
         }
 
-        // Check if already deployed on-chain (code size > 0)
+        // Check if already deployed on-chain (code size > 0) — idempotency guard
         const code = await provider.getCode(addr.address);
         if (code !== '0x') {
-          // Already deployed, just update DB
+          // Already deployed on-chain, just sync the DB flag
+          this.logger.log(
+            `Forwarder ${addr.address} already on-chain — marking isDeployed=true in DB`,
+          );
           await this.prisma.depositAddress.update({
             where: { id: addr.id },
             data: { isDeployed: true },
@@ -172,35 +190,66 @@ export class ForwarderDeployService extends WorkerHost implements OnModuleInit {
           continue;
         }
 
-        // In production: sign and send createForwarder tx via KeyVault
-        // For now: record the deploy intent
+        // Build createForwarder calldata
+        // msg.sender (gas tank) is baked into the factory's salt calculation,
+        // so the gas tank MUST be the tx sender for the CREATE2 address to match.
+        const calldata = this.factoryIface.encodeFunctionData('createForwarder', [
+          hotWallet.address,  // parent — receives swept funds
+          hotWallet.address,  // feeAddress — full-custody model (same as parent)
+          addr.salt,          // bytes32 salt from DB (0x-prefixed hex string)
+          false,              // _autoFlush721 — disabled, we sweep manually
+          false,              // _autoFlush1155 — disabled, we sweep manually
+        ]);
+
         this.logger.log(
-          `Forwarder ${addr.address} needs deployment on chain ${chainId} (salt: ${addr.salt})`,
+          `Deploying forwarder ${addr.address} on chain ${chainId} via factory ${chain.forwarderFactoryAddress} (salt: ${addr.salt})`,
         );
 
-        // Publish deploy needed event
-        await this.redis.publishToStream('forwarder:deploy', {
-          chainId: chainId.toString(),
-          address: addr.address,
-          clientId: addr.clientId.toString(),
-          salt: addr.salt,
-          parentAddress: hotWallet.address,
-          feeAddress: gasTank.address,
-          factoryAddress: chain.forwarderFactoryAddress,
-          timestamp: new Date().toISOString(),
+        // Sign and broadcast the createForwarder tx via Key Vault (gas_tank key)
+        const txHash = await this.txSubmitter.signAndSubmit({
+          chainId,
+          clientId: Number(addr.clientId),
+          from: gasTank.address,
+          to: chain.forwarderFactoryAddress,
+          data: calldata,
+          gasLimit: DEPLOY_GAS_LIMIT,
         });
 
-        // Record deploy request timestamp; do NOT mark as deployed until
-        // the transaction is confirmed on-chain (avoids premature marking).
-        // The deploy confirmation handler will set isDeployed = true.
         this.logger.log(
-          `Deploy requested for forwarder ${addr.address} on chain ${chainId}`,
+          `createForwarder tx submitted: ${txHash} — forwarder=${addr.address}, chain=${chainId}`,
         );
+
+        // Log the gas-tank outbound tx for traceability and reconciliation
+        // TODO: gasPriceWei is '0' here — the receipt reconciler backfills gasCostWei from on-chain receipt
+        await this.gasTankTxLogger.logSubmit({
+          walletId: gasTank.id,
+          projectId: gasTank.projectId,
+          chainId,
+          txHash,
+          operationType: 'deploy_forwarder',
+          toAddress: chain.forwarderFactoryAddress,
+          gasPriceWei: '0',
+          metadata: {
+            forwarderAddress: addr.address,
+            clientId: Number(addr.clientId),
+            salt: addr.salt,
+            hotWallet: hotWallet.address,
+          },
+        });
+
+        // Mark as deployed in DB.
+        // NOTE: DepositAddress schema does not have deployTxHash or deployedAt columns.
+        // TODO: add deployTxHash VARCHAR(66) and deployedAt DATETIME to deposit_addresses for full traceability.
+        await this.prisma.depositAddress.update({
+          where: { id: addr.id },
+          data: { isDeployed: true },
+        });
+
         deployed++;
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
         this.logger.error(
-          `Failed to deploy forwarder ${addr.address}: ${msg}`,
+          `Failed to deploy forwarder ${addr.address} on chain ${chainId}: ${msg}`,
         );
       }
     }
