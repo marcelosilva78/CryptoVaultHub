@@ -40,6 +40,7 @@ export class CreateWithdrawalDto {
     required: false,
   })
   @IsOptional()
+  @IsString()
   @IsIn(['hot', 'gas_tank'])
   sourceWallet?: 'hot' | 'gas_tank';
 
