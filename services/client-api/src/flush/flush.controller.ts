@@ -19,7 +19,7 @@ export class FlushController {
   constructor(private readonly flushService: FlushService) {}
 
   @Post()
-  @ClientAuth('write')
+  @ClientAuth('forwarders:flush')
   async createFlush(
     @Body() dto: { chainId: number; tokenAddress?: string; destinationAddress: string },
     @Req() req: Request,
@@ -35,7 +35,7 @@ export class FlushController {
   }
 
   @Get(':id')
-  @ClientAuth('read')
+  @ClientAuth('forwarders:read')
   async getFlushStatus(@Param('id') id: string, @Req() req: Request, @CurrentClientId() clientId: number) {
     const projectId = (req as any).projectId;
     const result = await this.flushService.getFlushStatus(clientId, projectId, id);
@@ -43,7 +43,7 @@ export class FlushController {
   }
 
   @Get()
-  @ClientAuth('read')
+  @ClientAuth('forwarders:read')
   async listFlushes(
     @Query() query: { page?: number; limit?: number; status?: string },
     @Req() req: Request,

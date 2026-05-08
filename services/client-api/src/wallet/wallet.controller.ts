@@ -21,9 +21,9 @@ export class WalletController {
   constructor(private readonly walletService: WalletService) {}
 
   @Get()
-  @ClientAuth('read')
+  @ClientAuth('wallets:read')
   @ApiOperation({
-    summary: 'List all wallets',
+    summary: 'List all wallets (scope: wallets:read)',
     description: `Returns all hot wallets belonging to the authenticated client, across all supported chains.
 
 **Wallet Types:**
@@ -32,7 +32,7 @@ export class WalletController {
 
 Each wallet includes its on-chain address, associated chain, wallet type, active status, and creation timestamp. Wallets are provisioned automatically when a client is onboarded and cannot be created or deleted through the API.
 
-**Required scope:** \`read\``,
+**Required scope:** \`wallets:read\``,
   })
   @ApiResponse({
     status: 200,
@@ -67,9 +67,9 @@ Each wallet includes its on-chain address, associated chain, wallet type, active
   }
 
   @Get(':chainId/balances')
-  @ClientAuth('read')
+  @ClientAuth('wallets:read')
   @ApiOperation({
-    summary: 'Get wallet balances for a chain',
+    summary: 'Get wallet balances for a chain (scope: wallets:read)',
     description: `Returns the current token balances for the client's hot wallet on the specified chain. Includes both native token balance (ETH, BNB, MATIC, etc.) and all ERC-20 token balances that have been detected.
 
 **Balance accuracy:**
@@ -78,7 +78,7 @@ Each wallet includes its on-chain address, associated chain, wallet type, active
 - ERC-20 balances are tracked for all supported tokens listed in the platform's token registry
 - Balances are returned as decimal strings in the token's standard unit (not wei/smallest unit)
 
-**Required scope:** \`read\``,
+**Required scope:** \`wallets:read\``,
   })
   @ApiParam({
     name: 'chainId',

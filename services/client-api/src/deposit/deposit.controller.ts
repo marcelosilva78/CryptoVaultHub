@@ -34,9 +34,9 @@ export class DepositController {
 
   @Post('wallets/:chainId/deposit-address')
   @UseGuards(ProjectChainReadyGuard)
-  @ClientAuthWithProject('write')
+  @ClientAuthWithProject('forwarders:flush')
   @ApiOperation({
-    summary: 'Generate a new deposit address',
+    summary: 'Generate a new deposit address (scope: forwarders:flush)',
     description: `Generates a deterministic deposit address (forwarder) on the specified chain for receiving deposits.
 
 **How it works:**
@@ -123,9 +123,9 @@ export class DepositController {
   }
 
   @Post('wallets/:chainId/deposit-addresses/batch')
-  @ClientAuth('write')
+  @ClientAuth('forwarders:flush')
   @ApiOperation({
-    summary: 'Batch generate deposit addresses',
+    summary: 'Batch generate deposit addresses (scope: forwarders:flush)',
     description: `Generates multiple deposit addresses in a single request. This is more efficient than calling the single-address endpoint multiple times.
 
 **How batch generation works:**
@@ -205,9 +205,9 @@ export class DepositController {
   }
 
   @Get('deposit-addresses')
-  @ClientAuth('read')
+  @ClientAuth('deposits:read')
   @ApiOperation({
-    summary: 'List deposit addresses',
+    summary: 'List deposit addresses (scope: deposits:read)',
     description: `Returns a paginated list of all deposit addresses generated for the authenticated client across all chains. Each address entry includes its label, chain, deployment status, and creation timestamp.
 
 **Deployment statuses:**
@@ -279,9 +279,9 @@ export class DepositController {
   }
 
   @Get('deposits')
-  @ClientAuth('read')
+  @ClientAuth('deposits:read')
   @ApiOperation({
-    summary: 'List deposits',
+    summary: 'List deposits (scope: deposits:read)',
     description: `Returns a paginated list of all deposits received by the authenticated client. Supports filtering by status, chain, and date range.
 
 **Deposit status lifecycle:**
@@ -355,9 +355,9 @@ export class DepositController {
   }
 
   @Get('deposits/:id')
-  @ClientAuth('read')
+  @ClientAuth('deposits:read')
   @ApiOperation({
-    summary: 'Get deposit details',
+    summary: 'Get deposit details (scope: deposits:read)',
     description: `Returns the full details of a specific deposit, including its current status, transaction details, confirmation progress, and sweep information.
 
 **Response fields:**
