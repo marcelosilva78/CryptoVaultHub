@@ -20,6 +20,7 @@ import { BackfillModule } from './backfill/backfill.module';
 import { FinalityTrackerModule } from './finality/finality-tracker.module';
 import { AddressRegistrationModule } from './address-registration/address-registration.module';
 import { ReorgDetectorModule } from './reorg/reorg-detector.module';
+import { DepositPersistenceModule } from './deposit-persistence/deposit-persistence.module';
 import { InternalServiceGuard } from './common/guards/internal-service.guard';
 
 @Module({
@@ -61,6 +62,7 @@ import { InternalServiceGuard } from './common/guards/internal-service.guard';
     FinalityTrackerModule,
     AddressRegistrationModule,
     ReorgDetectorModule,
+    DepositPersistenceModule,
   ],
   controllers: [HealthController],
   providers: [
