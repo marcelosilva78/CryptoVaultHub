@@ -6,6 +6,8 @@ import { StatCard } from "@/components/stat-card";
 import { Badge } from "@/components/badge";
 import { DataTable } from "@/components/data-table";
 import { clientFetch } from "@/lib/api";
+import { SourceWalletPicker, type SourceWallet } from "@/components/withdrawals/source-wallet-picker";
+import { TxActions } from "@/components/withdrawals/tx-actions";
 
 /* ─── Chain ID → Name map ───────────────────────────────────── */
 const chainNames: Record<number, string> = {
@@ -17,6 +19,20 @@ const chainNames: Record<number, string> = {
   43114: "Avalanche",
   8453: "Base",
 };
+
+/* ─── Native symbol map ─────────────────────────────────────── */
+const NATIVE_SYMBOLS: Record<number, string> = {
+  1: "ETH",
+  10: "ETH",
+  56: "BNB",
+  137: "MATIC",
+  8453: "ETH",
+  42161: "ETH",
+  43114: "AVAX",
+};
+function nativeSymbolForChain(chainId: number): string {
+  return NATIVE_SYMBOLS[chainId] ?? "NATIVE";
+}
 
 /* ─── API response types ────────────────────────────────────── */
 interface ApiWithdrawal {
@@ -74,6 +90,7 @@ interface DisplayWithdrawal {
   status: "Confirmed" | "Confirming" | "Pending";
   chain: string;
   txHash: string;
+  chainId: number;
 }
 
 interface DisplayAddressBook {
@@ -111,6 +128,13 @@ export default function WithdrawalsPage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
 
+  // Source wallet state
+  const [sourceWallet, setSourceWallet] = useState<SourceWallet>("hot");
+  const [gasTankBalance, setGasTankBalance] = useState<string | null>(null);
+  const [gasTankAddress, setGasTankAddress] = useState<string | null>(null);
+  const [hotAddress, setHotAddress] = useState<string | null>(null);
+  const [allWallets, setAllWallets] = useState<ApiWallet[]>([]);
+
   // KPI state
   const [pendingCount, setPendingCount] = useState(0);
   const [confirmedTodayUsd, setConfirmedTodayUsd] = useState(0);
@@ -147,6 +171,19 @@ export default function WithdrawalsPage() {
           name: chainNames[id] || `Chain ${id}`,
         }));
         setAvailableChains(chains);
+
+        // Store all wallets for later use
+        const wallets = walletsRes?.wallets ?? [];
+        if (!cancelled) setAllWallets(wallets);
+
+        // Derive hot + gas tank addresses for the initial chain
+        const initialChain = chains[0]?.chainId ?? 56;
+        const hot = wallets.find((w) => w.walletType === "hot" && w.chainId === initialChain);
+        const gas = wallets.find((w) => w.walletType === "gas_tank" && w.chainId === initialChain);
+        if (!cancelled) {
+          setHotAddress(hot?.address ?? null);
+          setGasTankAddress(gas?.address ?? null);
+        }
 
         const balanceResults = await Promise.all(
           uniqueChainIds.map(chainId =>
@@ -226,6 +263,7 @@ export default function WithdrawalsPage() {
             status: displayStatus,
             chain,
             txHash: w.txHash || "",
+            chainId: w.chainId,
           };
         });
 
@@ -285,10 +323,54 @@ export default function WithdrawalsPage() {
     return () => { cancelled = true; };
   }, []);
 
+  // Refresh hot address + gas tank info when formChain changes
+  useEffect(() => {
+    let cancelled = false;
+    if (!formChain) return;
+
+    // Re-derive hot address from already-loaded wallets
+    const hot = allWallets.find((w) => w.walletType === "hot" && w.chainId === formChain);
+    if (!cancelled) setHotAddress(hot?.address ?? null);
+
+    // Fetch gas tank balance
+    (async () => {
+      try {
+        const gt = await clientFetch<{ success: boolean; balanceFormatted?: string; address?: string }>(
+          `/v1/gas-tanks/${formChain}`,
+        );
+        if (cancelled) return;
+        setGasTankBalance(gt?.balanceFormatted ?? null);
+        if (gt?.address) setGasTankAddress(gt.address);
+        else {
+          // Fall back to wallet list
+          const gas = allWallets.find((w) => w.walletType === "gas_tank" && w.chainId === formChain);
+          if (!cancelled) setGasTankAddress(gas?.address ?? null);
+        }
+      } catch {
+        if (!cancelled) {
+          setGasTankBalance(null);
+          const gas = allWallets.find((w) => w.walletType === "gas_tank" && w.chainId === formChain);
+          setGasTankAddress(gas?.address ?? null);
+        }
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [formChain, allWallets]);
+
   // Filter token balances by selected chain (computed early for validation)
   const chainTokens = tokenBalances.filter(b => b.chainId === formChain);
   // Filter destinations by selected chain
   const chainDestinations = destinations.filter(d => d.chainId === formChain);
+
+  // Native balance for the hot wallet on the currently-selected chain
+  const hotNativeBalance = (): string | null => {
+    const sym = nativeSymbolForChain(formChain);
+    const match = tokenBalances.find(
+      (b) => b.chainId === formChain && b.symbol === sym,
+    );
+    return match?.balance ?? null;
+  };
 
   // Validate the amount and return an error string (or null if valid)
   function validateAmount(amount: string): string | null {
@@ -330,6 +412,7 @@ export default function WithdrawalsPage() {
         method: 'POST',
         body: JSON.stringify({
           chainId: formChain,
+          sourceWallet,
           tokenSymbol: formToken,
           toAddress: formDestination,
           amount: formAmount,
@@ -357,7 +440,7 @@ export default function WithdrawalsPage() {
           month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false,
         });
 
-        return { date: dateStr, destinationLabel: destLabel, destinationAddr: shortAddr, token: w.tokenSymbol, amount: `-${w.amount}`, status: displayStatus, chain, txHash: w.txHash || "" };
+        return { date: dateStr, destinationLabel: destLabel, destinationAddr: shortAddr, token: w.tokenSymbol, amount: `-${w.amount}`, status: displayStatus, chain, txHash: w.txHash || "", chainId: w.chainId };
       });
       setWithdrawals(displayWithdrawals);
     } catch (err: any) {
@@ -476,6 +559,24 @@ export default function WithdrawalsPage() {
             </select>
           </div>
 
+          {/* Source wallet picker */}
+          <div className="mb-4">
+            <label className="text-xs text-[var(--text-muted)] uppercase tracking-wide mb-2 block">From</label>
+            <SourceWalletPicker
+              chainId={formChain}
+              selected={sourceWallet}
+              hot={hotAddress ? { address: hotAddress, balance: hotNativeBalance() ?? "—" } : null}
+              gasTank={gasTankAddress ? { address: gasTankAddress, balance: gasTankBalance ?? "—" } : null}
+              nativeSymbol={nativeSymbolForChain(formChain)}
+              onChange={(next) => {
+                setSourceWallet(next);
+                if (next === "gas_tank") {
+                  setFormToken(nativeSymbolForChain(formChain));
+                }
+              }}
+            />
+          </div>
+
           <div className="mb-3.5">
             <label className="block text-micro font-semibold text-text-muted mb-1 uppercase tracking-[0.06em] font-display">
               Token
@@ -483,7 +584,8 @@ export default function WithdrawalsPage() {
             <select
               value={formToken}
               onChange={(e) => setFormToken(e.target.value)}
-              className="w-full bg-surface-input border border-border-default rounded-input px-3 py-2 text-text-primary font-display text-body outline-none focus:border-border-focus cursor-pointer transition-colors duration-fast"
+              disabled={sourceWallet === "gas_tank"}
+              className="w-full bg-surface-input border border-border-default rounded-input px-3 py-2 text-text-primary font-display text-body outline-none focus:border-border-focus cursor-pointer transition-colors duration-fast disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {chainTokens.map(t => (
                 <option key={`${t.symbol}-${t.chainId}`} value={t.symbol}>
@@ -494,6 +596,11 @@ export default function WithdrawalsPage() {
                 <option value="">No tokens available</option>
               )}
             </select>
+            {sourceWallet === "gas_tank" && (
+              <p className="text-xs text-[var(--text-muted)] mt-1 italic">
+                Gas Tank only holds the chain native ({nativeSymbolForChain(formChain)}).
+              </p>
+            )}
           </div>
 
           <div className="mb-3.5">
@@ -539,6 +646,22 @@ export default function WithdrawalsPage() {
                 amountError ? "border-status-error" : "border-border-default"
               }`}
             />
+            {(() => {
+              const balance = sourceWallet === "gas_tank" ? gasTankBalance : hotNativeBalance();
+              if (!balance) return null;
+              return (
+                <p className="text-xs text-[var(--accent-primary)] mt-1">
+                  Available: {balance} {nativeSymbolForChain(formChain)}{" "}
+                  <button
+                    type="button"
+                    onClick={() => setFormAmount(balance)}
+                    className="ml-2 underline hover:no-underline"
+                  >
+                    Use max
+                  </button>
+                </p>
+              );
+            })()}
             {amountError && (
               <div className="mt-1 text-micro text-status-error font-display">
                 {amountError}
@@ -584,10 +707,10 @@ export default function WithdrawalsPage() {
           <table className="w-full border-collapse">
             <thead className="bg-surface-elevated">
               <tr>
-                {["Date", "Destination", "Token", "Chain", "Amount", "Status"].map(
-                  (h) => (
+                {["Date", "Destination", "Token", "Chain", "Amount", "Status", ""].map(
+                  (h, idx) => (
                     <th
-                      key={h}
+                      key={idx}
                       className="text-left px-[14px] py-2 text-micro uppercase tracking-[0.09em] text-text-muted border-b border-border-subtle font-display"
                     >
                       {h}
@@ -599,7 +722,7 @@ export default function WithdrawalsPage() {
             <tbody>
               {withdrawals.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-text-muted text-caption font-display">
+                  <td colSpan={7} className="px-4 py-8 text-center text-text-muted text-caption font-display">
                     No withdrawals found.
                   </td>
                 </tr>
@@ -638,6 +761,9 @@ export default function WithdrawalsPage() {
                       >
                         {w.status}
                       </Badge>
+                    </td>
+                    <td className="px-[14px] py-2.5 border-b border-border-subtle text-right whitespace-nowrap">
+                      <TxActions txHash={w.txHash || null} chainId={w.chainId ?? formChain} />
                     </td>
                   </tr>
                 ))
