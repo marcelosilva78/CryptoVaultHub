@@ -3,6 +3,7 @@ import {
   Logger,
   NotFoundException,
   UnauthorizedException,
+  BadRequestException,
 } from '@nestjs/common';
 import { createHash, randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
@@ -48,6 +49,16 @@ export class ApiKeyService {
       expiresAt?: string;
     },
   ): Promise<ApiKeyResult> {
+    if (options?.expiresAt) {
+      const exp = new Date(options.expiresAt);
+      if (Number.isNaN(exp.getTime())) {
+        throw new BadRequestException('expiresAt must be a valid ISO date');
+      }
+      if (exp.getTime() <= Date.now()) {
+        throw new BadRequestException('expiresAt must be a future date');
+      }
+    }
+
     const raw = randomBytes(32).toString('base64url');
     const key = `cvh_live_${raw}`;
     const prefix = `cvh_live_${raw.slice(0, 8)}`;

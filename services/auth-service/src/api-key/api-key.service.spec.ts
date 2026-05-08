@@ -211,6 +211,37 @@ describe('ApiKeyService', () => {
   });
 });
 
+describe('createApiKey expiresAt validation', () => {
+  let service: ApiKeyService;
+  const prismaMock = {
+    apiKey: { create: jest.fn().mockResolvedValue({ id: 1n, expiresAt: null, keyPrefix: 'p' }) },
+  } as any;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    service = new ApiKeyService(prismaMock);
+  });
+
+  it('rejects expiresAt in the past with BadRequestException', async () => {
+    const past = new Date(Date.now() - 86400_000).toISOString();
+    await expect(
+      service.createApiKey(1, 1, ['read'], { expiresAt: past }),
+    ).rejects.toThrow(/expiresAt must be a future date/);
+    expect(prismaMock.apiKey.create).not.toHaveBeenCalled();
+  });
+
+  it('accepts expiresAt in the future', async () => {
+    const future = new Date(Date.now() + 86400_000).toISOString();
+    await service.createApiKey(1, 1, ['read'], { expiresAt: future });
+    expect(prismaMock.apiKey.create).toHaveBeenCalled();
+  });
+
+  it('accepts undefined expiresAt (indefinite)', async () => {
+    await service.createApiKey(1, 1, ['read']);
+    expect(prismaMock.apiKey.create).toHaveBeenCalled();
+  });
+});
+
 describe('validateApiKey IP allowlist (CIDR)', () => {
   let service: ApiKeyService;
   const prismaMock = {
