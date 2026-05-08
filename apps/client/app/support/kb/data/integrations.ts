@@ -545,9 +545,9 @@ export const integrationsArticles: Article[] = [
     category: "integrations",
     icon: "Webhook",
     difficulty: "intermediate",
-    tags: ["postman", "integração", "api", "collection", "homologação", "roteiro"],
+    tags: ["postman", "integração", "api", "collection", "homologação", "roteiro", "gas-tank"],
     updatedAt: "08 Mai 2026",
-    readingTime: 8,
+    readingTime: 9,
     blocks: [
       {
         type: "heading",
@@ -648,6 +648,7 @@ export const integrationsArticles: Article[] = [
           ["tokenSymbol", "Sim", "BNB", "Símbolo do token a sacar. Lista válida em GET /tokens?chainId=…"],
           ["withdrawalTarget", "SIM", "0x0…0", "Endereço EVM externo onde quer receber o saque de teste"],
           ["withdrawalAmount", "Sim", "0.001", "Quanto sacar. Use valor pequeno em testes."],
+          ["sourceWallet", "Sim (opcional)", "hot", "Discriminador de fonte: 'hot' (default, multisig) ou 'gas_tank' (EOA single-sig, native only)"],
           ["projectId", "Não — auto", "(vazio)", "Preenchida no passo 1 a partir da resposta de GET /projects"],
           ["depositAddress", "Não — auto", "(vazio)", "Preenchida no passo 5 quando você gera o forwarder"],
           ["webhookId", "Não — auto", "(vazio)", "Preenchida no passo 4 quando você cadastra o webhook"],

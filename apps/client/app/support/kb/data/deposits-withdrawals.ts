@@ -486,4 +486,110 @@ export const depositsWithdrawalsArticles: Article[] = [
       },
     ],
   },
+  {
+    slug: "saque-do-gas-tank",
+    title: "Saque do Gas Tank",
+    description:
+      "Como sacar saldo nativo diretamente do Gas Tank do projeto, quando usar, e quais limites a plataforma aplica para proteger as operações automáticas.",
+    category: "deposits-withdrawals",
+    icon: "ArrowUpFromLine",
+    difficulty: "intermediate",
+    tags: ["saque", "withdrawal", "gas-tank", "native"],
+    updatedAt: "08 Mai 2026",
+    readingTime: 5,
+    blocks: [
+      {
+        type: "heading",
+        level: 2,
+        text: "Saque do Gas Tank — quando e por quê",
+      },
+      {
+        type: "paragraph",
+        text: "Por padrão, todo saque sai da Hot Wallet (a wallet transacional do projeto), via assinatura 2-of-3 multisig. O saque do Gas Tank é um caminho alternativo, indicado para operações administrativas: encerrar o projeto, recuperar saldo residual, ou consolidar fundos antes de uma manutenção.",
+      },
+      {
+        type: "callout",
+        variant: "info",
+        title: "Hot Wallet vs Gas Tank",
+        text: "Hot Wallet: contrato CvhWalletSimple, multisig 2-of-3, aceita native + ERC-20. Gas Tank: EOA simples, single-sig assinado pela Key Vault, aceita apenas o token nativo da chain (BNB, ETH, MATIC, etc.).",
+      },
+      {
+        type: "heading",
+        level: 3,
+        text: "Como solicitar pelo Portal",
+      },
+      {
+        type: "steps",
+        items: [
+          {
+            title: "Acessar Withdrawals",
+            description:
+              "No menu lateral, abra Withdrawals. O formulário 'New Withdrawal' mostra dois cards no topo: Hot Wallet e Gas Tank.",
+          },
+          {
+            title: "Selecionar Gas Tank",
+            description:
+              "Clique no card Gas Tank. O seletor de Token trava no nativo da chain (BNB, ETH, etc.) — Gas Tank não armazena ERC-20.",
+          },
+          {
+            title: "Escolher destino",
+            description:
+              "Selecione um endereço já no whitelist. Endereços novos passam pelo cooldown de 24h normalmente.",
+          },
+          {
+            title: "Definir valor",
+            description:
+              "O valor máximo é exibido em 'Available: X'. Use o botão 'Use max' para preencher automaticamente. A plataforma reserva 2 × platform_topup_amount_wei (0.02 BNB no BSC default) para garantir que o platform-key continue sendo abastecido.",
+          },
+          {
+            title: "Confirmar",
+            description:
+              "O saque entra como 'pending_approval'. Em modo full-custody, faça o self-approve via API ou pelo Portal. O cron worker pega no próximo tick (≤ 30s) e broadcasta uma value-transfer simples (21k gas).",
+          },
+        ],
+      },
+      {
+        type: "heading",
+        level: 3,
+        text: "Como solicitar pela API",
+      },
+      {
+        type: "code",
+        language: "bash",
+        filename: "create-gas-tank-withdrawal.sh",
+        code:
+          'curl -X POST https://api.vaulthub.live/client/v1/withdrawals \\\n  -H "X-API-Key: $CVH_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d \'{\n    "chainId": 56,\n    "sourceWallet": "gas_tank",\n    "tokenSymbol": "BNB",\n    "toAddress": "0x95DEda8f5FCB60bf02656b226950329e67c605a4",\n    "amount": "0.001",\n    "memo": "Recuperação de saldo residual",\n    "idempotencyKey": "gt-recovery-001"\n  }\'',
+      },
+      {
+        type: "callout",
+        variant: "warning",
+        title: "Reserve do Gas Tank",
+        text: "A plataforma rejeita o saque se o valor + reserve exceder o saldo. O reserve mantém o platform-key abastecido — sem ele, saques da Hot Wallet falham por falta de gas. Mensagem do erro 422: 'Insufficient gas tank balance after reserve'. O body da resposta inclui details: { requested, available, reserved } pra você ajustar o valor.",
+      },
+      {
+        type: "heading",
+        level: 3,
+        text: "Diferenças resumidas",
+      },
+      {
+        type: "table",
+        headers: ["Característica", "Hot Wallet", "Gas Tank"],
+        rows: [
+          ["Tipo de wallet", "Contrato (CvhWalletSimple proxy)", "EOA simples"],
+          ["Assinatura", "2-of-3 multisig", "Single-sig (Key Vault)"],
+          ["Tokens aceitos", "Native + ERC-20", "Apenas o nativo"],
+          ["Gas estimado", "~80–120k", "21k"],
+          ["Limite efetivo", "Saldo total", "Saldo − reserve (2× topup_amount)"],
+          ["Caso de uso", "Pagamentos do dia-a-dia", "Operações administrativas"],
+        ],
+      },
+      {
+        type: "link-card",
+        href: "/support/kb/integrations/postman-roteiro-integracao",
+        title: "Roteiro Postman End-to-End",
+        description:
+          "Coleção pronta inclui um request 'Create withdrawal (gas tank)' com sourceWallet=gas_tank.",
+      },
+    ],
+  },
 ];
