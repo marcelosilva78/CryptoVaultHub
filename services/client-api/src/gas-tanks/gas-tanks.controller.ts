@@ -28,9 +28,9 @@ export class GasTanksController {
   constructor(private readonly service: GasTanksService) {}
 
   @Get()
-  @ClientAuthWithProject('read')
+  @ClientAuthWithProject('gas-tanks:read')
   @ApiOperation({
-    summary: 'List gas tank wallets',
+    summary: 'List gas tank wallets [gas-tanks:read]',
     description: `Returns all gas tank wallets associated with the authenticated project, including their current on-chain native balance, estimated remaining operations, refill threshold, and alert configuration. One gas tank exists per enabled chain.
 
 **Status values:**
@@ -86,9 +86,9 @@ export class GasTanksController {
   }
 
   @Get(':chainId/history')
-  @ClientAuthWithProject('read')
+  @ClientAuthWithProject('gas-tanks:read')
   @ApiOperation({
-    summary: 'Get gas tank transaction history for a chain',
+    summary: 'Get gas tank transaction history for a chain [gas-tanks:read]',
     description: `Returns a paginated list of all transactions that have been executed by the project's gas tank wallet on the specified chain. Each record contains the transaction hash, operation type, gas cost breakdown, status, and confirmation timestamps.
 
 **Operation types** (non-exhaustive):
@@ -166,9 +166,9 @@ Results are ordered by \`submittedAt\` descending (newest first).
   }
 
   @Get(':chainId/topup-uri')
-  @ClientAuthWithProject('read')
+  @ClientAuthWithProject('gas-tanks:read')
   @ApiOperation({
-    summary: 'Get EIP-681 top-up URI for a gas tank',
+    summary: 'Get EIP-681 top-up URI for a gas tank [gas-tanks:read]',
     description: `Returns the on-chain address of the project's gas tank wallet on the specified chain, along with an EIP-681 payment request URI. The URI can be rendered as a QR code to allow an operator to quickly send native tokens to the tank from any EIP-681-compatible wallet (MetaMask, Trust Wallet, etc.).
 
 **EIP-681 format:** \`ethereum:<address>@<chainId>\`
@@ -206,9 +206,9 @@ Example: \`ethereum:0xGasTankAddr@137\`
   }
 
   @Get(':chainId/alert-config')
-  @ClientAuthWithProject('read')
+  @ClientAuthWithProject('gas-tanks:read')
   @ApiOperation({
-    summary: 'Get the gas-tank low-balance alert configuration for a chain',
+    summary: 'Get the gas-tank low-balance alert configuration for a chain [gas-tanks:read]',
     description: `Returns the current threshold (in wei) and the channel toggles (email, webhook) for low-balance alerts for the gas tank on the given chain.`,
   })
   @ApiParam({
@@ -245,9 +245,9 @@ Example: \`ethereum:0xGasTankAddr@137\`
   }
 
   @Post(':chainId/export-keystore')
-  @ClientAuthWithProject('write')
+  @ClientAuthWithProject('gas-tanks:write')
   @ApiOperation({
-    summary: 'Encrypt the gas-tank private key as a Web3 Secret Storage v3 JSON',
+    summary: 'Encrypt the gas-tank private key as a Web3 Secret Storage v3 JSON [gas-tanks:write]',
     description: `Derives the gas-tank private key from the provided project mnemonic in-memory only, encrypts it with the provided password using PBKDF2 + AES-128-CTR, and returns the resulting Web3 Secret Storage v3 keystore JSON.
 
 **Security guarantees:**
@@ -317,9 +317,9 @@ Example: \`ethereum:0xGasTankAddr@137\`
   }
 
   @Patch(':chainId/alert-config')
-  @ClientAuthWithProject('write')
+  @ClientAuthWithProject('gas-tanks:write')
   @ApiOperation({
-    summary: 'Update the gas-tank low-balance alert configuration',
+    summary: 'Update the gas-tank low-balance alert configuration [gas-tanks:write]',
     description: `Upserts the threshold (in wei) and/or the channel toggles. Any field omitted from the body is left unchanged.`,
   })
   @ApiParam({

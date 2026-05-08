@@ -25,9 +25,9 @@ export class CoSignController {
   constructor(private readonly coSignService: CoSignService) {}
 
   @Get('pending')
-  @ClientAuthWithProject('read')
+  @ClientAuthWithProject('co-sign:read')
   @ApiOperation({
-    summary: 'List pending co-sign operations',
+    summary: 'List pending co-sign operations [co-sign:read]',
     description: `Returns all operations awaiting the client's co-signature. This endpoint is only relevant for clients configured with **co-sign custody mode**, where both the platform and the client must sign transactions before broadcast.
 
 **Co-Sign Custody Mode Overview:**
@@ -96,10 +96,10 @@ In co-sign mode, CryptoVaultHub manages one key share and the client manages the
   }
 
   @Post(':operationId/sign')
-  @ClientAuth('write')
+  @ClientAuth('co-sign:write')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Submit a co-signature',
+    summary: 'Submit a co-signature [co-sign:write]',
     description: `Submits the client's co-signature for a pending operation. After successful submission, the platform combines both signatures and proceeds to broadcast the transaction.
 
 **Signing process:**

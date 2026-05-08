@@ -27,9 +27,9 @@ export class SecurityController {
   // ────────────────────────────────────────────────────────────
 
   @Get('settings')
-  @ClientAuth('read')
+  @ClientAuth('security:read')
   @ApiOperation({
-    summary: 'Get current security settings',
+    summary: 'Get current security settings [security:read]',
     description:
       'Returns the client custody mode, safe mode status, and 2FA status.',
   })
@@ -45,9 +45,9 @@ export class SecurityController {
   // ────────────────────────────────────────────────────────────
 
   @Get('2fa-status')
-  @ClientAuth('read')
+  @ClientAuth('security:read')
   @ApiOperation({
-    summary: 'Get 2FA configuration status',
+    summary: 'Get 2FA configuration status [security:read]',
     description:
       'Returns whether 2FA (TOTP) is enabled for the authenticated user and its configuration.',
   })
@@ -63,9 +63,9 @@ export class SecurityController {
   // ────────────────────────────────────────────────────────────
 
   @Patch('custody-mode')
-  @ClientAuth('write')
+  @ClientAuth('security:write')
   @ApiOperation({
-    summary: 'Change custody mode',
+    summary: 'Change custody mode [security:write]',
     description:
       'Updates the custody policy for the authenticated client. Requires appropriate authorization.',
   })
@@ -104,9 +104,9 @@ export class SecurityController {
   // ────────────────────────────────────────────────────────────
 
   @Post('safe-mode')
-  @ClientAuth('write')
+  @ClientAuth('security:write')
   @ApiOperation({
-    summary: 'Activate safe mode (irrevocable)',
+    summary: 'Activate safe mode (irrevocable) [security:write]',
     description:
       'Activates safe mode on the client wallet smart contract. Requires a valid TOTP code. This action is irrevocable.',
   })
@@ -148,9 +148,9 @@ export class SecurityController {
   // ────────────────────────────────────────────────────────────
 
   @Get('shamir-shares')
-  @ClientAuth('read')
+  @ClientAuth('security:read')
   @ApiOperation({
-    summary: 'Get Shamir backup share status',
+    summary: 'Get Shamir backup share status [security:read]',
     description:
       'Returns the status of Shamir secret sharing backup shares (indices and custodian names only, never the actual share data).',
   })
