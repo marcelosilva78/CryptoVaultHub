@@ -136,9 +136,9 @@ if (expectedSignature !== req.headers['x-cvh-signature']) {
   }
 
   @Get()
-  @ClientAuth('read')
+  @ClientAuth('webhooks:read')
   @ApiOperation({
-    summary: 'List webhook endpoints',
+    summary: 'List webhook endpoints (scope: webhooks:read)',
     description: `Returns a paginated list of all webhook endpoints configured for the authenticated client. The webhook secret is NOT included in list responses for security — it is only returned once at creation time.
 
 **Required scope:** \`read\``,
@@ -192,9 +192,9 @@ if (expectedSignature !== req.headers['x-cvh-signature']) {
   }
 
   @Patch(':id')
-  @ClientAuth('write')
+  @ClientAuth('webhooks:write')
   @ApiOperation({
-    summary: 'Update a webhook endpoint',
+    summary: 'Update a webhook endpoint (scope: webhooks:write)',
     description: `Updates an existing webhook endpoint's configuration. All fields are optional — only the provided fields are updated. Omitted fields retain their current values.
 
 **Important:**
@@ -262,9 +262,9 @@ if (expectedSignature !== req.headers['x-cvh-signature']) {
   }
 
   @Delete(':id')
-  @ClientAuth('write')
+  @ClientAuth('webhooks:write')
   @ApiOperation({
-    summary: 'Delete a webhook endpoint',
+    summary: 'Delete a webhook endpoint (scope: webhooks:write)',
     description: `Permanently deletes a webhook endpoint. All pending deliveries for this webhook are cancelled. This action cannot be undone.
 
 **After deletion:**
@@ -301,10 +301,10 @@ if (expectedSignature !== req.headers['x-cvh-signature']) {
   }
 
   @Post(':id/test')
-  @ClientAuth('write')
+  @ClientAuth('webhooks:write')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Send a test webhook',
+    summary: 'Send a test webhook (scope: webhooks:write)',
     description: `Sends a test event payload to the specified webhook endpoint to verify connectivity and signature validation. The test event has a unique \`eventType\` of \`test.ping\` and contains dummy data.
 
 **Test payload structure:**
@@ -360,9 +360,9 @@ The response includes the HTTP status code and response time from your endpoint.
   }
 
   @Get(':id/deliveries')
-  @ClientAuth('read')
+  @ClientAuth('webhooks:read')
   @ApiOperation({
-    summary: 'List webhook deliveries',
+    summary: 'List webhook deliveries (scope: webhooks:read)',
     description: `Returns a paginated list of delivery attempts for a specific webhook endpoint. Each delivery record includes the event payload, HTTP response status code, response time, number of attempts, and current status.
 
 **Delivery statuses:**
@@ -437,10 +437,10 @@ The response includes the HTTP status code and response time from your endpoint.
   }
 
   @Post('deliveries/:id/retry')
-  @ClientAuth('write')
+  @ClientAuth('webhooks:write')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Retry a failed delivery',
+    summary: 'Retry a failed delivery (scope: webhooks:write)',
     description: `Manually retries a failed webhook delivery. This immediately re-sends the original event payload to the webhook endpoint, regardless of the delivery's current retry count. Useful for retrying deliveries after fixing issues with your endpoint.
 
 **Constraints:**
@@ -488,9 +488,9 @@ The response includes the HTTP status code and response time from your endpoint.
   }
 
   @Get('deliveries/:deliveryId')
-  @ClientAuth('read')
+  @ClientAuth('webhooks:read')
   @ApiOperation({
-    summary: 'Get delivery detail with attempts',
+    summary: 'Get delivery detail with attempts (scope: webhooks:read)',
     description: `Returns the full detail of a specific webhook delivery, including every HTTP attempt made with full request/response data. Use this to debug delivery failures.
 
 **Attempt statuses:**
@@ -558,10 +558,10 @@ The response includes the HTTP status code and response time from your endpoint.
   }
 
   @Post('deliveries/:deliveryId/resend')
-  @ClientAuth('write')
+  @ClientAuth('webhooks:write')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Manual resend of a delivery',
+    summary: 'Manual resend of a delivery (scope: webhooks:write)',
     description: `Creates a new delivery with a fresh idempotency key linked to the original delivery. The new delivery is enqueued for immediate processing with the full retry lifecycle.
 
 Unlike retry (which re-attempts the same delivery), resend creates a brand new delivery record. This is useful when:
@@ -612,9 +612,9 @@ Unlike retry (which re-attempts the same delivery), resend creates a brand new d
   }
 
   @Get('dead-letters')
-  @ClientAuth('read')
+  @ClientAuth('webhooks:read')
   @ApiOperation({
-    summary: 'List dead-lettered deliveries',
+    summary: 'List dead-lettered deliveries (scope: webhooks:read)',
     description: `Returns a paginated list of webhook deliveries that exhausted all retry attempts and were moved to the dead letter queue (DLQ). Dead-lettered deliveries can be resent manually.
 
 **Dead letter statuses:**

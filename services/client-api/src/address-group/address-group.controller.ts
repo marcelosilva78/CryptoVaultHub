@@ -20,7 +20,7 @@ export class AddressGroupController {
   constructor(private readonly addressGroupService: AddressGroupService) {}
 
   @Post()
-  @ClientAuth('write')
+  @ClientAuth('address-groups:write')
   async createAddressGroup(
     @Body() dto: CreateAddressGroupDto,
     @Req() req: Request,
@@ -40,7 +40,7 @@ export class AddressGroupController {
   }
 
   @Get()
-  @ClientAuth('read')
+  @ClientAuth('address-groups:read')
   async listAddressGroups(
     @Query() query: { page?: number; limit?: number },
     @Req() req: Request,
@@ -56,7 +56,7 @@ export class AddressGroupController {
   }
 
   @Get(':id')
-  @ClientAuth('read')
+  @ClientAuth('address-groups:read')
   async getAddressGroup(@Param('id') id: string, @Req() req: Request, @CurrentClientId() clientId: number) {
     const projectId = (req as any).projectId;
     const result = await this.addressGroupService.getAddressGroup(
@@ -68,9 +68,9 @@ export class AddressGroupController {
   }
 
   @Post(':groupUid/provision')
-  @ClientAuth('write')
+  @ClientAuth('address-groups:write')
   @ApiOperation({
-    summary: 'Provision an address group on selected chains',
+    summary: 'Provision an address group on selected chains (scope: address-groups:write)',
     description: 'Triggers forwarder/wallet provisioning for the address group on the given chains.',
   })
   async provision(

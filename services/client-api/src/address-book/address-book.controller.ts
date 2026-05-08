@@ -106,9 +106,9 @@ export class AddressBookController {
   }
 
   @Post()
-  @ClientAuthWithProject('write')
+  @ClientAuthWithProject('address-book:write')
   @ApiOperation({
-    summary: 'Add a whitelisted address',
+    summary: 'Add a whitelisted address (scope: address-book:write)',
     description: `Adds a new address to the client's whitelisted address book. Only whitelisted addresses can be used as withdrawal destinations. This is a critical security feature that prevents unauthorized fund transfers.
 
 **2FA Requirement:**
@@ -197,9 +197,9 @@ Newly added addresses enter a mandatory 24-hour cooldown period. During this win
   }
 
   @Get()
-  @ClientAuth('read')
+  @ClientAuth('address-book:read')
   @ApiOperation({
-    summary: 'List whitelisted addresses',
+    summary: 'List whitelisted addresses (scope: address-book:read)',
     description: `Returns a paginated list of all addresses in the client's address book. Supports filtering by chain ID. Includes both active and cooldown addresses. Disabled addresses are excluded by default.
 
 **Address statuses in response:**
@@ -262,9 +262,9 @@ Newly added addresses enter a mandatory 24-hour cooldown period. During this win
   }
 
   @Patch(':id')
-  @ClientAuth('write')
+  @ClientAuth('address-book:write')
   @ApiOperation({
-    summary: 'Update a whitelisted address',
+    summary: 'Update a whitelisted address (scope: address-book:write)',
     description: `Updates the label or notes of an existing whitelisted address. The address itself and chain ID cannot be changed — delete and recreate the entry if you need to change those fields.
 
 **Important:**
@@ -333,9 +333,9 @@ Newly added addresses enter a mandatory 24-hour cooldown period. During this win
   }
 
   @Delete(':id')
-  @ClientAuth('write')
+  @ClientAuth('address-book:write')
   @ApiOperation({
-    summary: 'Disable a whitelisted address',
+    summary: 'Disable a whitelisted address (scope: address-book:write)',
     description: `Disables a whitelisted address, preventing it from being used as a withdrawal destination. This is a soft delete — the address record is retained for audit purposes but its status changes to \`disabled\`.
 
 **2FA Requirement:**
