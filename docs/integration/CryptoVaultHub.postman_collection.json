@@ -1,0 +1,533 @@
+{
+  "info": {
+    "_postman_id": "cvh-client-api-2026-05-08",
+    "name": "CryptoVaultHub Client API",
+    "description": "Sequência completa de integração validada na homologação 2026-05-08 (BSC mainnet, projeto BrPay, 13/13 PASS).\n\nUse o Collection Runner para executar do começo ao fim — variáveis (projectId, depositAddress, withdrawalId) propagam automaticamente entre as requests via test scripts.\n\n**Antes de rodar:**\n1. Ajuste `apiKey` em Variables.\n2. Os passos com `[USER ACTION]` na descrição exigem ação fora do Postman (enviar BNB, etc.).\n3. Os passos `Wait …` rodam um único polling — re-execute manualmente até atingir o estado terminal, ou use o Runner com `iterationCount` ≥ 30 e `delay` de 8000ms.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://api.vaulthub.live/client/v1",
+      "type": "string"
+    },
+    {
+      "key": "apiKey",
+      "value": "cvh_live_REPLACE_ME",
+      "type": "string",
+      "description": "Sua API key. Portal → Sidebar → API Keys."
+    },
+    {
+      "key": "chainId",
+      "value": "56",
+      "type": "string",
+      "description": "Chain ID alvo. 56 = BSC mainnet."
+    },
+    {
+      "key": "tokenSymbol",
+      "value": "BNB",
+      "type": "string"
+    },
+    {
+      "key": "withdrawalAmount",
+      "value": "0.001",
+      "type": "string"
+    },
+    {
+      "key": "withdrawalTarget",
+      "value": "0x0000000000000000000000000000000000000000",
+      "type": "string",
+      "description": "Endereço EVM externo. Edite antes de rodar o passo 9."
+    },
+    {
+      "key": "externalId",
+      "value": "",
+      "type": "string",
+      "description": "Preenchido automaticamente no passo 5."
+    },
+    {
+      "key": "projectId",
+      "value": "",
+      "type": "string",
+      "description": "Preenchido automaticamente no passo 1."
+    },
+    {
+      "key": "webhookId",
+      "value": "",
+      "type": "string",
+      "description": "Preenchido automaticamente no passo 4."
+    },
+    {
+      "key": "depositAddress",
+      "value": "",
+      "type": "string",
+      "description": "Preenchido automaticamente no passo 5."
+    },
+    {
+      "key": "withdrawalId",
+      "value": "",
+      "type": "string",
+      "description": "Preenchido automaticamente no passo 10."
+    },
+    {
+      "key": "idempotencyKey",
+      "value": "",
+      "type": "string",
+      "description": "Gerado automaticamente no passo 10."
+    }
+  ],
+  "auth": {
+    "type": "apikey",
+    "apikey": [
+      {
+        "key": "key",
+        "value": "X-API-Key",
+        "type": "string"
+      },
+      {
+        "key": "value",
+        "value": "{{apiKey}}",
+        "type": "string"
+      },
+      {
+        "key": "in",
+        "value": "header",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "1. Setup",
+      "item": [
+        {
+          "name": "Resolve project (smoke test)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('payload has projects[]', () => pm.expect(j.projects).to.be.an('array').and.not.empty);",
+                  "pm.collectionVariables.set('projectId', j.projects[0].id);",
+                  "console.log('captured projectId =', j.projects[0].id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/projects",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects"]
+            },
+            "description": "Confirma que a API key é válida e retorna o projeto que ela escopa. Captura `projectId`."
+          }
+        },
+        {
+          "name": "List wallets",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "const chain = parseInt(pm.collectionVariables.get('chainId'), 10);",
+                  "const types = j.wallets.filter(w => w.chainId === chain).map(w => w.walletType);",
+                  "pm.test('hot wallet exists for chain', () => pm.expect(types).to.include('hot'));",
+                  "pm.test('gas_tank wallet exists for chain', () => pm.expect(types).to.include('gas_tank'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/wallets",
+              "host": ["{{baseUrl}}"],
+              "path": ["wallets"]
+            },
+            "description": "Verifica que existem hot wallet + gas tank na chain alvo. Sem isso, depósito/saque não funcionam."
+          }
+        },
+        {
+          "name": "Confirm gas tank status",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('gas tank not critical', () => pm.expect(['ok', 'warning']).to.include(j.status));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/gas-tanks/{{chainId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["gas-tanks", "{{chainId}}"]
+            },
+            "description": "Saque exige gas tank ok. Critical → pare e refunde."
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Webhook (opcional)",
+      "item": [
+        {
+          "name": "Register webhook",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const j = pm.response.json();",
+                  "pm.collectionVariables.set('webhookId', j.id || j.webhook?.id);",
+                  "if (j.secret) console.log('Webhook secret (guarde!):', j.secret);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"https://webhook.site/REPLACE_WITH_YOUR_RECEIVER\",\n  \"events\": [\n    \"deposit.detected\",\n    \"deposit.confirmed\",\n    \"deposit.swept\",\n    \"withdrawal.submitted\",\n    \"withdrawal.confirmed\",\n    \"withdrawal.failed\"\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/webhooks",
+              "host": ["{{baseUrl}}"],
+              "path": ["webhooks"]
+            },
+            "description": "Registra um receptor de webhooks. Guarde o `secret` retornado — você usa pra verificar HMAC-SHA256 nos payloads."
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Deposit",
+      "item": [
+        {
+          "name": "Generate deposit address",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Gera externalId único por execução do Runner",
+                  "const id = `customer-${Date.now()}`;",
+                  "pm.collectionVariables.set('externalId', id);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const j = pm.response.json();",
+                  "const addr = j.depositAddress?.address || j.address;",
+                  "pm.test('address returned', () => pm.expect(addr).to.match(/^0x[a-fA-F0-9]{40}$/));",
+                  "pm.collectionVariables.set('depositAddress', addr);",
+                  "console.log('depositAddress =', addr);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"externalId\": \"{{externalId}}\",\n  \"label\": \"Postman test deposit\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/wallets/{{chainId}}/deposit-address",
+              "host": ["{{baseUrl}}"],
+              "path": ["wallets", "{{chainId}}", "deposit-address"]
+            },
+            "description": "Gera endereço determinístico (CREATE2 forwarder). Idempotente por `externalId`. O contrato é deployado lazy no primeiro depósito."
+          }
+        },
+        {
+          "name": "[USER ACTION] Send funds",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "console.log('==============================================');",
+                  "console.log('Envie fundos (chain', pm.collectionVariables.get('chainId'), ') para:');",
+                  "console.log('  ', pm.collectionVariables.get('depositAddress'));",
+                  "console.log('Depois siga para o passo \"Wait deposit swept\" e re-execute até status=swept.');",
+                  "console.log('==============================================');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            },
+            "description": "Placeholder. Em produção o usuário final envia BNB/ETH/USDT pra `{{depositAddress}}` a partir do app dele. Esta request só faz um GET /health pra registrar o ponto no Runner."
+          }
+        },
+        {
+          "name": "Wait deposit swept (poll)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "const addr = pm.collectionVariables.get('depositAddress').toLowerCase();",
+                  "const dep = j.deposits.find(d => (d.address || d.depositAddress || '').toLowerCase() === addr);",
+                  "if (!dep) {",
+                  "  console.log('Depósito ainda não detectado. Re-execute em ~10s.');",
+                  "  pm.test('deposit row exists', () => pm.expect(dep).to.not.be.undefined);",
+                  "  return;",
+                  "}",
+                  "console.log('deposit status =', dep.status, ' txHash =', dep.txHash);",
+                  "pm.test('terminal status reached', () => pm.expect(['confirmed', 'sweep_pending', 'swept']).to.include(dep.status));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/deposits?limit=20&page=1",
+              "host": ["{{baseUrl}}"],
+              "path": ["deposits"],
+              "query": [
+                { "key": "limit", "value": "20" },
+                { "key": "page", "value": "1" }
+              ]
+            },
+            "description": "Polling do estado do depósito. Cada execução é uma checagem; em produção use webhooks. Estados: pending → confirmed → sweep_pending → swept."
+          }
+        },
+        {
+          "name": "Verify hot wallet has funds",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "const native = j.balances?.find(b => b.isNative) || j.balances?.[0];",
+                  "console.log('hot wallet balance:', native?.balanceFormatted || native?.balance);",
+                  "pm.test('balance > 0', () => pm.expect(parseFloat(native?.balance || '0')).to.be.greaterThan(0));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/wallets/{{chainId}}/balances",
+              "host": ["{{baseUrl}}"],
+              "path": ["wallets", "{{chainId}}", "balances"]
+            },
+            "description": "Confirma que o sweep depositou os fundos na hot wallet."
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Withdrawal",
+      "item": [
+        {
+          "name": "Whitelist withdrawal target",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// 201 = criou, 409 = já existe (também ok)",
+                  "pm.test('201 ou 409 (already whitelisted)', () => pm.expect([201, 409]).to.include(pm.response.code));",
+                  "if (pm.response.code === 201) {",
+                  "  const j = pm.response.json();",
+                  "  console.log('whitelisted address id =', j.address?.id || j.id);",
+                  "  console.log('cooldown ends at =', j.address?.cooldownExpiresAt || j.cooldownExpiresAt);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"address\": \"{{withdrawalTarget}}\",\n  \"chainId\": {{chainId}},\n  \"label\": \"Postman test target\",\n  \"notes\": \"Adicionado via Postman runner\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/addresses",
+              "host": ["{{baseUrl}}"],
+              "path": ["addresses"]
+            },
+            "description": "Whitelist obrigatório antes de saque. Novos endereços têm cooldown de 24h — saque imediato vai falhar com 422 enquanto não vencer."
+          }
+        },
+        {
+          "name": "Create withdrawal",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const idem = `wd-${pm.collectionVariables.get('externalId') || 'manual'}-${Date.now()}`;",
+                  "pm.collectionVariables.set('idempotencyKey', idem);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const j = pm.response.json();",
+                  "const wd = j.withdrawal?.withdrawal || j.withdrawal || j;",
+                  "pm.collectionVariables.set('withdrawalId', wd.id);",
+                  "console.log('withdrawalId =', wd.id, ' status =', wd.status);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"chainId\": {{chainId}},\n  \"tokenSymbol\": \"{{tokenSymbol}}\",\n  \"toAddress\": \"{{withdrawalTarget}}\",\n  \"amount\": \"{{withdrawalAmount}}\",\n  \"memo\": \"Postman test withdrawal\",\n  \"idempotencyKey\": \"{{idempotencyKey}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/withdrawals",
+              "host": ["{{baseUrl}}"],
+              "path": ["withdrawals"]
+            },
+            "description": "Cria o saque. Estado inicial = pending_approval. Em modo full-custody, próximo passo é o self-approve."
+          }
+        },
+        {
+          "name": "Self-approve (full-custody)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 OK', () => pm.expect([200, 201]).to.include(pm.response.code));",
+                  "const j = pm.response.json();",
+                  "const wd = j.withdrawal?.withdrawal || j.withdrawal || j;",
+                  "pm.test('status approved', () => pm.expect(wd.status).to.equal('approved'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/withdrawals/{{withdrawalId}}/approve",
+              "host": ["{{baseUrl}}"],
+              "path": ["withdrawals", "{{withdrawalId}}", "approve"]
+            },
+            "description": "Em full-custody, a API key já tem autoridade total — este passo apenas avança o estado de pending_approval para approved. O cron worker pega no próximo tick (≤ 30s)."
+          }
+        },
+        {
+          "name": "Wait withdrawal confirmed (poll)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "const wd = j.withdrawal?.withdrawal || j.withdrawal || j;",
+                  "console.log('withdrawal status =', wd.status, ' txHash =', wd.txHash);",
+                  "if (wd.txHash) console.log('BSCScan:', `https://bscscan.com/tx/${wd.txHash}`);",
+                  "pm.test('terminal status', () => pm.expect(['broadcasting', 'confirmed', 'failed', 'rejected']).to.include(wd.status));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/withdrawals/{{withdrawalId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["withdrawals", "{{withdrawalId}}"]
+            },
+            "description": "Polling do estado do saque. Re-execute até status = confirmed ou failed/rejected. Em produção, escute o webhook withdrawal.confirmed."
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Cleanup",
+      "item": [
+        {
+          "name": "Delete webhook (opcional)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204 ou 200', () => pm.expect([200, 204]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/webhooks/{{webhookId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["webhooks", "{{webhookId}}"]
+            },
+            "description": "Limpeza do receptor de teste."
+          }
+        }
+      ]
+    }
+  ]
+}
