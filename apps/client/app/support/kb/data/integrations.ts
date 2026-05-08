@@ -537,4 +537,239 @@ export const integrationsArticles: Article[] = [
       },
     ],
   },
+  {
+    slug: "postman-roteiro-integracao",
+    title: "Postman — Roteiro de Integração End-to-End",
+    description:
+      "Coleção Postman pronta para uso e roteiro narrativo, ambos gerados a partir de uma execução real e validada na homologação. Importe, ajuste a API key, e rode do começo ao fim no Collection Runner para reproduzir o ciclo completo de depósito → sweep → saque.",
+    category: "integrations",
+    icon: "Webhook",
+    difficulty: "intermediate",
+    tags: ["postman", "integração", "api", "collection", "homologação", "roteiro"],
+    updatedAt: "08 Mai 2026",
+    readingTime: 8,
+    blocks: [
+      {
+        type: "heading",
+        level: 2,
+        text: "Por que essa coleção existe",
+      },
+      {
+        type: "paragraph",
+        text: "A coleção Postman foi gerada a partir de uma execução real da suíte de homologação E2E em produção (BSC mainnet, 13/13 passos PASS, com transações confirmadas on-chain). Cada request da coleção corresponde a um passo da suíte; juntos eles reproduzem o ciclo completo de integração: gerar endereço de depósito, receber fundos, sweep automático, saque whitelisted, broadcast e confirmação on-chain.",
+      },
+      {
+        type: "callout",
+        variant: "tip",
+        title: "Por que isso importa",
+        text: "Como os artefatos saem de uma corrida real e bem-sucedida, eles refletem exatamente os endpoints, payloads e respostas atuais. Não há documentação 'aspiracional' aqui — o que está na coleção é exatamente o que a API responde hoje em produção.",
+      },
+      {
+        type: "heading",
+        level: 3,
+        text: "Pré-requisitos",
+      },
+      {
+        type: "list",
+        ordered: true,
+        items: [
+          "Conta no Portal CryptoVaultHub com um projeto criado e com deploy concluído (deploy_status='ready') na chain alvo (ex: BSC).",
+          "Uma API Key gerada em Settings → API Keys com escopo write (necessário para criar saques e endereços whitelisted).",
+          "Postman 10+ ou Insomnia/Bruno (qualquer cliente que importe o formato Postman v2.1.0).",
+          "Um endereço EVM externo de destino para testar o saque (sua MetaMask, por exemplo).",
+        ],
+      },
+      {
+        type: "heading",
+        level: 3,
+        text: "Download dos artefatos",
+      },
+      {
+        type: "link-card",
+        href: "/postman/CryptoVaultHub.postman_collection.json",
+        title: "Download da Coleção (Postman v2.1.0 JSON)",
+        description:
+          "Arquivo importável no Postman, Insomnia ou Bruno. Inclui 5 pastas, scripts de teste com asserts e propagação automática de variáveis entre requests.",
+      },
+      {
+        type: "link-card",
+        href: "/postman/postman-walkthrough.md",
+        title: "Download do Roteiro completo em Markdown",
+        description:
+          "Documento narrativo passo-a-passo: o porquê de cada request, payload de exemplo, resposta esperada, erros comuns e referência de webhook.",
+      },
+      {
+        type: "heading",
+        level: 3,
+        text: "Como importar no Postman",
+      },
+      {
+        type: "steps",
+        items: [
+          {
+            title: "Baixar o arquivo .json",
+            description:
+              "Clique no link 'Download da Coleção' acima. O arquivo CryptoVaultHub.postman_collection.json baixa para sua pasta de Downloads.",
+          },
+          {
+            title: "Importar no Postman",
+            description:
+              "No Postman, clique em File → Import (ou Ctrl/Cmd + O), arraste o arquivo .json para a janela ou selecione manualmente. A coleção 'CryptoVaultHub Client API' aparece na barra lateral.",
+          },
+          {
+            title: "Selecionar a coleção",
+            description:
+              "Clique na coleção para ver as 5 pastas (Setup, Webhook, Deposit, Withdrawal, Cleanup) e a aba 'Variables' onde você vai configurar a API Key.",
+          },
+          {
+            title: "Editar a aba Variables",
+            description:
+              "Na coleção selecionada, abra a aba 'Variables'. Substitua o valor de apiKey pelo seu cvh_live_… real. Ajuste chainId, tokenSymbol, withdrawalAmount e withdrawalTarget conforme seu cenário de teste.",
+          },
+          {
+            title: "Salvar (Ctrl/Cmd + S)",
+            description:
+              "Salvar é importante — Postman precisa persistir as variáveis de coleção antes de você executar o Runner.",
+          },
+        ],
+      },
+      {
+        type: "heading",
+        level: 3,
+        text: "Variáveis da coleção",
+      },
+      {
+        type: "table",
+        headers: ["Variável", "Editar?", "Default", "Onde obter / como funciona"],
+        rows: [
+          ["baseUrl", "Não", "https://api.vaulthub.live/client/v1", "Fixa, produção"],
+          ["apiKey", "SIM", "cvh_live_REPLACE_ME", "Portal → Settings → API Keys → Create. Escopo write."],
+          ["chainId", "Sim", "56", "ID numérico da chain alvo. 56 = BSC mainnet, 137 = Polygon, etc."],
+          ["tokenSymbol", "Sim", "BNB", "Símbolo do token a sacar. Lista válida em GET /tokens?chainId=…"],
+          ["withdrawalTarget", "SIM", "0x0…0", "Endereço EVM externo onde quer receber o saque de teste"],
+          ["withdrawalAmount", "Sim", "0.001", "Quanto sacar. Use valor pequeno em testes."],
+          ["projectId", "Não — auto", "(vazio)", "Preenchida no passo 1 a partir da resposta de GET /projects"],
+          ["depositAddress", "Não — auto", "(vazio)", "Preenchida no passo 5 quando você gera o forwarder"],
+          ["webhookId", "Não — auto", "(vazio)", "Preenchida no passo 4 quando você cadastra o webhook"],
+          ["withdrawalId", "Não — auto", "(vazio)", "Preenchida no passo 10 quando o saque é criado"],
+          ["idempotencyKey", "Não — auto", "(vazio)", "Pre-request script gera uma chave única por execução"],
+        ],
+      },
+      {
+        type: "callout",
+        variant: "info",
+        title: "Como a propagação automática funciona",
+        text: "Cada request tem um 'test script' (aba Tests) que extrai IDs da resposta e salva nas Collection Variables. Quando o próximo request roda, ele substitui {{withdrawalId}} pelo valor capturado. É por isso que o Runner consegue executar todo o fluxo sem intervenção entre passos.",
+      },
+      {
+        type: "heading",
+        level: 3,
+        text: "Estrutura da coleção",
+      },
+      {
+        type: "list",
+        ordered: true,
+        items: [
+          "**1. Setup** — Resolve o projeto, lista wallets, valida saúde do gas tank. Smoke test do ambiente.",
+          "**2. Webhook (opcional)** — Cadastra um receptor para eventos em tempo real. Em produção, prefira webhook ao invés de polling.",
+          "**3. Deposit** — Gera deposit address determinístico (CREATE2), aguarda fundos, valida sweep para a hot wallet.",
+          "**4. Withdrawal** — Whitelist do destino, criação do saque, self-approve em modo full-custody, espera por broadcast e confirmação on-chain.",
+          "**5. Cleanup** — Remove o webhook de teste.",
+        ],
+      },
+      {
+        type: "heading",
+        level: 3,
+        text: "Executar a coleção end-to-end",
+      },
+      {
+        type: "steps",
+        items: [
+          {
+            title: "Rodar o passo 1 isolado para validar credenciais",
+            description:
+              "Antes de usar o Runner, clique no request '1. Setup → Resolve project (smoke test)' e dispare manualmente. Se vier 200 com sua lista de projetos, a API key está válida. Se vier 401, ajuste a apiKey nas Variables.",
+          },
+          {
+            title: "Rodar até gerar o deposit address",
+            description:
+              "Execute manualmente os requests da pasta Setup, depois Webhook, depois 'Generate deposit address' na pasta Deposit. A variável depositAddress fica preenchida.",
+          },
+          {
+            title: "Enviar fundos para o deposit address",
+            description:
+              "O endereço gerado aceita o token nativo da chain (BNB na BSC). Envie de uma carteira externa (MetaMask, exchange, etc.). Aguarde 1-2 minutos para detecção on-chain.",
+          },
+          {
+            title: "Polling até status=swept",
+            description:
+              "Re-execute 'Wait deposit swept (poll)' até o test script confirmar que status atingiu confirmed → sweep_pending → swept. Em geral leva menos de 60s na BSC.",
+          },
+          {
+            title: "Rodar a pasta Withdrawal inteira",
+            description:
+              "Whitelist + Create + Approve + Wait. O Approve é necessário em modo full-custody; em cosign-mode o cliente assina em vez disso. O Wait re-executa até status=confirmed e imprime o link do BSCScan no console.",
+          },
+        ],
+      },
+      {
+        type: "callout",
+        variant: "warning",
+        title: "Cooldown de 24h em endereços recém-whitelisted",
+        text: "Se você acabou de whitelistar o destino, o saque vai falhar com 422 'address still in cooldown'. Em produção, prefira rodar o Runner contra um endereço já em status active. Em teste, dá pra forçar via DB (consulte o suporte).",
+      },
+      {
+        type: "heading",
+        level: 3,
+        text: "Verificar assinatura dos webhooks",
+      },
+      {
+        type: "paragraph",
+        text: "Todo webhook é assinado com HMAC-SHA256 sobre o body bruto, usando o secret retornado quando você criou o receptor. Verifique antes de processar para evitar payloads forjados.",
+      },
+      {
+        type: "code",
+        language: "javascript",
+        filename: "verify-webhook.js",
+        code: "const crypto = require('crypto');\n\nfunction verifyWebhook(rawBody, signatureHeader, secret) {\n  const expected = crypto.createHmac('sha256', secret)\n    .update(rawBody)\n    .digest('hex');\n  const got = Buffer.from(signatureHeader, 'utf8');\n  const exp = Buffer.from(expected, 'utf8');\n  if (got.length !== exp.length) return false;\n  return crypto.timingSafeEqual(got, exp);\n}\n\n// Express middleware exemplo\napp.post('/webhooks/cvh',\n  express.raw({ type: 'application/json' }),\n  (req, res) => {\n    const sig = req.header('X-CVH-Signature');\n    if (!verifyWebhook(req.body, sig, process.env.CVH_WEBHOOK_SECRET)) {\n      return res.status(401).send('invalid signature');\n    }\n    const event = JSON.parse(req.body);\n    // process event ...\n    res.status(200).send('ok');\n  });",
+      },
+      {
+        type: "heading",
+        level: 3,
+        text: "Erros comuns",
+      },
+      {
+        type: "table",
+        headers: ["HTTP", "Mensagem", "Causa", "Como corrigir"],
+        rows: [
+          ["401", "Invalid or missing API key", "Header X-API-Key faltando ou apiKey errada", "Editar apiKey nas Variables"],
+          ["403", "Insufficient scope", "Key sem scope write (POSTs falham)", "Gerar nova key com scope write no Portal"],
+          ["422", "address still in cooldown", "Whitelist novo, 24h não passaram", "Esperar OU usar address já active"],
+          ["422", "project deployment not ready", "Wizard não rodou para a chain", "Portal → Project → Setup → Deploy"],
+          ["422", "Token symbol 'X' not found on chain", "tokenSymbol incorreto/desconhecido", "GET /tokens?chainId=… para descobrir"],
+          ["409", "idempotency key already used", "Mesma key, body diferente", "Reusar a mesma key apenas para retries idênticos"],
+          ["502", "Bad Gateway", "Reciclagem de worker no gateway, transitório", "Re-executar em 1-2 segundos"],
+        ],
+      },
+      {
+        type: "heading",
+        level: 3,
+        text: "Próximos passos",
+      },
+      {
+        type: "link-card",
+        href: "/support/kb/integrations/configurar-webhooks",
+        title: "Configurar Webhooks",
+        description:
+          "Em produção, prefira webhook ao invés de polling. Aprenda a estruturar o receptor e validar assinaturas.",
+      },
+      {
+        type: "link-card",
+        href: "/support/kb/integrations/api-keys-autenticacao",
+        title: "API Keys e Autenticação",
+        description:
+          "Gerar, escopar e rotacionar suas API Keys com segurança.",
+      },
+    ],
+  },
 ];

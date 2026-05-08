@@ -90,13 +90,12 @@ const navSections: NavSection[] = [
   {
     title: "Resources",
     items: [
-      { label: "Knowledge Base", href: "/knowledge-base", icon: BookOpen },
+      { label: "Knowledge Base", href: "/support/kb", icon: BookOpen },
     ],
   },
   {
     title: "Suporte",
     items: [
-      { label: "Knowledge Base", href: "/support/kb", icon: BookOpen },
       { label: "FAQ", href: "/support/faq", icon: HelpCircle },
       { label: "Changelog", href: "/support/changelog", icon: FileText },
       { label: "Status", href: "/support/status", icon: Activity },
