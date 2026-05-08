@@ -338,3 +338,9 @@ function verifyWebhook(rawBody, signatureHeader, secret) {
   return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signatureHeader));
 }
 ```
+
+## Self-service API key management
+
+The "Self-service API key management" folder requires a logged-in **portal session** — it does not accept an API key (a key cannot create another key, by design). Use Postman's Cookie Manager: log in to https://portal.vaulthub.live in your browser, copy the cookies for the `api.vaulthub.live` domain into Postman, and the requests will authenticate.
+
+The `Create API key` request returns the raw key in the response **only once** — capture it from the response body and store it in your secrets manager immediately.
