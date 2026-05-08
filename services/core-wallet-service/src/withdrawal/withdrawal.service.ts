@@ -5,6 +5,7 @@ import {
   BadRequestException,
   ConflictException,
   ServiceUnavailableException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { ethers } from 'ethers';
 import { PrismaService } from '../prisma/prisma.service';
@@ -45,6 +46,7 @@ export class WithdrawalService {
     toAddressId: number;
     amount: string;
     idempotencyKey: string;
+    sourceWallet?: 'hot' | 'gas_tank';
   }) {
     const {
       clientId,
@@ -54,6 +56,7 @@ export class WithdrawalService {
       amount,
       idempotencyKey,
     } = params;
+    const sourceWallet = params.sourceWallet ?? 'hot';
 
     // Idempotency check (scoped to client to prevent cross-tenant collision)
     const existingByKey = await this.prisma.withdrawal.findFirst({
@@ -146,19 +149,28 @@ export class WithdrawalService {
       );
     }
 
-    // Get hot wallet
-    const hotWallet = await this.prisma.wallet.findUnique({
+    if (sourceWallet === 'gas_tank' && !token.isNative) {
+      throw new UnprocessableEntityException({
+        statusCode: 422,
+        message: 'Gas Tank source only supports the chain native token',
+        details: { tokenSymbol: token.symbol, expected: 'native' },
+      });
+    }
+
+    // Get the source wallet — hot or gas_tank
+    const sourceWalletType = sourceWallet === 'gas_tank' ? 'gas_tank' : 'hot';
+    const sourceWalletRecord = await this.prisma.wallet.findUnique({
       where: {
         uq_client_chain_type: {
           clientId: BigInt(clientId),
           chainId,
-          walletType: 'hot',
+          walletType: sourceWalletType,
         },
       },
     });
-    if (!hotWallet) {
+    if (!sourceWalletRecord) {
       throw new NotFoundException(
-        `Hot wallet not found for client ${clientId} on chain ${chainId}`,
+        `${sourceWalletType === 'gas_tank' ? 'Gas tank' : 'Hot wallet'} not found for client ${clientId} on chain ${chainId}`,
       );
     }
 
@@ -172,16 +184,16 @@ export class WithdrawalService {
     // Check on-chain balance
     let onChainBalance: bigint;
     try {
-      if (token.isNative) {
+      if (sourceWallet === 'gas_tank' || token.isNative) {
         onChainBalance = await this.contractService.getNativeBalance(
           chainId,
-          hotWallet.address,
+          sourceWalletRecord.address,
         );
       } else {
         onChainBalance = await this.contractService.getERC20Balance(
           chainId,
           token.contractAddress,
-          hotWallet.address,
+          sourceWalletRecord.address,
         );
       }
     } catch (error) {
@@ -193,20 +205,43 @@ export class WithdrawalService {
       );
     }
 
-    if (onChainBalance < BigInt(amountRaw)) {
-      throw new BadRequestException(
-        `Insufficient balance. Required: ${amount} ${token.symbol}, available: ${ethers.formatUnits(onChainBalance, token.decimals)} ${token.symbol}`,
-      );
+    if (sourceWallet === 'gas_tank') {
+      // Reserve enough native to keep the platform-key topup mechanism alive.
+      const chain = await this.prisma.chain.findUnique({ where: { id: chainId } });
+      const topupAmount = chain?.platformTopupAmountWei
+        ? BigInt(chain.platformTopupAmountWei)
+        : 10_000_000_000_000_000n; // 0.01 native fallback
+      const reserved = topupAmount * 2n;
+      const requested = BigInt(amountRaw);
+      const availableAfterReserve = onChainBalance > reserved ? onChainBalance - reserved : 0n;
+      if (requested > availableAfterReserve) {
+        throw new UnprocessableEntityException({
+          statusCode: 422,
+          message: 'Insufficient gas tank balance after reserve',
+          details: {
+            requested: requested.toString(),
+            available: availableAfterReserve.toString(),
+            reserved: reserved.toString(),
+          },
+        });
+      }
+    } else {
+      if (onChainBalance < BigInt(amountRaw)) {
+        throw new BadRequestException(
+          `Insufficient balance. Required: ${amount} ${token.symbol}, available: ${ethers.formatUnits(onChainBalance, token.decimals)} ${token.symbol}`,
+        );
+      }
     }
 
-    // Create withdrawal record using the hot wallet's project
+    // Create withdrawal record using the source wallet's project
     const withdrawal = await this.prisma.withdrawal.create({
       data: {
         clientId: BigInt(clientId),
-        projectId: hotWallet.projectId,
+        projectId: sourceWalletRecord.projectId,
+        sourceWallet,
         chainId,
         tokenId: BigInt(tokenId),
-        fromWallet: hotWallet.address,
+        fromWallet: sourceWalletRecord.address,
         toAddressId: BigInt(toAddressId),
         toAddress: whitelisted.address,
         toLabel: whitelisted.label,
@@ -218,7 +253,7 @@ export class WithdrawalService {
     });
 
     this.logger.log(
-      `Withdrawal created: ${Number(withdrawal.id)} for ${amount} ${token.symbol} from ${hotWallet.address} to ${whitelisted.address}`,
+      `Withdrawal created: ${Number(withdrawal.id)} for ${amount} ${token.symbol} from ${sourceWalletRecord.address} (${sourceWallet}) to ${whitelisted.address}`,
     );
 
     return {
