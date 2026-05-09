@@ -1,4 +1,6 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
+import http from 'node:http';
+import https from 'node:https';
 import { curlRecorder } from './curl-recorder.js';
 
 export class CvhApiClient {
@@ -14,7 +16,19 @@ export class CvhApiClient {
       timeout: 30_000,
       // NOTE: Content-Type is set per-request (only when there's a body).
       // Setting it unconditionally on GETs triggers WAF rejection (403) at the edge.
-      headers: { 'X-API-Key': apiKey, 'Accept': '*/*', 'User-Agent': 'cvh-homologation/1.0' },
+      headers: {
+        'X-API-Key': apiKey,
+        'Accept': '*/*',
+        // 'br' (Brotli) in Accept-Encoding intermittently triggers 404 from
+        // the edge router (Traefik) when keep-alive sockets are reused; force
+        // gzip/deflate only.
+        'Accept-Encoding': 'gzip, deflate',
+        'User-Agent': 'cvh-homologation/1.0',
+      },
+      // Disable keep-alive to avoid stuck-socket 404s from the edge router.
+      // The validation suite is short-lived; the perf hit is negligible.
+      httpAgent: new http.Agent({ keepAlive: false }),
+      httpsAgent: new https.Agent({ keepAlive: false }),
       validateStatus: () => true,
     });
   }
@@ -39,16 +53,45 @@ export class CvhApiClient {
       body,
     });
 
-    const t0 = Date.now();
-    const res = await this.http.request({ method, url: path, data: body, params, headers: requestHeaders });
-    const dur = Date.now() - t0;
-
-    curlRecorder.afterRequest(rec, {
-      status: res.status,
-      durationMs: dur,
-      data: res.data,
-      headers: Object.fromEntries(Object.entries(res.headers ?? {}).map(([k, v]) => [k, String(v)])),
-    });
+    // Retry on transient edge artifacts:
+    //   - 404 with text/plain "404 page not found\n" → Traefik route miss during re-discovery
+    //   - 502 Bad Gateway → upstream warm-up / restart in progress
+    //   - 503/504 → similar gateway transients
+    // Real Nest 404s are application/json with our envelope, so they don't match.
+    let res: any;
+    let lastEdgeMiss: any;
+    const EDGE_RETRIES = 6;
+    for (let attempt = 0; attempt < EDGE_RETRIES; attempt++) {
+      const t0 = Date.now();
+      res = await this.http.request({ method, url: path, data: body, params, headers: requestHeaders });
+      const dur = Date.now() - t0;
+      curlRecorder.afterRequest(rec, {
+        status: res.status,
+        durationMs: dur,
+        data: res.data,
+        headers: Object.fromEntries(Object.entries(res.headers ?? {}).map(([k, v]) => [k, String(v)])),
+      });
+      // AxiosHeaders supports either getter; try both.
+      const headersObj = res.headers ?? {};
+      const ctRaw = (typeof headersObj.get === 'function' ? headersObj.get('content-type') : headersObj['content-type']) ?? '';
+      const ct = String(ctRaw).toLowerCase();
+      const dataStr = typeof res.data === 'string' ? res.data : String(res.data ?? '');
+      const isTraefikMiss = res.status === 404 && (ct.startsWith('text/plain') || dataStr.startsWith('404 page not found'));
+      const isGatewayTransient = res.status === 502 || res.status === 503 || res.status === 504;
+      if (!isTraefikMiss && !isGatewayTransient) break;
+      if (process.env.CVH_DEBUG_RETRIES === '1') {
+        console.error(`  [retry ${attempt + 1}/${EDGE_RETRIES}] ${method} ${path} → ${res.status} (ct=${ct})`);
+      }
+      lastEdgeMiss = res;
+      // Backoff: 500ms, 1s, 2s, 4s, 8s, cap at 8s
+      const delay = Math.min(500 * Math.pow(2, attempt), 8_000);
+      await new Promise((r) => setTimeout(r, delay));
+    }
+    if (lastEdgeMiss && res === lastEdgeMiss) {
+      const e = new Error(`${method} ${path} → ${res.status} after ${EDGE_RETRIES} edge retries (gateway flapping)`) as AxiosError;
+      (e as any).response = res;
+      throw e;
+    }
 
     if (res.status >= 400) {
       const e = new Error(`${method} ${path} → ${res.status} ${JSON.stringify(res.data).slice(0, 200)}`) as AxiosError;
