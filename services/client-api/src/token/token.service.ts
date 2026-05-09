@@ -25,8 +25,10 @@ export class TokenService {
 
   /**
    * List active tokens across all chains enabled for the client.
+   * Downstream returns { success, tokens: [...] } — unwrap so the controller
+   * can apply its own envelope without double-nesting.
    */
-  async listTokens(clientId: number) {
+  async listTokens(clientId: number): Promise<unknown[]> {
     try {
       const { data } = await axios.get(
         `${this.coreWalletUrl}/tokens`,
@@ -36,7 +38,7 @@ export class TokenService {
           timeout: 10000,
         },
       );
-      return data;
+      return Array.isArray(data) ? data : (data?.tokens ?? []);
     } catch (error: any) {
       if (error.response) {
         throw new HttpException(
@@ -49,27 +51,11 @@ export class TokenService {
   }
 
   /**
-   * List tokens for a specific chain.
+   * List tokens for a specific chain. Filtered client-side from the global
+   * registry — the core-wallet service does not expose a per-chain endpoint.
    */
-  async listTokensByChain(clientId: number, chainId: number) {
-    try {
-      const { data } = await axios.get(
-        `${this.coreWalletUrl}/tokens/${chainId}`,
-        {
-          headers: this.headers,
-          params: { clientId },
-          timeout: 10000,
-        },
-      );
-      return data;
-    } catch (error: any) {
-      if (error.response) {
-        throw new HttpException(
-          error.response.data?.message || 'Service error',
-          error.response.status,
-        );
-      }
-      throw new InternalServerErrorException('Downstream service unavailable');
-    }
+  async listTokensByChain(clientId: number, chainId: number): Promise<unknown[]> {
+    const all = await this.listTokens(clientId);
+    return all.filter((t: any) => t?.chainId === chainId);
   }
 }
