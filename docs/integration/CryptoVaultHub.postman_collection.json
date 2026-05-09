@@ -128,8 +128,12 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/projects",
-              "host": ["{{baseUrl}}"],
-              "path": ["projects"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects"
+              ]
             },
             "description": "Confirma que a API key é válida e retorna o projeto que ela escopa. Captura `projectId`."
           }
@@ -157,8 +161,12 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/wallets",
-              "host": ["{{baseUrl}}"],
-              "path": ["wallets"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "wallets"
+              ]
             },
             "description": "Verifica que existem hot wallet + gas tank na chain alvo. Sem isso, depósito/saque não funcionam."
           }
@@ -183,8 +191,13 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/gas-tanks/{{chainId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["gas-tanks", "{{chainId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "gas-tanks",
+                "{{chainId}}"
+              ]
             },
             "description": "Saque exige gas tank ok. Critical → pare e refunde."
           }
@@ -212,15 +225,24 @@
           ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"url\": \"https://webhook.site/REPLACE_WITH_YOUR_RECEIVER\",\n  \"events\": [\n    \"deposit.detected\",\n    \"deposit.confirmed\",\n    \"deposit.swept\",\n    \"withdrawal.submitted\",\n    \"withdrawal.confirmed\",\n    \"withdrawal.failed\"\n  ]\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/webhooks",
-              "host": ["{{baseUrl}}"],
-              "path": ["webhooks"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "webhooks"
+              ]
             },
             "description": "Registra um receptor de webhooks. Guarde o `secret` retornado — você usa pra verificar HMAC-SHA256 nos payloads."
           }
@@ -261,15 +283,26 @@
           ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"externalId\": \"{{externalId}}\",\n  \"label\": \"Postman test deposit\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/wallets/{{chainId}}/deposit-address",
-              "host": ["{{baseUrl}}"],
-              "path": ["wallets", "{{chainId}}", "deposit-address"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "wallets",
+                "{{chainId}}",
+                "deposit-address"
+              ]
             },
             "description": "Gera endereço determinístico (CREATE2 forwarder). Idempotente por `externalId`. O contrato é deployado lazy no primeiro depósito."
           }
@@ -295,8 +328,12 @@
             "method": "GET",
             "url": {
               "raw": "{{baseUrl}}/health",
-              "host": ["{{baseUrl}}"],
-              "path": ["health"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
             },
             "description": "Placeholder. Em produção o usuário final envia BNB/ETH/USDT pra `{{depositAddress}}` a partir do app dele. Esta request só faz um GET /health pra registrar o ponto no Runner."
           }
@@ -329,11 +366,21 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/deposits?limit=20&page=1",
-              "host": ["{{baseUrl}}"],
-              "path": ["deposits"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "deposits"
+              ],
               "query": [
-                { "key": "limit", "value": "20" },
-                { "key": "page", "value": "1" }
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                }
               ]
             },
             "description": "Polling do estado do depósito. Cada execução é uma checagem; em produção use webhooks. Estados: pending → confirmed → sweep_pending → swept."
@@ -361,8 +408,14 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/wallets/{{chainId}}/balances",
-              "host": ["{{baseUrl}}"],
-              "path": ["wallets", "{{chainId}}", "balances"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "wallets",
+                "{{chainId}}",
+                "balances"
+              ]
             },
             "description": "Confirma que o sweep depositou os fundos na hot wallet."
           }
@@ -393,15 +446,24 @@
           ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"address\": \"{{withdrawalTarget}}\",\n  \"chainId\": {{chainId}},\n  \"label\": \"Postman test target\",\n  \"notes\": \"Adicionado via Postman runner\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/addresses",
-              "host": ["{{baseUrl}}"],
-              "path": ["addresses"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "addresses"
+              ]
             },
             "description": "Whitelist obrigatório antes de saque. Novos endereços têm cooldown de 24h — saque imediato vai falhar com 422 enquanto não vencer."
           }
@@ -435,15 +497,24 @@
           ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"chainId\": {{chainId}},\n  \"tokenSymbol\": \"{{tokenSymbol}}\",\n  \"toAddress\": \"{{withdrawalTarget}}\",\n  \"amount\": \"{{withdrawalAmount}}\",\n  \"memo\": \"Postman test withdrawal\",\n  \"idempotencyKey\": \"{{idempotencyKey}}\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/withdrawals",
-              "host": ["{{baseUrl}}"],
-              "path": ["withdrawals"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "withdrawals"
+              ]
             },
             "description": "Cria o saque. Estado inicial = pending_approval. Em modo full-custody, próximo passo é o self-approve."
           }
@@ -477,15 +548,24 @@
           ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"chainId\": {{chainId}},\n  \"sourceWallet\": \"gas_tank\",\n  \"tokenSymbol\": \"{{tokenSymbol}}\",\n  \"toAddress\": \"{{withdrawalTarget}}\",\n  \"amount\": \"{{withdrawalAmount}}\",\n  \"memo\": \"Postman gas-tank test\",\n  \"idempotencyKey\": \"{{idempotencyKey}}\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/withdrawals",
-              "host": ["{{baseUrl}}"],
-              "path": ["withdrawals"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "withdrawals"
+              ]
             },
             "description": "Variant of 'Create withdrawal' that explicitly uses sourceWallet='gas_tank'. Token is forced to the chain native by the API regardless of what is sent. The 422 errors specific to this path are: 'Gas Tank source only supports the chain native token' and 'Insufficient gas tank balance after reserve' (reserve = 2 × platform_topup_amount_wei)."
           }
@@ -511,8 +591,14 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/withdrawals/{{withdrawalId}}/approve",
-              "host": ["{{baseUrl}}"],
-              "path": ["withdrawals", "{{withdrawalId}}", "approve"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "withdrawals",
+                "{{withdrawalId}}",
+                "approve"
+              ]
             },
             "description": "Em full-custody, a API key já tem autoridade total — este passo apenas avança o estado de pending_approval para approved. O cron worker pega no próximo tick (≤ 30s)."
           }
@@ -540,8 +626,13 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/withdrawals/{{withdrawalId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["withdrawals", "{{withdrawalId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "withdrawals",
+                "{{withdrawalId}}"
+              ]
             },
             "description": "Polling do estado do saque. Re-execute até status = confirmed ou failed/rejected. Em produção, escute o webhook withdrawal.confirmed."
           }
@@ -569,8 +660,13 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/webhooks/{{webhookId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["webhooks", "{{webhookId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "webhooks",
+                "{{webhookId}}"
+              ]
             },
             "description": "Limpeza do receptor de teste."
           }
@@ -585,41 +681,117 @@
           "name": "List my API keys",
           "request": {
             "method": "GET",
-            "header": [],
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "",
+                "disabled": true,
+                "description": "Disabled: this endpoint is JWT-only and rejects X-API-Key (privilege escalation block)."
+              }
+            ],
             "url": {
-              "raw": "{{baseUrl}}/client/v1/api-keys",
-              "host": ["{{baseUrl}}"],
-              "path": ["client", "v1", "api-keys"]
-            }
+              "raw": "{{baseUrl}}/api-keys",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-keys"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{portalJwt}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "## Authentication: JWT-only (portal session)\nThis endpoint REJECTS X-API-Key with 401. Use a portal session JWT instead.\n\n### How to obtain `{{portalJwt}}`\n1. Log in at https://portal.vaulthub.live\n2. Open DevTools → Application → Cookies → `cvh_session` → copy the value (or the access token from /auth/me)\n3. In the Postman environment, set `portalJwt` = that value.\n\n### Why JWT-only\nAPI key creation must require human-confirmed authentication so a leaked API key cannot mint new keys with broader scopes (privilege escalation block, security redesign 2026-05-09)."
           }
         },
         {
           "name": "Create API key",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "",
+                "disabled": true,
+                "description": "Disabled: this endpoint is JWT-only and rejects X-API-Key (privilege escalation block)."
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"projectId\": 1,\n  \"scopes\": [\"wallets:read\", \"forwarders:flush\"],\n  \"label\": \"Postman test\",\n  \"ipAllowlist\": [\"203.0.113.0/24\"],\n  \"expiresAt\": \"2026-12-31T23:59:59Z\"\n}"
             },
             "url": {
-              "raw": "{{baseUrl}}/client/v1/api-keys",
-              "host": ["{{baseUrl}}"],
-              "path": ["client", "v1", "api-keys"]
-            }
+              "raw": "{{baseUrl}}/api-keys",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-keys"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{portalJwt}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "## Authentication: JWT-only (portal session)\nThis endpoint REJECTS X-API-Key with 401. Use a portal session JWT instead.\n\n### How to obtain `{{portalJwt}}`\n1. Log in at https://portal.vaulthub.live\n2. Open DevTools → Application → Cookies → `cvh_session` → copy the value (or the access token from /auth/me)\n3. In the Postman environment, set `portalJwt` = that value.\n\n### Why JWT-only\nAPI key creation must require human-confirmed authentication so a leaked API key cannot mint new keys with broader scopes (privilege escalation block, security redesign 2026-05-09)."
           }
         },
         {
           "name": "Revoke API key",
           "request": {
             "method": "DELETE",
-            "header": [],
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "",
+                "disabled": true,
+                "description": "Disabled: this endpoint is JWT-only and rejects X-API-Key (privilege escalation block)."
+              }
+            ],
             "url": {
-              "raw": "{{baseUrl}}/client/v1/api-keys/:id",
-              "host": ["{{baseUrl}}"],
-              "path": ["client", "v1", "api-keys", ":id"],
-              "variable": [{ "key": "id", "value": "1" }]
-            }
+              "raw": "{{baseUrl}}/api-keys/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-keys",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{portalJwt}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "## Authentication: JWT-only (portal session)\nThis endpoint REJECTS X-API-Key with 401. Use a portal session JWT instead.\n\n### How to obtain `{{portalJwt}}`\n1. Log in at https://portal.vaulthub.live\n2. Open DevTools → Application → Cookies → `cvh_session` → copy the value (or the access token from /auth/me)\n3. In the Postman environment, set `portalJwt` = that value.\n\n### Why JWT-only\nAPI key creation must require human-confirmed authentication so a leaked API key cannot mint new keys with broader scopes (privilege escalation block, security redesign 2026-05-09)."
           }
         }
       ]

@@ -28,8 +28,10 @@ export class WebhookService {
     projectId: number;
     url: string;
     events: string[];
+    label?: string;
+    isActive?: boolean;
   }) {
-    const { clientId, projectId, url, events } = params;
+    const { clientId, projectId, url, events, label, isActive } = params;
 
     // Check for duplicate
     const existing = await this.prisma.webhook.findUnique({
@@ -55,7 +57,9 @@ export class WebhookService {
         url,
         secret,
         events: events as any,
-        isActive: true,
+        isActive: isActive ?? true,
+        // Map public `label` to legacy `description` column.
+        ...(label !== undefined ? { description: label } : {}),
       },
     });
 
@@ -71,7 +75,7 @@ export class WebhookService {
    */
   async updateWebhook(
     webhookId: number,
-    updates: { url?: string; events?: string[]; isActive?: boolean },
+    updates: { url?: string; events?: string[]; isActive?: boolean; label?: string },
   ) {
     const webhook = await this.prisma.webhook.findUnique({
       where: { id: BigInt(webhookId) },
@@ -90,6 +94,8 @@ export class WebhookService {
         ...(updates.isActive !== undefined
           ? { isActive: updates.isActive }
           : {}),
+        // Map public `label` to legacy `description` column.
+        ...(updates.label !== undefined ? { description: updates.label } : {}),
       },
     });
 
@@ -212,6 +218,7 @@ export class WebhookService {
       ...(includeSecret ? { secret: w.secret } : {}),
       events: w.events,
       isActive: w.isActive,
+      label: w.description ?? null,
       createdAt: w.createdAt,
     };
   }

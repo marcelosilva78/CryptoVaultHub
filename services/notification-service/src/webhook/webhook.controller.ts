@@ -20,6 +20,7 @@ import {
   CreateWebhookDto,
   UpdateWebhookDto,
   ManualDeliveryDto,
+  TestWebhookDto,
 } from '../common/dto/webhook.dto';
 
 @Controller('webhooks')
@@ -38,6 +39,8 @@ export class WebhookController {
       projectId: dto.projectId,
       url: dto.url,
       events: dto.events,
+      label: dto.label,
+      isActive: dto.isActive,
     });
     return { success: true, webhook };
   }
@@ -61,6 +64,19 @@ export class WebhookController {
   @HttpCode(HttpStatus.NO_CONTENT)
   async deleteWebhook(@Param('id', ParseIntPipe) id: number) {
     await this.webhookService.deleteWebhook(id);
+  }
+
+  @Post(':id/test')
+  @HttpCode(HttpStatus.OK)
+  async testWebhook(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: TestWebhookDto,
+  ) {
+    const delivery = await this.deliveryService.testWebhook(
+      BigInt(id),
+      dto?.clientId !== undefined ? BigInt(dto.clientId) : undefined,
+    );
+    return { success: true, delivery };
   }
 
   @Get(':id/deliveries')

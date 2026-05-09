@@ -8,15 +8,32 @@
   "auth": {
     "type": "apikey",
     "apikey": [
-      { "key": "key", "value": "X-API-Key", "type": "string" },
-      { "key": "value", "value": "{{apiKey}}", "type": "string" },
-      { "key": "in", "value": "header", "type": "string" }
+      {
+        "key": "key",
+        "value": "X-API-Key",
+        "type": "string"
+      },
+      {
+        "key": "value",
+        "value": "{{apiKey}}",
+        "type": "string"
+      },
+      {
+        "key": "in",
+        "value": "header",
+        "type": "string"
+      }
     ]
   },
   "event": [
     {
       "listen": "prerequest",
-      "script": { "type": "text/javascript", "exec": ["// Collection-level pre-request — runs before every request"] }
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Collection-level pre-request — runs before every request"
+        ]
+      }
     },
     {
       "listen": "test",
@@ -39,29 +56,50 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{baseUrl}}/projects", "host": ["{{baseUrl}}"], "path": ["projects"] },
+            "url": {
+              "raw": "{{baseUrl}}/projects",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects"
+              ]
+            },
             "description": "If this returns 200 with a `projects` array, your API key is valid and the connection is healthy."
           },
-          "event": [{
-            "listen": "test",
-            "script": { "type": "text/javascript", "exec": [
-              "pm.test('Status 200', () => pm.response.to.have.status(200));",
-              "pm.test('Has projects array', () => pm.expect(pm.response.json().projects).to.be.an('array'));",
-              "// Auto-set first project as default if not set",
-              "const data = pm.response.json();",
-              "if (data.projects && data.projects.length && !pm.environment.get('projectId')) {",
-              "  pm.environment.set('projectId', data.projects[0].id);",
-              "  console.log('projectId set to:', data.projects[0].id);",
-              "}"
-            ]}
-          }]
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has projects array', () => pm.expect(pm.response.json().projects).to.be.an('array'));",
+                  "// Auto-set first project as default if not set",
+                  "const data = pm.response.json();",
+                  "if (data.projects && data.projects.length && !pm.environment.get('projectId')) {",
+                  "  pm.environment.set('projectId', data.projects[0].id);",
+                  "  console.log('projectId set to:', data.projects[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "List supported chains",
           "request": {
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{baseUrl}}/chains", "host": ["{{baseUrl}}"], "path": ["chains"] },
+            "url": {
+              "raw": "{{baseUrl}}/chains",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "chains"
+              ]
+            },
             "description": "List all chains supported by the platform with their explorer URLs and native currency."
           }
         }
@@ -75,14 +113,32 @@
           "name": "List projects",
           "request": {
             "method": "GET",
-            "url": { "raw": "{{baseUrl}}/projects", "host": ["{{baseUrl}}"], "path": ["projects"] }
+            "url": {
+              "raw": "{{baseUrl}}/projects",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects"
+              ]
+            }
           }
         },
         {
           "name": "Get project deletion impact (dry-run)",
           "request": {
             "method": "GET",
-            "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/deletion-impact", "host": ["{{baseUrl}}"], "path": ["projects","{{projectId}}","deletion-impact"] },
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/deletion-impact",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "{{projectId}}",
+                "deletion-impact"
+              ]
+            },
             "description": "Returns counts of wallets/deposits/withdrawals/webhooks/api-keys that would be affected by deletion. Read-only."
           }
         },
@@ -90,7 +146,18 @@
           "name": "Get deploy traces (smart contracts)",
           "request": {
             "method": "GET",
-            "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/deploy/traces", "host": ["{{baseUrl}}"], "path": ["projects","{{projectId}}","deploy","traces"] },
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/deploy/traces",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "{{projectId}}",
+                "deploy",
+                "traces"
+              ]
+            },
             "description": "List of contract deployments for the project (hot_wallet, forwarder_factory, wallet_factory, forwarder_impl, wallet_impl) per chain."
           }
         }
@@ -104,7 +171,15 @@
           "name": "List wallets",
           "request": {
             "method": "GET",
-            "url": { "raw": "{{baseUrl}}/wallets", "host": ["{{baseUrl}}"], "path": ["wallets"] },
+            "url": {
+              "raw": "{{baseUrl}}/wallets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "wallets"
+              ]
+            },
             "description": "Returns hot/gas_tank wallets for all chains."
           }
         },
@@ -112,7 +187,17 @@
           "name": "Get balances on chain",
           "request": {
             "method": "GET",
-            "url": { "raw": "{{baseUrl}}/wallets/{{chainId}}/balances", "host": ["{{baseUrl}}"], "path": ["wallets","{{chainId}}","balances"] },
+            "url": {
+              "raw": "{{baseUrl}}/wallets/{{chainId}}/balances",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "wallets",
+                "{{chainId}}",
+                "balances"
+              ]
+            },
             "description": "Native + ERC20 balances for the project's hot wallet on the given chain."
           }
         }
@@ -126,26 +211,44 @@
           "name": "Generate deposit address",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"chainId\": {{chainId}},\n  \"label\": \"homolog-{{$timestamp}}\"\n}"
             },
-            "url": { "raw": "{{baseUrl}}/deposit-addresses", "host": ["{{baseUrl}}"], "path": ["deposit-addresses"] },
+            "url": {
+              "raw": "{{baseUrl}}/deposit-addresses",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "deposit-addresses"
+              ]
+            },
             "description": "Creates a new forwarder address (CREATE2). Address is computed deterministically; the underlying contract is deployed on first inbound tx. The label is free-form (use customer ID, invoice ID, etc.)."
           },
-          "event": [{
-            "listen": "test",
-            "script": { "type": "text/javascript", "exec": [
-              "pm.test('Status 200/201', () => pm.expect(pm.response.code).to.be.oneOf([200,201]));",
-              "const data = pm.response.json();",
-              "if (data && (data.address || data.depositAddress?.address)) {",
-              "  const addr = data.address || data.depositAddress.address;",
-              "  pm.environment.set('depositAddress', addr);",
-              "  console.log('depositAddress set to:', addr);",
-              "}"
-            ]}
-          }]
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200/201', () => pm.expect(pm.response.code).to.be.oneOf([200,201]));",
+                  "const data = pm.response.json();",
+                  "if (data && (data.address || data.depositAddress?.address)) {",
+                  "  const addr = data.address || data.depositAddress.address;",
+                  "  pm.environment.set('depositAddress', addr);",
+                  "  console.log('depositAddress set to:', addr);",
+                  "}"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "List deposit addresses",
@@ -153,12 +256,26 @@
             "method": "GET",
             "url": {
               "raw": "{{baseUrl}}/deposit-addresses?limit=50&page=1",
-              "host": ["{{baseUrl}}"],
-              "path": ["deposit-addresses"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "deposit-addresses"
+              ],
               "query": [
-                { "key": "limit", "value": "50" },
-                { "key": "page", "value": "1" },
-                { "key": "chainId", "value": "{{chainId}}", "disabled": true }
+                {
+                  "key": "limit",
+                  "value": "50"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "chainId",
+                  "value": "{{chainId}}",
+                  "disabled": true
+                }
               ]
             }
           }
@@ -167,7 +284,16 @@
           "name": "Get deposit address detail",
           "request": {
             "method": "GET",
-            "url": { "raw": "{{baseUrl}}/deposit-addresses/{{depositAddress}}", "host": ["{{baseUrl}}"], "path": ["deposit-addresses","{{depositAddress}}"] }
+            "url": {
+              "raw": "{{baseUrl}}/deposit-addresses/{{depositAddress}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "deposit-addresses",
+                "{{depositAddress}}"
+              ]
+            }
           }
         }
       ]
@@ -182,14 +308,36 @@
             "method": "GET",
             "url": {
               "raw": "{{baseUrl}}/deposits?limit=50&page=1",
-              "host": ["{{baseUrl}}"],
-              "path": ["deposits"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "deposits"
+              ],
               "query": [
-                { "key": "limit", "value": "50" },
-                { "key": "page", "value": "1" },
-                { "key": "chainId", "value": "{{chainId}}", "disabled": true },
-                { "key": "status", "value": "confirmed", "disabled": true },
-                { "key": "fromDate", "value": "2026-05-01T00:00:00Z", "disabled": true }
+                {
+                  "key": "limit",
+                  "value": "50"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "chainId",
+                  "value": "{{chainId}}",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "confirmed",
+                  "disabled": true
+                },
+                {
+                  "key": "fromDate",
+                  "value": "2026-05-01T00:00:00Z",
+                  "disabled": true
+                }
               ]
             },
             "description": "Most-polled endpoint in production. Use webhooks for real-time, this for reconciliation. Filters: chainId, status (pending|confirmed|swept), fromDate, toDate."
@@ -199,7 +347,16 @@
           "name": "Get deposit detail",
           "request": {
             "method": "GET",
-            "url": { "raw": "{{baseUrl}}/deposits/{{depositId}}", "host": ["{{baseUrl}}"], "path": ["deposits","{{depositId}}"] }
+            "url": {
+              "raw": "{{baseUrl}}/deposits/{{depositId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "deposits",
+                "{{depositId}}"
+              ]
+            }
           }
         }
       ]
@@ -214,12 +371,26 @@
             "method": "GET",
             "url": {
               "raw": "{{baseUrl}}/withdrawals?limit=50&page=1",
-              "host": ["{{baseUrl}}"],
-              "path": ["withdrawals"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "withdrawals"
+              ],
               "query": [
-                { "key": "limit", "value": "50" },
-                { "key": "page", "value": "1" },
-                { "key": "status", "value": "broadcast", "disabled": true }
+                {
+                  "key": "limit",
+                  "value": "50"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "status",
+                  "value": "broadcast",
+                  "disabled": true
+                }
               ]
             }
           }
@@ -228,27 +399,54 @@
           "name": "Create withdrawal",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"chainId\": {{chainId}},\n  \"toAddress\": \"{{withdrawalTarget}}\",\n  \"amount\": \"0.003\",\n  \"tokenAddress\": null,\n  \"externalReference\": \"homolog-test-{{$timestamp}}\"\n}"
             },
-            "url": { "raw": "{{baseUrl}}/withdrawals", "host": ["{{baseUrl}}"], "path": ["withdrawals"] },
+            "url": {
+              "raw": "{{baseUrl}}/withdrawals",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "withdrawals"
+              ]
+            },
             "description": "Sends `amount` from the hot wallet on `chainId` to `toAddress` (must be whitelisted). `tokenAddress` null = native token; for ERC20, pass the contract address. `externalReference` is your idempotency key (recommended).\n\n**Status flow:**\n- `pending` → `pending_kyt` (if KYT enabled) → `broadcast` → `confirmed`\n- `pending_cosign` (if co-sign mode) requires `POST /co-sign/:id/sign`\n\nWebhooks fire at: `withdrawal.created`, `withdrawal.broadcast`, `withdrawal.confirmed`."
           },
-          "event": [{
-            "listen": "test",
-            "script": { "type": "text/javascript", "exec": [
-              "const data = pm.response.json();",
-              "if (data && data.withdrawalId) pm.environment.set('withdrawalId', data.withdrawalId);"
-            ]}
-          }]
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const data = pm.response.json();",
+                  "if (data && data.withdrawalId) pm.environment.set('withdrawalId', data.withdrawalId);"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Get withdrawal status",
           "request": {
             "method": "GET",
-            "url": { "raw": "{{baseUrl}}/withdrawals/{{withdrawalId}}", "host": ["{{baseUrl}}"], "path": ["withdrawals","{{withdrawalId}}"] },
+            "url": {
+              "raw": "{{baseUrl}}/withdrawals/{{withdrawalId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "withdrawals",
+                "{{withdrawalId}}"
+              ]
+            },
             "description": "Poll this for status updates if you don't have webhooks set up."
           }
         }
@@ -262,19 +460,46 @@
           "name": "List flush operations",
           "request": {
             "method": "GET",
-            "url": { "raw": "{{baseUrl}}/flush?limit=20", "host": ["{{baseUrl}}"], "path": ["flush"], "query": [{ "key": "limit", "value": "20" }] }
+            "url": {
+              "raw": "{{baseUrl}}/flush?limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "flush"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
           }
         },
         {
           "name": "Initiate flush",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"chainId\": {{chainId}},\n  \"addressIds\": []\n}"
             },
-            "url": { "raw": "{{baseUrl}}/flush", "host": ["{{baseUrl}}"], "path": ["flush"] },
+            "url": {
+              "raw": "{{baseUrl}}/flush",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "flush"
+              ]
+            },
             "description": "Empty `addressIds` flushes ALL forwarders with balance on `chainId`. Pass specific IDs to flush selectively."
           }
         },
@@ -282,7 +507,16 @@
           "name": "Get flush operation detail",
           "request": {
             "method": "GET",
-            "url": { "raw": "{{baseUrl}}/flush/{{flushId}}", "host": ["{{baseUrl}}"], "path": ["flush","{{flushId}}"] }
+            "url": {
+              "raw": "{{baseUrl}}/flush/{{flushId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "flush",
+                "{{flushId}}"
+              ]
+            }
           }
         }
       ]
@@ -297,9 +531,23 @@
             "method": "GET",
             "url": {
               "raw": "{{baseUrl}}/addresses?limit=50",
-              "host": ["{{baseUrl}}"],
-              "path": ["addresses"],
-              "query": [{ "key": "limit", "value": "50" }, { "key": "chainId", "value": "{{chainId}}", "disabled": true }]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "addresses"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "50"
+                },
+                {
+                  "key": "chainId",
+                  "value": "{{chainId}}",
+                  "disabled": true
+                }
+              ]
             }
           }
         },
@@ -308,31 +556,79 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "X-2FA-Code", "value": "{{totpCode}}", "disabled": true, "description": "Required only if user has 2FA enabled." }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-2FA-Code",
+                "value": "{{totpCode}}",
+                "disabled": true,
+                "description": "Required only if user has 2FA enabled."
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"address\": \"{{withdrawalTarget}}\",\n  \"chainId\": {{chainId}},\n  \"label\": \"homolog-target\",\n  \"notes\": \"Test target for homologation\"\n}"
             },
-            "url": { "raw": "{{baseUrl}}/addresses", "host": ["{{baseUrl}}"], "path": ["addresses"] }
+            "url": {
+              "raw": "{{baseUrl}}/addresses",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "addresses"
+              ]
+            }
           }
         },
         {
           "name": "Update address label",
           "request": {
             "method": "PATCH",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"label\": \"new-label\"\n}" },
-            "url": { "raw": "{{baseUrl}}/addresses/{{addressId}}", "host": ["{{baseUrl}}"], "path": ["addresses","{{addressId}}"] }
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"label\": \"new-label\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/addresses/{{addressId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "addresses",
+                "{{addressId}}"
+              ]
+            }
           }
         },
         {
           "name": "Delete (disable) address",
           "request": {
             "method": "DELETE",
-            "header": [{ "key": "X-2FA-Code", "value": "{{totpCode}}", "disabled": true }],
-            "url": { "raw": "{{baseUrl}}/addresses/{{addressId}}", "host": ["{{baseUrl}}"], "path": ["addresses","{{addressId}}"] }
+            "header": [
+              {
+                "key": "X-2FA-Code",
+                "value": "{{totpCode}}",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/addresses/{{addressId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "addresses",
+                "{{addressId}}"
+              ]
+            }
           }
         }
       ]
@@ -345,42 +641,101 @@
           "name": "List groups",
           "request": {
             "method": "GET",
-            "url": { "raw": "{{baseUrl}}/address-groups?limit=50", "host": ["{{baseUrl}}"], "path": ["address-groups"], "query": [{ "key": "limit", "value": "50" }] }
+            "url": {
+              "raw": "{{baseUrl}}/address-groups?limit=50",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "address-groups"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "50"
+                }
+              ]
+            }
           }
         },
         {
           "name": "Create group",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"name\": \"homolog-group\",\n  \"description\": \"Test group\"\n}"
             },
-            "url": { "raw": "{{baseUrl}}/address-groups", "host": ["{{baseUrl}}"], "path": ["address-groups"] }
+            "url": {
+              "raw": "{{baseUrl}}/address-groups",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "address-groups"
+              ]
+            }
           },
-          "event": [{
-            "listen": "test",
-            "script": { "type": "text/javascript", "exec": [
-              "const d = pm.response.json();",
-              "if (d && (d.groupUid || d.group?.groupUid)) pm.environment.set('groupUid', d.groupUid || d.group.groupUid);"
-            ]}
-          }]
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const d = pm.response.json();",
+                  "if (d && (d.groupUid || d.group?.groupUid)) pm.environment.set('groupUid', d.groupUid || d.group.groupUid);"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Get group detail",
           "request": {
             "method": "GET",
-            "url": { "raw": "{{baseUrl}}/address-groups/{{groupUid}}", "host": ["{{baseUrl}}"], "path": ["address-groups","{{groupUid}}"] }
+            "url": {
+              "raw": "{{baseUrl}}/address-groups/{{groupUid}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "address-groups",
+                "{{groupUid}}"
+              ]
+            }
           }
         },
         {
           "name": "Provision group on chain",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"chainIds\": [{{chainId}}]\n}" },
-            "url": { "raw": "{{baseUrl}}/address-groups/{{groupUid}}/provision", "host": ["{{baseUrl}}"], "path": ["address-groups","{{groupUid}}","provision"] },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"chainIds\": [{{chainId}}]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/address-groups/{{groupUid}}/provision",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "address-groups",
+                "{{groupUid}}",
+                "provision"
+              ]
+            },
             "description": "Provision the group's forwarders on the specified chains."
           }
         }
@@ -394,7 +749,15 @@
           "name": "List gas tanks (live balance)",
           "request": {
             "method": "GET",
-            "url": { "raw": "{{baseUrl}}/gas-tanks", "host": ["{{baseUrl}}"], "path": ["gas-tanks"] },
+            "url": {
+              "raw": "{{baseUrl}}/gas-tanks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "gas-tanks"
+              ]
+            },
             "description": "Live balance, status (ok|low|critical), estimated operations remaining, derivation path."
           }
         },
@@ -404,12 +767,29 @@
             "method": "GET",
             "url": {
               "raw": "{{baseUrl}}/gas-tanks/{{chainId}}/history?limit=50&offset=0",
-              "host": ["{{baseUrl}}"],
-              "path": ["gas-tanks","{{chainId}}","history"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "gas-tanks",
+                "{{chainId}}",
+                "history"
+              ],
               "query": [
-                { "key": "limit", "value": "50" },
-                { "key": "offset", "value": "0" },
-                { "key": "type", "value": "sweep", "disabled": true, "description": "Filter: deploy_wallet|deploy_forwarder|sweep|flush|topup_internal|other" }
+                {
+                  "key": "limit",
+                  "value": "50"
+                },
+                {
+                  "key": "offset",
+                  "value": "0"
+                },
+                {
+                  "key": "type",
+                  "value": "sweep",
+                  "disabled": true,
+                  "description": "Filter: deploy_wallet|deploy_forwarder|sweep|flush|topup_internal|other"
+                }
               ]
             }
           }
@@ -418,7 +798,17 @@
           "name": "Get top-up URI (EIP-681)",
           "request": {
             "method": "GET",
-            "url": { "raw": "{{baseUrl}}/gas-tanks/{{chainId}}/topup-uri", "host": ["{{baseUrl}}"], "path": ["gas-tanks","{{chainId}}","topup-uri"] },
+            "url": {
+              "raw": "{{baseUrl}}/gas-tanks/{{chainId}}/topup-uri",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "gas-tanks",
+                "{{chainId}}",
+                "topup-uri"
+              ]
+            },
             "description": "Returns address + EIP-681 URI for QR code."
           }
         },
@@ -426,19 +816,44 @@
           "name": "Get alert config",
           "request": {
             "method": "GET",
-            "url": { "raw": "{{baseUrl}}/gas-tanks/{{chainId}}/alert-config", "host": ["{{baseUrl}}"], "path": ["gas-tanks","{{chainId}}","alert-config"] }
+            "url": {
+              "raw": "{{baseUrl}}/gas-tanks/{{chainId}}/alert-config",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "gas-tanks",
+                "{{chainId}}",
+                "alert-config"
+              ]
+            }
           }
         },
         {
           "name": "Update alert config",
           "request": {
             "method": "PATCH",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"thresholdWei\": \"1000000000000000\",\n  \"webhookEnabled\": true,\n  \"emailEnabled\": false\n}"
             },
-            "url": { "raw": "{{baseUrl}}/gas-tanks/{{chainId}}/alert-config", "host": ["{{baseUrl}}"], "path": ["gas-tanks","{{chainId}}","alert-config"] },
+            "url": {
+              "raw": "{{baseUrl}}/gas-tanks/{{chainId}}/alert-config",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "gas-tanks",
+                "{{chainId}}",
+                "alert-config"
+              ]
+            },
             "description": "Set the low-balance threshold (in wei) and enable/disable webhook + email channels for `gas_tank.low_balance` events."
           }
         },
@@ -446,12 +861,27 @@
           "name": "Export keystore (Web3 v3 JSON)",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"mnemonic\": \"<your-12-or-24-word-mnemonic>\",\n  \"password\": \"<keystore-password-min-8>\"\n}"
             },
-            "url": { "raw": "{{baseUrl}}/gas-tanks/{{chainId}}/export-keystore", "host": ["{{baseUrl}}"], "path": ["gas-tanks","{{chainId}}","export-keystore"] },
+            "url": {
+              "raw": "{{baseUrl}}/gas-tanks/{{chainId}}/export-keystore",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "gas-tanks",
+                "{{chainId}}",
+                "export-keystore"
+              ]
+            },
             "description": "Encrypts the gas tank private key as a Web3 Secret Storage v3 JSON. Mnemonic is processed in-memory only and never persisted/logged. Rate-limited."
           }
         }
@@ -463,34 +893,73 @@
       "item": [
         {
           "name": "List webhooks",
-          "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/webhooks", "host": ["{{baseUrl}}"], "path": ["webhooks"] } }
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/webhooks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "webhooks"
+              ]
+            }
+          }
         },
         {
           "name": "Create webhook",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"url\": \"{{webhookUrl}}\",\n  \"events\": [\n    \"deposit.detected\",\n    \"deposit.confirmed\",\n    \"withdrawal.created\",\n    \"withdrawal.broadcast\",\n    \"withdrawal.confirmed\",\n    \"forwarder.deployed\",\n    \"flush.completed\",\n    \"gas_tank.low_balance\"\n  ],\n  \"description\": \"Homologation webhook\"\n}"
             },
-            "url": { "raw": "{{baseUrl}}/webhooks", "host": ["{{baseUrl}}"], "path": ["webhooks"] },
+            "url": {
+              "raw": "{{baseUrl}}/webhooks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "webhooks"
+              ]
+            },
             "description": "Returns `secret` ONCE — store it; used to verify HMAC-SHA256 signatures on the `x-webhook-signature` header."
           },
-          "event": [{
-            "listen": "test",
-            "script": { "type": "text/javascript", "exec": [
-              "const d = pm.response.json();",
-              "if (d && d.id) pm.environment.set('webhookId', d.id);",
-              "if (d && d.secret) console.log('IMPORTANT — webhook secret (save in env):', d.secret);"
-            ]}
-          }]
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const d = pm.response.json();",
+                  "if (d && d.id) pm.environment.set('webhookId', d.id);",
+                  "if (d && d.secret) console.log('IMPORTANT — webhook secret (save in env):', d.secret);"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Send test ping",
           "request": {
             "method": "POST",
-            "url": { "raw": "{{baseUrl}}/webhooks/{{webhookId}}/test", "host": ["{{baseUrl}}"], "path": ["webhooks","{{webhookId}}","test"] }
+            "url": {
+              "raw": "{{baseUrl}}/webhooks/{{webhookId}}/test",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "webhooks",
+                "{{webhookId}}",
+                "test"
+              ]
+            }
           }
         },
         {
@@ -499,9 +968,20 @@
             "method": "GET",
             "url": {
               "raw": "{{baseUrl}}/webhooks/{{webhookId}}/deliveries?limit=50",
-              "host": ["{{baseUrl}}"],
-              "path": ["webhooks","{{webhookId}}","deliveries"],
-              "query": [{ "key": "limit", "value": "50" }]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "webhooks",
+                "{{webhookId}}",
+                "deliveries"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "50"
+                }
+              ]
             }
           }
         },
@@ -509,14 +989,34 @@
           "name": "Retry failed delivery",
           "request": {
             "method": "POST",
-            "url": { "raw": "{{baseUrl}}/webhooks/deliveries/{{deliveryId}}/retry", "host": ["{{baseUrl}}"], "path": ["webhooks","deliveries","{{deliveryId}}","retry"] }
+            "url": {
+              "raw": "{{baseUrl}}/webhooks/deliveries/{{deliveryId}}/retry",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "webhooks",
+                "deliveries",
+                "{{deliveryId}}",
+                "retry"
+              ]
+            }
           }
         },
         {
           "name": "Delete webhook",
           "request": {
             "method": "DELETE",
-            "url": { "raw": "{{baseUrl}}/webhooks/{{webhookId}}", "host": ["{{baseUrl}}"], "path": ["webhooks","{{webhookId}}"] }
+            "url": {
+              "raw": "{{baseUrl}}/webhooks/{{webhookId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "webhooks",
+                "{{webhookId}}"
+              ]
+            }
           }
         }
       ]
@@ -527,41 +1027,100 @@
       "item": [
         {
           "name": "List rules",
-          "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/notifications/rules", "host": ["{{baseUrl}}"], "path": ["notifications","rules"] } }
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/notifications/rules",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notifications",
+                "rules"
+              ]
+            }
+          }
         },
         {
           "name": "Create rule",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"event\": \"deposit.detected\",\n  \"channel\": \"webhook\",\n  \"filter\": { \"minAmount\": \"0.001\" },\n  \"enabled\": true\n}"
             },
-            "url": { "raw": "{{baseUrl}}/notifications/rules", "host": ["{{baseUrl}}"], "path": ["notifications","rules"] }
+            "url": {
+              "raw": "{{baseUrl}}/notifications/rules",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notifications",
+                "rules"
+              ]
+            }
           },
-          "event": [{
-            "listen": "test",
-            "script": { "type": "text/javascript", "exec": [
-              "const d = pm.response.json();",
-              "if (d && d.id) pm.environment.set('ruleId', d.id);"
-            ]}
-          }]
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const d = pm.response.json();",
+                  "if (d && d.id) pm.environment.set('ruleId', d.id);"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Update rule (toggle enabled)",
           "request": {
             "method": "PUT",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"enabled\": false\n}" },
-            "url": { "raw": "{{baseUrl}}/notifications/rules/{{ruleId}}", "host": ["{{baseUrl}}"], "path": ["notifications","rules","{{ruleId}}"] }
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"enabled\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/notifications/rules/{{ruleId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notifications",
+                "rules",
+                "{{ruleId}}"
+              ]
+            }
           }
         },
         {
           "name": "Delete rule",
           "request": {
             "method": "DELETE",
-            "url": { "raw": "{{baseUrl}}/notifications/rules/{{ruleId}}", "host": ["{{baseUrl}}"], "path": ["notifications","rules","{{ruleId}}"] }
+            "url": {
+              "raw": "{{baseUrl}}/notifications/rules/{{ruleId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notifications",
+                "rules",
+                "{{ruleId}}"
+              ]
+            }
           }
         }
       ]
@@ -574,26 +1133,59 @@
           "name": "List pending operations",
           "request": {
             "method": "GET",
-            "url": { "raw": "{{baseUrl}}/co-sign/pending", "host": ["{{baseUrl}}"], "path": ["co-sign","pending"] }
+            "url": {
+              "raw": "{{baseUrl}}/co-sign/pending",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "co-sign",
+                "pending"
+              ]
+            }
           }
         },
         {
           "name": "Get operation detail",
           "request": {
             "method": "GET",
-            "url": { "raw": "{{baseUrl}}/co-sign/{{operationId}}", "host": ["{{baseUrl}}"], "path": ["co-sign","{{operationId}}"] }
+            "url": {
+              "raw": "{{baseUrl}}/co-sign/{{operationId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "co-sign",
+                "{{operationId}}"
+              ]
+            }
           }
         },
         {
           "name": "Submit signature",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"signature\": \"0x<r-32B><s-32B><v-1B>\",\n  \"publicKey\": \"0x<optional-public-key-hex>\"\n}"
             },
-            "url": { "raw": "{{baseUrl}}/co-sign/{{operationId}}/sign", "host": ["{{baseUrl}}"], "path": ["co-sign","{{operationId}}","sign"] },
+            "url": {
+              "raw": "{{baseUrl}}/co-sign/{{operationId}}/sign",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "co-sign",
+                "{{operationId}}",
+                "sign"
+              ]
+            },
             "description": "Sign the `txHash` from the pending operation with your key share, submit hex."
           }
         }
@@ -607,40 +1199,91 @@
           "name": "List exports",
           "request": {
             "method": "GET",
-            "url": { "raw": "{{baseUrl}}/exports?limit=20", "host": ["{{baseUrl}}"], "path": ["exports"], "query": [{ "key": "limit", "value": "20" }] }
+            "url": {
+              "raw": "{{baseUrl}}/exports?limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "exports"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
           }
         },
         {
           "name": "Create export request",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"type\": \"transactions\",\n  \"format\": \"csv\",\n  \"chainId\": {{chainId}},\n  \"fromDate\": \"2026-05-01T00:00:00Z\",\n  \"toDate\": \"2026-05-31T23:59:59Z\"\n}"
             },
-            "url": { "raw": "{{baseUrl}}/exports", "host": ["{{baseUrl}}"], "path": ["exports"] }
+            "url": {
+              "raw": "{{baseUrl}}/exports",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "exports"
+              ]
+            }
           },
-          "event": [{
-            "listen": "test",
-            "script": { "type": "text/javascript", "exec": [
-              "const d = pm.response.json();",
-              "if (d && d.requestUid) pm.environment.set('exportId', d.requestUid);"
-            ]}
-          }]
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const d = pm.response.json();",
+                  "if (d && d.requestUid) pm.environment.set('exportId', d.requestUid);"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Get export status",
           "request": {
             "method": "GET",
-            "url": { "raw": "{{baseUrl}}/exports/{{exportId}}", "host": ["{{baseUrl}}"], "path": ["exports","{{exportId}}"] }
+            "url": {
+              "raw": "{{baseUrl}}/exports/{{exportId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "exports",
+                "{{exportId}}"
+              ]
+            }
           }
         },
         {
           "name": "Download export file",
           "request": {
             "method": "GET",
-            "url": { "raw": "{{baseUrl}}/exports/{{exportId}}/download", "host": ["{{baseUrl}}"], "path": ["exports","{{exportId}}","download"] },
+            "url": {
+              "raw": "{{baseUrl}}/exports/{{exportId}}/download",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "exports",
+                "{{exportId}}",
+                "download"
+              ]
+            },
             "description": "Streams the file. Use Postman's 'Save Response → Save to file'."
           }
         }
@@ -652,17 +1295,209 @@
       "item": [
         {
           "name": "Get security settings",
-          "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/security/settings", "host": ["{{baseUrl}}"], "path": ["security","settings"] } }
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/security/settings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "security",
+                "settings"
+              ]
+            }
+          }
         },
         {
           "name": "Get 2FA status",
-          "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/security/2fa-status", "host": ["{{baseUrl}}"], "path": ["security","2fa-status"] } }
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/security/2fa-status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "security",
+                "2fa-status"
+              ]
+            }
+          }
         },
         {
           "name": "Get Shamir shares status",
-          "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/security/shamir-shares", "host": ["{{baseUrl}}"], "path": ["security","shamir-shares"] } }
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/security/shamir-shares",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "security",
+                "shamir-shares"
+              ]
+            }
+          }
         }
       ]
+    },
+    {
+      "name": "15 Self-Service API Keys (JWT-only)",
+      "item": [
+        {
+          "name": "List my API keys",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{portalJwt}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "",
+                "disabled": true,
+                "description": "Disabled: this endpoint is JWT-only and rejects X-API-Key."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-keys",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-keys"
+              ]
+            },
+            "description": "## Authentication: JWT-only (portal session)\nThis endpoint REJECTS X-API-Key with 401. Use a portal session JWT instead.\n\n### How to obtain `{{portalJwt}}`\n1. Log in at https://portal.vaulthub.live\n2. DevTools → Application → Cookies → `cvh_session` → copy value (or grab the access token from /auth/me)\n3. Set Postman env `portalJwt` = that value.\n\nAPI key creation must require human-confirmed auth so a leaked API key cannot mint new keys with broader scopes (privilege escalation block, security redesign 2026-05-09).\n\nReturns the masked list of keys for the authenticated client."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.expect(pm.response.code).to.eql(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create API key (granular scopes + IP allowlist + expiry)",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{portalJwt}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-API-Key",
+                "value": "",
+                "disabled": true,
+                "description": "Disabled: JWT-only endpoint."
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"projectId\": 6998,\n  \"scopes\": [\n    \"wallets:read\",\n    \"deposits:read\",\n    \"withdrawals:read\"\n  ],\n  \"label\": \"BrPay validation key (read-only)\",\n  \"ipAllowlist\": [\n    \"203.0.113.0/24\"\n  ],\n  \"expiresAt\": \"2027-01-01T00:00:00Z\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api-keys",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-keys"
+              ]
+            },
+            "description": "## Authentication: JWT-only (portal session)\nThis endpoint REJECTS X-API-Key with 401. Use a portal session JWT instead.\n\n### How to obtain `{{portalJwt}}`\n1. Log in at https://portal.vaulthub.live\n2. DevTools → Application → Cookies → `cvh_session` → copy value (or grab the access token from /auth/me)\n3. Set Postman env `portalJwt` = that value.\n\nAPI key creation must require human-confirmed auth so a leaked API key cannot mint new keys with broader scopes (privilege escalation block, security redesign 2026-05-09).\n\n### Body fields\n- `projectId` (required): numeric id, owned by the authenticated client.\n- `scopes[]` (required, min 1, unique): granular `resource:action` scopes. Macros (`read`/`write`/`withdraw`) NOT accepted on the self-service path.\n- `label?` (max 100): human-readable.\n- `ipAllowlist?[]`: exact IPs or CIDR blocks; requests from outside return 401.\n- `allowedChains?[]`: numeric chain ids the key may operate on.\n- `expiresAt?`: ISO 8601 timestamp.\n\nResponse contains the **raw key value ONCE** — store securely."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.expect(pm.response.code).to.eql(201));",
+                  "const j = pm.response.json(); if (j?.id) pm.environment.set('createdApiKeyId', j.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Revoke API key",
+          "request": {
+            "method": "DELETE",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{portalJwt}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "",
+                "disabled": true,
+                "description": "Disabled: JWT-only endpoint."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-keys/{{createdApiKeyId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-keys",
+                "{{createdApiKeyId}}"
+              ]
+            },
+            "description": "## Authentication: JWT-only (portal session)\nThis endpoint REJECTS X-API-Key with 401. Use a portal session JWT instead.\n\n### How to obtain `{{portalJwt}}`\n1. Log in at https://portal.vaulthub.live\n2. DevTools → Application → Cookies → `cvh_session` → copy value (or grab the access token from /auth/me)\n3. Set Postman env `portalJwt` = that value.\n\nAPI key creation must require human-confirmed auth so a leaked API key cannot mint new keys with broader scopes (privilege escalation block, security redesign 2026-05-09).\n\nIrrevocable. After revoking, requests with the old key value return 401."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.expect(pm.response.code).to.eql(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ],
+      "description": "## Authentication: JWT-only (portal session)\nThis endpoint REJECTS X-API-Key with 401. Use a portal session JWT instead.\n\n### How to obtain `{{portalJwt}}`\n1. Log in at https://portal.vaulthub.live\n2. DevTools → Application → Cookies → `cvh_session` → copy value (or grab the access token from /auth/me)\n3. Set Postman env `portalJwt` = that value.\n\nAPI key creation must require human-confirmed auth so a leaked API key cannot mint new keys with broader scopes (privilege escalation block, security redesign 2026-05-09)."
     }
   ],
   "variable": []

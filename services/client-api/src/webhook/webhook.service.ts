@@ -81,10 +81,13 @@ export class WebhookService {
     },
   ) {
     try {
+      // clientId is sent as a query param (not body) — notification-service
+      // uses it to verify ownership but its UpdateWebhookDto rejects it in body
+      // because of forbidNonWhitelisted.
       const { data: result } = await axios.patch(
         `${this.notificationUrl}/webhooks/${webhookId}`,
-        { clientId, ...data },
-        { headers: this.headers, timeout: 10000 },
+        data,
+        { headers: this.headers, params: { clientId }, timeout: 10000 },
       );
       return result;
     } catch (error: any) {

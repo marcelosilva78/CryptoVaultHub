@@ -2,7 +2,6 @@ import {
   Injectable,
   Logger,
   NotFoundException,
-  ConflictException,
 } from '@nestjs/common';
 import { ethers } from 'ethers';
 import { PrismaService } from '../prisma/prisma.service';
@@ -41,7 +40,9 @@ export class DepositAddressService {
     externalId: string,
     label?: string,
   ): Promise<DepositAddressResult> {
-    // Check for duplicate
+    // Idempotent on externalId: same (clientId, chainId, externalId) returns the
+    // existing record with the same deterministic CREATE2 address, matching the
+    // public API contract documented in client-api/deposit.controller.ts.
     const existing = await this.prisma.depositAddress.findUnique({
       where: {
         uq_client_chain_external: {
@@ -52,9 +53,16 @@ export class DepositAddressService {
       },
     });
     if (existing) {
-      throw new ConflictException(
-        `Deposit address already exists for client ${clientId}, chain ${chainId}, external ID ${externalId}`,
+      this.logger.log(
+        `Deposit address idempotent hit for client ${clientId}, chain ${chainId}, external ID ${externalId}: ${existing.address}`,
       );
+      return {
+        address: existing.address,
+        externalId: existing.externalId,
+        label: existing.label ?? null,
+        salt: existing.salt,
+        isDeployed: existing.isDeployed,
+      };
     }
 
     // Get the client's hot wallet and gas tank on this chain

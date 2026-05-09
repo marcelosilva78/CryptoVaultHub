@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import { NotFoundException } from '@nestjs/common';
 import { ethers } from 'ethers';
 import { DepositAddressService } from './deposit-address.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -159,14 +159,29 @@ describe('DepositAddressService', () => {
       );
     });
 
-    it('should throw ConflictException if address already exists', async () => {
+    it('should return the existing record idempotently if (clientId, chainId, externalId) already exists', async () => {
+      const existingAddress = '0x1111111111111111111111111111111111111111';
+      const existingSalt = '0xdeadbeef';
       mockPrisma.depositAddress.findUnique.mockResolvedValueOnce({
         id: BigInt(1),
+        address: existingAddress,
+        externalId: 'user-123',
+        label: 'first call',
+        salt: existingSalt,
+        isDeployed: false,
       });
 
-      await expect(
-        service.generateAddress(1, 1, 'user-123'),
-      ).rejects.toThrow(ConflictException);
+      const result = await service.generateAddress(1, 1, 'user-123', 'second call');
+
+      expect(result).toEqual({
+        address: existingAddress,
+        externalId: 'user-123',
+        label: 'first call',
+        salt: existingSalt,
+        isDeployed: false,
+      });
+      // No DB write on idempotent hit
+      expect(mockPrisma.depositAddress.create).not.toHaveBeenCalled();
     });
 
     it('should throw NotFoundException if hot wallet not found', async () => {

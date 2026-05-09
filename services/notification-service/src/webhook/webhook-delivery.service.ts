@@ -1,4 +1,10 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import * as crypto from 'crypto';
@@ -319,6 +325,194 @@ export class WebhookDeliveryService {
         attemptNumber,
         error.code,
       );
+    }
+  }
+
+  /**
+   * Send a synchronous test webhook (a "ping") to validate that a customer's
+   * endpoint is reachable and accepts our signed payload format. Records the
+   * delivery in the database (same shape as a real event) so it appears in
+   * GET /webhooks/:id/deliveries. Does NOT enqueue retries — this is a
+   * one-shot diagnostic call. Capped at 10s.
+   *
+   * If `clientId` is provided, the webhook ownership is verified.
+   */
+  async testWebhook(webhookId: bigint, clientId?: bigint) {
+    const webhook = await this.webhookService.getWebhookById(webhookId);
+    if (!webhook) {
+      throw new NotFoundException(`Webhook ${webhookId} not found`);
+    }
+
+    if (clientId !== undefined && webhook.clientId !== clientId) {
+      throw new NotFoundException(
+        `Webhook ${webhookId} not found for this client`,
+      );
+    }
+
+    // Enforce HTTPS in production — must match the same security posture as
+    // real events. WebhookService.createWebhook should normally prevent this,
+    // but we guard here to never relax the contract for the test endpoint.
+    if (
+      process.env.NODE_ENV === 'production' &&
+      !/^https:\/\//i.test(webhook.url)
+    ) {
+      throw new BadRequestException(
+        'Webhook URL must use HTTPS in production',
+      );
+    }
+
+    const eventType = 'webhook.test';
+    const deliveryCode = `dlv_${uuidv4().replace(/-/g, '')}`;
+    const idempotencyKey = `idem_${uuidv4().replace(/-/g, '')}`;
+    const correlationId = `cor_${uuidv4().replace(/-/g, '')}`;
+
+    const samplePayload = {
+      event: eventType,
+      data: {
+        webhookId: Number(webhook.id),
+        clientId: Number(webhook.clientId),
+        message: 'This is a test ping from CryptoVaultHub. If you received this, your webhook endpoint is reachable and the HMAC signature can be verified using your webhook secret.',
+        timestamp: new Date().toISOString(),
+      },
+      timestamp: new Date().toISOString(),
+    };
+
+    const delivery = await this.prisma.webhookDelivery.create({
+      data: {
+        deliveryCode,
+        webhookId: webhook.id,
+        clientId: webhook.clientId,
+        projectId: webhook.projectId,
+        eventType,
+        payload: samplePayload as any,
+        status: 'queued',
+        maxAttempts: 1,
+        idempotencyKey,
+        correlationId,
+        requestUrl: webhook.url,
+      },
+    });
+
+    // Cap synchronous outbound call at 10s, regardless of webhook config.
+    const TEST_TIMEOUT_MS = 10000;
+    const payloadStr = JSON.stringify(samplePayload);
+    const signature = this.computeSignature(payloadStr, webhook.secret);
+
+    const requestHeaders: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'X-Signature': `sha256=${signature}`,
+      'X-Event-Type': eventType,
+      'X-Delivery-Id': deliveryCode,
+      'X-Idempotency-Key': idempotencyKey,
+      'X-Correlation-Id': correlationId,
+      'X-CVH-Test': 'true',
+    };
+
+    const startTime = Date.now();
+
+    try {
+      const response = await axios.post(webhook.url, payloadStr, {
+        headers: requestHeaders,
+        timeout: TEST_TIMEOUT_MS,
+        validateStatus: () => true,
+      });
+
+      const responseTimeMs = Date.now() - startTime;
+      const isSuccess = response.status >= 200 && response.status < 300;
+      const responseBody =
+        typeof response.data === 'string'
+          ? response.data.slice(0, 2000)
+          : JSON.stringify(response.data).slice(0, 2000);
+
+      const responseHeaders = response.headers
+        ? Object.fromEntries(
+            Object.entries(response.headers).map(([k, v]) => [k, String(v)]),
+          )
+        : null;
+
+      await this.attemptRecorder.recordAttempt({
+        deliveryId: delivery.id,
+        attemptNumber: 1,
+        status: isSuccess ? 'success' : 'failed',
+        requestUrl: webhook.url,
+        requestHeaders,
+        requestBody: samplePayload,
+        responseStatus: response.status,
+        responseHeaders,
+        responseBody,
+        responseTimeMs,
+      });
+
+      const updated = await this.prisma.webhookDelivery.update({
+        where: { id: delivery.id },
+        data: {
+          status: isSuccess ? 'sent' : 'failed',
+          httpStatus: response.status,
+          responseBody,
+          responseTimeMs,
+          responseHeaders: responseHeaders as any,
+          requestHeaders: requestHeaders as any,
+          attempts: 1,
+          lastAttemptAt: new Date(),
+          nextRetryAt: null,
+          ...(isSuccess
+            ? {}
+            : {
+                error: `HTTP ${response.status}`,
+                errorMessage: `HTTP ${response.status}`,
+              }),
+        },
+      });
+
+      webhookDeliveriesTotal.inc({ status: isSuccess ? 'success' : 'failure' });
+      if (isSuccess) webhookDeliveriesSuccess.inc();
+
+      this.logger.log(
+        `Test webhook ${webhookId} -> ${webhook.url} (HTTP ${response.status}, ${responseTimeMs}ms)`,
+      );
+
+      return this.formatDelivery(updated);
+    } catch (error: any) {
+      const responseTimeMs = Date.now() - startTime;
+      const errorMessage = error.message || 'Unknown error';
+      const isTimeout =
+        error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT';
+
+      await this.attemptRecorder.recordAttempt({
+        deliveryId: delivery.id,
+        attemptNumber: 1,
+        status: isTimeout ? 'timeout' : 'error',
+        requestUrl: webhook.url,
+        requestHeaders,
+        requestBody: samplePayload,
+        responseTimeMs,
+        errorMessage,
+        errorCode: error.code ?? null,
+      });
+
+      const updated = await this.prisma.webhookDelivery.update({
+        where: { id: delivery.id },
+        data: {
+          status: 'failed',
+          httpStatus: null,
+          responseTimeMs,
+          requestHeaders: requestHeaders as any,
+          attempts: 1,
+          lastAttemptAt: new Date(),
+          nextRetryAt: null,
+          error: errorMessage,
+          errorMessage,
+          errorCode: error.code ?? null,
+        },
+      });
+
+      webhookDeliveriesTotal.inc({ status: 'error' });
+
+      this.logger.warn(
+        `Test webhook ${webhookId} -> ${webhook.url} failed: ${errorMessage}`,
+      );
+
+      return this.formatDelivery(updated);
     }
   }
 

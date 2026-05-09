@@ -25,7 +25,16 @@ export class ExportApiService {
     try {
       const response = await axios.post(
         `${this.cronWorkerUrl}/exports`,
-        { clientId, ...request },
+        {
+          clientId,
+          // Self-service exports via API key: the client itself is the requester.
+          // The downstream `export_requests.requested_by` column is NOT NULL.
+          requestedBy: clientId,
+          isAdminExport: false,
+          filters: request.filters ?? {},
+          exportType: request.exportType,
+          format: request.format,
+        },
         { headers: this.headers, timeout: 10000 },
       );
       return response.data;

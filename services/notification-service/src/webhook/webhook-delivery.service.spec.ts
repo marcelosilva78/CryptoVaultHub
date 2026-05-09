@@ -402,6 +402,180 @@ describe('WebhookDeliveryService', () => {
     });
   });
 
+  describe('testWebhook', () => {
+    const TEST_WEBHOOK_WITH_PROJECT = {
+      ...TEST_WEBHOOK,
+      projectId: BigInt(7),
+    };
+
+    beforeEach(() => {
+      mockWebhookService.getWebhookById.mockResolvedValue({
+        ...TEST_WEBHOOK_WITH_PROJECT,
+      });
+    });
+
+    it('should send a synchronous signed test request and persist delivery', async () => {
+      mockedAxios.post.mockResolvedValue({
+        status: 200,
+        data: 'ok',
+        headers: { 'content-type': 'text/plain' },
+      });
+
+      const result = await service.testWebhook(BigInt(1));
+
+      // Posted to the webhook URL with HMAC sha256 signature header
+      expect(mockedAxios.post).toHaveBeenCalledWith(
+        'https://example.com/webhook',
+        expect.any(String),
+        expect.objectContaining({
+          timeout: 10000,
+          headers: expect.objectContaining({
+            'Content-Type': 'application/json',
+            'X-Event-Type': 'webhook.test',
+            'X-CVH-Test': 'true',
+          }),
+        }),
+      );
+
+      const sentHeaders = mockedAxios.post.mock.calls[0][2]!.headers as Record<
+        string,
+        string
+      >;
+      expect(sentHeaders['X-Signature']).toMatch(/^sha256=[0-9a-f]{64}$/);
+
+      // Verify signature is computed over the EXACT posted body using the webhook secret
+      const postedPayload = mockedAxios.post.mock.calls[0][1] as string;
+      const expectedSig = service.computeSignature(
+        postedPayload,
+        TEST_WEBHOOK_WITH_PROJECT.secret,
+      );
+      expect(sentHeaders['X-Signature']).toBe(`sha256=${expectedSig}`);
+
+      // Created a delivery row with eventType webhook.test and queued status
+      expect(mockPrisma.webhookDelivery.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          eventType: 'webhook.test',
+          webhookId: TEST_WEBHOOK_WITH_PROJECT.id,
+          clientId: TEST_WEBHOOK_WITH_PROJECT.clientId,
+          projectId: TEST_WEBHOOK_WITH_PROJECT.projectId,
+          status: 'queued',
+          maxAttempts: 1,
+          requestUrl: TEST_WEBHOOK_WITH_PROJECT.url,
+        }),
+      });
+
+      // Then updated to sent on HTTP 2xx
+      expect(mockPrisma.webhookDelivery.update).toHaveBeenCalledWith({
+        where: { id: BigInt(10) },
+        data: expect.objectContaining({
+          status: 'sent',
+          httpStatus: 200,
+          attempts: 1,
+        }),
+      });
+
+      // Recorded a delivery attempt for traceability
+      expect(mockAttemptRecorder.recordAttempt).toHaveBeenCalledWith(
+        expect.objectContaining({
+          attemptNumber: 1,
+          status: 'success',
+          requestUrl: TEST_WEBHOOK_WITH_PROJECT.url,
+          responseStatus: 200,
+        }),
+      );
+
+      // Returns formatted delivery row (id + status fields)
+      expect(result).toEqual(
+        expect.objectContaining({
+          id: 10,
+          status: 'sent',
+          httpStatus: 200,
+          attempts: 1,
+        }),
+      );
+
+      // Does NOT enqueue retries — this is synchronous one-shot
+      expect(mockQueue.add).not.toHaveBeenCalled();
+    });
+
+    it('should record failure on non-2xx without enqueuing retries', async () => {
+      mockedAxios.post.mockResolvedValue({
+        status: 500,
+        data: 'boom',
+        headers: {},
+      });
+
+      const result = await service.testWebhook(BigInt(1));
+
+      expect(mockPrisma.webhookDelivery.update).toHaveBeenCalledWith({
+        where: { id: BigInt(10) },
+        data: expect.objectContaining({
+          status: 'failed',
+          httpStatus: 500,
+          attempts: 1,
+        }),
+      });
+      expect(mockQueue.add).not.toHaveBeenCalled();
+      expect(result.status).toBe('failed');
+    });
+
+    it('should record failure on network error / timeout without enqueuing retries', async () => {
+      const err: any = new Error('timeout of 10000ms exceeded');
+      err.code = 'ECONNABORTED';
+      mockedAxios.post.mockRejectedValue(err);
+
+      const result = await service.testWebhook(BigInt(1));
+
+      expect(mockAttemptRecorder.recordAttempt).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'timeout' }),
+      );
+      expect(mockPrisma.webhookDelivery.update).toHaveBeenCalledWith({
+        where: { id: BigInt(10) },
+        data: expect.objectContaining({
+          status: 'failed',
+          attempts: 1,
+          errorCode: 'ECONNABORTED',
+        }),
+      });
+      expect(mockQueue.add).not.toHaveBeenCalled();
+      expect(result.status).toBe('failed');
+    });
+
+    it('should throw NotFoundException when webhook does not exist', async () => {
+      mockWebhookService.getWebhookById.mockResolvedValue(null);
+
+      await expect(service.testWebhook(BigInt(999))).rejects.toThrow(
+        /not found/i,
+      );
+      expect(mockedAxios.post).not.toHaveBeenCalled();
+      expect(mockPrisma.webhookDelivery.create).not.toHaveBeenCalled();
+    });
+
+    it('should reject when clientId does not match webhook owner', async () => {
+      await expect(
+        service.testWebhook(BigInt(1), BigInt(999)),
+      ).rejects.toThrow(/not found/i);
+      expect(mockedAxios.post).not.toHaveBeenCalled();
+      expect(mockPrisma.webhookDelivery.create).not.toHaveBeenCalled();
+    });
+
+    it('should reject non-HTTPS URLs in production', async () => {
+      const originalEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = 'production';
+      mockWebhookService.getWebhookById.mockResolvedValue({
+        ...TEST_WEBHOOK_WITH_PROJECT,
+        url: 'http://insecure.example.com/webhook',
+      });
+
+      try {
+        await expect(service.testWebhook(BigInt(1))).rejects.toThrow(/HTTPS/);
+        expect(mockedAxios.post).not.toHaveBeenCalled();
+      } finally {
+        process.env.NODE_ENV = originalEnv;
+      }
+    });
+  });
+
   describe('listDeliveries', () => {
     it('should call prisma with correct filters', async () => {
       await service.listDeliveries(1, 'failed');

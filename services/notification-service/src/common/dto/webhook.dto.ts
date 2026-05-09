@@ -25,6 +25,15 @@ export class CreateWebhookDto {
   @ArrayMinSize(1)
   @IsString({ each: true })
   events: string[];
+
+  // Public-facing API uses `label`; persisted on `description` column.
+  @IsOptional()
+  @IsString()
+  label?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
 }
 
 export class UpdateWebhookDto {
@@ -40,6 +49,10 @@ export class UpdateWebhookDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @IsOptional()
+  @IsString()
+  label?: string;
 }
 
 export class ManualDeliveryDto {
@@ -56,4 +69,11 @@ export class ManualDeliveryDto {
   eventType: string;
 
   payload: any;
+}
+
+export class TestWebhookDto {
+  @IsOptional()
+  @IsInt()
+  @IsPositive()
+  clientId?: number;
 }
