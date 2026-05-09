@@ -266,13 +266,38 @@ The amount should be provided as a decimal string in the token's standard unit (
   @ClientAuth('withdrawals:hot', 'withdrawals:gas-tank')
   @ApiOperation({
     summary: 'Approve a pending withdrawal (full-custody only)',
-    description: `Self-approves a withdrawal in pending_approval status. Available only for clients with custodyMode=full_custody, where the API key already represents the client's full authority over funds. The withdrawal moves from pending_approval → approved and the cron worker will pick it up for signing/broadcasting on its next 30-second tick.`,
+    description: `Self-approves a withdrawal in pending_approval status. Available only for clients with custodyMode=full_custody, where the API key already represents the client's full authority over funds. The withdrawal moves from pending_approval → approved and the cron worker will pick it up for signing/broadcasting on its next 30-second tick.
+
+**Scope precision:** The guard accepts either \`withdrawals:hot\` or \`withdrawals:gas-tank\`, but the in-handler check enforces the exact match against the withdrawal's persisted \`sourceWallet\`. A key holding only \`withdrawals:hot\` cannot approve a \`gas_tank\` withdrawal, and vice-versa. Legacy keys with the \`withdraw\` macro (which expands to both granular scopes) continue to authorize approvals from either source.`,
   })
   @ApiParam({ name: 'id', type: String, description: 'Withdrawal id (numeric).' })
+  @ApiResponse({ status: 401, description: 'Missing or invalid API key.' })
+  @ApiResponse({ status: 403, description: 'API key scope does not match the withdrawal\'s `sourceWallet` (e.g., key has only `withdrawals:hot` but the withdrawal source is `gas_tank`).' })
+  @ApiResponse({ status: 404, description: 'Withdrawal not found or does not belong to the authenticated client.' })
   async approveWithdrawal(
     @Param('id') id: string,
     @CurrentClientId() clientId: number,
+    @Req() req: Request,
   ) {
+    // Fetch the withdrawal first so we can verify the API key holds the
+    // precise scope that matches the persisted sourceWallet. If the record
+    // doesn't exist or doesn't belong to this client, getWithdrawal surfaces
+    // a 404 from the downstream service (no leak).
+    const withdrawal = await this.withdrawalService.getWithdrawal(clientId, id);
+    const sourceWallet = (withdrawal as any)?.sourceWallet ?? 'hot';
+
+    const scopes = (req as any).scopes as string[] | undefined;
+    const expanded = expandLegacyScopes(scopes);
+    const required =
+      sourceWallet === 'gas_tank'
+        ? 'withdrawals:gas-tank'
+        : 'withdrawals:hot';
+    if (!expanded.includes(required)) {
+      throw new ForbiddenException(
+        `This key cannot approve a withdrawal from ${sourceWallet} (missing scope ${required})`,
+      );
+    }
+
     const result = await this.withdrawalService.approveWithdrawal(clientId, id);
     return { success: true, ...result };
   }

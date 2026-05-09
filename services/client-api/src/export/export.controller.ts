@@ -38,6 +38,7 @@ export class ExportController {
 - \`flush_operations\` -- Forwarder flush operations
 - \`webhooks\` -- Webhook delivery logs
 - \`webhook_failures\` -- Failed webhook deliveries
+- \`audit_logs\` -- Audit trail (project/security mutations)
 - \`events\` -- Platform events
 - \`balances\` -- Current wallet balances
 
@@ -53,7 +54,7 @@ export class ExportController {
 
 Each export can be downloaded up to 10 times.
 
-**Required scope:** \`read\``,
+**Required scope:** \`export:read\``,
   })
   @ApiResponse({
     status: 201,
@@ -86,7 +87,7 @@ Each export can be downloaded up to 10 times.
     summary: 'List export requests [export:read]',
     description: `Returns a paginated list of all export requests for the authenticated client, ordered by creation date (newest first).
 
-**Required scope:** \`read\``,
+**Required scope:** \`export:read\``,
   })
   @ApiResponse({
     status: 200,
@@ -122,7 +123,7 @@ Each export can be downloaded up to 10 times.
     summary: 'Get export request status [export:read]',
     description: `Returns the current status and details of a specific export request.
 
-**Required scope:** \`read\``,
+**Required scope:** \`export:read\``,
   })
   @ApiParam({
     name: 'id',
@@ -157,7 +158,7 @@ Each export can be downloaded up to 10 times.
 - Maximum 10 downloads per export
 - Files expire after 24 hours
 
-**Required scope:** \`read\``,
+**Required scope:** \`export:read\``,
   })
   @ApiParam({
     name: 'id',

@@ -35,16 +35,28 @@ async function bootstrap() {
 The CryptoVaultHub Client API enables client organizations to manage wallets, generate deposit addresses, initiate withdrawals, configure webhooks, and track transactions programmatically.
 
 ## Authentication
-All endpoints require API key authentication via the \`X-API-Key\` header. API keys are created through the Auth Service or the Client Portal.
+Most endpoints require API key authentication via the \`X-API-Key\` header. Self-service API key management endpoints (\`/client/v1/api-keys\`) require portal session authentication (JWT cookie) and reject API-key auth to prevent privilege escalation. API keys are created through the Client Portal at https://app.vaulthub.live.
 
-### API Key Scopes
-- **read**: Query wallets, deposits, withdrawals, addresses, webhooks
-- **write**: Create deposit addresses, webhooks, whitelist addresses, test webhooks
-- **withdraw**: Create withdrawal requests (requires explicit scope)
+### API Key Scopes (granular, since 2026-05-09)
+
+Keys carry one or more of 31 granular \`resource:action\` scopes. Each endpoint declares the exact scope it requires (see the \`[scope:name]\` suffix on every operation summary).
+
+**Examples:**
+- \`wallets:read\`, \`deposits:read\`, \`withdrawals:read\` — read access per resource
+- \`forwarders:create\`, \`forwarders:flush\` — distinct write actions on forwarders
+- \`withdrawals:hot\` vs \`withdrawals:gas-tank\` — different source wallets, different scopes
+- \`address-book:write\`, \`webhooks:write\`, \`gas-tanks:write\`, \`security:write\` — sensitive mutations
+
+Full scope catalog and best practices: see the Knowledge Base article *"API Keys — escopo granular e melhores práticas"* in the Client Portal.
+
+**Legacy macros** (\`read\` / \`write\` / \`withdraw\`) issued before 2026-05-09 keep working — they expand transparently to their granular equivalents at validation time. New keys created via the self-service portal must use granular scopes.
+
+**IP allowlist (CIDR-aware):** keys may be restricted to one or more IPs/CIDRs. Requests from outside the allowlist return 401.
+**Expiration:** keys may be created with an optional \`expiresAt\`. Expired keys return 401 immediately.
 
 ### Example Request
 \`\`\`bash
-curl -X GET https://api.cryptovaulthub.com/client/v1/wallets \\
+curl -X GET https://api.vaulthub.live/client/v1/wallets \\
   -H "X-API-Key: cvh_sk_live_abc123def456..."
 \`\`\`
 
@@ -111,7 +123,8 @@ const isValid = signature === request.headers['x-cvh-signature'];
     .setVersion('1.0.0')
     .setContact('CryptoVaultHub', 'https://github.com/marcelosilva78/CryptoVaultHub', 'support@cryptovaulthub.com')
     .setLicense('MIT', 'https://opensource.org/licenses/MIT')
-    .addApiKey({ type: 'apiKey', name: 'X-API-Key', in: 'header', description: 'API key with appropriate scopes (read/write/withdraw)' }, 'ApiKey')
+    .addApiKey({ type: 'apiKey', name: 'X-API-Key', in: 'header', description: 'Client API key with the required granular scope(s) for the endpoint. See the per-operation summary for the exact scope needed.' }, 'ApiKey')
+    .addCookieAuth('cvh_session', { type: 'apiKey', in: 'cookie', name: 'cvh_session', description: 'Portal session cookie. Required for self-service API key management endpoints (/client/v1/api-keys). Cannot be combined with X-API-Key.' }, 'PortalSession')
     .addTag('Wallets', 'Query wallet information and balances across supported chains')
     .addTag('Deposits', 'Generate deposit addresses and track incoming deposits')
     .addTag('Withdrawals', 'Create withdrawal requests and track outgoing transactions')
@@ -124,9 +137,10 @@ const isValid = signature === request.headers['x-cvh-signature'];
     .addTag('Project Setup', 'Create projects, initialize keys, check gas, and deploy contracts')
     .addTag('Deploy Traces', 'Query on-chain deployment audit trail for contracts')
     .addTag('Tokens', 'Query available tokens across supported chains')
-    .addTag('Health', 'Service health and token metadata endpoints')
+    .addTag('API Keys', 'Self-service API key management (JWT-only, requires portal session)')
+    .addTag('Health', 'Service health endpoint')
     .addServer('http://localhost:3002', 'Development')
-    .addServer('https://api.cryptovaulthub.com', 'Production')
+    .addServer('https://api.vaulthub.live', 'Production')
     .build();
 
   const document = SwaggerModule.createDocument(app, config);

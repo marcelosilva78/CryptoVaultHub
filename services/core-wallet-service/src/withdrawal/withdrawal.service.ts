@@ -371,6 +371,7 @@ export class WithdrawalService {
       clientId: Number(w.clientId),
       chainId: w.chainId,
       tokenId: Number(w.tokenId),
+      sourceWallet: w.sourceWallet,
       fromWallet: w.fromWallet,
       toAddressId: Number(w.toAddressId),
       toAddress: w.toAddress,
