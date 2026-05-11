@@ -166,7 +166,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 1024M
           cpus: '1.0'
     labels:
       - "traefik.enable=true"
@@ -224,7 +224,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 1024M
           cpus: '1.0'
     restart: unless-stopped
     healthcheck:
@@ -245,7 +245,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 1024M
           cpus: '1.0'
     restart: unless-stopped
     healthcheck:
@@ -271,7 +271,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 1024M
           cpus: '1.0'
     restart: unless-stopped
 
@@ -373,7 +373,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 1024M
           cpus: '1.0'
     restart: unless-stopped
     healthcheck:
@@ -423,7 +423,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 1024M
           cpus: '1.0'
     restart: unless-stopped
     healthcheck:
@@ -471,7 +471,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 1024M
           cpus: '1.0'
     restart: unless-stopped
     healthcheck:
@@ -526,7 +526,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 1024M
           cpus: '1.0'
     restart: unless-stopped
     healthcheck:
@@ -576,7 +576,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 1024M
           cpus: '2.0'
     restart: unless-stopped
     healthcheck:
@@ -678,7 +678,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 1024M
           cpus: '1.0'
     restart: unless-stopped
     healthcheck:
@@ -733,7 +733,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 1024M
           cpus: '1.0'
     restart: unless-stopped
     healthcheck:
@@ -782,7 +782,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 1024M
           cpus: '1.0'
     restart: unless-stopped
     healthcheck:
@@ -896,7 +896,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 1024M
           cpus: '0.5'
     restart: unless-stopped
 

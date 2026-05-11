@@ -39,11 +39,51 @@ async function handler(
     }
   }
 
-  const backendRes = await fetch(`${CLIENT_API}${targetPath}${queryString}`, {
-    method: request.method,
-    headers,
-    body,
-  });
+  // Retry transient socket-level failures (ECONNRESET, "other side closed")
+  // that happen when the upstream gateway (Kong) recycles workers mid-request.
+  // These are connection-level errors, not HTTP responses, so they surface as
+  // TypeError from undici. Idempotent methods retry up to 3x with short backoff.
+  const isIdempotent =
+    request.method === 'GET' ||
+    request.method === 'HEAD' ||
+    request.method === 'OPTIONS';
+  const maxAttempts = isIdempotent ? 3 : 1;
+
+  let backendRes: Response | null = null;
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      backendRes = await fetch(`${CLIENT_API}${targetPath}${queryString}`, {
+        method: request.method,
+        headers,
+        body,
+        // Avoid undici connection reuse — sticky sockets to a flapping
+        // upstream produce ECONNRESET on subsequent requests.
+        cache: 'no-store',
+      });
+      break;
+    } catch (err: any) {
+      lastErr = err;
+      const cause = err?.cause?.code ?? err?.code ?? '';
+      const message = String(err?.message ?? '');
+      const isTransient =
+        cause === 'ECONNRESET' ||
+        cause === 'UND_ERR_SOCKET' ||
+        cause === 'UND_ERR_CONNECT_TIMEOUT' ||
+        cause === 'ETIMEDOUT' ||
+        message.includes('other side closed') ||
+        message.includes('socket hang up');
+      if (!isTransient || attempt === maxAttempts) break;
+      await new Promise((r) => setTimeout(r, 200 * attempt));
+    }
+  }
+
+  if (!backendRes) {
+    return NextResponse.json(
+      { message: 'Upstream gateway unreachable', error: String(lastErr) },
+      { status: 502 },
+    );
+  }
 
   // Stream the response back
   const data = await backendRes.text();
