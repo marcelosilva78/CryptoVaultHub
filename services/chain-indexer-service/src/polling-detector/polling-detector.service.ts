@@ -1,6 +1,5 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
-import { Queue, Job } from 'bullmq';
+import { Injectable, Logger } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { ethers } from 'ethers';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
@@ -15,94 +14,68 @@ const ERC20_ABI = [
   'function balanceOf(address account) external view returns (uint256)',
 ];
 
-interface PollingJobData {
-  chainId: number;
-}
-
 /**
- * Cron-based balance checking via Multicall3.
- * Compares current balances with cached previous balances to detect deposits.
+ * Cron-based balance checking via Multicall3 for chains without WebSocket
+ * (notably BSC mainnet today). Compares current balances with cached previous
+ * balances to detect deposits.
+ *
+ * History: this used to be a BullMQ repeatable job, but the combination of
+ * `{ repeat: { every }, jobId }` produced an unstable repeat-key hash that
+ * silently broke self-rescheduling on production. Since the service is a
+ * singleton and the cadence is 15s, a plain @nestjs/schedule Cron is
+ * dramatically simpler, has a single failure surface (the method call),
+ * and is observable via standard logs.
+ *
+ * IMPORTANT: do not scale this service horizontally without adding leader
+ * election or a distributed lock — naive Cron would fire on each replica.
  */
-@Processor('polling-detector', { concurrency: 5 })
 @Injectable()
-export class PollingDetectorService extends WorkerHost implements OnModuleInit {
+export class PollingDetectorService {
   private readonly logger = new Logger(PollingDetectorService.name);
+  private cycleInFlight = false;
 
   constructor(
-    @InjectQueue('polling-detector') private readonly pollingQueue: Queue,
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
     private readonly evmProvider: EvmProviderService,
-  ) {
-    super();
-  }
-
-  async onModuleInit(): Promise<void> {
-    await this.initPollingJobs();
-  }
+  ) {}
 
   /**
-   * Initialize repeatable polling jobs for each active chain that has at least
-   * one active monitored address.
+   * Top-level polling tick. Every 15 seconds, find the set of chains that
+   * have at least one active monitored address and poll them in parallel.
+   * Re-entrancy guard: if a previous cycle is still running (e.g. a slow
+   * Multicall3 call), the next tick is skipped to avoid duplicate work.
    */
-  private async initPollingJobs(intervalMs: number = 15_000): Promise<void> {
-    const chainsWithAddresses = await this.prisma.$queryRaw<Array<{ chain_id: number; name: string }>>`
-      SELECT DISTINCT c.chain_id, c.name
-      FROM chains c
-      INNER JOIN monitored_addresses ma ON ma.chain_id = c.chain_id AND ma.is_active = 1
-      WHERE c.is_active = 1
-    `;
-
-    if (chainsWithAddresses.length === 0) {
-      this.logger.log('No chains with monitored addresses — skipping polling job creation');
+  @Cron(CronExpression.EVERY_10_SECONDS)
+  async runPollingCycle(): Promise<void> {
+    if (this.cycleInFlight) {
+      this.logger.debug('Polling cycle already in flight — skipping tick');
       return;
     }
-
-    for (const chain of chainsWithAddresses) {
-      await this.pollingQueue.add(
-        'poll-chain',
-        { chainId: chain.chain_id },
-        {
-          repeat: { every: intervalMs },
-          jobId: `poll-chain-${chain.chain_id}`,
-        },
-      );
-      this.logger.log(
-        `Polling job created for chain ${chain.chain_id} (${chain.name}) every ${intervalMs}ms`,
-      );
-    }
-  }
-
-  /**
-   * Remove all existing repeatable polling jobs and re-initialise them based
-   * on the current set of chains that have monitored addresses.  Call this
-   * whenever a monitored address is added or removed so the polling schedule
-   * stays in sync.
-   */
-  async refreshPollingJobs(): Promise<void> {
-    const repeatableJobs = await this.pollingQueue.getRepeatableJobs();
-    for (const job of repeatableJobs) {
-      await this.pollingQueue.removeRepeatableByKey(job.key);
-    }
-    await this.initPollingJobs();
-  }
-
-  /**
-   * BullMQ worker: process a polling job for a single chain.
-   */
-  async process(job: Job<PollingJobData>): Promise<void> {
-    const { chainId } = job.data;
-
+    this.cycleInFlight = true;
     try {
-      await this.pollChain(chainId);
-      this.evmProvider.reportSuccess(chainId);
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      this.logger.error(
-        `Polling failed for chain ${chainId}: ${msg}`,
+      const chainsWithAddresses = await this.prisma.$queryRaw<Array<{ chain_id: number; name: string }>>`
+        SELECT DISTINCT c.chain_id, c.name
+        FROM chains c
+        INNER JOIN monitored_addresses ma ON ma.chain_id = c.chain_id AND ma.is_active = 1
+        WHERE c.is_active = 1
+      `;
+      if (chainsWithAddresses.length === 0) return;
+
+      await Promise.allSettled(
+        chainsWithAddresses.map(async (chain) => {
+          try {
+            await this.pollChain(chain.chain_id);
+            this.evmProvider.reportSuccess(chain.chain_id);
+          } catch (error) {
+            const msg = error instanceof Error ? error.message : String(error);
+            this.logger.error(`Polling failed for chain ${chain.chain_id}: ${msg}`);
+            this.evmProvider.reportFailure(chain.chain_id);
+          }
+        }),
       );
-      this.evmProvider.reportFailure(chainId);
-      throw error;
+    } finally {
+      this.cycleInFlight = false;
     }
   }
 
