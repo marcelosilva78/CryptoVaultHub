@@ -1,13 +1,16 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { KafkaConsumerService, TOPICS, EventBusEvent } from '@cvh/event-bus';
-import { InjectQueue } from '@nestjs/bullmq';
-import { Queue } from 'bullmq';
-import { SweepService } from '../sweep/sweep.service';
 
 /**
- * Listens to cvh.chain.status Kafka topic and dynamically registers
- * or removes BullMQ repeatable jobs when chains change state.
- * Eliminates the need to restart workers when chains are added or deactivated.
+ * Listens to cvh.chain.status Kafka topic and reacts when chains change state.
+ *
+ * History: this used to dynamically register/remove BullMQ repeatable jobs for
+ * `sweep`, `forwarder-deploy`, and `confirmation-tracker` when chains became
+ * active/inactive. Those workers have since been migrated to @nestjs/schedule
+ * Cron, which naturally picks up all currently-active chains every tick via
+ * `chain.findMany({ where: { isActive: true } })`. So this listener no longer
+ * needs to bootstrap or tear down per-chain queue jobs — Cron handles the
+ * fan-out automatically.
  */
 @Injectable()
 export class ChainListenerService implements OnModuleInit {
@@ -15,10 +18,6 @@ export class ChainListenerService implements OnModuleInit {
 
   constructor(
     private readonly kafkaConsumer: KafkaConsumerService,
-    private readonly sweepService: SweepService,
-    @InjectQueue('sweep') private readonly sweepQueue: Queue,
-    @InjectQueue('forwarder-deploy')
-    private readonly forwarderDeployQueue: Queue,
   ) {}
 
   async onModuleInit() {
@@ -43,59 +42,23 @@ export class ChainListenerService implements OnModuleInit {
     );
 
     if (newStatus === 'active') {
-      await this.registerChainJobs(chainId);
+      // Cron-based workers (sweep, forwarder-deploy, confirmation-tracker)
+      // pick up newly-active chains naturally on the next tick via their
+      // own `chain.findMany({ where: { isActive: true } })` queries — no
+      // per-chain bootstrap needed here.
+      this.logger.log(
+        `Chain ${chainId} activated — cron workers will pick it up on next tick`,
+      );
     } else if (
       newStatus === 'inactive' ||
       newStatus === 'archived'
     ) {
-      await this.removeChainJobs(chainId);
+      // Symmetric to activation: cron workers stop polling inactive chains
+      // naturally because they filter on `isActive: true`.
+      this.logger.log(
+        `Chain ${chainId} deactivated — cron workers will stop polling on next tick`,
+      );
     }
     // 'draining' — jobs continue running, no action needed
-  }
-
-  /**
-   * Register BullMQ jobs for a newly activated chain.
-   * Delegates sweep registration to SweepService (single source of truth).
-   */
-  private async registerChainJobs(chainId: number): Promise<void> {
-    await this.sweepService.registerChainSweepJobs(chainId);
-
-    // Register forwarder-deploy job for the chain
-    const fwdJobId = `forwarder-deploy-${chainId}`;
-    const existingFwd = await this.forwarderDeployQueue.getRepeatableJobs();
-    if (!existingFwd.some((j) => j.id === fwdJobId)) {
-      await this.forwarderDeployQueue.add(
-        'deploy-forwarders',
-        { chainId },
-        {
-          repeat: { every: 30_000 },
-          jobId: fwdJobId,
-          removeOnComplete: 100,
-          removeOnFail: 200,
-        },
-      );
-      this.logger.log(`Registered forwarder-deploy job: ${fwdJobId}`);
-    }
-  }
-
-  /**
-   * Remove BullMQ jobs for a deactivated/archived chain.
-   */
-  private async removeChainJobs(chainId: number): Promise<void> {
-    const sweepJobs = await this.sweepQueue.getRepeatableJobs();
-    for (const job of sweepJobs) {
-      if (job.id?.startsWith(`sweep-${chainId}-`)) {
-        await this.sweepQueue.removeRepeatableByKey(job.key);
-        this.logger.log(`Removed sweep job: ${job.id}`);
-      }
-    }
-
-    const fwdJobs = await this.forwarderDeployQueue.getRepeatableJobs();
-    for (const job of fwdJobs) {
-      if (job.id === `forwarder-deploy-${chainId}`) {
-        await this.forwarderDeployQueue.removeRepeatableByKey(job.key);
-        this.logger.log(`Removed forwarder-deploy job: ${job.id}`);
-      }
-    }
   }
 }

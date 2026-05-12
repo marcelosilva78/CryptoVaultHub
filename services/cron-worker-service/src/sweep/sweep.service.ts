@@ -1,6 +1,5 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
-import { Queue, Job } from 'bullmq';
+import { Injectable, Logger } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { ethers } from 'ethers';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
@@ -30,117 +29,118 @@ export interface SweepResult {
 /**
  * Token sweep service: finds forwarders with token balances > 0,
  * groups by chain and token, executes flushTokens/batchFlush via gas tank.
+ *
+ * History: this used to be a BullMQ repeatable job, but the combination of
+ * `{ repeat: { every }, jobId }` produced an unstable repeat-key hash that
+ * silently broke self-rescheduling on production (same foot-gun the
+ * polling-detector hit). Replaced with @nestjs/schedule Cron: a single
+ * 30s tick walks every (chainId, clientId) pair with active hot wallets
+ * and runs the per-pair sweep logic with a 120s timeout.
+ *
+ * IMPORTANT: do not scale this service horizontally without adding leader
+ * election or a distributed lock — naive Cron would fire on each replica.
+ * (The per-pair Redis lock inside executeSweep already prevents double-spend,
+ * but the cycle-level guard is for log readability.)
  */
-@Processor('sweep', { concurrency: 3 })
 @Injectable()
-export class SweepService extends WorkerHost implements OnModuleInit {
+export class SweepService {
   private readonly logger = new Logger(SweepService.name);
+  private cycleInFlight = false;
 
   constructor(
-    @InjectQueue('sweep') private readonly sweepQueue: Queue,
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
     private readonly evmProvider: EvmProviderService,
     private readonly txSubmitter: TransactionSubmitterService,
     private readonly gasTankTxLogger: GasTankTxLoggerService,
-  ) {
-    super();
-  }
-
-  async onModuleInit(): Promise<void> {
-    await this.initSweepJobs();
-  }
+  ) {}
 
   /**
-   * Initialize repeatable sweep jobs per chain.
+   * Top-level sweep tick. Every 30 seconds, enumerate (chainId, clientId)
+   * pairs that have active hot wallets and run the per-pair sweep logic.
+   * Re-entrancy guard: if a previous cycle is still running, skip.
    */
-  async initSweepJobs(intervalMs: number = 60_000): Promise<void> {
-    const chains = await this.prisma.chain.findMany({
-      where: { isActive: true },
-    });
-
-    for (const chain of chains) {
-      // Get all clients that have wallets on this chain
-      const wallets = await this.prisma.wallet.findMany({
-        where: { chainId: chain.id, walletType: 'hot', isActive: true },
-        select: { clientId: true },
-      });
-
-      const clientIds = [...new Set(wallets.map((w) => Number(w.clientId)))];
-      for (const clientId of clientIds) {
-        await this.sweepQueue.add(
-          'execute-sweep',
-          { chainId: chain.id, clientId },
-          {
-            repeat: { every: intervalMs },
-            jobId: `sweep-${chain.id}-${clientId}`,
-            removeOnComplete: 100,
-            removeOnFail: 200,
-          },
-        );
-        this.logger.log(
-          `Sweep job created for chain ${chain.id}, client ${clientId}`,
-        );
-      }
+  @Cron(CronExpression.EVERY_30_SECONDS)
+  async runSweepCycle(): Promise<void> {
+    if (this.cycleInFlight) {
+      this.logger.debug('Sweep cycle already in flight — skipping tick');
+      return;
     }
-  }
-
-  /**
-   * Register sweep jobs for a single chain. Called by ChainListenerService
-   * when a chain becomes active, or at startup via onModuleInit.
-   */
-  async registerChainSweepJobs(
-    chainId: number,
-    intervalMs: number = 60_000,
-  ): Promise<void> {
-    const wallets = await this.prisma.wallet.findMany({
-      where: { chainId, walletType: 'hot', isActive: true },
-      select: { clientId: true },
-    });
-
-    const clientIds = [...new Set(wallets.map((w) => Number(w.clientId)))];
-    const existing = await this.sweepQueue.getRepeatableJobs();
-    const existingIds = new Set(existing.map((j) => j.id));
-
-    let registered = 0;
-    for (const clientId of clientIds) {
-      const jobId = `sweep-${chainId}-${clientId}`;
-      if (existingIds.has(jobId)) continue;
-
-      await this.sweepQueue.add(
-        'execute-sweep',
-        { chainId, clientId },
-        {
-          repeat: { every: intervalMs },
-          jobId,
-          removeOnComplete: 100,
-          removeOnFail: 200,
-        },
-      );
-      registered++;
-    }
-    this.logger.log(
-      `Registered ${registered} sweep jobs for chain ${chainId} (${clientIds.length - registered} already existed)`,
-    );
-  }
-
-  /**
-   * BullMQ worker: process a sweep job.
-   */
-  async process(job: Job<SweepJobData>): Promise<SweepResult> {
-    const { chainId, clientId } = job.data;
-
+    this.cycleInFlight = true;
+    const t0 = Date.now();
     try {
-      const result = await this.executeSweep(chainId, clientId);
-      this.evmProvider.reportSuccess(chainId);
-      return result;
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      this.logger.error(
-        `Sweep failed for chain ${chainId}, client ${clientId}: ${msg}`,
+      const chains = await this.prisma.chain.findMany({
+        where: { isActive: true },
+      });
+      if (chains.length === 0) {
+        this.logger.log('Sweep cycle: no active chains');
+        return;
+      }
+
+      // Enumerate (chainId, clientId) pairs: every active hot wallet.
+      const pairs: Array<{ chainId: number; clientId: number }> = [];
+      for (const chain of chains) {
+        const wallets = await this.prisma.wallet.findMany({
+          where: { chainId: chain.id, walletType: 'hot', isActive: true },
+          select: { clientId: true },
+        });
+        const clientIds = [...new Set(wallets.map((w) => Number(w.clientId)))];
+        for (const clientId of clientIds) {
+          pairs.push({ chainId: chain.id, clientId });
+        }
+      }
+
+      if (pairs.length === 0) {
+        this.logger.log('Sweep cycle: no (chain, client) pairs with active hot wallets');
+        return;
+      }
+
+      this.logger.log(
+        `Sweep cycle: ${pairs.length} (chain,client) pair(s) [${pairs.map((p) => `${p.chainId}/${p.clientId}`).join(',')}]`,
       );
-      this.evmProvider.reportFailure(chainId);
-      throw error;
+
+      // Hard-cap per-pair sweep at 120s so a hung RPC never deadlocks the
+      // sweep cycle. Mirrors the polling-detector pattern.
+      const PAIR_TIMEOUT_MS = 120_000;
+      await Promise.allSettled(
+        pairs.map(async (pair) => {
+          const tPair = Date.now();
+          try {
+            await Promise.race([
+              this.executeSweep(pair.chainId, pair.clientId),
+              new Promise<never>((_, reject) =>
+                setTimeout(
+                  () =>
+                    reject(
+                      new Error(
+                        `executeSweep ${pair.chainId}/${pair.clientId} timed out after ${PAIR_TIMEOUT_MS}ms`,
+                      ),
+                    ),
+                  PAIR_TIMEOUT_MS,
+                ),
+              ),
+            ]);
+            this.evmProvider.reportSuccess(pair.chainId);
+            this.logger.log(
+              `Sweep pair ${pair.chainId}/${pair.clientId} complete (${Date.now() - tPair}ms)`,
+            );
+          } catch (error) {
+            const msg = error instanceof Error ? error.message : String(error);
+            this.logger.error(
+              `Sweep failed for chain ${pair.chainId}, client ${pair.clientId}: ${msg}`,
+            );
+            const isTransient =
+              msg.includes('circuit-broken') ||
+              msg.includes('timed out after');
+            if (!isTransient) {
+              this.evmProvider.reportFailure(pair.chainId);
+            }
+          }
+        }),
+      );
+      this.logger.log(`Sweep cycle complete (${Date.now() - t0}ms)`);
+    } finally {
+      this.cycleInFlight = false;
     }
   }
 
@@ -298,6 +298,33 @@ export class SweepService extends WorkerHost implements OnModuleInit {
     // 6. For each forwarder, verify on-chain balances and submit flush transactions
     for (const [forwarderAddress, tokenDepositsMap] of depositsByForwarder) {
       try {
+        // CORRECTNESS GUARD: never submit a sweep tx if the forwarder is not
+        // a deployed contract on-chain. The EVM accepts calls to bare
+        // addresses with status=success but no state change, which previously
+        // tricked gas-tank-receipt-reconciler into cascading the deposit to
+        // 'swept' while funds were still parked at the forwarder. Two checks
+        // (DB flag + on-chain getCode) defend against drift in either direction.
+        const depositAddrRow = await this.prisma.depositAddress.findFirst({
+          where: { chainId, address: forwarderAddress },
+          select: { isDeployed: true },
+        });
+        if (depositAddrRow && depositAddrRow.isDeployed === false) {
+          this.logger.warn(
+            `Skipping sweep for forwarder ${forwarderAddress}: not yet deployed on-chain. Waiting for forwarder-deploy cycle.`,
+          );
+          continue;
+        }
+
+        // Defense in depth: even if DB says isDeployed=true, double-check
+        // on-chain. Cheap (single eth_getCode) and catches any DB drift.
+        const code = await provider.getCode(forwarderAddress);
+        if (!code || code === '0x') {
+          this.logger.warn(
+            `Skipping sweep for forwarder ${forwarderAddress}: getCode returned 0x (no contract code on-chain). Waiting for forwarder-deploy cycle.`,
+          );
+          continue;
+        }
+
         // Verify which tokens actually have balance on this forwarder
         const tokensWithBalance: Array<{
           token: (typeof tokens)[0];

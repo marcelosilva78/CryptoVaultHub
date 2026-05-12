@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { BullModule } from '@nestjs/bullmq';
+import { ScheduleModule } from '@nestjs/schedule';
 import { MetricsModule, MetricsInterceptor, StructuredLoggerModule } from '@cvh/config';
 import { EventBusModule } from '@cvh/event-bus';
 import { PrismaModule } from './prisma/prisma.module';
@@ -42,6 +43,7 @@ import { InternalServiceGuard } from './common/guards/internal-service.guard';
       }),
       inject: [ConfigService],
     }),
+    ScheduleModule.forRoot(),
     MetricsModule,
     StructuredLoggerModule,
     PrismaModule,

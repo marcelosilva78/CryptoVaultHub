@@ -1,6 +1,5 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
-import { Queue, Job } from 'bullmq';
+import { Injectable, Logger } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { ethers } from 'ethers';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
@@ -19,80 +18,111 @@ const DEPLOY_GAS_LIMIT = 800_000n;
 /** Max forwarder deploys per job run to avoid overloading the gas tank */
 const BATCH_SIZE = 10;
 
-export interface ForwarderDeployJobData {
-  chainId: number;
-}
-
 /**
  * Deploys forwarder contracts for deposit addresses that have received deposits
  * but are not yet deployed on-chain (CREATE2 counterfactual addresses).
+ *
+ * History: this used to be a BullMQ repeatable job, but the combination of
+ * `{ repeat: { every }, jobId }` produced an unstable repeat-key hash that
+ * silently broke self-rescheduling on production (BullMQ v5 `repeat.js` skips
+ * re-injecting `jobId` once `prevMillis` is set, which changed the hash and
+ * left the job orphaned after the first run). Since this service is a
+ * singleton and the cadence is 30s, a plain @nestjs/schedule Cron is
+ * dramatically simpler and observable via standard logs.
+ *
+ * IMPORTANT: do not scale this service horizontally without adding leader
+ * election or a distributed lock — naive Cron would fire on each replica.
  */
-@Processor('forwarder-deploy', { concurrency: 3 })
 @Injectable()
-export class ForwarderDeployService extends WorkerHost implements OnModuleInit {
+export class ForwarderDeployService {
   private readonly logger = new Logger(ForwarderDeployService.name);
+  private cycleInFlight = false;
 
   /** ABI for encoding createForwarder calldata */
   private readonly factoryIface = new ethers.Interface(FORWARDER_FACTORY_ABI);
 
   constructor(
-    @InjectQueue('forwarder-deploy')
-    private readonly deployQueue: Queue,
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
     private readonly evmProvider: EvmProviderService,
     private readonly txSubmitter: TransactionSubmitterService,
     private readonly gasTankTxLogger: GasTankTxLoggerService,
-  ) {
-    super();
-  }
-
-  async onModuleInit(): Promise<void> {
-    await this.initDeployJobs();
-  }
+  ) {}
 
   /**
-   * Initialize repeatable deploy check jobs.
+   * Top-level deploy tick. Every 30 seconds, find all active chains and
+   * run deployPendingForwarders for each in parallel with a 120s timeout
+   * per chain. Re-entrancy guard: if a previous cycle is still running,
+   * the next tick is skipped.
    */
-  async initDeployJobs(intervalMs: number = 30_000): Promise<void> {
-    const chains = await this.prisma.chain.findMany({
-      where: { isActive: true },
-    });
-
-    for (const chain of chains) {
-      await this.deployQueue.add(
-        'check-deploy',
-        { chainId: chain.id },
-        {
-          repeat: { every: intervalMs },
-          jobId: `forwarder-deploy-${chain.id}`,
-          removeOnComplete: 100,
-          removeOnFail: 200,
-        },
-      );
+  @Cron(CronExpression.EVERY_30_SECONDS)
+  async runDeployCycle(): Promise<void> {
+    if (this.cycleInFlight) {
+      this.logger.debug('Forwarder-deploy cycle already in flight — skipping tick');
+      return;
     }
-    this.logger.log(
-      `Forwarder deploy jobs initialized for ${chains.length} chains`,
-    );
-  }
-
-  /**
-   * BullMQ worker: check and deploy forwarders.
-   */
-  async process(job: Job<ForwarderDeployJobData>): Promise<number> {
-    const { chainId } = job.data;
-
+    this.cycleInFlight = true;
+    const t0 = Date.now();
     try {
-      const deployed = await this.deployPendingForwarders(chainId);
-      this.evmProvider.reportSuccess(chainId);
-      return deployed;
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      this.logger.error(
-        `Forwarder deploy failed for chain ${chainId}: ${msg}`,
+      const chains = await this.prisma.chain.findMany({
+        where: { isActive: true },
+      });
+
+      if (chains.length === 0) {
+        this.logger.log('Forwarder-deploy cycle: no active chains');
+        return;
+      }
+
+      this.logger.log(
+        `Forwarder-deploy cycle: ${chains.length} chain(s) [${chains.map((c) => c.id).join(',')}]`,
       );
-      this.evmProvider.reportFailure(chainId);
-      throw error;
+
+      // Hard-cap per-chain deploy at 120s so a hung RPC or signer never
+      // deadlocks the cron. Without this, a single slow chain would leave
+      // cycleInFlight=true forever and ALL subsequent ticks would be silently
+      // skipped.
+      const CHAIN_TIMEOUT_MS = 120_000;
+      await Promise.allSettled(
+        chains.map(async (chain) => {
+          const tc = Date.now();
+          try {
+            const deployed = await Promise.race([
+              this.deployPendingForwarders(chain.id),
+              new Promise<never>((_, reject) =>
+                setTimeout(
+                  () =>
+                    reject(
+                      new Error(
+                        `deployPendingForwarders ${chain.id} timed out after ${CHAIN_TIMEOUT_MS}ms`,
+                      ),
+                    ),
+                  CHAIN_TIMEOUT_MS,
+                ),
+              ),
+            ]);
+            this.logger.log(
+              `Forwarder-deploy chain ${chain.id}: ${deployed} deployed (${Date.now() - tc}ms)`,
+            );
+            this.evmProvider.reportSuccess(chain.id);
+          } catch (error) {
+            const msg = error instanceof Error ? error.message : String(error);
+            this.logger.error(
+              `Forwarder-deploy failed for chain ${chain.id}: ${msg} (${Date.now() - tc}ms)`,
+            );
+            // Only report a provider failure for actual RPC issues — not for
+            // self-induced timeouts or already-open circuits.
+            const isTransient =
+              msg.includes('circuit-broken') ||
+              msg.includes('timed out after');
+            if (!isTransient) {
+              this.evmProvider.reportFailure(chain.id);
+            }
+          }
+        }),
+      );
+      this.logger.log(`Forwarder-deploy cycle complete (${Date.now() - t0}ms)`);
+    } finally {
+      this.cycleInFlight = false;
     }
   }
 

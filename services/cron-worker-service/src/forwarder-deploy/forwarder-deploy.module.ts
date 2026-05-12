@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { BullModule } from '@nestjs/bullmq';
 import { ForwarderDeployService } from './forwarder-deploy.service';
 import { BlockchainModule } from '../blockchain/blockchain.module';
 import { SweepModule } from '../sweep/sweep.module';
@@ -7,7 +6,6 @@ import { GasTankModule } from '../gas-tank/gas-tank.module';
 
 @Module({
   imports: [
-    BullModule.registerQueue({ name: 'forwarder-deploy' }),
     BlockchainModule,
     SweepModule,
     GasTankModule,

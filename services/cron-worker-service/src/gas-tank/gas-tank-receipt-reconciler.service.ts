@@ -1,10 +1,15 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { ethers } from 'ethers';
 import { PrismaService } from '../prisma/prisma.service';
 import { EvmProviderService } from '../blockchain/evm-provider.service';
 
 const MAX_AGE_MS = 10 * 60 * 1000; // 10 minutes
 const BATCH_SIZE = 50;
 const TICK_MS = 30_000;
+
+const ERC20_ABI = [
+  'function balanceOf(address account) external view returns (uint256)',
+];
 
 @Injectable()
 export class GasTankReceiptReconcilerService implements OnModuleInit, OnModuleDestroy {
@@ -82,24 +87,134 @@ export class GasTankReceiptReconcilerService implements OnModuleInit, OnModuleDe
 
         // Cascade reconciliation to deposits whose sweep_tx_hash matches this gas-tank tx.
         // When a sweep/flush tx confirms, transition deposits from 'sweep_pending' → 'swept' (or 'sweep_failed').
+        //
+        // CORRECTNESS GUARD: never cascade to 'swept' on the basis of receipt.status=1
+        // alone. The EVM treats a call to a non-deployed address as a successful no-op
+        // (gasUsed≈21k, status=1) — see incident with forwarder 0x613dbC... where the
+        // sweep tx "succeeded" but the forwarder had no contract code and never moved
+        // funds. We additionally verify that the forwarder's on-chain balance is now
+        // zero for the swept token. If the forwarder still holds funds, the sweep was
+        // a no-op and we leave the deposit in 'sweep_pending' for the next sweep cycle
+        // (which now has its own isDeployed guard so it won't re-fire the no-op).
         if (row.operationType === 'sweep' || row.operationType === 'flush') {
           try {
-            const depositStatus = newStatus === 'confirmed' ? 'swept' : 'sweep_failed';
-            const updated = await this.prisma.deposit.updateMany({
-              where: {
-                sweepTxHash: row.txHash,
-                chainId: row.chainId,
-                status: 'sweep_pending',
-              },
-              data: {
-                status: depositStatus,
-                sweptAt: newStatus === 'confirmed' ? new Date() : null,
-              },
-            });
-            if (updated.count > 0) {
-              this.logger.log(
-                `Cascaded ${updated.count} deposit(s) to '${depositStatus}' for sweep tx ${row.txHash}`,
-              );
+            if (newStatus !== 'confirmed') {
+              // tx itself failed on-chain → no balance check needed; cascade to sweep_failed.
+              const updated = await this.prisma.deposit.updateMany({
+                where: {
+                  sweepTxHash: row.txHash,
+                  chainId: row.chainId,
+                  status: 'sweep_pending',
+                },
+                data: {
+                  status: 'sweep_failed',
+                  sweptAt: null,
+                },
+              });
+              if (updated.count > 0) {
+                this.logger.log(
+                  `Cascaded ${updated.count} deposit(s) to 'sweep_failed' for sweep tx ${row.txHash}`,
+                );
+              }
+            } else {
+              // tx succeeded on-chain — verify it actually moved funds before cascading.
+              const pendingDeposits = await this.prisma.deposit.findMany({
+                where: {
+                  sweepTxHash: row.txHash,
+                  chainId: row.chainId,
+                  status: 'sweep_pending',
+                },
+              });
+
+              if (pendingDeposits.length === 0) {
+                // Nothing to cascade — already reconciled or no matching deposits.
+                continue;
+              }
+
+              // All deposits sharing a sweepTxHash share a forwarder address.
+              const forwarderAddress = pendingDeposits[0].forwarderAddress;
+
+              // Group by tokenId to verify each token balance independently.
+              const tokenIds = [...new Set(pendingDeposits.map((d) => d.tokenId))];
+              const tokens = await this.prisma.token.findMany({
+                where: { id: { in: tokenIds } },
+              });
+              const tokenById = new Map(tokens.map((t) => [t.id, t]));
+
+              const safeToCascadeIds: bigint[] = [];
+              const noopIds: bigint[] = [];
+
+              for (const tokenId of tokenIds) {
+                const token = tokenById.get(tokenId);
+                const depositsForToken = pendingDeposits.filter(
+                  (d) => d.tokenId === tokenId,
+                );
+                if (!token) {
+                  // Can't verify — be conservative and skip cascade.
+                  noopIds.push(...depositsForToken.map((d) => d.id));
+                  continue;
+                }
+
+                let postBalance: bigint;
+                try {
+                  if (token.isNative) {
+                    postBalance = await provider.getBalance(forwarderAddress);
+                  } else {
+                    const erc20 = new ethers.Contract(
+                      token.contractAddress,
+                      ERC20_ABI,
+                      provider,
+                    );
+                    postBalance = (await erc20.balanceOf(
+                      forwarderAddress,
+                    )) as bigint;
+                  }
+                } catch (balanceErr) {
+                  this.logger.warn(
+                    `Could not read post-sweep balance for forwarder ${forwarderAddress}, token ${token.symbol} on chain ${row.chainId}: ${(balanceErr as Error).message}. Leaving deposits in sweep_pending.`,
+                  );
+                  noopIds.push(...depositsForToken.map((d) => d.id));
+                  continue;
+                }
+
+                // After a successful flush, the forwarder should be empty for this token.
+                // Any residual balance means the tx was a no-op (most likely the
+                // forwarder wasn't deployed, so calldata 0x6b9f96ea hit a bare EOA).
+                if (postBalance === 0n) {
+                  safeToCascadeIds.push(
+                    ...depositsForToken.map((d) => d.id),
+                  );
+                } else {
+                  this.logger.warn(
+                    `Not cascading ${depositsForToken.length} deposit(s) to 'swept' for tx ${row.txHash}: forwarder ${forwarderAddress} still holds ${postBalance.toString()} of ${token.symbol} (expected 0). Likely a no-op sweep tx — leaving in sweep_pending.`,
+                  );
+                  noopIds.push(...depositsForToken.map((d) => d.id));
+                }
+              }
+
+              if (safeToCascadeIds.length > 0) {
+                const updated = await this.prisma.deposit.updateMany({
+                  where: {
+                    id: { in: safeToCascadeIds },
+                    status: 'sweep_pending',
+                  },
+                  data: {
+                    status: 'swept',
+                    sweptAt: new Date(),
+                  },
+                });
+                if (updated.count > 0) {
+                  this.logger.log(
+                    `Cascaded ${updated.count} deposit(s) to 'swept' for sweep tx ${row.txHash} (verified forwarder balance is zero)`,
+                  );
+                }
+              }
+
+              if (noopIds.length > 0) {
+                this.logger.warn(
+                  `Held back ${noopIds.length} deposit(s) from cascade for tx ${row.txHash} (forwarder still funded — suspected no-op sweep). Next sweep cycle will retry once forwarder is deployed.`,
+                );
+              }
             }
           } catch (cascadeErr) {
             this.logger.warn(
