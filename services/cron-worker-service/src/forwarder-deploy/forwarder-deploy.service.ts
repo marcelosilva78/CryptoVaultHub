@@ -142,22 +142,29 @@ export class ForwarderDeployService {
 
     if (undeployed.length === 0) return 0;
 
-    // Filter to only those with deposits (single groupBy query instead of N+1)
+    // Filter to only those with deposits (single groupBy query instead of N+1).
+    // CASE-INSENSITIVE MATCH: deposit_addresses.address is stored in mixed case
+    // (preserved from contract creation) while deposits.forwarder_address is
+    // stored lowercase by the indexer's persistence handler. Without lowercasing
+    // both sides of the IN clause, the join silently misses on MySQL collations
+    // that treat hex differently.
+    const undeployedAddrsLower = undeployed.map((a) => a.address.toLowerCase());
     const depositCounts = await this.prisma.deposit.groupBy({
       by: ['forwarderAddress'],
       where: {
-        forwarderAddress: { in: undeployed.map((a) => a.address) },
+        forwarderAddress: { in: undeployedAddrsLower },
         chainId,
+        status: { in: ['confirmed', 'pending', 'detected', 'confirming', 'sweep_pending'] },
       },
       _count: { forwarderAddress: true },
     });
     const addressesWithDepositSet = new Set(
       depositCounts
         .filter((d) => d._count.forwarderAddress > 0)
-        .map((d) => d.forwarderAddress),
+        .map((d) => d.forwarderAddress.toLowerCase()),
     );
     const addressesWithDeposits = undeployed.filter((addr) =>
-      addressesWithDepositSet.has(addr.address),
+      addressesWithDepositSet.has(addr.address.toLowerCase()),
     );
 
     if (addressesWithDeposits.length === 0) return 0;
