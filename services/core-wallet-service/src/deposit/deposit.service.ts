@@ -1,6 +1,26 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { ethers } from 'ethers';
 import { PrismaService } from '../prisma/prisma.service';
 import { PricingService } from '../pricing/pricing.service';
+
+/**
+ * Coerce a stored deposit amount into a human-readable token-units string.
+ *
+ * Background: producers in this codebase disagree about what goes into
+ * `deposits.amount`. The polling-synth path writes raw wei (because it reads
+ * the balance delta directly), while the event-detection path writes humanized
+ * units. We treat `amountRaw` as the single source of truth (the column is
+ * documented as raw wei in the schema) and derive `amount` from it on the way
+ * out. If `amountRaw` itself isn't a valid bigint, we fall back to the stored
+ * `amount` rather than dying — the row is still useful for the rest of the UI.
+ */
+function humanizeAmount(amountRaw: string, fallback: string, decimals: number): string {
+  try {
+    return ethers.formatUnits(amountRaw, decimals);
+  } catch {
+    return fallback;
+  }
+}
 
 interface ListDepositsParams {
   page: number;
@@ -59,13 +79,15 @@ export class DepositService {
 
     const deposits = rows.map((r) => {
       const token = tokenMap.get(r.tokenId.toString());
+      const decimals = token?.decimals ?? 18;
+      const humanAmount = humanizeAmount(r.amountRaw, r.amount, decimals);
       let amountUsd: string | null = null;
       let priceUsd: string | null = null;
       if (token?.coingeckoId) {
         const p = prices[token.coingeckoId];
         if (typeof p === 'number') {
           priceUsd = p.toString();
-          const amt = Number(r.amount);
+          const amt = Number(humanAmount);
           if (Number.isFinite(amt)) amountUsd = (amt * p).toFixed(2);
         }
       }
@@ -78,7 +100,7 @@ export class DepositService {
         tokenSymbol: token?.symbol ?? null,
         tokenAddress: token?.contractAddress ?? null,
         tokenDecimals: token?.decimals ?? null,
-        amount: r.amount,
+        amount: humanAmount,
         amountRaw: r.amountRaw,
         amountUsd,
         priceUsd,
@@ -120,6 +142,9 @@ export class DepositService {
       where: { id: row.tokenId },
     });
 
+    const decimals = token?.decimals ?? 18;
+    const humanAmount = humanizeAmount(row.amountRaw, row.amount, decimals);
+
     return {
       id: row.id.toString(),
       depositAddress: row.forwarderAddress,
@@ -129,7 +154,7 @@ export class DepositService {
       tokenSymbol: token?.symbol ?? null,
       tokenAddress: token?.contractAddress ?? null,
       tokenDecimals: token?.decimals ?? null,
-      amount: row.amount,
+      amount: humanAmount,
       amountRaw: row.amountRaw,
       status: row.status,
       txHash: row.txHash,

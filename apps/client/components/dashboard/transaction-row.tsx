@@ -61,24 +61,24 @@ export function TransactionRow({ deposit }: TransactionRowProps) {
     <div className="border-b border-border-subtle last:border-b-0">
       <button
         onClick={() => setExpanded((v) => !v)}
-        className="w-full grid grid-cols-[100px_50px_1fr_120px_90px_18px] gap-2 items-center px-card-p py-2.5 text-left hover:bg-surface-hover transition-colors duration-fast bg-transparent border-none cursor-pointer font-display text-text-primary"
+        className="w-full flex items-center gap-3 px-card-p py-2.5 text-left hover:bg-surface-hover transition-colors duration-fast bg-transparent border-none cursor-pointer font-display text-text-primary"
         type="button"
       >
-        <span className="font-mono text-code text-text-muted whitespace-nowrap">
+        <span className="font-mono text-code text-text-muted whitespace-nowrap w-[68px] shrink-0">
           {formatRelativeTime(deposit.detectedAt)}
         </span>
 
-        <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-badge text-[9px] font-semibold uppercase tracking-[0.05em] bg-accent-subtle text-accent-primary">
+        <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-badge text-[9px] font-semibold uppercase tracking-[0.05em] bg-accent-subtle text-accent-primary shrink-0 w-[54px]">
           {deposit.chainName}
         </span>
 
-        <div className="flex items-center gap-1.5 min-w-0">
+        <div className="flex items-center gap-2 flex-1 min-w-0">
           <AddressChip
             label="From"
             value={deposit.fromAddress}
             chainId={deposit.chainId}
           />
-          <span className="text-text-muted text-micro shrink-0">→</span>
+          <span className="text-text-muted text-caption shrink-0">→</span>
           <AddressChip
             label="To"
             value={deposit.depositAddress}
@@ -87,26 +87,28 @@ export function TransactionRow({ deposit }: TransactionRowProps) {
           />
         </div>
 
-        <div className="text-right font-mono">
-          <div className="text-caption font-semibold text-status-success">
+        <div className="text-right font-mono shrink-0 min-w-[140px]">
+          <div className="text-caption font-semibold text-status-success leading-tight whitespace-nowrap">
             +{formatAmount(deposit.amount)}{" "}
             <span className="text-text-secondary font-normal">
               {deposit.tokenSymbol ?? ""}
             </span>
           </div>
           {deposit.amountUsd && (
-            <div className="text-[10px] text-text-muted">${deposit.amountUsd}</div>
+            <div className="text-[10px] text-text-muted leading-tight">
+              ${deposit.amountUsd}
+            </div>
           )}
         </div>
 
         <span
-          className={`inline-flex items-center justify-center px-1.5 py-0.5 rounded-badge text-[9px] font-semibold uppercase tracking-[0.06em] border ${badgeCls}`}
+          className={`inline-flex items-center justify-center px-1.5 py-0.5 rounded-badge text-[9px] font-semibold uppercase tracking-[0.06em] border shrink-0 w-[78px] ${badgeCls}`}
         >
           {statusKey}
         </span>
 
         <span
-          className={`text-text-muted transition-transform duration-normal ${
+          className={`text-text-muted shrink-0 transition-transform duration-normal ${
             expanded ? "rotate-180" : ""
           }`}
         >
@@ -197,6 +199,21 @@ export function TransactionRow({ deposit }: TransactionRowProps) {
   );
 }
 
+const ZERO_ADDR = "0x" + "0".repeat(40);
+
+function isLikelyHexAddress(value: string): boolean {
+  return /^0x[0-9a-fA-F]{40}$/.test(value);
+}
+
+/**
+ * Renders the address with as many characters as the available width allows.
+ * The full hex string lives in the DOM via the inner <code>; CSS handles the
+ * middle-ellipsis via `text-ellipsis` and explicit shortened/full breakpoints.
+ *
+ * Non-address values (e.g. "unknown" for synthesised polling deposits, or the
+ * zero address for un-emitted Transfer events) get rendered as dim italics
+ * instead of being forced through the hex shortener.
+ */
 function AddressChip({
   label,
   value,
@@ -209,27 +226,52 @@ function AddressChip({
   emphasized?: boolean;
 }) {
   const [copied, setCopied] = useState(false);
-  const short = value.length > 14 ? `${value.slice(0, 6)}…${value.slice(-4)}` : value;
-  const explorer = explorerAddressUrl(chainId, value);
+  const isAddress = isLikelyHexAddress(value);
+  const isZero = value === ZERO_ADDR;
+  const explorer = isAddress ? explorerAddressUrl(chainId, value) : null;
+
+  const displayValue = isAddress
+    ? value
+    : value === "unknown" || !value
+      ? "unknown sender"
+      : value;
 
   const handleCopy = async (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!isAddress) return;
     await navigator.clipboard.writeText(value);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };
 
+  if (!isAddress) {
+    return (
+      <span className="inline-flex items-center gap-1 min-w-0 flex-1">
+        <span className="sr-only">{label}:</span>
+        <span
+          className={`text-caption font-display italic truncate ${
+            emphasized ? "text-text-secondary" : "text-text-muted"
+          }`}
+          title={value}
+        >
+          {displayValue}
+        </span>
+      </span>
+    );
+  }
+
   return (
-    <span className="inline-flex items-center gap-1 min-w-0">
+    <span className="inline-flex items-center gap-1 min-w-0 flex-1">
       <span className="sr-only">{label}:</span>
-      <code
-        className={`font-mono text-code truncate ${
+      <span
+        className={`font-mono text-code flex min-w-0 ${
           emphasized ? "text-text-primary" : "text-text-secondary"
-        }`}
+        } ${isZero ? "italic opacity-60" : ""}`}
         title={value}
       >
-        {short}
-      </code>
+        <span className="truncate">{value.slice(0, value.length - 4)}</span>
+        <span className="shrink-0">{value.slice(-4)}</span>
+      </span>
       <button
         onClick={handleCopy}
         className="shrink-0 text-text-muted hover:text-accent-primary transition-colors duration-fast"
