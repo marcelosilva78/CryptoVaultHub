@@ -3,253 +3,88 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
-import { BalanceChart } from "@/components/balance-chart";
 import { GenerateAddressModal } from "@/components/generate-address-modal";
 import { GasTankSummary } from "@/components/gas-tanks/gas-tank-summary";
 import { RecentTransactions } from "@/components/dashboard/recent-transactions";
+import {
+  CustodyOverview,
+  type ChainCustody,
+} from "@/components/dashboard/custody-overview";
+import { DashboardKpis } from "@/components/dashboard/dashboard-kpis";
+import { DepositActivity7d } from "@/components/dashboard/deposit-activity-7d";
 import { clientFetch } from "@/lib/api";
 import { useClientAuth } from "@/lib/auth-context";
 
-/* ─── Chain ID → Name map ───────────────────────────────────── */
-const chainNames: Record<number, string> = {
-  1: "ETH",
-  56: "BSC",
-  137: "Polygon",
-  42161: "Arbitrum",
-  10: "Optimism",
-  43114: "Avalanche",
-  8453: "Base",
+const chainMeta: Record<number, { name: string; nativeSymbol: string }> = {
+  1: { name: "Ethereum", nativeSymbol: "ETH" },
+  10: { name: "Optimism", nativeSymbol: "ETH" },
+  56: { name: "BSC", nativeSymbol: "BNB" },
+  137: { name: "Polygon", nativeSymbol: "MATIC" },
+  8453: { name: "Base", nativeSymbol: "ETH" },
+  42161: { name: "Arbitrum", nativeSymbol: "ETH" },
+  43114: { name: "Avalanche", nativeSymbol: "AVAX" },
+  11155111: { name: "Sepolia", nativeSymbol: "ETH" },
+  97: { name: "BSC Testnet", nativeSymbol: "tBNB" },
 };
 
-/* ─── API response types ────────────────────────────────────── */
 interface ApiWallet {
   id: number;
   address: string;
   chainId: number;
-  chainName: string;
-  walletType: string;
+  walletType: "hot" | "gas_tank" | string;
   isActive: boolean;
-  createdAt: string;
 }
 
 interface ApiBalance {
-  tokenSymbol: string;
-  tokenAddress: string;
-  balance: string;
-  balanceUsd: string;
+  tokenId: number;
+  symbol: string;
+  name: string;
+  contractAddress: string;
   decimals: number;
+  isNative: boolean;
+  balanceRaw: string;
+  balanceFormatted: string;
+  priceUsd: string | null;
+  balanceUsd: string | null;
 }
 
 interface ApiDeposit {
   id: string;
-  depositAddress: string;
   chainId: number;
-  tokenSymbol: string;
-  amount: string;
-  amountUsd: string;
   status: string;
-  txHash: string;
-  confirmations: number;
-  requiredConfirmations: number;
+  amount: string;
+  amountUsd: string | null;
   detectedAt: string;
 }
 
 interface ApiDepositAddress {
-  id: string;
-  address: string;
+  id: number;
   chainId: number;
-  label: string | null;
-  status: string;
+  isDeployed: boolean;
   totalDeposits: number;
-  createdAt: string;
+  lastDepositAt: string | null;
 }
 
-/* ─── Vault Meter Gauge ──────────────────────────────────────── */
-
-interface VaultMeterProps {
-  totalBalance: string;
-  maxHistorical: number;
-  currentValue: number;
-  composition: { label: string; percent: number }[];
+interface ApiGasTank {
+  chainId: number;
+  chainName: string;
+  nativeSymbol: string;
+  balanceWei: string;
+  estimatedOpsRemaining: number;
+  status: "ok" | "low" | "critical";
 }
-
-function VaultMeter({
-  totalBalance,
-  maxHistorical,
-  currentValue,
-  composition,
-}: VaultMeterProps) {
-  const fillPercent = Math.min((currentValue / maxHistorical) * 100, 100);
-  const radius = 80;
-  const strokeWidth = 6;
-  const centerX = 100;
-  const centerY = 90;
-  const circumference = Math.PI * radius;
-  const fillLength = (fillPercent / 100) * circumference;
-
-  // Scale markers at 0%, 20%, 40%, 60%, 80%, 100%
-  const markers = [0, 20, 40, 60, 80, 100];
-
-  return (
-    <div className="bg-surface-card border border-border-default rounded-card p-card-p shadow-card">
-      <div className="flex flex-col items-center">
-        <svg
-          width="200"
-          height="120"
-          viewBox="0 0 200 120"
-          className="mb-2"
-        >
-          {/* Background arc */}
-          <path
-            d={`M ${centerX - radius} ${centerY} A ${radius} ${radius} 0 0 1 ${centerX + radius} ${centerY}`}
-            fill="none"
-            stroke="var(--surface-elevated)"
-            strokeWidth={strokeWidth}
-            strokeLinecap="round"
-            opacity="0.3"
-          />
-          {/* Filled arc */}
-          <path
-            d={`M ${centerX - radius} ${centerY} A ${radius} ${radius} 0 0 1 ${centerX + radius} ${centerY}`}
-            fill="none"
-            stroke="url(#gaugeGradient)"
-            strokeWidth={strokeWidth}
-            strokeLinecap="round"
-            strokeDasharray={`${fillLength} ${circumference}`}
-          />
-          <defs>
-            <linearGradient
-              id="gaugeGradient"
-              x1="0%"
-              y1="0%"
-              x2="100%"
-              y2="0%"
-            >
-              <stop offset="0%" stopColor="var(--accent-primary)" />
-              <stop offset="100%" stopColor="var(--accent-hover)" />
-            </linearGradient>
-          </defs>
-          {/* Scale markers */}
-          {markers.map((pct) => {
-            const angle = Math.PI - (pct / 100) * Math.PI;
-            const outerR = radius + 8;
-            const innerR = radius + 1;
-            const x1 = centerX + Math.cos(angle) * innerR;
-            const y1 = centerY - Math.sin(angle) * innerR;
-            const x2 = centerX + Math.cos(angle) * outerR;
-            const y2 = centerY - Math.sin(angle) * outerR;
-            return (
-              <line
-                key={pct}
-                x1={x1}
-                y1={y1}
-                x2={x2}
-                y2={y2}
-                stroke="var(--text-muted)"
-                strokeWidth="1"
-              />
-            );
-          })}
-        </svg>
-
-        {/* Central value */}
-        <div className="text-display text-text-primary font-display -mt-[70px] mb-1">
-          {totalBalance}
-        </div>
-        <div className="text-micro text-text-muted uppercase tracking-[0.1em] font-display mb-4">
-          Total Custody Balance
-        </div>
-
-        {/* Composition bar */}
-        <div className="w-full">
-          <div className="h-1.5 rounded-badge bg-surface-elevated flex overflow-hidden">
-            {composition.map((seg, i) => {
-              const goldTones = [
-                "var(--accent-primary)",
-                "var(--chart-secondary)",
-                "var(--chart-tertiary)",
-                "var(--chart-faded)",
-              ];
-              return (
-                <div
-                  key={seg.label}
-                  className="h-full transition-all duration-normal"
-                  style={{
-                    width: `${seg.percent}%`,
-                    backgroundColor: goldTones[i % goldTones.length],
-                  }}
-                  title={`${seg.label}: ${seg.percent}%`}
-                />
-              );
-            })}
-          </div>
-          <div className="flex justify-between mt-2">
-            {composition.map((seg, i) => {
-              const goldLabels = [
-                "text-accent-primary",
-                "text-chart-secondary",
-                "text-chart-tertiary",
-                "text-text-muted",
-              ];
-              return (
-                <span
-                  key={seg.label}
-                  className={`text-micro font-display ${goldLabels[i % goldLabels.length]}`}
-                >
-                  {seg.label} {seg.percent}%
-                </span>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ─── Stat Card ──────────────────────────────────────────────── */
-
-interface StatCardProps {
-  label: string;
-  value: string;
-  sub?: string;
-  accent?: boolean;
-  warning?: boolean;
-}
-
-function StatCard({ label, value, sub, accent, warning }: StatCardProps) {
-  return (
-    <div className="bg-surface-card border border-border-default rounded-card p-card-p shadow-card transition-all duration-fast hover:border-border-focus/30">
-      <div className="text-micro font-semibold uppercase tracking-[0.07em] text-text-muted mb-1.5 font-display">
-        {label}
-      </div>
-      <div
-        className={`text-stat tracking-[-0.03em] leading-none font-display ${
-          accent
-            ? "text-accent-primary"
-            : warning
-              ? "text-status-warning"
-              : "text-text-primary"
-        }`}
-      >
-        {value}
-      </div>
-      {sub && (
-        <div className="text-caption text-text-muted mt-1.5 font-display">
-          {sub}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ─── Helpers ────────────────────────────────────────────────── */
 
 function formatUsd(val: number): string {
   return `$${val.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-/* ─── Dashboard ──────────────────────────────────────────────── */
+function formatNative(wei: string): string {
+  try {
+    return (Number(BigInt(wei)) / 1e18).toFixed(4);
+  } catch {
+    return "0";
+  }
+}
 
 export default function DashboardPage() {
   const { user } = useClientAuth();
@@ -257,15 +92,21 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Data state
-  const [totalBalanceUsd, setTotalBalanceUsd] = useState(0);
-  const [composition, setComposition] = useState<{ label: string; percent: number }[]>([]);
-  const [activeWallets, setActiveWallets] = useState(0);
-  const [totalAddresses, setTotalAddresses] = useState(0);
-  const [pendingDeposits, setPendingDeposits] = useState(0);
-  const [confirmedToday, setConfirmedToday] = useState(0);
-  const [confirmedVolume, setConfirmedVolume] = useState(0);
-  const [balanceHistory, setBalanceHistory] = useState<{ date: string; balance: number; deposits: number; withdrawals: number }[]>([]);
+  // Real-data state
+  const [chains, setChains] = useState<ChainCustody[]>([]);
+  const [totalUsd, setTotalUsd] = useState<number | null>(null);
+  const [hotWalletCount, setHotWalletCount] = useState(0);
+  const [forwardersTotal, setForwardersTotal] = useState(0);
+  const [forwardersDeployed, setForwardersDeployed] = useState(0);
+  const [pendingSweep, setPendingSweep] = useState(0);
+  const [totalDeposits, setTotalDeposits] = useState(0);
+  const [confirmedTodayCount, setConfirmedTodayCount] = useState(0);
+  const [confirmedTodayUsd, setConfirmedTodayUsd] = useState<number | null>(null);
+  const [pendingConfirmations, setPendingConfirmations] = useState(0);
+  const [worstGasTank, setWorstGasTank] = useState<
+    React.ComponentProps<typeof DashboardKpis>["worstGasTank"]
+  >(null);
+  const [activityDeposits, setActivityDeposits] = useState<ApiDeposit[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -275,71 +116,182 @@ export default function DashboardPage() {
         setLoading(true);
         setError(null);
 
-        // Fetch all data in parallel
-        const [walletsRes, depositsRes, depositAddressesRes] = await Promise.all([
-          clientFetch<{ success: boolean; wallets: ApiWallet[] }>('/v1/wallets').catch(() => ({ success: false, wallets: [] as ApiWallet[] })),
-          clientFetch<{ success: boolean; deposits: ApiDeposit[]; meta: { total: number } }>('/v1/deposits?limit=50').catch(() => ({ success: false, deposits: [] as ApiDeposit[], meta: { total: 0 } })),
-          clientFetch<{ success: boolean; addresses: ApiDepositAddress[]; meta: { total: number } }>('/v1/deposit-addresses?limit=1').catch(() => ({ success: false, addresses: [] as ApiDepositAddress[], meta: { total: 0 } })),
-        ]);
+        const [walletsRes, depositsRes, depositAddressesRes, gasTanksRes] =
+          await Promise.all([
+            clientFetch<{ success: boolean; wallets: ApiWallet[] }>("/v1/wallets")
+              .catch(() => ({ success: false, wallets: [] as ApiWallet[] })),
+            clientFetch<{ success: boolean; deposits: ApiDeposit[] }>(
+              "/v1/deposits?limit=200",
+            ).catch(() => ({ success: false, deposits: [] as ApiDeposit[] })),
+            clientFetch<{
+              success: boolean;
+              count: number;
+              depositAddresses: ApiDepositAddress[];
+            }>("/v1/deposit-addresses?limit=500").catch(() => ({
+              success: false,
+              count: 0,
+              depositAddresses: [] as ApiDepositAddress[],
+            })),
+            clientFetch<{ success: boolean; gasTanks: ApiGasTank[] }>(
+              "/v1/gas-tanks",
+            ).catch(() => ({ success: false, gasTanks: [] as ApiGasTank[] })),
+          ]);
 
         if (cancelled) return;
 
-        // Fetch balances for each wallet chain
-        const uniqueChainIds = [...new Set(walletsRes.wallets.filter(w => w.walletType === 'hot').map(w => w.chainId))];
-        const balanceResults = await Promise.all(
-          uniqueChainIds.map(chainId =>
-            clientFetch<{ success: boolean; balances: ApiBalance[] }>(`/v1/wallets/${chainId}/balances`).catch(() => ({ success: false, balances: [] as ApiBalance[] }))
-          )
+        const wallets = walletsRes.wallets ?? [];
+        const deposits = depositsRes.deposits ?? [];
+        const depositAddresses = depositAddressesRes.depositAddresses ?? [];
+        const gasTanks = gasTanksRes.gasTanks ?? [];
+
+        const hotWallets = wallets.filter((w) => w.walletType === "hot");
+        const hotChainIds = Array.from(
+          new Set(hotWallets.map((w) => w.chainId)),
+        );
+
+        // Fan-out balance fetches per hot-wallet chain. Each call is cheap
+        // because BalanceService caches Multicall3 results in Redis.
+        const perChainBalances = await Promise.all(
+          hotChainIds.map((chainId) =>
+            clientFetch<{
+              success: boolean;
+              walletAddress: string;
+              balances: ApiBalance[];
+            }>(`/v1/wallets/${chainId}/balances`).catch(() => ({
+              success: false,
+              walletAddress: "",
+              balances: [] as ApiBalance[],
+            })),
+          ),
         );
 
         if (cancelled) return;
 
-        // Compute total balance and composition
-        const balanceByChain: Record<string, number> = {};
-        let totalUsd = 0;
-        balanceResults.forEach((res, idx) => {
-          const chain = chainNames[uniqueChainIds[idx]] || `Chain ${uniqueChainIds[idx]}`;
-          let chainUsd = 0;
-          res.balances.forEach(b => {
-            chainUsd += parseFloat(b.balanceUsd || '0');
-          });
-          balanceByChain[chain] = chainUsd;
-          totalUsd += chainUsd;
+        const builtChains: ChainCustody[] = hotChainIds
+          .map((chainId, idx) => {
+            const res = perChainBalances[idx];
+            const meta = chainMeta[chainId];
+            const native = res.balances.find((b) => b.isNative);
+            const erc20s = res.balances
+              .filter((b) => !b.isNative)
+              .sort(
+                (a, b) =>
+                  Number(b.balanceUsd ?? 0) - Number(a.balanceUsd ?? 0),
+              );
+            const totalUsdHere = res.balances.reduce((sum, b) => {
+              const v = b.balanceUsd ? Number(b.balanceUsd) : NaN;
+              return Number.isFinite(v) ? sum + v : sum;
+            }, 0);
+            const anyPriced = res.balances.some((b) => b.balanceUsd !== null);
+            return {
+              chainId,
+              chainName: meta?.name ?? `Chain ${chainId}`,
+              nativeSymbol:
+                native?.symbol ?? meta?.nativeSymbol ?? "?",
+              hotWalletAddress: res.walletAddress || null,
+              totalUsd: anyPriced ? totalUsdHere : null,
+              nativeBalance: native?.balanceFormatted ?? "0",
+              topErc20: erc20s[0]
+                ? {
+                    symbol: erc20s[0].symbol,
+                    balance: erc20s[0].balanceFormatted,
+                    valueUsd: erc20s[0].balanceUsd
+                      ? Number(erc20s[0].balanceUsd)
+                      : null,
+                  }
+                : undefined,
+            };
+          })
+          // Drop chains where the hot wallet returned no balances at all
+          // (would indicate a misconfigured RPC); they'd render as empty noise.
+          .filter((c) => c.hotWalletAddress !== null);
+        setChains(builtChains);
+
+        const overallPriced = builtChains.some((c) => c.totalUsd !== null);
+        const overallSum = builtChains.reduce(
+          (s, c) => s + (c.totalUsd ?? 0),
+          0,
+        );
+        setTotalUsd(overallPriced ? overallSum : null);
+
+        setHotWalletCount(hotWallets.length);
+
+        const forwardersTotalNum = depositAddresses.length;
+        const forwardersDeployedNum = depositAddresses.filter(
+          (a) => a.isDeployed,
+        ).length;
+        setForwardersTotal(forwardersTotalNum);
+        setForwardersDeployed(forwardersDeployedNum);
+
+        // pendingSweep = deposits in `confirmed` status (confirmation reached,
+        // sweep not yet executed). Truth source: deposits, not forwarders.
+        const pendingSweepNum = deposits.filter(
+          (d) => d.status === "confirmed",
+        ).length;
+        setPendingSweep(pendingSweepNum);
+
+        const totalDepositsNum = depositAddresses.reduce(
+          (s, a) => s + (a.totalDeposits ?? 0),
+          0,
+        );
+        setTotalDeposits(totalDepositsNum);
+
+        const todayKey = new Date().toISOString().slice(0, 10);
+        const todayConfirmed = deposits.filter(
+          (d) =>
+            (d.status === "confirmed" || d.status === "swept") &&
+            d.detectedAt?.startsWith(todayKey),
+        );
+        setConfirmedTodayCount(todayConfirmed.length);
+        const todayUsdSum = todayConfirmed.reduce((s, d) => {
+          const v = d.amountUsd ? Number(d.amountUsd) : NaN;
+          return Number.isFinite(v) ? s + v : s;
+        }, 0);
+        const anyTodayPriced = todayConfirmed.some((d) => d.amountUsd !== null);
+        setConfirmedTodayUsd(anyTodayPriced ? todayUsdSum : null);
+
+        setPendingConfirmations(
+          deposits.filter(
+            (d) =>
+              d.status === "pending" ||
+              d.status === "detected" ||
+              d.status === "confirming",
+          ).length,
+        );
+
+        // Worst gas tank by severity (critical > low > ok), then by absolute
+        // balance ascending within the same severity. Falls back to null when
+        // no gas tanks exist yet.
+        const severity = { critical: 0, low: 1, ok: 2 } as const;
+        const sortedTanks = [...gasTanks].sort((a, b) => {
+          const sa = severity[a.status] ?? 3;
+          const sb = severity[b.status] ?? 3;
+          if (sa !== sb) return sa - sb;
+          try {
+            return Number(BigInt(a.balanceWei) - BigInt(b.balanceWei));
+          } catch {
+            return 0;
+          }
         });
+        const worst = sortedTanks[0];
+        setWorstGasTank(
+          worst
+            ? {
+                chainName: worst.chainName,
+                nativeSymbol: worst.nativeSymbol,
+                balance: formatNative(worst.balanceWei),
+                status: worst.status,
+                opsRemaining: Number.isFinite(worst.estimatedOpsRemaining)
+                  ? worst.estimatedOpsRemaining
+                  : null,
+              }
+            : null,
+        );
 
-        setTotalBalanceUsd(totalUsd);
-
-        // Build composition
-        if (totalUsd > 0) {
-          const comp = Object.entries(balanceByChain)
-            .filter(([, usd]) => usd > 0)
-            .sort((a, b) => b[1] - a[1])
-            .map(([chain, usd]) => ({
-              label: chain,
-              percent: Math.round((usd / totalUsd) * 100),
-            }));
-          setComposition(comp);
-        } else {
-          setComposition([]);
-        }
-
-        // KPIs
-        setActiveWallets(walletsRes.wallets.filter(w => w.isActive && w.walletType === 'hot').length);
-        setTotalAddresses(depositAddressesRes.meta?.total ?? 0);
-
-        // Deposits KPIs
-        const pendingCount = depositsRes.deposits.filter(d => d.status === 'pending' || d.status === 'confirmed').length;
-        setPendingDeposits(pendingCount);
-
-        const todayStr = new Date().toISOString().slice(0, 10);
-        const confirmedTodayList = depositsRes.deposits.filter(d =>
-          d.status === 'confirmed' || d.status === 'swept'
-        ).filter(d => d.detectedAt?.startsWith(todayStr));
-        setConfirmedToday(confirmedTodayList.length);
-        setConfirmedVolume(confirmedTodayList.reduce((sum, d) => sum + parseFloat(d.amountUsd || '0'), 0));
+        setActivityDeposits(deposits);
       } catch (err: any) {
         if (!cancelled) {
-          setError(err.message || 'Failed to load dashboard data');
+          setError(err.message || "Failed to load dashboard data");
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -347,14 +299,18 @@ export default function DashboardPage() {
     }
 
     fetchData();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <Loader2 className="w-8 h-8 animate-spin text-accent-primary" />
-        <span className="ml-3 text-text-muted font-display">Loading dashboard...</span>
+        <span className="ml-3 text-text-muted font-display">
+          Loading dashboard…
+        </span>
       </div>
     );
   }
@@ -362,16 +318,17 @@ export default function DashboardPage() {
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px]">
-        <div className="text-status-error text-body font-display mb-2">Error loading dashboard</div>
+        <div className="text-status-error text-body font-display mb-2">
+          Error loading dashboard
+        </div>
         <div className="text-text-muted text-caption font-display">{error}</div>
       </div>
     );
   }
 
   return (
-    <div>
-      {/* Welcome Section */}
-      <div className="flex justify-between items-start mb-section-gap">
+    <div className="space-y-section-gap">
+      <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-4">
         <div>
           <h1 className="text-heading text-text-primary font-display tracking-tight">
             Welcome back, {user?.clientName ?? "Client"}
@@ -386,8 +343,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Quick Actions */}
-        <div className="flex gap-2.5">
+        <div className="flex flex-wrap gap-2.5">
           <button
             onClick={() => setModalOpen(true)}
             className="inline-flex items-center gap-1.5 px-4 py-2 rounded-button font-display text-caption font-semibold cursor-pointer transition-all duration-fast bg-accent-primary text-accent-text hover:bg-accent-hover"
@@ -401,62 +357,37 @@ export default function DashboardPage() {
             New Withdrawal
           </Link>
           <Link
-            href="/setup"
+            href="/wallets"
             className="inline-flex items-center gap-1.5 px-4 py-2 rounded-button font-display text-caption font-semibold cursor-pointer transition-all duration-fast bg-transparent text-text-secondary hover:bg-surface-hover hover:text-text-primary no-underline"
           >
-            View Setup Wizard
+            View Wallets
           </Link>
         </div>
       </div>
 
-      {/* Balance Overview: Vault Meter */}
-      <div className="mb-section-gap">
-        <VaultMeter
-          totalBalance={formatUsd(totalBalanceUsd)}
-          maxHistorical={Math.max(totalBalanceUsd * 1.2, 1)}
-          currentValue={totalBalanceUsd}
-          composition={composition.length > 0 ? composition : [{ label: "No data", percent: 100 }]}
-        />
-      </div>
+      <CustodyOverview
+        chains={chains}
+        totalUsd={totalUsd}
+        hotWalletCount={hotWalletCount}
+        forwardersTotal={forwardersTotal}
+        forwardersDeployed={forwardersDeployed}
+        pendingSweep={pendingSweep}
+      />
 
-      {/* Stat Cards */}
-      <div className="grid grid-cols-4 gap-stat-grid-gap mb-section-gap">
-        <StatCard
-          label="Active Wallets"
-          value={activeWallets.toLocaleString()}
-          sub={`of ${totalAddresses.toLocaleString()} total addresses`}
-          accent
-        />
-        <StatCard
-          label="Pending Deposits"
-          value={pendingDeposits.toString()}
-          sub="Awaiting confirmations"
-          warning
-        />
-        <StatCard
-          label="Confirmed Today"
-          value={confirmedToday.toString()}
-          sub={`${formatUsd(confirmedVolume)} volume`}
-        />
-        <StatCard
-          label="Total Forwarders"
-          value={totalAddresses.toLocaleString()}
-          sub={`Across ${composition.length} chains`}
-        />
-      </div>
+      <DashboardKpis
+        totalDeposits={totalDeposits}
+        confirmedTodayCount={confirmedTodayCount}
+        confirmedTodayUsd={confirmedTodayUsd}
+        pendingConfirmations={pendingConfirmations}
+        worstGasTank={worstGasTank}
+      />
 
-      {/* Gas Tanks Summary */}
-      <div className="mb-section-gap">
+      <div className="grid gap-section-gap lg:grid-cols-2">
+        <DepositActivity7d deposits={activityDeposits} />
         <GasTankSummary />
       </div>
 
-      {/* Balance Chart */}
-      <div className="mb-section-gap">
-        <BalanceChart data={balanceHistory} />
-      </div>
-
-      {/* Recent Transactions */}
-      <RecentTransactions limit={12} refreshMs={15_000} />
+      <RecentTransactions limit={8} refreshMs={15_000} />
 
       <GenerateAddressModal
         open={modalOpen}

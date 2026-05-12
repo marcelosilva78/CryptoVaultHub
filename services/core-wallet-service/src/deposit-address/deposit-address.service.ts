@@ -8,6 +8,7 @@ import { Prisma } from '../generated/prisma-client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ContractService } from '../blockchain/contract.service';
 import { RedisService } from '../redis/redis.service';
+import { PricingService } from '../pricing/pricing.service';
 
 export interface DepositAddressResult {
   address: string;
@@ -30,6 +31,7 @@ export class DepositAddressService {
     private readonly prisma: PrismaService,
     private readonly contractService: ContractService,
     private readonly redis: RedisService,
+    private readonly pricing: PricingService,
   ) {}
 
   /**
@@ -377,13 +379,39 @@ export class DepositAddressService {
       });
     }
 
+    // Price overlay via CoinGecko. Tokens without a `coingeckoId` stay null.
+    const idsByToken = new Map<number, string>();
+    for (const t of tokens) {
+      if (t.coingeckoId) idsByToken.set(Number(t.id), t.coingeckoId);
+    }
+    if (idsByToken.size > 0) {
+      const prices = await this.pricing.getPricesUsd([...idsByToken.values()]);
+      for (const b of balances) {
+        const id = idsByToken.get(b.tokenId);
+        if (!id) continue;
+        const p = prices[id];
+        if (typeof p !== 'number') continue;
+        const formatted = Number(b.balanceFormatted);
+        b.priceUsd = p.toString();
+        b.valueUsd = Number.isFinite(formatted)
+          ? (formatted * p).toFixed(2)
+          : null;
+      }
+    }
+
+    const totalUsdNum = balances.reduce((sum, b) => {
+      const v = b.valueUsd ? Number(b.valueUsd) : 0;
+      return Number.isFinite(v) ? sum + v : sum;
+    }, 0);
+    const anyPriced = balances.some((b) => b.valueUsd !== null);
+
     return {
       depositAddressId: Number(addr.id),
       address: addr.address,
       chainId: addr.chainId,
       isDeployed: addr.isDeployed,
       balances,
-      totalUsd: null,
+      totalUsd: anyPriced ? totalUsdNum.toFixed(2) : null,
       fetchedAt: new Date().toISOString(),
     };
   }

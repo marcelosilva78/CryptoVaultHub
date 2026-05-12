@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { PricingService } from '../pricing/pricing.service';
 
 interface ListDepositsParams {
   page: number;
@@ -12,7 +13,10 @@ interface ListDepositsParams {
 
 @Injectable()
 export class DepositService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly pricing: PricingService,
+  ) {}
 
   async list(clientId: number, params: ListDepositsParams) {
     const { page, limit, status, chainId, fromDate, toDate } = params;
@@ -43,8 +47,28 @@ export class DepositService {
       : [];
     const tokenMap = new Map(tokens.map((t) => [t.id.toString(), t]));
 
+    // Resolve USD prices for every distinct token referenced in this page
+    // of results. CoinGecko lookups are cached for 5min so the cost amortises
+    // across requests/dashboard refreshes.
+    const coingeckoIds = tokens
+      .map((t) => t.coingeckoId)
+      .filter((x): x is string => !!x);
+    const prices = coingeckoIds.length
+      ? await this.pricing.getPricesUsd(coingeckoIds)
+      : {};
+
     const deposits = rows.map((r) => {
       const token = tokenMap.get(r.tokenId.toString());
+      let amountUsd: string | null = null;
+      let priceUsd: string | null = null;
+      if (token?.coingeckoId) {
+        const p = prices[token.coingeckoId];
+        if (typeof p === 'number') {
+          priceUsd = p.toString();
+          const amt = Number(r.amount);
+          if (Number.isFinite(amt)) amountUsd = (amt * p).toFixed(2);
+        }
+      }
       return {
         id: r.id.toString(),
         depositAddress: r.forwarderAddress,
@@ -56,6 +80,8 @@ export class DepositService {
         tokenDecimals: token?.decimals ?? null,
         amount: r.amount,
         amountRaw: r.amountRaw,
+        amountUsd,
+        priceUsd,
         status: r.status,
         txHash: r.txHash,
         blockNumber: r.blockNumber.toString(),

@@ -3,6 +3,7 @@ import { ethers } from 'ethers';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { ContractService } from '../blockchain/contract.service';
+import { PricingService } from '../pricing/pricing.service';
 
 export interface TokenBalance {
   tokenId: number;
@@ -13,6 +14,8 @@ export interface TokenBalance {
   isNative: boolean;
   balanceRaw: string;
   balanceFormatted: string;
+  priceUsd: string | null;
+  balanceUsd: string | null;
 }
 
 /**
@@ -29,6 +32,7 @@ export class BalanceService {
     private readonly prisma: PrismaService,
     private readonly redisService: RedisService,
     private readonly contractService: ContractService,
+    private readonly pricing: PricingService,
   ) {}
 
   /**
@@ -114,6 +118,8 @@ export class BalanceService {
           nativeBalance,
           nativeToken.decimals,
         ),
+        priceUsd: null,
+        balanceUsd: null,
       });
     }
 
@@ -143,7 +149,30 @@ export class BalanceService {
             result.balance,
             token.decimals,
           ),
+          priceUsd: null,
+          balanceUsd: null,
         });
+      }
+    }
+
+    // Fold in USD prices via CoinGecko (cached). Tokens without a
+    // `coingeckoId` simply stay at priceUsd=null and the caller renders "—".
+    const idsByToken = new Map<number, string>();
+    for (const t of tokens) {
+      if (t.coingeckoId) idsByToken.set(Number(t.id), t.coingeckoId);
+    }
+    if (idsByToken.size > 0) {
+      const prices = await this.pricing.getPricesUsd([...idsByToken.values()]);
+      for (const b of balances) {
+        const id = idsByToken.get(b.tokenId);
+        if (!id) continue;
+        const p = prices[id];
+        if (typeof p !== 'number') continue;
+        const formatted = Number(b.balanceFormatted);
+        b.priceUsd = p.toString();
+        b.balanceUsd = Number.isFinite(formatted)
+          ? (formatted * p).toFixed(2)
+          : null;
       }
     }
 
