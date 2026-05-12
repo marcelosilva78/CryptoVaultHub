@@ -15,7 +15,7 @@
     "@cvh/types": "*",
     "@cvh/utils": "*",
     "@nestjs/common": "^10.3.0",
-    "@nestjs/config": "^3.2.0",
+    "@nestjs/config": "^4.0.4",
     "@nestjs/core": "^10.3.0",
     "@nestjs/jwt": "^11.0.2",
     "@nestjs/passport": "^11.0.5",
