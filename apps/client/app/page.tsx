@@ -6,6 +6,7 @@ import { Loader2 } from "lucide-react";
 import { BalanceChart } from "@/components/balance-chart";
 import { GenerateAddressModal } from "@/components/generate-address-modal";
 import { GasTankSummary } from "@/components/gas-tanks/gas-tank-summary";
+import { RecentTransactions } from "@/components/dashboard/recent-transactions";
 import { clientFetch } from "@/lib/api";
 import { useClientAuth } from "@/lib/auth-context";
 
@@ -242,58 +243,10 @@ function StatCard({ label, value, sub, accent, warning }: StatCardProps) {
   );
 }
 
-/* ─── Status Badge ───────────────────────────────────────────── */
-
-const statusStyles: Record<string, string> = {
-  confirmed:
-    "bg-status-success-subtle text-status-success",
-  confirming:
-    "bg-status-warning-subtle text-status-warning",
-  pending:
-    "bg-accent-subtle text-accent-primary",
-  failed:
-    "bg-status-error-subtle text-status-error",
-  swept:
-    "bg-status-success-subtle text-status-success",
-};
-
-const typeStyles: Record<string, string> = {
-  deposit: "bg-status-success-subtle text-status-success",
-  withdrawal: "bg-status-warning-subtle text-status-warning",
-  sweep: "bg-accent-subtle text-accent-primary",
-};
-
 /* ─── Helpers ────────────────────────────────────────────────── */
-
-function formatTimestamp(iso: string): string {
-  const d = new Date(iso);
-  const month = d.toLocaleString("en-US", { month: "short" });
-  const day = d.getDate();
-  const h = d.getHours().toString().padStart(2, "0");
-  const m = d.getMinutes().toString().padStart(2, "0");
-  return `${month} ${day}, ${h}:${m}`;
-}
-
-function shortenAddr(addr: string): string {
-  if (addr.length <= 14) return addr;
-  return `${addr.slice(0, 8)}...${addr.slice(-6)}`;
-}
 
 function formatUsd(val: number): string {
   return `$${val.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-
-/* ─── Recent Transaction type (merged from deposits API) ──── */
-
-interface RecentTx {
-  id: string;
-  timestamp: string;
-  type: "deposit" | "withdrawal" | "sweep";
-  from: string;
-  to: string;
-  amount: string;
-  token: string;
-  status: string;
 }
 
 /* ─── Dashboard ──────────────────────────────────────────────── */
@@ -312,7 +265,6 @@ export default function DashboardPage() {
   const [pendingDeposits, setPendingDeposits] = useState(0);
   const [confirmedToday, setConfirmedToday] = useState(0);
   const [confirmedVolume, setConfirmedVolume] = useState(0);
-  const [recentTxs, setRecentTxs] = useState<RecentTx[]>([]);
   const [balanceHistory, setBalanceHistory] = useState<{ date: string; balance: number; deposits: number; withdrawals: number }[]>([]);
 
   useEffect(() => {
@@ -385,19 +337,6 @@ export default function DashboardPage() {
         ).filter(d => d.detectedAt?.startsWith(todayStr));
         setConfirmedToday(confirmedTodayList.length);
         setConfirmedVolume(confirmedTodayList.reduce((sum, d) => sum + parseFloat(d.amountUsd || '0'), 0));
-
-        // Build recent transactions from deposits (limited to 8)
-        const txs: RecentTx[] = depositsRes.deposits.slice(0, 8).map(d => ({
-          id: d.id,
-          timestamp: d.detectedAt,
-          type: 'deposit' as const,
-          from: d.depositAddress,
-          to: d.depositAddress,
-          amount: `+${d.amount}`,
-          token: d.tokenSymbol,
-          status: d.status === 'swept' ? 'confirmed' : d.status,
-        }));
-        setRecentTxs(txs);
       } catch (err: any) {
         if (!cancelled) {
           setError(err.message || 'Failed to load dashboard data');
@@ -517,99 +456,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Recent Transactions */}
-      <div className="bg-surface-card border border-border-default rounded-card shadow-card overflow-hidden">
-        <div className="flex items-center justify-between px-card-p py-4 border-b border-border-subtle">
-          <div className="text-subheading font-display flex items-center gap-2">
-            <span className="live-dot" />
-            Recent Transactions
-          </div>
-          <Link
-            href="/transactions"
-            className="text-accent-primary text-micro font-semibold font-display no-underline hover:underline"
-          >
-            View All
-          </Link>
-        </div>
-
-        {/* Table Header */}
-        <div className="grid grid-cols-[90px_65px_95px_24px_95px_1fr_80px] gap-2 px-card-p py-2.5 bg-surface-elevated border-b border-border-subtle">
-          <span className="text-micro font-semibold uppercase tracking-[0.09em] text-text-muted font-display">
-            Time
-          </span>
-          <span className="text-micro font-semibold uppercase tracking-[0.09em] text-text-muted font-display">
-            Type
-          </span>
-          <span className="text-micro font-semibold uppercase tracking-[0.09em] text-text-muted font-display">
-            From
-          </span>
-          <span />
-          <span className="text-micro font-semibold uppercase tracking-[0.09em] text-text-muted font-display">
-            To
-          </span>
-          <span className="text-micro font-semibold uppercase tracking-[0.09em] text-text-muted font-display text-right">
-            Amount
-          </span>
-          <span className="text-micro font-semibold uppercase tracking-[0.09em] text-text-muted font-display text-center">
-            Status
-          </span>
-        </div>
-
-        {/* Table Rows */}
-        <div className="max-h-[380px] overflow-y-auto">
-          {recentTxs.length === 0 ? (
-            <div className="px-card-p py-8 text-center text-text-muted font-display text-caption">
-              No recent transactions
-            </div>
-          ) : (
-            recentTxs.map((tx) => (
-              <div
-                key={tx.id}
-                className="grid grid-cols-[90px_65px_95px_24px_95px_1fr_80px] gap-2 items-center px-card-p py-2.5 border-b border-border-subtle last:border-b-0 hover:bg-surface-hover transition-colors duration-fast"
-              >
-                <span className="font-mono text-text-muted text-code">
-                  {formatTimestamp(tx.timestamp)}
-                </span>
-                <span
-                  className={`inline-flex items-center justify-center px-1.5 py-0.5 rounded-badge text-micro font-semibold capitalize ${typeStyles[tx.type] ?? ""}`}
-                >
-                  {tx.type}
-                </span>
-                <span
-                  className="font-mono text-code text-text-secondary truncate"
-                  title={tx.from}
-                >
-                  {shortenAddr(tx.from)}
-                </span>
-                <span className="text-text-muted text-micro text-center">
-                  &rarr;
-                </span>
-                <span
-                  className="font-mono text-code text-text-primary truncate"
-                  title={tx.to}
-                >
-                  {shortenAddr(tx.to)}
-                </span>
-                <span
-                  className={`text-right font-mono text-caption font-semibold ${
-                    tx.type === "withdrawal"
-                      ? "text-status-error"
-                      : tx.type === "sweep"
-                        ? "text-accent-primary"
-                        : "text-status-success"
-                  }`}
-                >
-                  {tx.amount} {tx.token}
-                </span>
-                <span
-                  className={`inline-flex items-center justify-center px-1.5 py-0.5 rounded-badge text-micro font-semibold capitalize ${statusStyles[tx.status] ?? ""}`}
-                >
-                  {tx.status}
-                </span>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
+      <RecentTransactions limit={12} refreshMs={15_000} />
 
       <GenerateAddressModal
         open={modalOpen}
