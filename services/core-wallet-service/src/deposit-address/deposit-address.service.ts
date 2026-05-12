@@ -187,16 +187,165 @@ export class DepositAddressService {
   }
 
   /**
-   * List deposit addresses for a client.
+   * List deposit addresses for a client, enriched with the CREATE2 derivation
+   * inputs (deployer/parent/fee/factory) so the UI can render a verifiable
+   * provenance panel without further round-trips.
+   *
+   * Batches the lookups: one query for the addresses, one for the chains,
+   * one for the hot wallets, one for the gas tanks.
    */
   async listAddresses(clientId: number, chainId?: number) {
-    return this.prisma.depositAddress.findMany({
+    const addresses = await this.prisma.depositAddress.findMany({
       where: {
         clientId: BigInt(clientId),
         ...(chainId ? { chainId } : {}),
       },
       orderBy: { createdAt: 'desc' },
     });
+
+    if (addresses.length === 0) return [];
+
+    const chainIds = Array.from(new Set(addresses.map((a) => a.chainId)));
+    const walletIds = Array.from(new Set(addresses.map((a) => a.walletId)));
+
+    const [chains, hotWallets, gasTanks] = await Promise.all([
+      this.prisma.chain.findMany({ where: { id: { in: chainIds } } }),
+      this.prisma.wallet.findMany({ where: { id: { in: walletIds } } }),
+      this.prisma.wallet.findMany({
+        where: {
+          clientId: BigInt(clientId),
+          chainId: { in: chainIds },
+          walletType: 'gas_tank',
+        },
+      }),
+    ]);
+
+    const chainById = new Map(chains.map((c) => [c.id, c]));
+    const hotByWalletId = new Map(
+      hotWallets.map((w) => [w.id.toString(), w]),
+    );
+    const gasByChain = new Map(gasTanks.map((g) => [g.chainId, g]));
+
+    return addresses.map((a) => {
+      const chain = chainById.get(a.chainId);
+      const hot = hotByWalletId.get(a.walletId.toString());
+      const gas = gasByChain.get(a.chainId);
+      return {
+        id: Number(a.id),
+        chainId: a.chainId,
+        address: a.address,
+        externalId: a.externalId,
+        label: a.label,
+        isDeployed: a.isDeployed,
+        salt: a.salt,
+        // CREATE2 derivation inputs — match what computeForwarderAddress used
+        parentAddress: hot?.address ?? null,
+        deployerAddress: gas?.address ?? null,
+        feeAddress: hot?.address ?? null,
+        factoryAddress: chain?.forwarderFactoryAddress ?? null,
+        createdAt: a.createdAt,
+      };
+    });
+  }
+
+  /**
+   * Get on-chain balances for a single deposit address (native + default ERC20s
+   * on that chain) via Multicall3. Validates ownership against clientId.
+   */
+  async getDepositAddressBalances(
+    clientId: number,
+    depositAddressId: number,
+  ) {
+    const addr = await this.prisma.depositAddress.findFirst({
+      where: {
+        id: BigInt(depositAddressId),
+        clientId: BigInt(clientId),
+      },
+    });
+    if (!addr) {
+      throw new NotFoundException(
+        `Deposit address ${depositAddressId} not found for client ${clientId}`,
+      );
+    }
+
+    const tokens = await this.prisma.token.findMany({
+      where: {
+        chainId: addr.chainId,
+        isActive: true,
+        isDefault: true,
+      },
+    });
+
+    const balances: Array<{
+      tokenId: number;
+      symbol: string;
+      name: string;
+      contractAddress: string;
+      decimals: number;
+      isNative: boolean;
+      balanceRaw: string;
+      balanceFormatted: string;
+      priceUsd: string | null;
+      valueUsd: string | null;
+    }> = [];
+
+    const nativeToken = tokens.find((t) => t.isNative);
+    if (nativeToken) {
+      const nativeBalance = await this.contractService.getNativeBalance(
+        addr.chainId,
+        addr.address,
+      );
+      balances.push({
+        tokenId: Number(nativeToken.id),
+        symbol: nativeToken.symbol,
+        name: nativeToken.name,
+        contractAddress: nativeToken.contractAddress,
+        decimals: nativeToken.decimals,
+        isNative: true,
+        balanceRaw: nativeBalance.toString(),
+        balanceFormatted: ethers.formatUnits(
+          nativeBalance,
+          nativeToken.decimals,
+        ),
+        priceUsd: null,
+        valueUsd: null,
+      });
+    }
+
+    const erc20Tokens = tokens.filter((t) => !t.isNative);
+    if (erc20Tokens.length > 0) {
+      const tokenAddresses = erc20Tokens.map((t) => t.contractAddress);
+      const results = await this.contractService.getBalancesViaMulticall(
+        addr.chainId,
+        addr.address,
+        tokenAddresses,
+      );
+      erc20Tokens.forEach((token, i) => {
+        const r = results[i];
+        balances.push({
+          tokenId: Number(token.id),
+          symbol: token.symbol,
+          name: token.name,
+          contractAddress: token.contractAddress,
+          decimals: token.decimals,
+          isNative: false,
+          balanceRaw: r.balance.toString(),
+          balanceFormatted: ethers.formatUnits(r.balance, token.decimals),
+          priceUsd: null,
+          valueUsd: null,
+        });
+      });
+    }
+
+    return {
+      depositAddressId: Number(addr.id),
+      address: addr.address,
+      chainId: addr.chainId,
+      isDeployed: addr.isDeployed,
+      balances,
+      totalUsd: null,
+      fetchedAt: new Date().toISOString(),
+    };
   }
 
   /**

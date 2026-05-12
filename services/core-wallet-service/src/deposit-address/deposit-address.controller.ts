@@ -64,15 +64,19 @@ export class DepositAddressController {
       success: true,
       clientId,
       count: addresses.length,
-      depositAddresses: addresses.map((a) => ({
-        id: Number(a.id),
-        chainId: a.chainId,
-        address: a.address,
-        externalId: a.externalId,
-        label: a.label,
-        isDeployed: a.isDeployed,
-        createdAt: a.createdAt,
-      })),
+      depositAddresses: addresses,
     };
+  }
+
+  @Get(':clientId/:id/balances')
+  async getDepositAddressBalances(
+    @Param('clientId', ParseIntPipe) clientId: number,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    const result = await this.depositAddressService.getDepositAddressBalances(
+      clientId,
+      id,
+    );
+    return { success: true, ...result };
   }
 }

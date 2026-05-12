@@ -237,18 +237,23 @@ export class DepositController {
       type: 'object',
       properties: {
         success: { type: 'boolean', example: true },
-        addresses: {
+        depositAddresses: {
           type: 'array',
           items: {
             type: 'object',
             properties: {
-              id: { type: 'string', example: 'da_01HX...' },
-              address: { type: 'string', example: '0x1a2b3c4d5e6f7890abcdef1234567890abcdef12' },
-              chainId: { type: 'integer', example: 1 },
-              label: { type: 'string', example: 'customer-12345', nullable: true },
-              status: { type: 'string', example: 'deployed', enum: ['pending_deployment', 'deployed'] },
-              totalDeposits: { type: 'integer', example: 3, description: 'Number of deposits received at this address' },
-              createdAt: { type: 'string', format: 'date-time', example: '2026-04-01T10:00:00Z' },
+              id: { type: 'integer', example: 11 },
+              address: { type: 'string', example: '0x613dbCDc1b7110814CD968799b26B8A958C63dBb' },
+              chainId: { type: 'integer', example: 56 },
+              externalId: { type: 'string', example: 'customer-12345' },
+              label: { type: 'string', example: 'BrPay deposit', nullable: true },
+              isDeployed: { type: 'boolean', example: false, description: 'true once the forwarder bytecode exists on-chain' },
+              salt: { type: 'string', example: '0xf98aa2b63c383fa58f050d30d9d7de6daffa012dd9dac4216646e74121c748cf', description: 'keccak256(uint256 clientId, uint256 chainId, string externalId) — the salt fed to the factory' },
+              parentAddress: { type: 'string', example: '0x17193a58d73825485393e00ece33051fa2536415', description: 'Hot wallet that receives swept funds. Part of the CREATE2 derivation input.', nullable: true },
+              deployerAddress: { type: 'string', example: '0x54f55b4e7428519dC0A8643dA92E7B27CabC37A1', description: 'Gas tank that signs the createForwarder call. msg.sender is hashed into the final salt, so this MUST match.', nullable: true },
+              feeAddress: { type: 'string', example: '0x17193a58d73825485393e00ece33051fa2536415', description: 'Fee recipient (= parent in full-custody mode). Part of the CREATE2 derivation input.', nullable: true },
+              factoryAddress: { type: 'string', example: '0x16fE538d48E739031EA840eC91D1EdC384299A2d', description: 'ForwarderFactory address on this chain — the CREATE2 deployer contract.', nullable: true },
+              createdAt: { type: 'string', format: 'date-time', example: '2026-05-11T18:24:00Z' },
             },
           },
         },
@@ -422,5 +427,75 @@ export class DepositController {
   async getDeposit(@Param('id') id: string, @CurrentClientId() clientId: number) {
     const deposit = await this.depositService.getDeposit(clientId, id);
     return { success: true, deposit };
+  }
+
+  @Post('deposit-addresses/:id/balances')
+  @ClientAuth('deposits:read')
+  @ApiOperation({
+    summary: 'Get on-chain balances for a deposit address (scope: deposits:read)',
+    description: `Fetches the live on-chain balances (native + default ERC20s on the address's chain) for a deposit address via Multicall3. Use this to power balance widgets, deposit-readiness checks, or reconciliation flows.
+
+**How it works:**
+1. Looks up the deposit address by its internal id (must belong to the authenticated client)
+2. Pulls the chain's default token set (native + ERC20s flagged as default)
+3. Queries native balance via Multicall3 \`getEthBalance\` and ERC20 \`balanceOf\` in a single batched call
+4. Returns each token's raw balance, formatted balance, and (when configured) USD price/value
+
+**Why POST instead of GET:** This endpoint performs an on-chain RPC batch that bypasses caches and produces fresh data — POST signals "compute now" semantics and avoids CDN/proxy caching layers that might short-circuit a GET.
+
+**Required scope:** \`deposits:read\``,
+  })
+  @ApiParam({
+    name: 'id',
+    type: Number,
+    description: 'Internal numeric id of the deposit address (returned by GET /client/v1/deposit-addresses as `id`).',
+    example: 11,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Balances retrieved successfully.',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        depositAddressId: { type: 'integer', example: 11 },
+        address: { type: 'string', example: '0x613dbCDc1b7110814CD968799b26B8A958C63dBb' },
+        chainId: { type: 'integer', example: 56 },
+        isDeployed: { type: 'boolean', example: false },
+        balances: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              tokenId: { type: 'integer', example: 1 },
+              symbol: { type: 'string', example: 'BNB' },
+              name: { type: 'string', example: 'BNB' },
+              contractAddress: { type: 'string', example: 'native' },
+              decimals: { type: 'integer', example: 18 },
+              isNative: { type: 'boolean', example: true },
+              balanceRaw: { type: 'string', example: '5000000000000000', description: 'Raw on-chain balance (wei / token base units)' },
+              balanceFormatted: { type: 'string', example: '0.005', description: 'Formatted balance using token decimals' },
+              priceUsd: { type: 'string', example: null, nullable: true, description: 'USD price per token (null until a price oracle is wired)' },
+              valueUsd: { type: 'string', example: null, nullable: true, description: 'USD value of this balance (null until a price oracle is wired)' },
+            },
+          },
+        },
+        totalUsd: { type: 'string', example: null, nullable: true, description: 'Sum of valueUsd across all tokens (null until a price oracle is wired)' },
+        fetchedAt: { type: 'string', format: 'date-time', example: '2026-05-12T22:00:00Z' },
+      },
+    },
+  })
+  @ApiResponse({ status: 401, description: 'Missing or invalid API key.' })
+  @ApiResponse({ status: 403, description: 'API key does not have the `deposits:read` scope.' })
+  @ApiResponse({ status: 404, description: 'Deposit address not found or does not belong to the authenticated client.' })
+  async getDepositAddressBalances(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentClientId() clientId: number,
+  ) {
+    const result = await this.depositService.getDepositAddressBalances(
+      clientId,
+      id,
+    );
+    return { success: true, ...result };
   }
 }

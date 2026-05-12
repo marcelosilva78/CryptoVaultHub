@@ -118,6 +118,24 @@ export class DepositService {
     }
   }
 
+  async getDepositAddressBalances(clientId: number, depositAddressId: number) {
+    try {
+      const { data } = await axios.get(
+        `${this.coreWalletUrl}/deposit-addresses/${clientId}/${depositAddressId}/balances`,
+        { headers: this.headers, timeout: 20000 },
+      );
+      return data;
+    } catch (error: any) {
+      if (error.response) {
+        throw new HttpException(
+          error.response.data?.message || 'Service error',
+          error.response.status,
+        );
+      }
+      throw new InternalServerErrorException('Downstream service unavailable');
+    }
+  }
+
   async getDeposit(clientId: number, depositId: string) {
     try {
       const { data } = await axios.get(
