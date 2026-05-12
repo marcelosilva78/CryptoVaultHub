@@ -1092,6 +1092,19 @@ The Admin API Swagger page documents all 17 endpoints across 6 categories:
 | Admin API | `http://localhost:3001/api/docs` | JWT Bearer Token |
 | Client API | `http://localhost:3002/api/docs` | API Key (X-API-Key) |
 
+### Smoke-test script
+
+A runnable bash script that walks the read-side of the public Client API (wallets, balances with USD via CoinGecko, forwarders with CREATE2 derivation inputs, deposits with full lifecycle filters, withdrawals, gas tanks, and the flush activity feed) lives at [`docs/api/scripts/test-client-api.sh`](docs/api/scripts/test-client-api.sh).
+
+```bash
+export CVH_KEY="cvh_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"  # portal → Settings → API Keys
+./docs/api/scripts/test-client-api.sh                       # run every section
+./docs/api/scripts/test-client-api.sh panorama              # one-shot snapshot → brpay-snapshot.json
+./docs/api/scripts/test-client-api.sh deposits-filtered     # individual sections supported
+```
+
+Required scopes: `wallets:read`, `deposits:read`, `withdrawals:read`, `gas-tanks:read`, `forwarders:read`. Every command has been validated against production with a real tenant; the script is idempotent and read-only.
+
 > **Tip:** Both Swagger UIs support persistent authorization — enter your credentials once and they persist across page reloads. Use the "Try it out" feature to test endpoints directly from the documentation page.
 
 ---

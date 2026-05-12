@@ -95,13 +95,17 @@ export class ListDepositsQueryDto {
   @ApiPropertyOptional({
     description: `Filter deposits by status. Only deposits matching the specified status are returned.
 
+**Lifecycle (in order):** \`pending\` → \`detected\` → \`confirming\` → \`confirmed\` → \`swept\`. Terminal failure state: \`failed\`.
+
 **Available statuses:**
-- \`pending\` — Deposit detected on-chain but has not yet reached the required number of confirmations
-- \`confirmed\` — Deposit has reached the required confirmation threshold and is considered final
-- \`swept\` — Confirmed deposit has been swept (forwarded) from the deposit address to the parent hot wallet
-- \`failed\` — Sweep transaction failed (e.g., insufficient gas in gas tank)`,
-    example: 'confirmed',
-    enum: ['pending', 'confirmed', 'swept', 'failed'],
+- \`pending\` — Deposit row created by the indexer, waiting for the next confirmation cycle
+- \`detected\` — Transfer event observed on-chain, awaiting block confirmations
+- \`confirming\` — At least one but fewer than the required number of confirmations
+- \`confirmed\` — Required confirmation threshold reached; sweep cron is now eligible to pick it up
+- \`swept\` — Sweep tx confirmed on-chain; funds are in the parent hot wallet (this is the typical terminal state for completed deposits — the sweep cron usually executes within ~30s of confirmation, so most production rows are \`swept\` rather than \`confirmed\`)
+- \`failed\` — Sweep transaction failed (e.g., insufficient gas in the gas tank, contract revert)`,
+    example: 'swept',
+    enum: ['pending', 'detected', 'confirming', 'confirmed', 'swept', 'failed'],
     type: String,
   })
   @IsOptional()
@@ -127,8 +131,10 @@ export class ListDepositsQueryDto {
   chainId?: string;
 
   @ApiPropertyOptional({
-    description: 'Filter deposits created on or after this date. ISO 8601 format. Inclusive. Use in combination with `toDate` to define a date range.',
-    example: '2026-01-01T00:00:00Z',
+    description: `Filter deposits detected on or after this instant. Inclusive.
+
+Accepts either a full ISO-8601 timestamp (\`2026-05-12T14:30:00Z\`) used verbatim, or a bare \`YYYY-MM-DD\` which is widened to start-of-day UTC (\`2026-05-12T00:00:00.000Z\`). Use with \`toDate\` to define a window.`,
+    example: '2026-05-01',
     type: String,
   })
   @IsOptional()
@@ -136,8 +142,10 @@ export class ListDepositsQueryDto {
   fromDate?: string;
 
   @ApiPropertyOptional({
-    description: 'Filter deposits created on or before this date. ISO 8601 format. Inclusive. Use in combination with `fromDate` to define a date range.',
-    example: '2026-12-31T23:59:59Z',
+    description: `Filter deposits detected on or before this instant. Inclusive.
+
+Accepts either a full ISO-8601 timestamp used verbatim, or a bare \`YYYY-MM-DD\` which is widened to end-of-day UTC (\`2026-05-12T23:59:59.999Z\`) so the example below returns every deposit on May 12, not just rows stamped at midnight.`,
+    example: '2026-05-12',
     type: String,
   })
   @IsOptional()

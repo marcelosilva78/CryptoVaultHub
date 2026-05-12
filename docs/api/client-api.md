@@ -281,10 +281,10 @@ Returns deposits for the authenticated client with optional filtering.
 |-----------|------|---------|-------------|
 | `page` | integer | 1 | Page number |
 | `limit` | integer | 20 | Items per page |
-| `status` | string | -- | Filter: `pending`, `confirming`, `confirmed`, `swept`, `reverted` |
+| `status` | string | -- | Filter: `pending`, `detected`, `confirming`, `confirmed`, `swept`, `failed`. Lifecycle order is left-to-right; the sweep cron normally advances rows to `swept` within ~30s of `confirmed`, so most production rows you query will be `swept`, not `confirmed`. |
 | `chainId` | string | -- | Filter by chain ID |
-| `fromDate` | string | -- | Start date (ISO 8601) |
-| `toDate` | string | -- | End date (ISO 8601) |
+| `fromDate` | string | -- | Inclusive start. ISO-8601 timestamp used verbatim, OR a bare `YYYY-MM-DD` (e.g. `2026-05-01`) widened to start-of-day UTC. |
+| `toDate` | string | -- | Inclusive end. ISO-8601 timestamp used verbatim, OR a bare `YYYY-MM-DD` widened to end-of-day UTC (`23:59:59.999Z`), so `toDate=2026-05-12` returns every deposit on May 12. |
 
 **Response** (200):
 ```json
@@ -444,8 +444,8 @@ Initiates a withdrawal from the hot wallet. The destination address must be in t
 | `limit` | integer | 20 | Items per page |
 | `status` | string | -- | Filter by withdrawal status |
 | `chainId` | string | -- | Filter by chain ID |
-| `fromDate` | string | -- | Start date (ISO 8601) |
-| `toDate` | string | -- | End date (ISO 8601) |
+| `fromDate` | string | -- | Inclusive start. Accepts a full ISO-8601 timestamp or a bare `YYYY-MM-DD` (widened to start-of-day UTC). |
+| `toDate` | string | -- | Inclusive end. Accepts a full ISO-8601 timestamp or a bare `YYYY-MM-DD` (widened to end-of-day UTC). |
 
 **Response** (200):
 ```json
