@@ -17,3 +17,13 @@ export function explorerTxUrl(
   if (!base) return null;
   return `${base.replace(/\/+$/, '')}/tx/${txHash}`;
 }
+
+export function explorerAddressUrl(
+  chainId: number,
+  address: string,
+  fallbackBase?: string,
+): string | null {
+  const base = EXPLORERS[chainId] ?? fallbackBase ?? null;
+  if (!base) return null;
+  return `${base.replace(/\/+$/, '')}/address/${address}`;
+}

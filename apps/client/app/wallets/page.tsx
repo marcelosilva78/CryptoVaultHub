@@ -3,24 +3,25 @@
 import { useState, useEffect, useMemo } from "react";
 import { Loader2 } from "lucide-react";
 import { StatCard } from "@/components/stat-card";
-import { Badge } from "@/components/badge";
-import { WalletCard } from "@/components/wallet-card";
 import { GenerateAddressModal } from "@/components/generate-address-modal";
+import {
+  DepositAddressCard,
+  type DepositAddressRecord,
+} from "@/components/deposit-address-card";
 import { clientFetch } from "@/lib/api";
-import type { WalletAddress } from "@/lib/mock-data";
 
-/* ─── Chain ID → Name map ───────────────────────────────────── */
 const chainNames: Record<number, string> = {
-  1: "ETH",
+  1: "Ethereum",
+  10: "Optimism",
   56: "BSC",
   137: "Polygon",
-  42161: "Arbitrum",
-  10: "Optimism",
-  43114: "Avalanche",
   8453: "Base",
+  42161: "Arbitrum",
+  43114: "Avalanche",
+  11155111: "Sepolia",
+  97: "BSC Testnet",
 };
 
-/* ─── API response types ────────────────────────────────────── */
 interface ApiDepositAddress {
   id: number;
   address: string;
@@ -28,169 +29,110 @@ interface ApiDepositAddress {
   externalId: string;
   label: string | null;
   isDeployed: boolean;
+  salt: string;
+  parentAddress: string | null;
+  deployerAddress: string | null;
+  feeAddress: string | null;
+  factoryAddress: string | null;
   createdAt: string;
-  // Optional — not in the list response today, derived from per-address data:
-  totalDeposits?: number;
 }
 
-interface ApiBalance {
-  tokenSymbol: string;
-  tokenAddress: string;
-  balance: string;
-  balanceUsd: string;
-  decimals: number;
-}
-
-interface ApiWallet {
-  id: number;
-  address: string;
-  chainId: number;
-  chainName: string;
-  walletType: string;
-  isActive: boolean;
-  createdAt: string;
+interface ListResponse {
+  success: boolean;
+  count: number;
+  depositAddresses: ApiDepositAddress[];
 }
 
 export default function WalletsPage() {
   const [modalOpen, setModalOpen] = useState(false);
-  const [chainFilter, setChainFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [chainFilter, setChainFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [walletAddresses, setWalletAddresses] = useState<WalletAddress[]>([]);
-  const [kpis, setKpis] = useState({ totalAddresses: 0, withBalance: 0, pendingSweep: 0 });
-  const [availableChains, setAvailableChains] = useState<string[]>([]);
+  const [records, setRecords] = useState<DepositAddressRecord[]>([]);
 
   useEffect(() => {
     let cancelled = false;
 
-    async function fetchData() {
+    (async () => {
       try {
         setLoading(true);
         setError(null);
-
-        // Fetch deposit addresses and wallets in parallel.
-        // NOTE: client-api returns { success, clientId, count, depositAddresses[] }
-        // for the list endpoint — not { addresses, meta:{total} } as previously assumed.
-        const [addressesRes, walletsRes] = await Promise.all([
-          clientFetch<{ success: boolean; count: number; depositAddresses: ApiDepositAddress[] }>('/v1/deposit-addresses?limit=100')
-            .catch(() => ({ success: false, count: 0, depositAddresses: [] as ApiDepositAddress[] })),
-          clientFetch<{ success: boolean; wallets: ApiWallet[] }>('/v1/wallets')
-            .catch(() => ({ success: false, wallets: [] as ApiWallet[] })),
-        ]);
-
-        if (cancelled) return;
-
-        // Fetch balances for each chain (hot wallets only)
-        const wallets = walletsRes?.wallets ?? [];
-        const uniqueChainIds = [...new Set(wallets.filter(w => w.walletType === 'hot').map(w => w.chainId))];
-        const balanceResults = await Promise.all(
-          uniqueChainIds.map(chainId =>
-            clientFetch<{ success: boolean; balances: ApiBalance[] }>(`/v1/wallets/${chainId}/balances`)
-              .catch(() => ({ success: false, balances: [] as ApiBalance[] }))
-          )
+        const res = await clientFetch<ListResponse>(
+          "/v1/deposit-addresses?limit=200",
         );
-
         if (cancelled) return;
-
-        // Build a balance lookup map by chainId -> token -> balance info
-        const balanceLookup: Record<number, ApiBalance[]> = {};
-        balanceResults.forEach((res, idx) => {
-          balanceLookup[uniqueChainIds[idx]] = res.balances;
-        });
-
-        // Transform API deposit addresses to WalletAddress shape
-        const chains = new Set<string>();
-        let withBalanceCount = 0;
-        let pendingSweepCount = 0;
-
-        const addresses = addressesRes?.depositAddresses ?? [];
-        const transformed: WalletAddress[] = addresses.map((addr) => {
-          const chain = chainNames[addr.chainId] || `Chain ${addr.chainId}`;
-          chains.add(chain);
-          const isDeployed = addr.isDeployed === true;
-          const chainBalances = balanceLookup[addr.chainId] || [];
-          const tokens = chainBalances.map(b => b.tokenSymbol);
-
-          // totalDeposits is not returned by the list endpoint today; default to 0
-          // and consider "has balance" unknown from the list view (sweeps surface
-          // through dedicated deposits/sweep endpoints).
-          const totalDeposits = addr.totalDeposits ?? 0;
-          const hasBalance = totalDeposits > 0;
-          if (hasBalance) withBalanceCount++;
-          if (hasBalance && isDeployed) pendingSweepCount++;
-
-          const shortAddr = addr.address.length > 14
-            ? `${addr.address.slice(0, 10)}...${addr.address.slice(-4)}`
-            : addr.address;
-
-          // addr.id is numeric (BigInt-as-Number from Prisma) — coerce for display.
-          const idStr = String(addr.id);
-
-          return {
-            address: shortAddr,
-            addressFull: addr.address,
-            label: addr.label || addr.externalId || `Address ${idStr}`,
-            externalId: addr.externalId ?? idStr,
-            chain,
-            balance: "0",
-            balanceUsd: "$0.00",
-            hasBalance,
-            deployed: isDeployed,
-            lastDeposit: totalDeposits > 0 ? "Recent" : "Never",
-            createdAt: new Date(addr.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
-            depositCount: totalDeposits,
-            forwarderAddresses: [],
-            tokens: tokens.length > 0 ? tokens : ["All supported"],
-          };
-        });
-
-        setWalletAddresses(transformed);
-        setKpis({
-          totalAddresses: addressesRes.count ?? transformed.length,
-          withBalance: withBalanceCount,
-          pendingSweep: pendingSweepCount,
-        });
-        setAvailableChains([...chains]);
+        const list = res.depositAddresses ?? [];
+        setRecords(
+          list.map((a) => ({
+            id: a.id,
+            address: a.address,
+            chainId: a.chainId,
+            chainName: chainNames[a.chainId] ?? `Chain ${a.chainId}`,
+            externalId: a.externalId,
+            label: a.label,
+            isDeployed: a.isDeployed,
+            salt: a.salt,
+            parentAddress: a.parentAddress,
+            deployerAddress: a.deployerAddress,
+            feeAddress: a.feeAddress,
+            factoryAddress: a.factoryAddress,
+            createdAt: a.createdAt,
+          })),
+        );
       } catch (err: any) {
-        if (!cancelled) {
-          setError(err.message || 'Failed to load wallets');
-        }
+        if (!cancelled) setError(err?.message || "Failed to load wallets");
       } finally {
         if (!cancelled) setLoading(false);
       }
-    }
+    })();
 
-    fetchData();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
+  const availableChains = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of records) set.add(r.chainName);
+    return [...set];
+  }, [records]);
+
+  const kpis = useMemo(() => {
+    const total = records.length;
+    const deployed = records.filter((r) => r.isDeployed).length;
+    const pending = total - deployed;
+    return { total, deployed, pending, chains: availableChains.length };
+  }, [records, availableChains]);
+
   const filtered = useMemo(() => {
-    return walletAddresses.filter((w) => {
-      if (chainFilter !== "all" && w.chain !== chainFilter) return false;
-      if (statusFilter === "with-balance" && !w.hasBalance) return false;
-      if (statusFilter === "deployed" && !w.deployed) return false;
-      if (statusFilter === "not-deployed" && w.deployed) return false;
+    return records.filter((r) => {
+      if (chainFilter !== "all" && r.chainName !== chainFilter) return false;
+      if (statusFilter === "deployed" && !r.isDeployed) return false;
+      if (statusFilter === "not-deployed" && r.isDeployed) return false;
       if (search) {
         const s = search.toLowerCase();
         if (
-          !w.label.toLowerCase().includes(s) &&
-          !w.externalId.toLowerCase().includes(s) &&
-          !w.address.toLowerCase().includes(s)
-        )
+          !(r.label ?? "").toLowerCase().includes(s) &&
+          !r.externalId.toLowerCase().includes(s) &&
+          !r.address.toLowerCase().includes(s)
+        ) {
           return false;
+        }
       }
       return true;
     });
-  }, [walletAddresses, chainFilter, statusFilter, search]);
+  }, [records, chainFilter, statusFilter, search]);
 
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <Loader2 className="w-8 h-8 animate-spin text-accent-primary" />
-        <span className="ml-3 text-text-muted font-display">Loading wallets...</span>
+        <span className="ml-3 text-text-muted font-display">
+          Loading wallets…
+        </span>
       </div>
     );
   }
@@ -198,7 +140,9 @@ export default function WalletsPage() {
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px]">
-        <div className="text-status-error text-body font-display mb-2">Error loading wallets</div>
+        <div className="text-status-error text-body font-display mb-2">
+          Error loading wallets
+        </div>
         <div className="text-text-muted text-caption font-display">{error}</div>
       </div>
     );
@@ -206,21 +150,17 @@ export default function WalletsPage() {
 
   return (
     <div>
-      {/* Page header */}
       <div className="flex justify-between items-center mb-section-gap">
         <div>
-          <h1 className="text-heading font-display text-text-primary">My Wallets</h1>
+          <h1 className="text-heading font-display text-text-primary">
+            My Wallets
+          </h1>
           <p className="text-caption text-text-muted mt-0.5 font-display">
-            All deposit addresses and wallet details across chains
+            Deposit addresses with on-chain balance, EIP-681 QR, and CREATE2
+            derivation proof.
           </p>
         </div>
         <div className="flex gap-2">
-          <button
-            onClick={() => window.alert("CSV import coming soon.")}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-button font-display text-caption font-semibold cursor-pointer transition-colors duration-fast bg-transparent text-text-secondary border border-border-default hover:border-accent-primary hover:text-text-primary"
-          >
-            Import CSV
-          </button>
           <button
             onClick={() => setModalOpen(true)}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-button font-display text-caption font-semibold cursor-pointer transition-colors duration-fast bg-accent-primary text-accent-text border-none hover:bg-accent-hover"
@@ -230,34 +170,29 @@ export default function WalletsPage() {
         </div>
       </div>
 
-      {/* KPIs */}
       <div className="grid grid-cols-4 gap-stat-grid-gap mb-section-gap">
+        <StatCard label="Total Addresses" value={kpis.total.toLocaleString()} />
         <StatCard
-          label="Total Addresses"
-          value={kpis.totalAddresses.toLocaleString()}
-        />
-        <StatCard
-          label="With Balance"
-          value={kpis.withBalance.toLocaleString()}
+          label="Deployed"
+          value={kpis.deployed.toLocaleString()}
           valueColor="text-status-success"
         />
         <StatCard
-          label="Pending Sweep"
-          value={kpis.pendingSweep.toString()}
+          label="Pending Deploy"
+          value={kpis.pending.toLocaleString()}
           valueColor="text-status-warning"
         />
         <StatCard
           label="Active Chains"
-          value={availableChains.length.toString()}
+          value={kpis.chains.toString()}
           sub={availableChains.join(", ") || "None"}
         />
       </div>
 
-      {/* Filters */}
-      <div className="flex items-center gap-2 mb-3.5">
+      <div className="flex items-center gap-2 mb-3.5 flex-wrap">
         <input
-          className="bg-surface-input border border-border-default rounded-input px-2.5 py-[5px] text-caption text-text-primary font-display outline-none focus:border-border-focus w-[200px] transition-colors duration-fast"
-          placeholder="Search by label, ID or address..."
+          className="bg-surface-input border border-border-default rounded-input px-2.5 py-[5px] text-caption text-text-primary font-display outline-none focus:border-border-focus w-[240px] transition-colors duration-fast"
+          placeholder="Search by label, ID or address…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -267,8 +202,10 @@ export default function WalletsPage() {
           className="bg-surface-input border border-border-default rounded-input px-2 py-1 text-caption text-text-primary font-display outline-none focus:border-border-focus cursor-pointer transition-colors duration-fast"
         >
           <option value="all">All Chains</option>
-          {availableChains.map(chain => (
-            <option key={chain} value={chain}>{chain}</option>
+          {availableChains.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
           ))}
         </select>
         <select
@@ -277,16 +214,14 @@ export default function WalletsPage() {
           className="bg-surface-input border border-border-default rounded-input px-2 py-1 text-caption text-text-primary font-display outline-none focus:border-border-focus cursor-pointer transition-colors duration-fast"
         >
           <option value="all">All Status</option>
-          <option value="with-balance">With Balance</option>
           <option value="deployed">Deployed</option>
           <option value="not-deployed">Not Deployed</option>
         </select>
         <span className="text-micro text-text-muted ml-1 font-display">
-          {filtered.length} of {walletAddresses.length} wallets
+          {filtered.length} of {records.length} wallets
         </span>
       </div>
 
-      {/* Wallet cards */}
       {filtered.length === 0 ? (
         <div className="bg-surface-card border border-border-default rounded-card p-12 text-center">
           <div className="text-heading text-text-muted opacity-30 mb-2 font-display">
@@ -298,8 +233,8 @@ export default function WalletsPage() {
         </div>
       ) : (
         <div className="space-y-2">
-          {filtered.map((wallet) => (
-            <WalletCard key={wallet.addressFull || wallet.address} wallet={wallet} />
+          {filtered.map((r) => (
+            <DepositAddressCard key={r.id} record={r} />
           ))}
         </div>
       )}
