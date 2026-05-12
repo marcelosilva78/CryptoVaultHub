@@ -53,6 +53,7 @@ export class PollingDetectorService {
       return;
     }
     this.cycleInFlight = true;
+    const t0 = Date.now();
     try {
       const chainsWithAddresses = await this.prisma.$queryRaw<Array<{ chain_id: number; name: string }>>`
         SELECT DISTINCT c.chain_id, c.name
@@ -60,7 +61,12 @@ export class PollingDetectorService {
         INNER JOIN monitored_addresses ma ON ma.chain_id = c.chain_id AND ma.is_active = 1
         WHERE c.is_active = 1
       `;
-      if (chainsWithAddresses.length === 0) return;
+      if (chainsWithAddresses.length === 0) {
+        this.logger.log('Polling cycle: no chains with monitored addresses');
+        return;
+      }
+
+      this.logger.log(`Polling cycle: ${chainsWithAddresses.length} chain(s) [${chainsWithAddresses.map((c) => c.chain_id).join(',')}]`);
 
       await Promise.allSettled(
         chainsWithAddresses.map(async (chain) => {
@@ -74,6 +80,7 @@ export class PollingDetectorService {
           }
         }),
       );
+      this.logger.log(`Polling cycle complete (${Date.now() - t0}ms)`);
     } finally {
       this.cycleInFlight = false;
     }
@@ -90,6 +97,7 @@ export class PollingDetectorService {
     });
 
     if (allAddresses.length === 0) return;
+    this.logger.log(`pollChain ${chainId}: ${allAddresses.length} active monitored addresses`);
 
     // Load client chain configs for this chain to check monitoring mode
     const clientChainConfigs = await this.prisma.$queryRaw<any[]>`
@@ -108,7 +116,11 @@ export class PollingDetectorService {
       return mode !== 'realtime';
     });
 
-    if (addresses.length === 0) return;
+    if (addresses.length === 0) {
+      this.logger.warn(`pollChain ${chainId}: all addresses filtered out (realtime-only); nothing to poll`);
+      return;
+    }
+    this.logger.log(`pollChain ${chainId}: polling ${addresses.length} address(es) after monitoring-mode filter`);
 
     const tokens = await this.prisma.token.findMany({
       where: { chainId, isActive: true },
