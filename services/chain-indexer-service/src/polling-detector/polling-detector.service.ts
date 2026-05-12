@@ -335,18 +335,28 @@ export class PollingDetectorService {
       if (balance > prevBalance) {
         const increase = balance - prevBalance;
 
-        // Resolve the real on-chain tx hash so downstream consumers
-        // (DepositPersistenceHandler) accept this event identically to
-        // realtime-detector emissions. Falls back to a synth hash if scanning
-        // the lookback window finds nothing (defensive — that shouldn't happen
-        // for a real deposit, but the event still carries clientId/amount so
-        // notification-service can still fire deposit.detected webhooks).
-        const resolved = await this.resolveTxHash(
-          chainId,
-          meta.address,
-          meta.tokenAddress,
-          currentBlock,
-        );
+        // Tx-hash resolution strategy:
+        //   - FIRST observation (prev=null → prevBalance=0n): skip the lookup.
+        //     This is a freshly-registered forwarder picking up an existing
+        //     balance; the actual deposit block could be hundreds of blocks
+        //     back (well outside a sane lookback window) and even a moderate
+        //     window of 30 blocks per address × ~5 funded addresses ×
+        //     ~200ms per getBlock would blow the 20s pollChain timeout. We
+        //     emit a synth hash and rely on DepositPersistenceHandler's
+        //     fallback to persist the row so the sweep worker can pick it up.
+        //   - SUBSEQUENT observation (prev>0, balance grew): a real on-chain
+        //     tx happened since the last poll cycle — narrow lookback (10
+        //     blocks ≈ 30s on BSC) almost always finds it.
+        const resolved =
+          prevBalanceStr !== null
+            ? await this.resolveTxHash(
+                chainId,
+                meta.address,
+                meta.tokenAddress,
+                currentBlock,
+                10,
+              )
+            : null;
 
         await this.redis.publishToStream('deposits:detected', {
           chainId: chainId.toString(),
