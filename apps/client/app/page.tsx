@@ -167,49 +167,50 @@ export default function DashboardPage() {
 
         if (cancelled) return;
 
-        const builtChains: ChainCustody[] = hotChainIds.flatMap(
-          (chainId, idx) => {
-            const res = perChainBalances[idx];
-            const balances = res.balances ?? [];
-            // Drop chains where the balance call returned nothing at all
-            // (RPC misconfig or empty registry). A real custody surface
-            // always returns ≥1 row from the default token list.
-            if (balances.length === 0) return [];
-            const meta = chainMeta[chainId];
-            const native = balances.find((b) => b.isNative);
-            const erc20s = balances
-              .filter((b) => !b.isNative)
-              .sort(
-                (a, b) =>
-                  Number(b.balanceUsd ?? 0) - Number(a.balanceUsd ?? 0),
-              );
-            const totalUsdHere = balances.reduce((sum, b) => {
-              const v = b.balanceUsd ? Number(b.balanceUsd) : NaN;
-              return Number.isFinite(v) ? sum + v : sum;
-            }, 0);
-            const anyPriced = balances.some((b) => b.balanceUsd !== null);
-            return [
-              {
-                chainId,
-                chainName: meta?.name ?? `Chain ${chainId}`,
-                nativeSymbol:
-                  native?.symbol ?? meta?.nativeSymbol ?? "?",
-                hotWalletAddress: res.walletAddress ?? null,
-                totalUsd: anyPriced ? totalUsdHere : null,
-                nativeBalance: native?.balanceFormatted ?? "0",
-                topErc20: erc20s[0]
-                  ? {
-                      symbol: erc20s[0].symbol,
-                      balance: erc20s[0].balanceFormatted,
-                      valueUsd: erc20s[0].balanceUsd
-                        ? Number(erc20s[0].balanceUsd)
-                        : null,
-                    }
-                  : undefined,
-              },
-            ];
-          },
+        // Build one ChainCustody row per chain that has a hot wallet. We
+        // intentionally do NOT drop chains whose balance call returned empty:
+        // the chain is still a real custody surface — showing it with a
+        // zero balance is more useful than hiding it entirely. The previous
+        // drop-on-empty rule hid chains whenever the proxy stripped the
+        // balances array, masking the bug instead of surfacing zero.
+        const hotWalletByChain = new Map(
+          hotWallets.map((w) => [w.chainId, w.address]),
         );
+        const builtChains: ChainCustody[] = hotChainIds.map((chainId, idx) => {
+          const res = perChainBalances[idx];
+          const balances = res.balances ?? [];
+          const meta = chainMeta[chainId];
+          const native = balances.find((b) => b.isNative);
+          const erc20s = balances
+            .filter((b) => !b.isNative)
+            .sort(
+              (a, b) =>
+                Number(b.balanceUsd ?? 0) - Number(a.balanceUsd ?? 0),
+            );
+          const totalUsdHere = balances.reduce((sum, b) => {
+            const v = b.balanceUsd ? Number(b.balanceUsd) : NaN;
+            return Number.isFinite(v) ? sum + v : sum;
+          }, 0);
+          const anyPriced = balances.some((b) => b.balanceUsd !== null);
+          return {
+            chainId,
+            chainName: meta?.name ?? `Chain ${chainId}`,
+            nativeSymbol: native?.symbol ?? meta?.nativeSymbol ?? "?",
+            hotWalletAddress:
+              res.walletAddress ?? hotWalletByChain.get(chainId) ?? null,
+            totalUsd: anyPriced ? totalUsdHere : null,
+            nativeBalance: native?.balanceFormatted ?? "0",
+            topErc20: erc20s[0]
+              ? {
+                  symbol: erc20s[0].symbol,
+                  balance: erc20s[0].balanceFormatted,
+                  valueUsd: erc20s[0].balanceUsd
+                    ? Number(erc20s[0].balanceUsd)
+                    : null,
+                }
+              : undefined,
+          };
+        });
         setChains(builtChains);
 
         const overallPriced = builtChains.some((c) => c.totalUsd !== null);
