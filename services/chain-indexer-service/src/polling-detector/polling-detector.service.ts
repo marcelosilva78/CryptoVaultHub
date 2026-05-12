@@ -46,7 +46,12 @@ export class PollingDetectorService {
    * Re-entrancy guard: if a previous cycle is still running (e.g. a slow
    * Multicall3 call), the next tick is skipped to avoid duplicate work.
    */
-  @Cron(CronExpression.EVERY_10_SECONDS)
+  // 30s cadence: BSC public RPC under BackfillWorker contention takes ~30s for
+  // a 114-call Multicall3 batch. Polling at 10s queues cycles faster than they
+  // can complete and saturates the connection pool. 30s gives each cycle room
+  // to drain before the next fires; user-visible deposit detection latency
+  // stays under 1 minute.
+  @Cron(CronExpression.EVERY_30_SECONDS)
   async runPollingCycle(): Promise<void> {
     if (this.cycleInFlight) {
       this.logger.debug('Polling cycle already in flight — skipping tick');
@@ -68,13 +73,13 @@ export class PollingDetectorService {
 
       this.logger.log(`Polling cycle: ${chainsWithAddresses.length} chain(s) [${chainsWithAddresses.map((c) => c.chain_id).join(',')}]`);
 
-      // Hard-cap per-chain poll at 60s so a hung RPC (Multicall3, getBlockNumber)
-      // never deadlocks the entire polling-detector. Without this, a single slow
-      // chain leaves cycleInFlight=true forever and ALL subsequent ticks are
-      // silently skipped.
-      // Note: BSC public RPC contended with BackfillWorker can take 30s+ for a
-      // Multicall3 batch of 100+ calls on cold connections; 60s gives headroom.
-      const CHAIN_TIMEOUT_MS = 60_000;
+      // Hard-cap per-chain poll at 120s so a hung RPC never deadlocks the
+      // polling-detector. Without this, a single slow chain leaves
+      // cycleInFlight=true forever and ALL subsequent ticks are silently
+      // skipped. Production timings on BSC public RPC under BackfillWorker
+      // contention: getProvider cold 15s + Multicall3 30s + getBlockNumber 30s
+      // ≈ 76s on first cycle. 120s gives margin for transient stalls.
+      const CHAIN_TIMEOUT_MS = 120_000;
       await Promise.allSettled(
         chainsWithAddresses.map(async (chain) => {
           try {
@@ -301,10 +306,18 @@ export class PollingDetectorService {
       await multicall3.aggregate3.staticCall(calls);
     this.logger.log(`pollChain ${chainId} step4 (Multicall3): ${Date.now() - t4}ms, ${results.length} results`);
 
-    // Compare with cached balances
+    // Compare with cached balances. We DON'T need a fresh block number here —
+    // it's only used for synth txHash and sync_cursor advance. Use the chain's
+    // existing cursor (cheap, in-DB) and bump it by 1 — staleness of a few
+    // blocks doesn't affect correctness; the indexer re-converges on the next
+    // tick. This saves a 30s eth_blockNumber RPC call on contended public BSC.
     const t5 = Date.now();
-    const currentBlock = await provider.getBlockNumber();
-    this.logger.log(`pollChain ${chainId} step5 (getBlockNumber): ${Date.now() - t5}ms, block=${currentBlock}`);
+    const lastCursor = await this.prisma.syncCursor.findUnique({
+      where: { chainId },
+      select: { lastBlock: true },
+    });
+    const currentBlock = Number(lastCursor?.lastBlock ?? 0n) + 1;
+    this.logger.log(`pollChain ${chainId} step5 (cursor read, skipping getBlockNumber): ${Date.now() - t5}ms, currentBlock~=${currentBlock}`);
 
     // Advance the sync cursor — this is the only place that does so on the HTTP-only path.
     // Without this, GapDetector sees lastBlock=0 and refuses to schedule backfills,
