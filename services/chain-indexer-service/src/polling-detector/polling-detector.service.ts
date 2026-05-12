@@ -68,11 +68,13 @@ export class PollingDetectorService {
 
       this.logger.log(`Polling cycle: ${chainsWithAddresses.length} chain(s) [${chainsWithAddresses.map((c) => c.chain_id).join(',')}]`);
 
-      // Hard-cap per-chain poll at 20s so a hung RPC (Multicall3, getBlockNumber)
+      // Hard-cap per-chain poll at 60s so a hung RPC (Multicall3, getBlockNumber)
       // never deadlocks the entire polling-detector. Without this, a single slow
       // chain leaves cycleInFlight=true forever and ALL subsequent ticks are
       // silently skipped.
-      const CHAIN_TIMEOUT_MS = 20_000;
+      // Note: BSC public RPC contended with BackfillWorker can take 30s+ for a
+      // Multicall3 batch of 100+ calls on cold connections; 60s gives headroom.
+      const CHAIN_TIMEOUT_MS = 60_000;
       await Promise.allSettled(
         chainsWithAddresses.map(async (chain) => {
           try {
