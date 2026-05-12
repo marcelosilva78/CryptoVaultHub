@@ -205,14 +205,21 @@ export class PollingDetectorService {
     }
     this.logger.log(`pollChain ${chainId}: polling ${addresses.length} address(es) after monitoring-mode filter`);
 
+    const t1 = Date.now();
     const tokens = await this.prisma.token.findMany({
       where: { chainId, isActive: true },
     });
+    this.logger.log(`pollChain ${chainId} step1 (tokens.findMany ${tokens.length}): ${Date.now() - t1}ms`);
 
+    const t2 = Date.now();
     const provider = await this.evmProvider.getProvider(chainId);
+    this.logger.log(`pollChain ${chainId} step2 (getProvider): ${Date.now() - t2}ms`);
+
+    const t3 = Date.now();
     const chain = await this.prisma.chain.findUnique({
       where: { id: chainId },
     });
+    this.logger.log(`pollChain ${chainId} step3 (chain.findUnique): ${Date.now() - t3}ms`);
     if (!chain) return;
 
     const multicall3 = new ethers.Contract(
@@ -277,11 +284,16 @@ export class PollingDetectorService {
     if (calls.length === 0) return;
 
     // Execute Multicall3 batch
+    const t4 = Date.now();
+    this.logger.log(`pollChain ${chainId} step4: starting Multicall3 aggregate3 with ${calls.length} calls`);
     const results: Array<{ success: boolean; returnData: string }> =
       await multicall3.aggregate3.staticCall(calls);
+    this.logger.log(`pollChain ${chainId} step4 (Multicall3): ${Date.now() - t4}ms, ${results.length} results`);
 
     // Compare with cached balances
+    const t5 = Date.now();
     const currentBlock = await provider.getBlockNumber();
+    this.logger.log(`pollChain ${chainId} step5 (getBlockNumber): ${Date.now() - t5}ms, block=${currentBlock}`);
 
     // Advance the sync cursor — this is the only place that does so on the HTTP-only path.
     // Without this, GapDetector sees lastBlock=0 and refuses to schedule backfills,
