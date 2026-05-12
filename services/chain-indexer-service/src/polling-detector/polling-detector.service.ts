@@ -257,8 +257,14 @@ export class PollingDetectorService extends WorkerHost implements OnModuleInit {
       // Store current balance
       await this.redis.setCache(cacheKey, balance.toString(), 3600);
 
-      // Detect increase = potential deposit
-      if (balance > prevBalance && prevBalanceStr !== null) {
+      // Detect increase = potential deposit.
+      // A null prevBalanceStr is treated as 0n, so the first observation of a
+      // non-zero balance on a freshly-registered forwarder is fired correctly.
+      // CREATE2 deposit addresses start at 0 by definition, so any nonzero
+      // first-poll balance IS a real deposit that arrived between address
+      // registration and the first poll cycle (otherwise it would silently
+      // disappear into the cache initialization).
+      if (balance > prevBalance) {
         const increase = balance - prevBalance;
         await this.redis.publishToStream('deposits:detected', {
           chainId: chainId.toString(),

@@ -135,6 +135,10 @@ export class BlockProcessorService {
 
         const from = ethers.getAddress('0x' + log.topics[1].slice(26)).toLowerCase();
         const to = ethers.getAddress('0x' + log.topics[2].slice(26)).toLowerCase();
+        // Some non-standard Transfer events have empty data ("0x"), or BNB
+        // Chain edge cases where eth_getLogs returns "0x" — BigInt("0x")
+        // throws SyntaxError. Treat empty data as 0 amount and skip.
+        if (!log.data || log.data === '0x') continue;
         const amount = BigInt(log.data);
 
         const fromMonitored = monitored.get(from);
