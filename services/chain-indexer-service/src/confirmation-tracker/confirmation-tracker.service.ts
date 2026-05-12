@@ -167,15 +167,24 @@ export class ConfirmationTrackerService {
     // JOIN deposits → tokens to surface contract_address (deposits stores
     // token_id; the downstream stream consumers expect a contract address
     // string, with 'native' for native-token deposits).
+    // `deposits` doesn't carry wallet_id; resolve it via the monitored_addresses
+    // LEFT JOIN on (chain_id, forwarder_address). Synth tx_hash rows (polling:...)
+    // are filtered out — they don't resolve to a real receipt and would only
+    // produce false-reorg flags; the next sweep cycle rewrites those rows with
+    // a real on-chain hash anyway.
     const deposits = await this.prisma.$queryRaw<PendingDepositRow[]>`
-      SELECT d.id, d.client_id, d.wallet_id, d.chain_id, d.tx_hash,
+      SELECT d.id, d.client_id, m.wallet_id, d.chain_id, d.tx_hash,
              d.forwarder_address, d.block_number, d.amount_raw,
              t.contract_address, t.is_native,
              d.confirmations, d.confirmations_required, d.status
       FROM cvh_wallets.deposits d
       LEFT JOIN cvh_indexer.tokens t ON t.id = d.token_id
+      LEFT JOIN cvh_indexer.monitored_addresses m
+        ON m.chain_id = d.chain_id
+       AND LOWER(m.address) = LOWER(d.forwarder_address)
       WHERE d.chain_id = ${chainId}
         AND d.status IN ('pending', 'detected', 'confirming')
+        AND d.tx_hash NOT LIKE 'polling:%'
     `;
     this.logger.log(
       `processChain ${chainId} step1 (deposits.query ${deposits.length}): ${Date.now() - t1}ms`,
