@@ -167,44 +167,49 @@ export default function DashboardPage() {
 
         if (cancelled) return;
 
-        const builtChains: ChainCustody[] = hotChainIds
-          .map((chainId, idx) => {
+        const builtChains: ChainCustody[] = hotChainIds.flatMap(
+          (chainId, idx) => {
             const res = perChainBalances[idx];
+            const balances = res.balances ?? [];
+            // Drop chains where the balance call returned nothing at all
+            // (RPC misconfig or empty registry). A real custody surface
+            // always returns ≥1 row from the default token list.
+            if (balances.length === 0) return [];
             const meta = chainMeta[chainId];
-            const native = res.balances.find((b) => b.isNative);
-            const erc20s = res.balances
+            const native = balances.find((b) => b.isNative);
+            const erc20s = balances
               .filter((b) => !b.isNative)
               .sort(
                 (a, b) =>
                   Number(b.balanceUsd ?? 0) - Number(a.balanceUsd ?? 0),
               );
-            const totalUsdHere = res.balances.reduce((sum, b) => {
+            const totalUsdHere = balances.reduce((sum, b) => {
               const v = b.balanceUsd ? Number(b.balanceUsd) : NaN;
               return Number.isFinite(v) ? sum + v : sum;
             }, 0);
-            const anyPriced = res.balances.some((b) => b.balanceUsd !== null);
-            return {
-              chainId,
-              chainName: meta?.name ?? `Chain ${chainId}`,
-              nativeSymbol:
-                native?.symbol ?? meta?.nativeSymbol ?? "?",
-              hotWalletAddress: res.walletAddress || null,
-              totalUsd: anyPriced ? totalUsdHere : null,
-              nativeBalance: native?.balanceFormatted ?? "0",
-              topErc20: erc20s[0]
-                ? {
-                    symbol: erc20s[0].symbol,
-                    balance: erc20s[0].balanceFormatted,
-                    valueUsd: erc20s[0].balanceUsd
-                      ? Number(erc20s[0].balanceUsd)
-                      : null,
-                  }
-                : undefined,
-            };
-          })
-          // Drop chains where the hot wallet returned no balances at all
-          // (would indicate a misconfigured RPC); they'd render as empty noise.
-          .filter((c) => c.hotWalletAddress !== null);
+            const anyPriced = balances.some((b) => b.balanceUsd !== null);
+            return [
+              {
+                chainId,
+                chainName: meta?.name ?? `Chain ${chainId}`,
+                nativeSymbol:
+                  native?.symbol ?? meta?.nativeSymbol ?? "?",
+                hotWalletAddress: res.walletAddress ?? null,
+                totalUsd: anyPriced ? totalUsdHere : null,
+                nativeBalance: native?.balanceFormatted ?? "0",
+                topErc20: erc20s[0]
+                  ? {
+                      symbol: erc20s[0].symbol,
+                      balance: erc20s[0].balanceFormatted,
+                      valueUsd: erc20s[0].balanceUsd
+                        ? Number(erc20s[0].balanceUsd)
+                        : null,
+                    }
+                  : undefined,
+              },
+            ];
+          },
+        );
         setChains(builtChains);
 
         const overallPriced = builtChains.some((c) => c.totalUsd !== null);

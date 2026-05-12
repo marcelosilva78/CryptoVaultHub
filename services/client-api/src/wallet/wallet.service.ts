@@ -53,15 +53,23 @@ export class WalletService {
           timeout: 10000,
         },
       );
-      // core-wallet may return { balances: [...] } or a raw array
-      return data?.balances ?? (Array.isArray(data) ? data : []);
+      // Pass through walletAddress + balances so the dashboard can attribute
+      // the per-chain custody back to the actual hot wallet address. Earlier
+      // versions returned only the array, which broke chain-grouping in the UI.
+      if (data && typeof data === 'object') {
+        return {
+          walletAddress: data.walletAddress ?? null,
+          balances: data.balances ?? (Array.isArray(data) ? data : []),
+        };
+      }
+      return { walletAddress: null, balances: Array.isArray(data) ? data : [] };
     } catch (error: any) {
       if (error.response?.status === 404) {
         this.logger.log(`No balances data available for chain ${chainId} (endpoint not found in downstream service)`);
-        return [];
+        return { walletAddress: null, balances: [] };
       }
       this.logger.warn(`Failed to fetch balances for chain ${chainId} (status ${error.response?.status}): ${error.message}`);
-      return [];
+      return { walletAddress: null, balances: [] };
     }
   }
 }

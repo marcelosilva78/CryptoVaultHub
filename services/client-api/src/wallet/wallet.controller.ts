@@ -118,7 +118,10 @@ Each wallet includes its on-chain address, associated chain, wallet type, active
     @Param('chainId', ParseIntPipe) chainId: number,
     @CurrentClientId() clientId: number,
   ) {
-    const balances = await this.walletService.getBalances(clientId, chainId);
-    return { success: true, balances };
+    const { walletAddress, balances } = await this.walletService.getBalances(
+      clientId,
+      chainId,
+    );
+    return { success: true, walletAddress, balances };
   }
 }
