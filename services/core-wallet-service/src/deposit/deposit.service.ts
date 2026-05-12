@@ -4,6 +4,25 @@ import { PrismaService } from '../prisma/prisma.service';
 import { PricingService } from '../pricing/pricing.service';
 
 /**
+ * Date range parsing.
+ *
+ * The filter accepts either a bare YYYY-MM-DD (treated inclusively — fromDate
+ * is start-of-day, toDate is end-of-day) or a full ISO-8601 timestamp (used
+ * verbatim). Without this, `toDate=2026-05-12` would become 00:00:00Z and
+ * silently exclude every deposit that arrived later on the same day — a
+ * surprise that produces empty result sets the user can't debug.
+ */
+const BARE_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+function parseFromDate(s: string): Date {
+  if (BARE_DATE_RE.test(s)) return new Date(`${s}T00:00:00.000Z`);
+  return new Date(s);
+}
+function parseToDate(s: string): Date {
+  if (BARE_DATE_RE.test(s)) return new Date(`${s}T23:59:59.999Z`);
+  return new Date(s);
+}
+
+/**
  * Coerce a stored deposit amount into a human-readable token-units string.
  *
  * Background: producers in this codebase disagree about what goes into
@@ -47,8 +66,8 @@ export class DepositService {
     if (chainId) where.chainId = chainId;
     if (fromDate || toDate) {
       where.detectedAt = {};
-      if (fromDate) where.detectedAt.gte = new Date(fromDate);
-      if (toDate) where.detectedAt.lte = new Date(toDate);
+      if (fromDate) where.detectedAt.gte = parseFromDate(fromDate);
+      if (toDate) where.detectedAt.lte = parseToDate(toDate);
     }
 
     const [rows, total] = await Promise.all([
