@@ -5,12 +5,15 @@ import { FlushOrchestratorService } from './flush-orchestrator.service';
 import { FlushGuardService } from './flush-guard.service';
 import { DryRunService } from './dry-run.service';
 import { SweepNativeService } from './sweep-native.service';
+import { FlushActivityService } from './flush-activity.service';
 import { FlushController } from './flush.controller';
 import { BlockchainModule } from '../blockchain/blockchain.module';
+import { PricingModule } from '../pricing/pricing.module';
 
 @Module({
   imports: [
     BlockchainModule,
+    PricingModule,
     BullModule.registerQueue({ name: 'sweep' }),
   ],
   controllers: [FlushController],
@@ -20,6 +23,7 @@ import { BlockchainModule } from '../blockchain/blockchain.module';
     FlushGuardService,
     DryRunService,
     SweepNativeService,
+    FlushActivityService,
   ],
   exports: [FlushService, DryRunService, SweepNativeService],
 })

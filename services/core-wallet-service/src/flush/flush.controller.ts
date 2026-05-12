@@ -10,6 +10,7 @@ import {
 import { FlushService, CreateFlushDto } from './flush.service';
 import { FlushOrchestratorService } from './flush-orchestrator.service';
 import { DryRunService } from './dry-run.service';
+import { FlushActivityService } from './flush-activity.service';
 
 @Controller('flush')
 export class FlushController {
@@ -17,6 +18,7 @@ export class FlushController {
     private readonly flushService: FlushService,
     private readonly orchestrator: FlushOrchestratorService,
     private readonly dryRunService: DryRunService,
+    private readonly activityService: FlushActivityService,
   ) {}
 
   @Post('create')
@@ -87,5 +89,17 @@ export class FlushController {
       operationId,
     );
     return result;
+  }
+
+  @Get('activity/:clientId')
+  async activity(
+    @Param('clientId', ParseIntPipe) clientId: number,
+    @Query('limit') limit?: string,
+  ) {
+    const parsedLimit = limit ? parseInt(limit, 10) : 50;
+    const result = await this.activityService.list(clientId, {
+      limit: Number.isFinite(parsedLimit) ? parsedLimit : 50,
+    });
+    return { success: true, ...result };
   }
 }

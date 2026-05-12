@@ -53,4 +53,18 @@ export class FlushController {
     const result = await this.flushService.listFlushes(clientId, projectId, query);
     return { success: true, ...result };
   }
+
+  @Get('activity/list')
+  @ClientAuthWithProject('forwarders:read')
+  async listActivity(
+    @Query('limit') limit: string | undefined,
+    @CurrentClientId() clientId: number,
+  ) {
+    const parsedLimit = limit ? parseInt(limit, 10) : undefined;
+    const result = await this.flushService.getActivity(
+      clientId,
+      Number.isFinite(parsedLimit as number) ? parsedLimit : undefined,
+    );
+    return result;
+  }
 }

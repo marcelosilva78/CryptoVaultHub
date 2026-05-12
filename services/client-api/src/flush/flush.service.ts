@@ -98,4 +98,29 @@ export class FlushService {
       return { operations: [], meta: { total: 0, page: 1, limit: 100 } };
     }
   }
+
+  /**
+   * Real on-chain "flush" activity sourced from gas_tank_transactions joined
+   * to deposits.sweep_tx_hash. See FlushActivityService in core-wallet for
+   * why this is the source of truth (flush_operations is dead data).
+   */
+  async getActivity(clientId: number, limit?: number) {
+    try {
+      const { data } = await axios.get(
+        `${this.coreWalletUrl}/flush/activity/${clientId}`,
+        {
+          headers: this.headers,
+          params: limit ? { limit } : {},
+          timeout: 15000,
+        },
+      );
+      return data;
+    } catch (error: any) {
+      if (error.response?.status === 404) {
+        return { success: false, activity: [], meta: { count: 0 } };
+      }
+      this.logger.warn(`Failed to fetch flush activity: ${error.message}`);
+      return { success: false, activity: [], meta: { count: 0 } };
+    }
+  }
 }
