@@ -22,13 +22,15 @@ const chainNames: Record<number, string> = {
 
 /* ─── API response types ────────────────────────────────────── */
 interface ApiDepositAddress {
-  id: string;
+  id: number;
   address: string;
   chainId: number;
+  externalId: string;
   label: string | null;
-  status: string; // "pending_deployment" | "deployed"
-  totalDeposits: number;
+  isDeployed: boolean;
   createdAt: string;
+  // Optional — not in the list response today, derived from per-address data:
+  totalDeposits?: number;
 }
 
 interface ApiBalance {
@@ -69,10 +71,12 @@ export default function WalletsPage() {
         setLoading(true);
         setError(null);
 
-        // Fetch deposit addresses and wallets in parallel
+        // Fetch deposit addresses and wallets in parallel.
+        // NOTE: client-api returns { success, clientId, count, depositAddresses[] }
+        // for the list endpoint — not { addresses, meta:{total} } as previously assumed.
         const [addressesRes, walletsRes] = await Promise.all([
-          clientFetch<{ success: boolean; addresses: ApiDepositAddress[]; meta: { total: number } }>('/v1/deposit-addresses?limit=100')
-            .catch(() => ({ success: false, addresses: [] as ApiDepositAddress[], meta: { total: 0 } })),
+          clientFetch<{ success: boolean; count: number; depositAddresses: ApiDepositAddress[] }>('/v1/deposit-addresses?limit=100')
+            .catch(() => ({ success: false, count: 0, depositAddresses: [] as ApiDepositAddress[] })),
           clientFetch<{ success: boolean; wallets: ApiWallet[] }>('/v1/wallets')
             .catch(() => ({ success: false, wallets: [] as ApiWallet[] })),
         ]);
@@ -102,17 +106,19 @@ export default function WalletsPage() {
         let withBalanceCount = 0;
         let pendingSweepCount = 0;
 
-        const addresses = addressesRes?.addresses ?? [];
+        const addresses = addressesRes?.depositAddresses ?? [];
         const transformed: WalletAddress[] = addresses.map((addr) => {
           const chain = chainNames[addr.chainId] || `Chain ${addr.chainId}`;
           chains.add(chain);
-          const isDeployed = addr.status === 'deployed';
+          const isDeployed = addr.isDeployed === true;
           const chainBalances = balanceLookup[addr.chainId] || [];
           const tokens = chainBalances.map(b => b.tokenSymbol);
 
-          // For individual deposit addresses, balances would require per-address query
-          // Use a reasonable default since the API lists balances at wallet level
-          const hasBalance = addr.totalDeposits > 0;
+          // totalDeposits is not returned by the list endpoint today; default to 0
+          // and consider "has balance" unknown from the list view (sweeps surface
+          // through dedicated deposits/sweep endpoints).
+          const totalDeposits = addr.totalDeposits ?? 0;
+          const hasBalance = totalDeposits > 0;
           if (hasBalance) withBalanceCount++;
           if (hasBalance && isDeployed) pendingSweepCount++;
 
@@ -120,19 +126,22 @@ export default function WalletsPage() {
             ? `${addr.address.slice(0, 10)}...${addr.address.slice(-4)}`
             : addr.address;
 
+          // addr.id is numeric (BigInt-as-Number from Prisma) — coerce for display.
+          const idStr = String(addr.id);
+
           return {
             address: shortAddr,
             addressFull: addr.address,
-            label: addr.label || `Address ${addr.id.slice(0, 8)}`,
-            externalId: addr.id,
+            label: addr.label || addr.externalId || `Address ${idStr}`,
+            externalId: addr.externalId ?? idStr,
             chain,
             balance: "0",
             balanceUsd: "$0.00",
             hasBalance,
             deployed: isDeployed,
-            lastDeposit: addr.totalDeposits > 0 ? "Recent" : "Never",
+            lastDeposit: totalDeposits > 0 ? "Recent" : "Never",
             createdAt: new Date(addr.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
-            depositCount: addr.totalDeposits,
+            depositCount: totalDeposits,
             forwarderAddresses: [],
             tokens: tokens.length > 0 ? tokens : ["All supported"],
           };
@@ -140,7 +149,7 @@ export default function WalletsPage() {
 
         setWalletAddresses(transformed);
         setKpis({
-          totalAddresses: addressesRes.meta?.total ?? transformed.length,
+          totalAddresses: addressesRes.count ?? transformed.length,
           withBalance: withBalanceCount,
           pendingSweep: pendingSweepCount,
         });
