@@ -68,10 +68,23 @@ export class PollingDetectorService {
 
       this.logger.log(`Polling cycle: ${chainsWithAddresses.length} chain(s) [${chainsWithAddresses.map((c) => c.chain_id).join(',')}]`);
 
+      // Hard-cap per-chain poll at 20s so a hung RPC (Multicall3, getBlockNumber)
+      // never deadlocks the entire polling-detector. Without this, a single slow
+      // chain leaves cycleInFlight=true forever and ALL subsequent ticks are
+      // silently skipped.
+      const CHAIN_TIMEOUT_MS = 20_000;
       await Promise.allSettled(
         chainsWithAddresses.map(async (chain) => {
           try {
-            await this.pollChain(chain.chain_id);
+            await Promise.race([
+              this.pollChain(chain.chain_id),
+              new Promise<never>((_, reject) =>
+                setTimeout(
+                  () => reject(new Error(`pollChain ${chain.chain_id} timed out after ${CHAIN_TIMEOUT_MS}ms`)),
+                  CHAIN_TIMEOUT_MS,
+                ),
+              ),
+            ]);
             this.evmProvider.reportSuccess(chain.chain_id);
           } catch (error) {
             const msg = error instanceof Error ? error.message : String(error);
@@ -84,6 +97,76 @@ export class PollingDetectorService {
     } finally {
       this.cycleInFlight = false;
     }
+  }
+
+  /**
+   * Try to find the real on-chain transaction that increased a monitored
+   * address's balance, so the emitted deposit event carries a real txHash that
+   * downstream consumers (DepositPersistenceHandler, notification-service)
+   * accept identically to events from the realtime-detector path.
+   *
+   * For NATIVE BNB: scan the last `lookback` blocks for any tx where
+   *   `tx.to === address` and `tx.value > 0`.
+   * For ERC20: query getLogs over the lookback window for Transfer events
+   *   with the address as the recipient (topics[2]).
+   *
+   * Returns null on any failure — caller falls back to a polling-synth hash.
+   */
+  private async resolveTxHash(
+    chainId: number,
+    address: string,
+    tokenAddress: string | null,
+    currentBlock: number,
+    lookbackBlocks: number = 30,
+  ): Promise<{ txHash: string; blockNumber: number; fromAddress: string } | null> {
+    try {
+      const provider = await this.evmProvider.getProvider(chainId);
+      const fromBlock = Math.max(0, currentBlock - lookbackBlocks);
+
+      if (tokenAddress === null) {
+        // Native BNB: walk blocks newest-first looking for an EOA→addr tx.
+        for (let bn = currentBlock; bn >= fromBlock; bn--) {
+          const block = await provider.getBlock(bn, true);
+          if (!block?.prefetchedTransactions) continue;
+          const tx = block.prefetchedTransactions.find(
+            (t) =>
+              t.to?.toLowerCase() === address.toLowerCase() &&
+              t.value !== undefined &&
+              t.value > 0n,
+          );
+          if (tx) {
+            return {
+              txHash: tx.hash,
+              blockNumber: bn,
+              fromAddress: tx.from ?? 'unknown',
+            };
+          }
+        }
+      } else {
+        // ERC20: getLogs for Transfer(_,address,_) on the token contract.
+        const TRANSFER_TOPIC = ethers.id('Transfer(address,address,uint256)');
+        const addrTopic = '0x' + address.slice(2).toLowerCase().padStart(64, '0');
+        const logs = await provider.getLogs({
+          fromBlock,
+          toBlock: currentBlock,
+          address: tokenAddress,
+          topics: [TRANSFER_TOPIC, null, addrTopic],
+        });
+        if (logs.length > 0) {
+          const log = logs[logs.length - 1];
+          return {
+            txHash: log.transactionHash,
+            blockNumber: log.blockNumber,
+            fromAddress: '0x' + log.topics[1].slice(26),
+          };
+        }
+      }
+    } catch (err) {
+      this.logger.warn(
+        `resolveTxHash failed for ${address} on chain ${chainId}: ${(err as Error).message}`,
+      );
+    }
+    return null;
   }
 
   /**
@@ -251,11 +334,27 @@ export class PollingDetectorService {
       // disappear into the cache initialization).
       if (balance > prevBalance) {
         const increase = balance - prevBalance;
+
+        // Resolve the real on-chain tx hash so downstream consumers
+        // (DepositPersistenceHandler) accept this event identically to
+        // realtime-detector emissions. Falls back to a synth hash if scanning
+        // the lookback window finds nothing (defensive — that shouldn't happen
+        // for a real deposit, but the event still carries clientId/amount so
+        // notification-service can still fire deposit.detected webhooks).
+        const resolved = await this.resolveTxHash(
+          chainId,
+          meta.address,
+          meta.tokenAddress,
+          currentBlock,
+        );
+
         await this.redis.publishToStream('deposits:detected', {
           chainId: chainId.toString(),
-          txHash: `polling:${currentBlock}:${meta.address}:${meta.tokenAddress ?? 'native'}`,
-          blockNumber: currentBlock.toString(),
-          fromAddress: 'unknown',
+          txHash:
+            resolved?.txHash ??
+            `polling:${currentBlock}:${meta.address}:${meta.tokenAddress ?? 'native'}`,
+          blockNumber: (resolved?.blockNumber ?? currentBlock).toString(),
+          fromAddress: resolved?.fromAddress ?? 'unknown',
           toAddress: meta.address,
           contractAddress: meta.tokenAddress ?? 'native',
           amount: increase.toString(),
@@ -266,7 +365,7 @@ export class PollingDetectorService {
         });
 
         this.logger.log(
-          `Polling detected deposit: ${meta.address} +${increase} ${meta.tokenAddress ?? 'native'} on chain ${chainId}`,
+          `Polling detected deposit: ${meta.address} +${increase} ${meta.tokenAddress ?? 'native'} on chain ${chainId} (tx=${resolved?.txHash ?? 'unresolved'})`,
         );
       }
     }

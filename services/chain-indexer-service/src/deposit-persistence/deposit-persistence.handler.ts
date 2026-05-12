@@ -215,10 +215,20 @@ export class DepositPersistenceHandler implements OnModuleInit, OnModuleDestroy 
       return;
     }
 
-    // Skip polling-synthesised txHashes — they aren't real on-chain hashes
+    // Accept polling-synth txHashes as a fallback. The polling-detector now
+    // resolves real on-chain tx hashes when possible (resolveTxHash), but
+    // when the lookback window doesn't cover the deposit's actual block
+    // (e.g. user funds a forwarder right after registration, then we restart
+    // and the first poll sees the existing balance from blocks ago), we still
+    // need to persist the deposit row so the sweep cron picks it up.
+    // The synth hash is stable per (currentBlock, address, token), so
+    // ON DUPLICATE KEY UPDATE handles re-polling idempotently for the same
+    // un-swept balance — once swept, the cache resets and a new poll on a
+    // fresh deposit will produce a distinct synth hash for the next block.
     if (txHash.startsWith('polling:')) {
-      this.logger.debug(`Skipping polling-synth txHash: ${txHash}`);
-      return;
+      this.logger.log(
+        `Polling-synth deposit: persisting with synth txHash so the sweep worker can pick it up. Real on-chain hash will be associated via the swept event. (${txHash})`,
+      );
     }
 
     // ------------------------------------------------------------------
