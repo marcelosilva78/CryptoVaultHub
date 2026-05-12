@@ -332,35 +332,71 @@ export class PollingDetectorService {
       this.logger.warn(`Failed to advance syncCursor for chain ${chainId}: ${(err as Error).message}`);
     }
 
-    for (let i = 0; i < results.length; i++) {
-      const result = results[i];
-      const meta = callMeta[i];
+    // STEP 6 — decode all balances + read all cache entries in PARALLEL.
+    // The original code was sequential (`await getCache` inside a for-loop) which
+    // turned 114 results × ~600ms (contended Redis + ioredis serialization) into
+    // a 70s+ blocking section that crashed against pollChain timeout. By
+    // batching the Redis reads with Promise.all we collapse that to a few
+    // hundred ms total — ioredis pipelines concurrent calls under the hood.
+    const t6 = Date.now();
+    const decoded: Array<
+      | null
+      | {
+          meta: typeof callMeta[number];
+          balance: bigint;
+          prevBalanceStr: string | null;
+          prevBalance: bigint;
+          cacheKey: string;
+        }
+    > = await Promise.all(
+      results.map(async (result, i) => {
+        const meta = callMeta[i];
+        if (!result.success || result.returnData === '0x') return null;
 
-      if (!result.success || result.returnData === '0x') continue;
+        let balance: bigint;
+        try {
+          if (meta.isNative) {
+            const [val] = multicall3Iface.decodeFunctionResult(
+              'getEthBalance',
+              result.returnData,
+            );
+            balance = val as bigint;
+          } else {
+            const [val] = erc20Iface.decodeFunctionResult(
+              'balanceOf',
+              result.returnData,
+            );
+            balance = val as bigint;
+          }
+        } catch {
+          return null;
+        }
 
-      let balance: bigint;
-      if (meta.isNative) {
-        const [val] = multicall3Iface.decodeFunctionResult(
-          'getEthBalance',
-          result.returnData,
-        );
-        balance = val as bigint;
-      } else {
-        const [val] = erc20Iface.decodeFunctionResult(
-          'balanceOf',
-          result.returnData,
-        );
-        balance = val as bigint;
-      }
+        const cacheKey = `balance:${chainId}:${meta.address}:${meta.tokenAddress ?? 'native'}`;
+        const prevBalanceStr = await this.redis.getCache(cacheKey);
+        const prevBalance = prevBalanceStr ? BigInt(prevBalanceStr) : 0n;
+        return { meta, balance, prevBalanceStr, prevBalance, cacheKey };
+      }),
+    );
+    this.logger.log(`pollChain ${chainId} step6 (decode+getCache parallel): ${Date.now() - t6}ms`);
 
-      // Cache key for previous balance
-      const cacheKey = `balance:${chainId}:${meta.address}:${meta.tokenAddress ?? 'native'}`;
-      const prevBalanceStr = await this.redis.getCache(cacheKey);
-      const prevBalance = prevBalanceStr ? BigInt(prevBalanceStr) : 0n;
+    // STEP 7 — write all cache entries in parallel.
+    const t7 = Date.now();
+    await Promise.all(
+      decoded.map((d) =>
+        d ? this.redis.setCache(d.cacheKey, d.balance.toString(), 3600) : null,
+      ),
+    );
+    this.logger.log(`pollChain ${chainId} step7 (setCache parallel): ${Date.now() - t7}ms`);
 
-      // Store current balance
-      await this.redis.setCache(cacheKey, balance.toString(), 3600);
-
+    // STEP 8 — for each balance increase, optionally resolve tx hash and
+    // publish to the deposits:detected stream. Processed sequentially so the
+    // log timeline is intelligible (and resolveTxHash is rare in practice).
+    const t8 = Date.now();
+    let detectedCount = 0;
+    for (const d of decoded) {
+      if (!d) continue;
+      const { meta, balance, prevBalanceStr, prevBalance } = d;
       // Detect increase = potential deposit.
       // A null prevBalanceStr is treated as 0n, so the first observation of a
       // non-zero balance on a freshly-registered forwarder is fired correctly.
@@ -413,7 +449,9 @@ export class PollingDetectorService {
         this.logger.log(
           `Polling detected deposit: ${meta.address} +${increase} ${meta.tokenAddress ?? 'native'} on chain ${chainId} (tx=${resolved?.txHash ?? 'unresolved'})`,
         );
+        detectedCount++;
       }
     }
+    this.logger.log(`pollChain ${chainId} step8 (emit ${detectedCount} events): ${Date.now() - t8}ms`);
   }
 }
