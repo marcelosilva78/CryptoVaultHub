@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ethers } from 'ethers';
+import { Prisma } from '../generated/prisma-client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ContractService } from '../blockchain/contract.service';
 import { RedisService } from '../redis/redis.service';
@@ -207,8 +208,20 @@ export class DepositAddressService {
 
     const chainIds = Array.from(new Set(addresses.map((a) => a.chainId)));
     const walletIds = Array.from(new Set(addresses.map((a) => a.walletId)));
+    // deposits.forwarder_address is stored lowercase; deposit_addresses.address
+    // is mixed-case. Lowercase both sides of the join key, same as in the
+    // forwarder-deploy cycle (see services/cron-worker-service/.../forwarder-deploy.service.ts:151).
+    const addrsLower = addresses.map((a) => a.address.toLowerCase());
 
-    const [chains, hotWallets, gasTanks] = await Promise.all([
+    // depositStats: one row per forwarder_address with count + max(detectedAt).
+    // We use raw SQL because Prisma's groupBy doesn't expose MAX(date) cleanly
+    // and we want a single round-trip across the chain set.
+    interface DepositStatRow {
+      forwarder_address: string;
+      total: bigint;
+      last_detected_at: Date | null;
+    }
+    const [chains, hotWallets, gasTanks, depositStats] = await Promise.all([
       this.prisma.chain.findMany({ where: { id: { in: chainIds } } }),
       this.prisma.wallet.findMany({ where: { id: { in: walletIds } } }),
       this.prisma.wallet.findMany({
@@ -218,6 +231,17 @@ export class DepositAddressService {
           walletType: 'gas_tank',
         },
       }),
+      addrsLower.length > 0
+        ? this.prisma.$queryRaw<DepositStatRow[]>`
+            SELECT forwarder_address,
+                   COUNT(*) AS total,
+                   MAX(detected_at) AS last_detected_at
+            FROM deposits
+            WHERE client_id = ${BigInt(clientId)}
+              AND forwarder_address IN (${Prisma.join(addrsLower)})
+            GROUP BY forwarder_address
+          `
+        : Promise.resolve([] as DepositStatRow[]),
     ]);
 
     const chainById = new Map(chains.map((c) => [c.id, c]));
@@ -225,11 +249,23 @@ export class DepositAddressService {
       hotWallets.map((w) => [w.id.toString(), w]),
     );
     const gasByChain = new Map(gasTanks.map((g) => [g.chainId, g]));
+    const statsByAddr = new Map(
+      depositStats.map((s) => [
+        s.forwarder_address.toLowerCase(),
+        {
+          total: Number(s.total),
+          lastDetectedAt: s.last_detected_at
+            ? new Date(s.last_detected_at).toISOString()
+            : null,
+        },
+      ]),
+    );
 
     return addresses.map((a) => {
       const chain = chainById.get(a.chainId);
       const hot = hotByWalletId.get(a.walletId.toString());
       const gas = gasByChain.get(a.chainId);
+      const stats = statsByAddr.get(a.address.toLowerCase());
       return {
         id: Number(a.id),
         chainId: a.chainId,
@@ -243,6 +279,10 @@ export class DepositAddressService {
         deployerAddress: gas?.address ?? null,
         feeAddress: hot?.address ?? null,
         factoryAddress: chain?.forwarderFactoryAddress ?? null,
+        // Deposit history rollup — empty addresses get 0 / null without
+        // needing extra per-row lookups on the frontend
+        totalDeposits: stats?.total ?? 0,
+        lastDepositAt: stats?.lastDetectedAt ?? null,
         createdAt: a.createdAt,
       };
     });

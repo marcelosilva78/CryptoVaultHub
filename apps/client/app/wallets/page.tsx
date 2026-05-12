@@ -34,6 +34,8 @@ interface ApiDepositAddress {
   deployerAddress: string | null;
   feeAddress: string | null;
   factoryAddress: string | null;
+  totalDeposits?: number;
+  lastDepositAt?: string | null;
   createdAt: string;
 }
 
@@ -79,6 +81,8 @@ export default function WalletsPage() {
             deployerAddress: a.deployerAddress,
             feeAddress: a.feeAddress,
             factoryAddress: a.factoryAddress,
+            totalDeposits: a.totalDeposits ?? 0,
+            lastDepositAt: a.lastDepositAt ?? null,
             createdAt: a.createdAt,
           })),
         );

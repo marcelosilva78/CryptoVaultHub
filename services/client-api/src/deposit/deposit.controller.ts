@@ -253,6 +253,8 @@ export class DepositController {
               deployerAddress: { type: 'string', example: '0x54f55b4e7428519dC0A8643dA92E7B27CabC37A1', description: 'Gas tank that signs the createForwarder call. msg.sender is hashed into the final salt, so this MUST match.', nullable: true },
               feeAddress: { type: 'string', example: '0x17193a58d73825485393e00ece33051fa2536415', description: 'Fee recipient (= parent in full-custody mode). Part of the CREATE2 derivation input.', nullable: true },
               factoryAddress: { type: 'string', example: '0x16fE538d48E739031EA840eC91D1EdC384299A2d', description: 'ForwarderFactory address on this chain — the CREATE2 deployer contract.', nullable: true },
+              totalDeposits: { type: 'integer', example: 3, description: 'Number of deposits detected at this address (any status — pending, confirmed, swept, failed).' },
+              lastDepositAt: { type: 'string', format: 'date-time', example: '2026-05-12T20:45:00Z', nullable: true, description: 'Timestamp of the most recent deposit detection, or null if no deposits have arrived yet.' },
               createdAt: { type: 'string', format: 'date-time', example: '2026-05-11T18:24:00Z' },
             },
           },

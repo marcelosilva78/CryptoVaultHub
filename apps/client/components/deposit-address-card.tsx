@@ -20,6 +20,8 @@ export interface DepositAddressRecord {
   deployerAddress: string | null;
   feeAddress: string | null;
   factoryAddress: string | null;
+  totalDeposits: number;
+  lastDepositAt: string | null;
   createdAt: string;
 }
 
@@ -134,7 +136,32 @@ export function DepositAddressCard({ record }: DepositAddressCardProps) {
           </div>
         </div>
 
-        <div className="text-right shrink-0 hidden sm:block">
+        <div className="text-right shrink-0 hidden md:block">
+          <div className="text-[9px] text-text-muted uppercase tracking-[0.08em] font-display mb-0.5">
+            Deposits
+          </div>
+          <div className="flex items-baseline gap-1 justify-end">
+            <span
+              className={`font-mono text-caption font-semibold ${
+                record.totalDeposits > 0
+                  ? "text-text-primary"
+                  : "text-text-muted"
+              }`}
+            >
+              {record.totalDeposits}
+            </span>
+            {record.lastDepositAt && (
+              <span
+                className="text-[10px] text-text-muted font-display"
+                title={new Date(record.lastDepositAt).toLocaleString()}
+              >
+                · {formatRelative(record.lastDepositAt)}
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="text-right shrink-0 hidden lg:block">
           <div className="text-[9px] text-text-muted uppercase tracking-[0.08em] font-display mb-0.5">
             External ID
           </div>
@@ -165,6 +192,33 @@ export function DepositAddressCard({ record }: DepositAddressCardProps) {
           <div className="grid gap-4 lg:grid-cols-[200px_1fr]">
             <div className="flex flex-col items-center gap-3">
               <EIP681QR address={record.address} chainId={record.chainId} />
+              <div className="grid grid-cols-2 gap-3 text-center w-full">
+                <div>
+                  <div className="text-[9px] text-text-muted uppercase tracking-[0.08em] font-display mb-0.5">
+                    Deposits
+                  </div>
+                  <div className="text-body font-mono font-semibold text-text-primary">
+                    {record.totalDeposits}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[9px] text-text-muted uppercase tracking-[0.08em] font-display mb-0.5">
+                    Last deposit
+                  </div>
+                  <div
+                    className="text-caption text-text-secondary font-display"
+                    title={
+                      record.lastDepositAt
+                        ? new Date(record.lastDepositAt).toLocaleString()
+                        : undefined
+                    }
+                  >
+                    {record.lastDepositAt
+                      ? formatRelative(record.lastDepositAt)
+                      : "Never"}
+                  </div>
+                </div>
+              </div>
               <div className="text-center">
                 <div className="text-[9px] text-text-muted uppercase tracking-[0.08em] font-display mb-0.5">
                   Created
@@ -195,4 +249,18 @@ export function DepositAddressCard({ record }: DepositAddressCardProps) {
       )}
     </div>
   );
+}
+
+function formatRelative(iso: string): string {
+  const t = new Date(iso).getTime();
+  const diff = Date.now() - t;
+  if (diff < 0) return new Date(iso).toLocaleString();
+  const min = Math.floor(diff / 60_000);
+  if (min < 1) return "just now";
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const day = Math.floor(hr / 24);
+  if (day < 7) return `${day}d ago`;
+  return new Date(iso).toLocaleDateString();
 }
