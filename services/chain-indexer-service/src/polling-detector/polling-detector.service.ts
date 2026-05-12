@@ -91,7 +91,16 @@ export class PollingDetectorService {
           } catch (error) {
             const msg = error instanceof Error ? error.message : String(error);
             this.logger.error(`Polling failed for chain ${chain.chain_id}: ${msg}`);
-            this.evmProvider.reportFailure(chain.chain_id);
+            // Only report a provider failure for actual RPC issues — not for
+            // self-induced timeouts (we cap the cycle) or already-open circuits
+            // (each tick would otherwise reset lastFailAt and keep the circuit
+            // open forever, creating an unrecoverable loop in production).
+            const isTransient =
+              msg.includes('circuit-broken') ||
+              msg.includes('timed out after');
+            if (!isTransient) {
+              this.evmProvider.reportFailure(chain.chain_id);
+            }
           }
         }),
       );
