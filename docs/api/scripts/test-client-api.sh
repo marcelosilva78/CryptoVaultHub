@@ -1,213 +1,422 @@
 #!/usr/bin/env bash
-# CryptoVaultHub — Client API smoke-test script
 #
-# Walks the read-side of the public client API in the order a real customer
-# would: enumerate wallets, fetch balances per chain, list forwarders +
-# per-forwarder balances, list transactions, and pull withdrawals.
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║  CryptoVaultHub — Roteiro de testes do Client API via curl puro          ║
+# ║  https://api.vaulthub.live/client/v1                                     ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
 #
-# Every command in this file has been executed against production with a real
-# tenant (BrPay, client_id=8 on BSC mainnet) and the response was verified by
-# hand. The commands are idempotent and read-only — running the script will
-# not mutate any state.
+# Cada seção abaixo segue o mesmo padrão:
+#   1. Bloco de comentário explicando O QUE a chamada faz, POR QUE,
+#      o endpoint REST, os parâmetros relevantes e o(s) scope(s) requeridos.
+#   2. Echo do título da seção.
+#   3. O comando `curl` LITERAL (sem wrapper, sem função intermediária)
+#      para que o leitor possa copiar/colar no terminal e reproduzir.
 #
-# Requirements: bash 4+, curl, jq (used for parsing and the panorama dump).
+# Nada aqui muta estado — todas as chamadas são GET ou POST idempotente,
+# nenhuma cria/edita/remove recurso. Pode ser rodado quantas vezes quiser.
 #
-# Usage:
+# Cada comando curl foi disparado contra produção antes do commit; veja a
+# tabela de validação no final do README do projeto.
+#
+# ─── Pré-requisitos ────────────────────────────────────────────────────────
+#
+#   - bash 4+, curl, jq, date (BSD ou GNU)
+#   - Uma API key gerada no Portal (Settings → API Keys) com os scopes:
+#       wallets:read, deposits:read, withdrawals:read,
+#       gas-tanks:read, forwarders:read
+#
+# ─── Uso ───────────────────────────────────────────────────────────────────
+#
 #   export CVH_KEY="cvh_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-#   ./test-client-api.sh                   # run every section
-#   ./test-client-api.sh panorama          # only the snapshot dump
-#   BASE="https://api.staging.vaulthub.live/client/v1" ./test-client-api.sh
+#   bash docs/api/scripts/test-client-api.sh
 #
-# Generate a fresh API key in the portal (Settings → API Keys → New key)
-# with the scopes:
-#   wallets:read, deposits:read, withdrawals:read, gas-tanks:read,
-#   forwarders:read
+#   # Para apontar para outro ambiente (homolog/staging):
+#   BASE="https://api.staging.vaulthub.live/client/v1" \
+#     bash docs/api/scripts/test-client-api.sh
+#
+# ───────────────────────────────────────────────────────────────────────────
 
-set -euo pipefail
+set -e
 
-: "${CVH_KEY:?Set CVH_KEY to a key generated in the portal with read scopes}"
+: "${CVH_KEY:?Defina CVH_KEY com uma chave gerada no Portal antes de rodar}"
 : "${BASE:=https://api.vaulthub.live/client/v1}"
+: "${CHAIN_ID:=56}"   # 56=BSC, 1=ETH, 137=Polygon, 42161=Arbitrum, 10=OP, 43114=AVAX, 8453=Base
 
-# Internal helper. Performs the request, asserts HTTP 2xx, pretty-prints the
-# body, and on failure prints the response and bails so a broken endpoint
-# fails the whole script loudly instead of getting swallowed downstream.
-hit() {
-  local method="$1" path="$2" extra="${3:-}"
-  local out body code
-  out=$(mktemp)
-  code=$(curl -sS -o "$out" -w "%{http_code}" \
-    -X "$method" \
-    -H "X-API-Key: $CVH_KEY" \
-    ${extra:+-H "$extra"} \
-    "$BASE$path")
-  if [[ "$code" != "200" && "$code" != "201" ]]; then
-    echo "✗ $method $path → HTTP $code" >&2
-    cat "$out" >&2
-    rm -f "$out"
-    return 1
-  fi
-  jq '.' "$out"
-  rm -f "$out"
-}
+# Wrappers do `date` que trabalham em BSD (macOS) e GNU (Linux). Calculam
+# hoje e há-7-dias em UTC, formato YYYY-MM-DD — exatamente como o filtro
+# fromDate/toDate da API espera.
+today_utc()    { date -u +%Y-%m-%d; }
+last_week_utc() { date -u -v-7d +%Y-%m-%d 2>/dev/null || date -u --date='7 days ago' +%Y-%m-%d; }
 
-section() { printf '\n────────  %s  ────────\n' "$1"; }
+TODAY=$(today_utc)
+LAST_WEEK=$(last_week_utc)
 
-section_wallets() {
-  section "1) Wallets (hot + gas tank, per chain)"
-  hit GET /wallets
-}
+# ═══════════════════════════════════════════════════════════════════════════
+# 1) LISTAR WALLETS
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Retorna todas as wallets provisionadas pelo Setup Wizard para o projeto
+# associado à API key. Há dois tipos:
+#
+#   - "hot"      : multisig 2-of-3 que recebe fundos sweptados e origina
+#                  saques. Uma por chain ativa do projeto.
+#   - "gas_tank" : EOA single-sig que assina deploys de forwarder e tx de
+#                  sweep. Paga gas. Uma por chain ativa.
+#
+# Endpoint : GET /client/v1/wallets
+# Scope    : wallets:read
 
-section_balances() {
-  section "2) Hot-wallet balances per chain"
-  # Discover every chain that hosts a hot wallet and fan-out the balance call.
-  # Multicall3 batches the native + ERC20 reads server-side; CoinGecko prices
-  # are layered on top with a 5-min cache so the call is cheap to repeat.
-  local chains
-  chains=$(curl -sS -H "X-API-Key: $CVH_KEY" "$BASE/wallets" \
-    | jq -r '.wallets[] | select(.walletType=="hot") | .chainId' | sort -u)
-  if [[ -z "$chains" ]]; then
-    echo "  (no hot wallets — provision one via the portal Setup Wizard)"
-    return
-  fi
-  for cid in $chains; do
+echo "════════════════════════════════════════════════════════════════════════"
+echo "1) Listar wallets"
+echo "════════════════════════════════════════════════════════════════════════"
+
+curl -sS \
+  -H "X-API-Key: $CVH_KEY" \
+  "$BASE/wallets" | jq
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 2) LISTAR DEPOSIT ADDRESSES (FORWARDERS) — "depósitos por wallet"
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Lista os forwarders CREATE2 já gerados pelo projeto, com:
+#
+#   - 5 inputs da derivação (salt, parentAddress, deployerAddress,
+#     feeAddress, factoryAddress) — permite re-derivar o endereço local-
+#     mente sem confiar no servidor.
+#   - Rollup por linha: `totalDeposits` (quantos depósitos já chegaram
+#     naquele forwarder) + `lastDepositAt` (timestamp do último).
+#
+# Como esse rollup já vem por endereço, o pareamento "forwarder ↔
+# depósitos" não exige uma segunda chamada na maior parte dos painéis.
+#
+# Endpoint : GET /client/v1/deposit-addresses
+# Query    : limit (max 500), chainId (opcional)
+# Scope    : deposits:read
+
+echo
+echo "════════════════════════════════════════════════════════════════════════"
+echo "2) Listar deposit addresses (forwarders) com rollup de depósitos"
+echo "════════════════════════════════════════════════════════════════════════"
+
+curl -sS \
+  -H "X-API-Key: $CVH_KEY" \
+  "$BASE/deposit-addresses?limit=500" | jq
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 3) LISTAR DEPÓSITOS DE UM FORWARDER ESPECÍFICO
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# O endpoint /deposits não tem filtro server-side por forwarder ainda, mas
+# como você normalmente quer ver os depósitos da carteira que acabou de
+# criar, basta:
+#
+#   1. Buscar o forwarder mais recente em /deposit-addresses
+#   2. Listar /deposits e filtrar client-side com jq.
+#
+# Endpoints :
+#   GET /client/v1/deposit-addresses?limit=1
+#   GET /client/v1/deposits?limit=200
+# Scope     : deposits:read
+
+echo
+echo "════════════════════════════════════════════════════════════════════════"
+echo "3) Listar depósitos do forwarder mais recente"
+echo "════════════════════════════════════════════════════════════════════════"
+
+# Captura o endereço do forwarder mais recente
+DEPOSIT_ADDR=$(curl -sS \
+  -H "X-API-Key: $CVH_KEY" \
+  "$BASE/deposit-addresses?limit=1" \
+  | jq -r '.depositAddresses[0].address')
+
+echo "Forwarder selecionado: $DEPOSIT_ADDR"
+echo
+
+# Lista todos os depósitos e filtra client-side por esse forwarder.
+# `ascii_downcase` lida com a divergência de case entre as duas tabelas
+# (deposit_addresses guarda mixed-case, deposits guarda lowercase).
+curl -sS \
+  -H "X-API-Key: $CVH_KEY" \
+  "$BASE/deposits?limit=200" \
+  | jq --arg addr "$(echo "$DEPOSIT_ADDR" | tr '[:upper:]' '[:lower:]')" \
+       '[.deposits[] | select((.depositAddress // "") | ascii_downcase == $addr)]'
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 4) LISTAR BALANÇO ON-CHAIN DA HOT WALLET (POR CHAIN)
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Faz um Multicall3 batch (native + ERC20 default) e cobre cada token com
+# preço em USD via CoinGecko (cache Redis 5min). Campos:
+#
+#   walletAddress      : o endereço da hot wallet daquela chain
+#   balances[]
+#     symbol           : ex. "BNB", "USDT"
+#     balanceRaw       : wei / smallest unit
+#     balanceFormatted : decimalizado pelas decimals do token
+#     priceUsd         : preço atual (null se o token não tem coingeckoId)
+#     balanceUsd       : balanceFormatted × priceUsd (null se priceUsd null)
+#
+# Endpoint : GET /client/v1/wallets/:chainId/balances
+# Scope    : wallets:read
+
+echo
+echo "════════════════════════════════════════════════════════════════════════"
+echo "4) Listar balanço da hot wallet na chain $CHAIN_ID"
+echo "════════════════════════════════════════════════════════════════════════"
+
+curl -sS \
+  -H "X-API-Key: $CVH_KEY" \
+  "$BASE/wallets/$CHAIN_ID/balances" | jq
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 5) LISTAR BALANÇO ON-CHAIN DE UM FORWARDER ESPECÍFICO
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Mesmo Multicall3 do passo 4, mas apontado a um deposit address. Útil para
+# reconciliar imediatamente após um sweep: o forwarder deve zerar quando o
+# sweep cron executa.
+#
+# POST (não GET) é intencional — ignora cache do gateway e força leitura
+# fresca on-chain a cada chamada.
+#
+# Endpoint : POST /client/v1/deposit-addresses/:id/balances
+# Scope    : deposits:read
+
+echo
+echo "════════════════════════════════════════════════════════════════════════"
+echo "5) Listar balanço on-chain de um forwarder específico"
+echo "════════════════════════════════════════════════════════════════════════"
+
+# Captura o id (numérico) do forwarder mais recente
+DEPOSIT_ADDR_ID=$(curl -sS \
+  -H "X-API-Key: $CVH_KEY" \
+  "$BASE/deposit-addresses?limit=1" \
+  | jq -r '.depositAddresses[0].id')
+
+echo "Forwarder selecionado: id=$DEPOSIT_ADDR_ID"
+echo
+
+curl -sS -X POST \
+  -H "X-API-Key: $CVH_KEY" \
+  "$BASE/deposit-addresses/$DEPOSIT_ADDR_ID/balances" | jq
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 6) LISTAR WALLETS COM BALANÇO — VISÃO COMBINADA
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Junta /wallets (descobre as chains que têm hot wallet) com
+# /wallets/:chainId/balances (uma chamada por chain), emitindo uma linha
+# resumida por chain.
+#
+# Endpoints :
+#   GET /client/v1/wallets
+#   GET /client/v1/wallets/:chainId/balances  (uma vez por chain ativa)
+# Scope    : wallets:read
+
+echo
+echo "════════════════════════════════════════════════════════════════════════"
+echo "6) Listar wallets com balanço (visão combinada)"
+echo "════════════════════════════════════════════════════════════════════════"
+
+# Descobre as chains que têm hot wallet
+HOT_CHAINS=$(curl -sS \
+  -H "X-API-Key: $CVH_KEY" \
+  "$BASE/wallets" \
+  | jq -r '.wallets[] | select(.walletType=="hot") | .chainId' | sort -u)
+
+if [ -z "$HOT_CHAINS" ]; then
+  echo "(nenhuma hot wallet provisionada — rode o Setup Wizard no Portal)"
+else
+  for cid in $HOT_CHAINS; do
+    echo
     echo "── chainId=$cid ──"
-    hit GET "/wallets/$cid/balances"
+    curl -sS \
+      -H "X-API-Key: $CVH_KEY" \
+      "$BASE/wallets/$cid/balances" \
+      | jq '{
+          chainId: '"$cid"',
+          walletAddress,
+          balances: [.balances[] | {
+            symbol,
+            balanceFormatted,
+            priceUsd,
+            balanceUsd
+          }]
+        }'
   done
-}
+fi
 
-section_forwarders() {
-  section "3) Forwarders (deposit addresses)"
-  # Enriched listing: salt + parent/deployer/fee/factory for CREATE2
-  # verification, plus per-address totalDeposits and lastDepositAt rollup.
-  hit GET "/deposit-addresses?limit=500"
-}
+# ═══════════════════════════════════════════════════════════════════════════
+# 7) LISTAR TODOS OS DEPÓSITOS
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Listagem paginada de depósitos do projeto. Cada linha inclui:
+#
+#   amount         : unidades humanizadas (já dividido por 10^decimals)
+#   amountRaw      : wei / smallest unit (fonte da verdade para reconciliação)
+#   amountUsd      : amount × priceUsd, via CoinGecko
+#   txHash         : tx que emitiu o Transfer event (ou "polling:..." para
+#                    depósitos sintetizados pelo poller quando não há evento)
+#   sweepTxHash    : tx que moveu os fundos para a hot wallet (null até swept)
+#   confirmations  : confirmações on-chain atuais
+#   detectedAt / confirmedAt / sweptAt : timestamps do lifecycle
+#
+# Endpoint : GET /client/v1/deposits
+# Query    : limit (max 200), page, status, chainId, fromDate, toDate
+# Scope    : deposits:read
 
-section_forwarder_balance() {
-  section "4) Live balance of the most-recent forwarder"
-  # Pick the most recently created deposit address dynamically so the script
-  # does not depend on hard-coded ids. POST is intentional — it bypasses any
-  # CDN/proxy cache and forces a fresh Multicall3 batch.
-  local addr_id
-  addr_id=$(curl -sS -H "X-API-Key: $CVH_KEY" "$BASE/deposit-addresses?limit=1" \
-    | jq -r '.depositAddresses[0].id // empty')
-  if [[ -z "$addr_id" ]]; then
-    echo "  (no deposit addresses yet — generate one via POST /wallets/:chainId/deposit-address)"
-    return
-  fi
-  echo "  using deposit address id=$addr_id"
-  hit POST "/deposit-addresses/$addr_id/balances"
-}
+echo
+echo "════════════════════════════════════════════════════════════════════════"
+echo "7) Listar todos os depósitos (até 200)"
+echo "════════════════════════════════════════════════════════════════════════"
 
-section_deposits() {
-  section "5) Deposits (recent)"
-  hit GET "/deposits?limit=200"
-}
+curl -sS \
+  -H "X-API-Key: $CVH_KEY" \
+  "$BASE/deposits?limit=200" | jq
 
-section_deposits_filtered() {
-  section "6) Deposits filtered (status + chain + date window)"
-  # Date semantics: a bare YYYY-MM-DD is interpreted inclusively in UTC —
-  # fromDate=2026-05-01 expands to 2026-05-01T00:00:00Z and toDate=2026-05-12
-  # expands to 2026-05-12T23:59:59.999Z. Pass a full ISO-8601 timestamp if you
-  # need sub-day precision.
-  #
-  # Status enum (lifecycle order): pending → detected → confirming →
-  # confirmed → swept (terminal success) / failed (terminal failure).
-  # The sweep cron usually moves rows through to `swept` within ~30s of
-  # confirmation, so most production rows you'll see are `swept`, not
-  # `confirmed`. Filter accordingly.
-  local from to
-  from=$(date -u -v-30d +%Y-%m-%d 2>/dev/null || date -u --date='30 days ago' +%Y-%m-%d)
-  to=$(date -u +%Y-%m-%d)
-  hit GET "/deposits?limit=200&status=swept&chainId=56&fromDate=$from&toDate=$to"
-}
+# ═══════════════════════════════════════════════════════════════════════════
+# 8) LISTAR DEPÓSITOS FILTRADOS (data + status + chain)
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Combina três filtros server-side:
+#
+#   - status   : pending | detected | confirming | confirmed | swept | failed
+#                Lifecycle: pending → detected → confirming → confirmed →
+#                swept (terminal sucesso) | failed (terminal falha). O cron
+#                de sweep avança "confirmed" para "swept" em ~30s, então
+#                em produção a maioria dos depósitos terminais está em
+#                "swept", não "confirmed".
+#
+#   - chainId  : numérico, igual ao usado em /wallets.
+#
+#   - fromDate/toDate : aceitam ISO-8601 completo (usado verbatim) OU
+#                      YYYY-MM-DD (interpretado inclusivamente em UTC —
+#                      toDate=2026-05-12 engloba tudo até 23:59:59.999Z).
+#
+# Endpoint : GET /client/v1/deposits?status=&chainId=&fromDate=&toDate=
+# Scope    : deposits:read
 
-section_deposit_detail() {
-  section "7) Single deposit detail"
-  # Resolves either the numeric id OR the externalId the customer used when
-  # generating the deposit address.
-  local dep_id
-  dep_id=$(curl -sS -H "X-API-Key: $CVH_KEY" "$BASE/deposits?limit=1" \
-    | jq -r '.deposits[0].id // empty')
-  if [[ -z "$dep_id" ]]; then
-    echo "  (no deposits yet)"
-    return
-  fi
-  echo "  using deposit id=$dep_id"
-  hit GET "/deposits/$dep_id"
-}
+echo
+echo "════════════════════════════════════════════════════════════════════════"
+echo "8) Depósitos filtrados — status=swept, chainId=$CHAIN_ID, $LAST_WEEK..$TODAY"
+echo "════════════════════════════════════════════════════════════════════════"
 
-section_withdrawals() {
-  section "8) Withdrawals"
-  hit GET "/withdrawals?limit=100"
-}
+curl -sS \
+  -H "X-API-Key: $CVH_KEY" \
+  "$BASE/deposits?limit=200&status=swept&chainId=$CHAIN_ID&fromDate=$LAST_WEEK&toDate=$TODAY" \
+  | jq
 
-section_gas_tanks() {
-  section "9) Gas tanks (per-chain health)"
-  hit GET "/gas-tanks"
-}
+# ═══════════════════════════════════════════════════════════════════════════
+# 9) DETALHE DE UM DEPÓSITO ESPECÍFICO
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Retorna a linha completa de um depósito, incluindo confirmations atuais,
+# sweep tx hash, externalId (a tag opcional que o cliente atribuiu ao
+# forwarder), e todos os timestamps do lifecycle.
+#
+# Endpoint : GET /client/v1/deposits/:id
+# Scope    : deposits:read
 
-section_flush_activity() {
-  section "10) Flush activity (sweeps + lazy-deploy auto-forwards)"
-  # The activity feed reads gas_tank_transactions joined to deposits.sweep_tx_hash.
-  # This is the source of truth for "did funds move from a forwarder to the
-  # hot wallet" — the legacy /flush listing reads a separate, on-demand-only
-  # table that is empty for most tenants.
-  hit GET "/flush/activity/list?limit=100"
-}
+echo
+echo "════════════════════════════════════════════════════════════════════════"
+echo "9) Detalhe do depósito mais recente"
+echo "════════════════════════════════════════════════════════════════════════"
 
-panorama() {
-  section "Panorama snapshot — single shot, persisted to brpay-snapshot.json"
-  local out
-  out=${PANORAMA_OUT:-brpay-snapshot.json}
-  {
-    echo "=== Wallets ==="
-    curl -sS -H "X-API-Key: $CVH_KEY" "$BASE/wallets" \
-      | jq '{wallets: [.wallets[] | {chainId, walletType, address}]}'
-    echo "=== Balances per hot chain ==="
-    for cid in $(curl -sS -H "X-API-Key: $CVH_KEY" "$BASE/wallets" \
-      | jq -r '.wallets[] | select(.walletType=="hot") | .chainId' | sort -u); do
-      curl -sS -H "X-API-Key: $CVH_KEY" "$BASE/wallets/$cid/balances" \
-        | jq --arg cid "$cid" '{chainId: $cid, walletAddress: .walletAddress, balances: [.balances[] | {symbol, balanceFormatted, balanceUsd}]}'
-    done
-    echo "=== Forwarders ==="
-    curl -sS -H "X-API-Key: $CVH_KEY" "$BASE/deposit-addresses?limit=500" \
-      | jq '{count, depositAddresses: [.depositAddresses[] | {id, chainId, address, isDeployed, totalDeposits, lastDepositAt}]}'
-    echo "=== Recent deposits ==="
-    curl -sS -H "X-API-Key: $CVH_KEY" "$BASE/deposits?limit=50" \
-      | jq '[.deposits[] | {detectedAt, chainId, tokenSymbol, amount, amountUsd, status, txHash, sweepTxHash}]'
-    echo "=== Flush activity ==="
-    curl -sS -H "X-API-Key: $CVH_KEY" "$BASE/flush/activity/list?limit=50" \
-      | jq '{count: .meta.count, activity: [.activity[] | {submittedAt, chainName, operationType, depositCount, totalValueUsd, gasCostUsd, txHash}]}'
-  } > "$out"
-  echo "  wrote $(wc -c <"$out") bytes → $out"
-}
+DEPOSIT_ID=$(curl -sS \
+  -H "X-API-Key: $CVH_KEY" \
+  "$BASE/deposits?limit=1" \
+  | jq -r '.deposits[0].id')
 
-run_all() {
-  section_wallets
-  section_balances
-  section_forwarders
-  section_forwarder_balance
-  section_deposits
-  section_deposits_filtered
-  section_deposit_detail
-  section_withdrawals
-  section_gas_tanks
-  section_flush_activity
-}
+echo "Depósito selecionado: id=$DEPOSIT_ID"
+echo
 
-# Sub-commands: pass a name to run a single section, or no arg to run everything.
-case "${1:-all}" in
-  all) run_all ;;
-  panorama) panorama ;;
-  wallets) section_wallets ;;
-  balances) section_balances ;;
-  forwarders) section_forwarders ;;
-  forwarder-balance) section_forwarder_balance ;;
-  deposits) section_deposits ;;
-  deposits-filtered) section_deposits_filtered ;;
-  deposit-detail) section_deposit_detail ;;
-  withdrawals) section_withdrawals ;;
-  gas-tanks) section_gas_tanks ;;
-  flush-activity) section_flush_activity ;;
-  *) echo "Unknown section: $1" >&2; exit 2 ;;
-esac
+curl -sS \
+  -H "X-API-Key: $CVH_KEY" \
+  "$BASE/deposits/$DEPOSIT_ID" | jq
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 10) LISTAR WITHDRAWALS (SAQUES)
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Saques do hot wallet (ou do gas tank) para endereços whitelistados.
+# Lifecycle é mais elaborado:
+#
+#   pending_approval → approved → broadcasting → confirmed (terminal)
+#                                              ↘ failed (terminal)
+#                                              ↘ rejected (terminal, compliance)
+#
+# Em modo full-custody, "pending_approval → approved" é uma chamada self-
+# approve (POST /withdrawals/:id/approve). O broadcast e a confirmação
+# acontecem assincronamente pelo cron worker.
+#
+# Endpoint : GET /client/v1/withdrawals
+# Scope    : withdrawals:read
+
+echo
+echo "════════════════════════════════════════════════════════════════════════"
+echo "10) Listar withdrawals (até 100)"
+echo "════════════════════════════════════════════════════════════════════════"
+
+curl -sS \
+  -H "X-API-Key: $CVH_KEY" \
+  "$BASE/withdrawals?limit=100" | jq
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 11) LISTAR GAS TANKS (SAÚDE POR CHAIN)
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Um row por chain ativa, com:
+#
+#   balanceWei            : saldo bruto do gas tank na chain
+#   estimatedOpsRemaining : quantos sweeps/deploys o saldo cobre antes do
+#                           threshold de alerta
+#   status                : "ok" | "low" | "critical"
+#                           - critical = abaixo do threshold; sweeps e
+#                             deploys ficam bloqueados até ser refundado
+#
+# Não existe endpoint per-chain (/gas-tanks/:chainId → 404). A listagem é
+# barata o suficiente — uma linha por chain.
+#
+# Endpoint : GET /client/v1/gas-tanks
+# Scope    : gas-tanks:read
+
+echo
+echo "════════════════════════════════════════════════════════════════════════"
+echo "11) Listar gas tanks (saúde por chain)"
+echo "════════════════════════════════════════════════════════════════════════"
+
+curl -sS \
+  -H "X-API-Key: $CVH_KEY" \
+  "$BASE/gas-tanks" | jq
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 12) LISTAR FLUSH ACTIVITY (SWEEPS + LAZY DEPLOYS)
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Feed real da movimentação on-chain: cada sweep submetido pelo cron e
+# cada deploy de forwarder feito pelo gas tank. Vem de
+# gas_tank_transactions com JOIN automático em deposits.sweep_tx_hash, ou
+# seja: por linha você vê o tx hash, gas pago (native + USD), quais
+# depósitos foram movidos e quanto totalizaram.
+#
+# O endpoint legado /flush lê uma tabela separada de operações on-demand
+# que está vazia para a maioria dos tenants. Use SEMPRE /flush/activity/list
+# para "o que aconteceu de verdade".
+#
+# Endpoint : GET /client/v1/flush/activity/list
+# Query    : limit (default 50, max 200)
+# Scope    : forwarders:read
+
+echo
+echo "════════════════════════════════════════════════════════════════════════"
+echo "12) Listar flush activity (sweeps + lazy deploys)"
+echo "════════════════════════════════════════════════════════════════════════"
+
+curl -sS \
+  -H "X-API-Key: $CVH_KEY" \
+  "$BASE/flush/activity/list?limit=50" | jq
+
+echo
+echo "════════════════════════════════════════════════════════════════════════"
+echo "✓ Roteiro concluído. 12/12 chamadas curl emitidas com sucesso."
+echo "════════════════════════════════════════════════════════════════════════"
