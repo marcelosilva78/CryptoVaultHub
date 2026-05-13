@@ -261,17 +261,23 @@ export class DepositPersistenceHandler implements OnModuleInit, OnModuleDestroy 
       contractAddress === 'native' ||
       contractAddress === '0x' + '0'.repeat(40);
 
+    // Tokens and chains live in cvh_wallets — the indexer's Prisma connection
+    // is cvh_indexer, so unqualified `tokens`/`chains` resolve to (non-existent)
+    // cvh_indexer.tokens/cvh_indexer.chains. Use the FQN so ERC20 lookups
+    // actually find the seeded rows. The MySQL user already has cross-DB SELECT
+    // (it's used elsewhere in this handler for cvh_wallets.deposit_addresses
+    // and cvh_wallets.deposits).
     if (isNative) {
       tokenRows = await this.prisma.$queryRaw<TokenRow[]>`
-        SELECT id FROM tokens
+        SELECT id FROM cvh_wallets.tokens
         WHERE chain_id = ${chainId} AND is_native = 1
         LIMIT 1
       `;
     } else {
       tokenRows = await this.prisma.$queryRaw<TokenRow[]>`
-        SELECT id FROM tokens
+        SELECT id FROM cvh_wallets.tokens
         WHERE chain_id = ${chainId}
-          AND contract_address = ${contractAddress.toLowerCase()}
+          AND LOWER(contract_address) = ${contractAddress.toLowerCase()}
         LIMIT 1
       `;
     }
@@ -286,10 +292,10 @@ export class DepositPersistenceHandler implements OnModuleInit, OnModuleDestroy 
     const tokenId = tokenRows[0].id;
 
     // ------------------------------------------------------------------
-    // 3. Resolve confirmations_required from cvh_indexer.chains
+    // 3. Resolve confirmations_required from cvh_wallets.chains
     // ------------------------------------------------------------------
     const chainRows = await this.prisma.$queryRaw<ChainRow[]>`
-      SELECT confirmations_default FROM chains
+      SELECT confirmations_default FROM cvh_wallets.chains
       WHERE chain_id = ${chainId}
       LIMIT 1
     `;

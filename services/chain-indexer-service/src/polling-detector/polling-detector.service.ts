@@ -60,10 +60,15 @@ export class PollingDetectorService {
     this.cycleInFlight = true;
     const t0 = Date.now();
     try {
+      // `chains` lives in cvh_wallets; `monitored_addresses` lives in
+      // cvh_indexer. Cross-DB join is supported because the MySQL user has
+      // SELECT on both. Using the FQN explicitly so the query is independent
+      // of whatever schema the Prisma connection happens to default to.
       const chainsWithAddresses = await this.prisma.$queryRaw<Array<{ chain_id: number; name: string }>>`
         SELECT DISTINCT c.chain_id, c.name
-        FROM chains c
-        INNER JOIN monitored_addresses ma ON ma.chain_id = c.chain_id AND ma.is_active = 1
+        FROM cvh_wallets.chains c
+        INNER JOIN cvh_indexer.monitored_addresses ma
+          ON ma.chain_id = c.chain_id AND ma.is_active = 1
         WHERE c.is_active = 1
       `;
       if (chainsWithAddresses.length === 0) {
@@ -221,21 +226,61 @@ export class PollingDetectorService {
     }
     this.logger.log(`pollChain ${chainId}: polling ${addresses.length} address(es) after monitoring-mode filter`);
 
+    // Tokens and chains live in cvh_wallets — the indexer's Prisma datasource
+    // points at cvh_indexer, where those tables don't exist. Use raw SQL with
+    // the fully-qualified schema name so we actually find the registered
+    // tokens for this chain (incl. USDT, USDC, etc. on BSC). Without this the
+    // findMany returns [] and we never issue ERC20 balanceOf calls — only
+    // native balance gets polled, and every ERC20 deposit is silently lost.
+    interface TokenRowFq {
+      id: bigint;
+      chain_id: number;
+      contract_address: string;
+      symbol: string;
+      decimals: number;
+      is_native: number; // mysql TINYINT(1) → 0/1
+    }
+    interface ChainRowFq {
+      id: number;
+      multicall3_address: string;
+      confirmations_default: number;
+    }
+
     const t1 = Date.now();
-    const tokens = await this.prisma.token.findMany({
-      where: { chainId, isActive: true },
-    });
-    this.logger.log(`pollChain ${chainId} step1 (tokens.findMany ${tokens.length}): ${Date.now() - t1}ms`);
+    const tokenRows = await this.prisma.$queryRaw<TokenRowFq[]>`
+      SELECT id, chain_id, contract_address, symbol, decimals, is_native
+      FROM cvh_wallets.tokens
+      WHERE chain_id = ${chainId} AND is_active = 1
+    `;
+    const tokens = tokenRows.map((t) => ({
+      id: t.id,
+      chainId: t.chain_id,
+      contractAddress: t.contract_address,
+      symbol: t.symbol,
+      decimals: t.decimals,
+      isNative: t.is_native === 1,
+    }));
+    this.logger.log(`pollChain ${chainId} step1 (tokens cross-DB ${tokens.length}): ${Date.now() - t1}ms`);
 
     const t2 = Date.now();
     const provider = await this.evmProvider.getProvider(chainId);
     this.logger.log(`pollChain ${chainId} step2 (getProvider): ${Date.now() - t2}ms`);
 
     const t3 = Date.now();
-    const chain = await this.prisma.chain.findUnique({
-      where: { id: chainId },
-    });
-    this.logger.log(`pollChain ${chainId} step3 (chain.findUnique): ${Date.now() - t3}ms`);
+    const chainRows2 = await this.prisma.$queryRaw<ChainRowFq[]>`
+      SELECT chain_id AS id, multicall3_address, confirmations_default
+      FROM cvh_wallets.chains
+      WHERE chain_id = ${chainId}
+      LIMIT 1
+    `;
+    const chain = chainRows2[0]
+      ? {
+          id: chainRows2[0].id,
+          multicall3Address: chainRows2[0].multicall3_address,
+          confirmationsDefault: chainRows2[0].confirmations_default,
+        }
+      : null;
+    this.logger.log(`pollChain ${chainId} step3 (chain cross-DB): ${Date.now() - t3}ms`);
     if (!chain) return;
 
     const multicall3 = new ethers.Contract(
