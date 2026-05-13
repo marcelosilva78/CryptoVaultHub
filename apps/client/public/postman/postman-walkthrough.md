@@ -1,6 +1,6 @@
 # CryptoVaultHub Client API — Roteiro de Integração
 
-Sequência de chamadas validada end-to-end na homologação **2026-05-08** (13/13 PASS, BSC mainnet, projeto BrPay). Cada passo aqui é exatamente uma request que a suite de homologação faz, na ordem em que ela faz.
+Sequência de chamadas validada em **produção** (BSC mainnet, projeto BrPay). Cada passo aqui foi disparado contra a API real e a resposta foi verificada — nada é aspiracional.
 
 Companion artifact: `CryptoVaultHub.postman_collection.json` neste mesmo diretório — importe no Postman/Insomnia para rodar a sequência inteira pelo Runner.
 
@@ -11,10 +11,12 @@ Companion artifact: `CryptoVaultHub.postman_collection.json` neste mesmo diretó
 | Variável | Valor padrão | Onde obter |
 |---|---|---|
 | `baseUrl` | `https://api.vaulthub.live/client/v1` | fixo (produção) |
-| `apiKey` | `cvh_live_…` | Portal → Sidebar → API Keys |
+| `apiKey` | `cvh_live_…` | Portal → Sidebar → API Keys. Escopos mínimos para leitura: `wallets:read`, `deposits:read`, `withdrawals:read`, `gas-tanks:read`, `forwarders:read`. Fluxo E2E completo pede também `forwarders:create`, `address-book:write`, `webhooks:write` e `withdrawals:hot`. |
 | `chainId` | `56` (BSC) | escolha sua chain |
 | `tokenSymbol` | `BNB` | depende da chain |
 | `withdrawalTarget` | EVM address | endereço externo já whitelisted; se não for, o passo 9 cria |
+| `totp2faCode` | (vazio) | Código TOTP de 6 dígitos do app autenticador da conta-mãe. Obrigatório no header `X-2FA-Code` ao whitelistar destinos (passo 9). Atualize a cada ~30s. |
+| `portalJwt` | (vazio) | Apenas para a pasta "Self-service API key management". Login em `portal.vaulthub.live` → DevTools → Application → Cookies → `cvh_session`. |
 
 A API key é **escopada por projeto**: o servidor resolve `projectId` automaticamente a partir do header `X-API-Key`, então você não precisa passar `projectId` no body em quase nenhuma chamada.
 
@@ -48,14 +50,16 @@ X-API-Key: {{apiKey}}
 
 ## 3. Confirm gas tank status
 
-**Por que:** o saque exige o gas tank operacional (mantém o platform-key EOA com saldo). Se está em estado degradado, **pare** — vá ao Portal e refunde a gas tank antes de continuar.
+**Por que:** sweep e saque dependem do gas tank operacional. Se está `critical`, **pare** — vá ao Portal e refunde o tank antes de continuar.
 
 ```http
-GET {{baseUrl}}/gas-tanks/{{chainId}}
+GET {{baseUrl}}/gas-tanks
 X-API-Key: {{apiKey}}
 ```
 
-**Esperado:** HTTP 200, `status: "ok"` (ou `warning`). Se vier `critical`, abort.
+**Esperado:** HTTP 200, `{ success: true, gasTanks: [{ chainId, nativeSymbol, balanceWei, estimatedOpsRemaining, status, … }] }`. Procure a linha do `chainId` alvo e valide `status ∈ {ok, low}`. `critical` significa saldo abaixo do threshold — sweeps e deploys ficam bloqueados.
+
+> Não há endpoint per-chain (`/gas-tanks/:chainId` retorna 404). A listagem é barata: uma linha por chain ativa.
 
 ---
 
@@ -94,7 +98,7 @@ Content-Type: application/json
 }
 ```
 
-**Esperado:** HTTP 201, `{ depositAddress: { address, externalId, label, salt, isDeployed: false } }`. Capture `depositAddress.address` em `depositAddress`.
+**Esperado:** HTTP 201, `{ depositAddress: { id, address, externalId, label, salt, isDeployed: false } }`. Capture `depositAddress.address` em `depositAddress` e `depositAddress.id` em `depositAddressId` (usado no passo 8b para consultar saldo via Multicall3).
 
 **Idempotência:** chamar de novo com o mesmo `externalId` retorna o mesmo `address` (HTTP 200 ou 409 — o cliente trata ambos como "já existe").
 
@@ -119,13 +123,17 @@ GET {{baseUrl}}/deposits?limit=20&page=1
 X-API-Key: {{apiKey}}
 ```
 
-**Esperado:** HTTP 200, `{ deposits: [...] }`. Procure pelo elemento com `address == {{depositAddress}}`. Estados:
-- `pending` — tx detectada, esperando confirmações
-- `confirmed` — N confirmações atingidas (varia por chain — BSC = 12)
-- `sweep_pending` — sweep tx broadcasted
-- `swept` — sweep confirmado, fundos na hot wallet
+**Esperado:** HTTP 200, `{ deposits: [...] }`. Procure pelo elemento com `address == {{depositAddress}}`.
 
-A homologação observou o depósito ir direto a `swept` em < 60s (BSC + auto-flush via construtor do CvhForwarder).
+**Lifecycle real** (ordem):
+- `pending` — row criada pelo indexer, aguardando próximo ciclo de confirmação
+- `detected` — Transfer event observado on-chain, aguardando blocos
+- `confirming` — ≥1 confirmação, abaixo do mínimo da chain (BSC = 20)
+- `confirmed` — threshold atingido, sweep cron pode pegar
+- `swept` — sweep tx confirmada, fundos na hot wallet (estado terminal de sucesso)
+- `failed` — sweep falhou (gas insuficiente, revert, etc.) — checar `failureReason`
+
+Na prática, o cron de sweep avança `confirmed → swept` em ~30s. Em produção, quase todos os depósitos completos estarão em `swept`, raramente em `confirmed`.
 
 ---
 
@@ -138,7 +146,20 @@ GET {{baseUrl}}/wallets/{{chainId}}/balances
 X-API-Key: {{apiKey}}
 ```
 
-**Esperado:** HTTP 200, `{ balances: [{ symbol, balance, balanceFormatted }] }`. Confirme que `BNB` (ou seu token) tem saldo ≥ ao próximo saque.
+**Esperado:** HTTP 200, `{ success, walletAddress, balances: [{ symbol, balanceRaw, balanceFormatted, priceUsd, balanceUsd, isNative, … }] }`. `priceUsd`/`balanceUsd` vêm do CoinGecko free-tier com cache Redis 5min; ficam `null` quando o token não tem `coingeckoId` registrado. Confirme que o token alvo tem saldo ≥ ao próximo saque.
+
+---
+
+## 8b. Live forwarder balance (Multicall3 + USD)
+
+**Por que:** confirma se o forwarder zerou após o sweep (esperado) e dá um snapshot por token de tudo que ele está custodiando agora.
+
+```http
+POST {{baseUrl}}/deposit-addresses/{{depositAddressId}}/balances
+X-API-Key: {{apiKey}}
+```
+
+**Esperado:** HTTP 201, `{ success, depositAddressId, address, isDeployed, balances: [{ tokenId, symbol, balanceFormatted, priceUsd, valueUsd, … }], totalUsd, fetchedAt }`. Um único Multicall3 cobre nativo + ERC20 da default-list. POST (não GET) porque ignora cache do gateway e força leitura fresca — útil para reconciliação imediata.
 
 ---
 
@@ -146,9 +167,12 @@ X-API-Key: {{apiKey}}
 
 **Por que:** segurança. Só endereços whitelisted podem receber saques. Cada novo endereço entra com 24h de cooldown — durante esse período rejeita o saque com 422.
 
+> **Atenção — 2FA obrigatório.** Este endpoint exige o header `X-2FA-Code` com o TOTP atual do app autenticador. Sem ele, a resposta é 401. Essa proteção bloqueia que uma API key vazada whitelisteie destinos arbitrários.
+
 ```http
 POST {{baseUrl}}/addresses
 X-API-Key: {{apiKey}}
+X-2FA-Code: {{totp2faCode}}
 Content-Type: application/json
 
 {
@@ -263,6 +287,43 @@ X-API-Key: {{apiKey}}
 
 ---
 
+## 14. Activity & reporting (somente-leitura)
+
+Três chamadas que toda integração madura usa para reconciliação e painéis. Idempotentes, sem efeitos colaterais.
+
+### 14a. Enriched forwarder listing
+
+Listagem com os 5 inputs do CREATE2 — qualquer cliente pode re-derivar o endereço localmente — mais o rollup `totalDeposits` + `lastDepositAt` por forwarder.
+
+```http
+GET {{baseUrl}}/deposit-addresses?limit=200
+X-API-Key: {{apiKey}}
+```
+
+**Campos novos por linha:** `salt`, `parentAddress` (hot wallet de destino), `deployerAddress` (gas tank que assina o deploy), `feeAddress`, `factoryAddress`, `totalDeposits`, `lastDepositAt`. Permite render de um painel "Wallets" com proveniência verificável sem chamadas adicionais.
+
+### 14b. Deposits filtered (janela de data + status)
+
+```http
+GET {{baseUrl}}/deposits?limit=200&status=swept&chainId={{chainId}}&fromDate=2026-05-01&toDate=2026-05-12
+X-API-Key: {{apiKey}}
+```
+
+**Semântica de data**: `fromDate`/`toDate` aceitam ISO-8601 completo (usado verbatim) ou `YYYY-MM-DD` (interpretado inclusivamente em UTC — `toDate=2026-05-12` engloba tudo até `23:59:59.999Z`). **Status enum**: `pending`, `detected`, `confirming`, `confirmed`, `swept`, `failed`. Em produção a maioria das linhas terminais está em `swept`, não `confirmed` (o cron de sweep avança em ~30s).
+
+### 14c. Flush activity (sweeps + lazy deploys)
+
+Feed real de movimentação on-chain — toda submissão do cron de sweep e todo deploy de forwarder do gas tank, vindo de `gas_tank_transactions` com JOIN em `deposits.sweep_tx_hash`. Inclui USD via CoinGecko (depósito + gas cost) quando o token tem `coingeckoId`.
+
+```http
+GET {{baseUrl}}/flush/activity/list?limit=50
+X-API-Key: {{apiKey}}
+```
+
+**Por que não usar `/flush`?** O endpoint legado lê uma tabela de operações on-demand que está vazia para a maior parte dos tenants. `/flush/activity/list` é o que reflete "o que realmente aconteceu".
+
+---
+
 ## Resumo do fluxo de produção
 
 ```
@@ -298,7 +359,9 @@ X-API-Key: {{apiKey}}
 | HTTP | Causa | Como evitar |
 |---|---|---|
 | 401 | API key inválida ou faltando | header `X-API-Key` |
-| 403 | API key não tem o scope necessário | `read` para GETs, `write` para POSTs/DELETEs |
+| 401 (whitelist) | Faltou `X-2FA-Code` ou TOTP inválido/expirado | gere um código novo no autenticador e reenvie |
+| 401 (api-keys CRUD) | Tentou usar `X-API-Key` em endpoint JWT-only | use o JWT de sessão do portal (`portalJwt`) |
+| 403 | API key não tem o scope necessário | revise a lista de escopos da chave no Portal |
 | 422 `address still in cooldown` | Endereço whitelist < 24h | esperar ou whitelistar antes |
 | 422 `project deployment not ready` | `project_chains.deploy_status != "ready"` | rodar o wizard no Portal |
 | 422 `Token symbol 'X' not found on chain` | `tokenSymbol` errado/desconhecido | `GET /tokens?chainId=...` |

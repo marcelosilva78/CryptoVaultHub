@@ -1,8 +1,8 @@
 {
   "info": {
-    "_postman_id": "cvh-client-api-2026-05-08",
+    "_postman_id": "cvh-client-api-2026-05-12",
     "name": "CryptoVaultHub Client API",
-    "description": "Sequência completa de integração validada na homologação 2026-05-08 (BSC mainnet, projeto BrPay, 13/13 PASS).\n\nUse o Collection Runner para executar do começo ao fim — variáveis (projectId, depositAddress, withdrawalId) propagam automaticamente entre as requests via test scripts.\n\n**Antes de rodar:**\n1. Ajuste `apiKey` em Variables.\n2. Os passos com `[USER ACTION]` na descrição exigem ação fora do Postman (enviar BNB, etc.).\n3. Os passos `Wait …` rodam um único polling — re-execute manualmente até atingir o estado terminal, ou use o Runner com `iterationCount` ≥ 30 e `delay` de 8000ms.",
+    "description": "Sequência completa de integração validada em produção (BSC mainnet, projeto BrPay). Cada request foi disparada contra a API real e o test script valida a resposta atual; nada aqui é aspiracional.\n\n**Como usar:**\n- Ajuste `apiKey` em Variables com a sua chave (Portal → Settings → API Keys, escopo de leitura mínimo: `wallets:read`, `deposits:read`, `withdrawals:read`, `gas-tanks:read`, `forwarders:read`; o fluxo end-to-end completo pede também `forwarders:create`, `address-book:write`, `webhooks:write` e `withdrawals:hot`).\n- Para whitelistar destinos (POST /addresses), também preencha `totp2faCode` com o TOTP atual do app autenticador — o endpoint exige o header `X-2FA-Code`.\n- Para a pasta 'Self-service API key management', preencha `portalJwt` com o cookie de sessão do portal — esses endpoints são JWT-only.\n- Variáveis dinâmicas (`projectId`, `depositAddress`, `depositAddressId`, `withdrawalId`, `webhookId`, `keyId`, `rangeFrom`/`rangeTo`, `idempotencyKey`) propagam automaticamente entre requests via test scripts.\n\n**Estrutura:**\n- **1. Setup** — Smoke test de auth, lista wallets, valida saúde do gas tank (todos os tanks numa só chamada).\n- **2. Webhook (opcional)** — Cadastra receptor com HMAC-SHA256.\n- **3. Deposit** — Gera forwarder CREATE2, aguarda fundos, observa o sweep, valida saldo na hot wallet (USD via CoinGecko) e re-confere o forwarder via Multicall3.\n- **4. Withdrawal** — Whitelist (com 2FA), criação com idempotency key, self-approve em full-custody, polling até confirmed on-chain.\n- **5. Cleanup** — Remove o webhook de teste.\n- **6. Activity & reporting** — Listagem enriquecida de forwarders (com 5 inputs do CREATE2 + rollup de depósitos), depósitos filtrados por janela de data inclusive, e o feed real de flush activity (sweeps + lazy deploys vindos de gas_tank_transactions).\n- **Self-service API key management** — JWT-only, descobre/cria/revoga as próprias chaves.\n\n**Notas de produção:**\n- Status do depósito segue o lifecycle: pending → detected → confirming → confirmed → swept (terminal) | failed. O sweep cron usualmente avança para `swept` em ~30s após `confirmed`.\n- Datas em `fromDate`/`toDate` aceitam ISO-8601 completo (verbatim) OU `YYYY-MM-DD` (interpretado inclusivamente em UTC: 00:00 → 23:59:59.999).\n- Valores USD (`balanceUsd`, `amountUsd`, `priceUsd`, `valueUsd`, `gasCostUsd`) saem do CoinGecko free-tier com cache Redis de 5 min; ficam `null` quando o token não tem `coingeckoId` registrado.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -80,6 +80,42 @@
       "value": "",
       "type": "string",
       "description": "Gerado automaticamente no passo 10."
+    },
+    {
+      "key": "depositAddressId",
+      "value": "",
+      "type": "string",
+      "description": "Numeric id do deposit address — preenchido automaticamente após Generate deposit address. Usado por POST /deposit-addresses/:id/balances."
+    },
+    {
+      "key": "totp2faCode",
+      "value": "",
+      "type": "string",
+      "description": "Código TOTP de 6 dígitos do app autenticador da conta-mãe. Obrigatório no header X-2FA-Code para whitelistar destinos (POST /addresses). Atualize manualmente antes de rodar; cada código vive ~30s."
+    },
+    {
+      "key": "keyId",
+      "value": "",
+      "type": "string",
+      "description": "Numeric id da API key — preenchido automaticamente após Create API key. Usado por DELETE /api-keys/:id."
+    },
+    {
+      "key": "portalJwt",
+      "value": "",
+      "type": "string",
+      "description": "JWT de sessão do portal — Login em portal.vaulthub.live, DevTools → Application → Cookies → cvh_session. Necessário para os endpoints JWT-only (criação/revogação de API keys). NUNCA reutilize entre máquinas; rotaciona a cada login."
+    },
+    {
+      "key": "rangeFrom",
+      "value": "",
+      "type": "string",
+      "description": "Calculada no pre-request da requisição 'Deposits filtered' como hoje-7 (UTC)."
+    },
+    {
+      "key": "rangeTo",
+      "value": "",
+      "type": "string",
+      "description": "Calculada no pre-request da requisição 'Deposits filtered' como hoje (UTC)."
     }
   ],
   "auth": {
@@ -181,7 +217,13 @@
                 "exec": [
                   "pm.test('200 OK', () => pm.response.to.have.status(200));",
                   "const j = pm.response.json();",
-                  "pm.test('gas tank not critical', () => pm.expect(['ok', 'warning']).to.include(j.status));"
+                  "const target = parseInt(pm.collectionVariables.get('chainId'), 10);",
+                  "const row = (j.gasTanks || []).find(t => t.chainId === target);",
+                  "pm.test('gas tank row exists for chainId='+target, () => pm.expect(row).to.not.be.undefined);",
+                  "if (row) {",
+                  "  pm.test('gas tank not critical (status=' + row.status + ')', () => pm.expect(['ok','low']).to.include(row.status));",
+                  "  console.log('Gas tank ' + row.nativeSymbol + ': ' + row.estimatedOpsRemaining + ' ops remaining');",
+                  "}"
                 ]
               }
             }
@@ -190,16 +232,15 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/gas-tanks/{{chainId}}",
+              "raw": "{{baseUrl}}/gas-tanks",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
-                "gas-tanks",
-                "{{chainId}}"
+                "gas-tanks"
               ]
             },
-            "description": "Saque exige gas tank ok. Critical → pare e refunde."
+            "description": "Retorna todos os gas tanks do projeto (um por chain). O test script localiza a linha de `chainId` alvo e valida que status ∈ {ok, low} — `critical` significa saldo abaixo do threshold e bloqueia novos sweeps e deploys até ser reabastecido. Endpoint per-chain (`/gas-tanks/:chainId`) NÃO existe — a listagem já é cheap (uma linha por chain ativa)."
           }
         }
       ]
@@ -274,9 +315,11 @@
                   "pm.test('201 Created', () => pm.response.to.have.status(201));",
                   "const j = pm.response.json();",
                   "const addr = j.depositAddress?.address || j.address;",
+                  "const id  = j.depositAddress?.id || j.id;",
                   "pm.test('address returned', () => pm.expect(addr).to.match(/^0x[a-fA-F0-9]{40}$/));",
                   "pm.collectionVariables.set('depositAddress', addr);",
-                  "console.log('depositAddress =', addr);"
+                  "if (id) pm.collectionVariables.set('depositAddressId', String(id));",
+                  "console.log('depositAddress =', addr, ' id =', id);"
                 ]
               }
             }
@@ -356,7 +399,7 @@
                   "  return;",
                   "}",
                   "console.log('deposit status =', dep.status, ' txHash =', dep.txHash);",
-                  "pm.test('terminal status reached', () => pm.expect(['confirmed', 'sweep_pending', 'swept']).to.include(dep.status));"
+                  "pm.test('terminal status reached', () => pm.expect(['confirmed', 'swept']).to.include(dep.status));"
                 ]
               }
             }
@@ -383,7 +426,7 @@
                 }
               ]
             },
-            "description": "Polling do estado do depósito. Cada execução é uma checagem; em produção use webhooks. Estados: pending → confirmed → sweep_pending → swept."
+            "description": "Polling do estado do depósito. Cada execução é uma checagem; em produção use webhooks ao invés de polling. Lifecycle real: pending → detected → confirming → confirmed → swept (terminal) | failed (terminal failure). O cron de sweep normalmente avança para `swept` em ~30s após `confirmed`."
           }
         },
         {
@@ -398,7 +441,9 @@
                   "const j = pm.response.json();",
                   "const native = j.balances?.find(b => b.isNative) || j.balances?.[0];",
                   "console.log('hot wallet balance:', native?.balanceFormatted || native?.balance);",
-                  "pm.test('balance > 0', () => pm.expect(parseFloat(native?.balance || '0')).to.be.greaterThan(0));"
+                  "pm.test('balance > 0', () => pm.expect(parseFloat(native?.balanceFormatted || native?.balance || '0')).to.be.greaterThan(0));",
+                  "const totalUsd = (j.balances || []).reduce((s, b) => s + (parseFloat(b.balanceUsd || '0') || 0), 0);",
+                  "if (totalUsd > 0) console.log('hot wallet USD total: $' + totalUsd.toFixed(2));"
                 ]
               }
             }
@@ -417,7 +462,45 @@
                 "balances"
               ]
             },
-            "description": "Confirma que o sweep depositou os fundos na hot wallet."
+            "description": "Confirma que o sweep depositou os fundos na hot wallet. Resposta inclui `priceUsd` e `balanceUsd` para cada token quando o token tem `coingeckoId` registrado (free-tier CoinGecko com cache Redis de 5min). Tokens sem cobertura permanecem com `priceUsd: null`."
+          }
+        },
+        {
+          "name": "Live forwarder balance (Multicall3 + USD)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const j = pm.response.json();",
+                  "pm.test('balances array returned', () => pm.expect(j.balances).to.be.an('array'));",
+                  "const nonZero = (j.balances || []).filter(b => b.balanceRaw !== '0');",
+                  "if (nonZero.length === 0) {",
+                  "  console.log('Forwarder zerou (esperado após sweep). totalUsd =', j.totalUsd);",
+                  "} else {",
+                  "  console.log('Saldo restante no forwarder:', nonZero.map(b => b.balanceFormatted + ' ' + b.symbol).join(', '));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/deposit-addresses/{{depositAddressId}}/balances",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "deposit-addresses",
+                "{{depositAddressId}}",
+                "balances"
+              ]
+            },
+            "description": "Faz um Multicall3 batch on-chain — nativo via `getEthBalance` + ERC20 `balanceOf` para a lista de default tokens da chain — e cobre cada linha com preço USD via CoinGecko. POST (não GET) porque ignora cache do gateway e força leitura fresca. Útil para reconciliação imediata após um sweep esperado."
           }
         }
       ]
@@ -450,6 +533,11 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "X-2FA-Code",
+                "value": "{{totp2faCode}}",
+                "description": "Código TOTP de 6 dígitos do app autenticador da conta. Sem este header o endpoint responde 401. Preencha a variável `totp2faCode` em Variables antes de rodar."
               }
             ],
             "body": {
@@ -465,7 +553,7 @@
                 "addresses"
               ]
             },
-            "description": "Whitelist obrigatório antes de saque. Novos endereços têm cooldown de 24h — saque imediato vai falhar com 422 enquanto não vencer."
+            "description": "Whitelist obrigatório antes de saque. **Requer header `X-2FA-Code`** com o TOTP atual do app autenticador — sem ele o endpoint retorna 401 (proteção contra exfiltração de API key). Novos endereços entram em cooldown de 24h; saque imediato falha com 422 enquanto não vencer."
           }
         },
         {
@@ -674,11 +762,158 @@
       ]
     },
     {
+      "name": "6. Activity & reporting",
+      "description": "Endpoints somente-leitura para painéis e reconciliação. Usam exclusivamente API key + scopes de leitura.",
+      "item": [
+        {
+          "name": "Enriched forwarder listing",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('depositAddresses returned', () => pm.expect(j.depositAddresses).to.be.an('array'));",
+                  "const sample = (j.depositAddresses || [])[0] || {};",
+                  "['salt','parentAddress','deployerAddress','feeAddress','factoryAddress','totalDeposits','lastDepositAt'].forEach(k =>",
+                  "  pm.test('field ' + k + ' present', () => pm.expect(sample).to.have.property(k))",
+                  ");",
+                  "console.log('total forwarders:', j.count, '— deployed:', (j.depositAddresses||[]).filter(a => a.isDeployed).length);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/deposit-addresses?limit=200",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "deposit-addresses"
+              ],
+              "query": [
+                { "key": "limit", "value": "200" }
+              ]
+            },
+            "description": "Listagem enriquecida com os 5 inputs do CREATE2 (deployer/parent/fee/salt/factory) — qualquer cliente pode re-derivar o endereço localmente — mais o rollup `totalDeposits` + `lastDepositAt` por forwarder."
+          }
+        },
+        {
+          "name": "Deposits filtered (date window + status)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Calcula uma janela [hoje-7, hoje] em UTC para o exemplo",
+                  "const today = new Date();",
+                  "const past = new Date(Date.now() - 7*24*60*60*1000);",
+                  "pm.collectionVariables.set('rangeFrom', past.toISOString().slice(0,10));",
+                  "pm.collectionVariables.set('rangeTo', today.toISOString().slice(0,10));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "console.log('deposits in window:', j.deposits?.length, ' meta.total:', j.meta?.total);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/deposits?limit=200&status=swept&chainId={{chainId}}&fromDate={{rangeFrom}}&toDate={{rangeTo}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "deposits"
+              ],
+              "query": [
+                { "key": "limit", "value": "200" },
+                { "key": "status", "value": "swept" },
+                { "key": "chainId", "value": "{{chainId}}" },
+                { "key": "fromDate", "value": "{{rangeFrom}}" },
+                { "key": "toDate", "value": "{{rangeTo}}" }
+              ]
+            },
+            "description": "Filtro por `status` + `chainId` + janela `fromDate`/`toDate`. Datas em `YYYY-MM-DD` são interpretadas inclusivamente em UTC — `toDate=2026-05-12` engloba todo o dia 12 até 23:59:59.999Z. Status enum (lifecycle): pending → detected → confirming → confirmed → swept (terminal) | failed. Em produção, depósitos completos quase sempre estão em `swept`, raramente em `confirmed` (o cron de sweep avança em ~30s)."
+          }
+        },
+        {
+          "name": "Flush activity (sweeps + lazy deploys)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "console.log('activity rows:', j.meta?.count, '— sweeps:', (j.activity||[]).filter(r => r.operationType === 'sweep').length, ', deploys:', (j.activity||[]).filter(r => r.operationType === 'deploy_forwarder').length);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/flush/activity/list?limit=50",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "flush",
+                "activity",
+                "list"
+              ],
+              "query": [
+                { "key": "limit", "value": "50" }
+              ]
+            },
+            "description": "Feed real de atividade on-chain — toda submissão do cron de sweep e todo deploy de forwarder do gas tank — vindo de `gas_tank_transactions` com JOIN em `deposits.sweep_tx_hash`. Inclui USD via CoinGecko (deposit value + gas cost) quando o token tem `coingeckoId`. O endpoint legado `/flush` lê uma tabela separada de operações on-demand (vazia para a maior parte dos tenants); use esta feed para 'o que aconteceu de verdade'."
+          }
+        }
+      ]
+    },
+    {
       "name": "Self-service API key management",
       "description": "Endpoints reachable from a logged-in portal session (JWT cookie). Cannot be exercised with an API key — they are guarded by JwtOnlyAuthGuard to prevent privilege escalation.",
       "item": [
         {
           "name": "List my API keys",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "const keys = j.apiKeys || j.keys || j;",
+                  "const first = Array.isArray(keys) ? keys[0] : null;",
+                  "if (first && first.id != null) {",
+                  "  pm.collectionVariables.set('keyId', String(first.id));",
+                  "  console.log('keyId of most recent key:', first.id, '(label:', first.label, ')');",
+                  "}"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "GET",
             "header": [
@@ -708,11 +943,27 @@
                 }
               ]
             },
-            "description": "## Authentication: JWT-only (portal session)\nThis endpoint REJECTS X-API-Key with 401. Use a portal session JWT instead.\n\n### How to obtain `{{portalJwt}}`\n1. Log in at https://portal.vaulthub.live\n2. Open DevTools → Application → Cookies → `cvh_session` → copy the value (or the access token from /auth/me)\n3. In the Postman environment, set `portalJwt` = that value.\n\n### Why JWT-only\nAPI key creation must require human-confirmed authentication so a leaked API key cannot mint new keys with broader scopes (privilege escalation block, security redesign 2026-05-09)."
+            "description": "## Authentication: JWT-only (portal session)\nThis endpoint REJECTS X-API-Key with 401. Use a portal session JWT instead.\n\n### How to obtain `{{portalJwt}}`\n1. Log in at https://portal.vaulthub.live\n2. Open DevTools → Application → Cookies → `cvh_session` → copy the value (or the access token from /auth/me)\n3. In the Postman environment, set `portalJwt` = that value.\n\n### Why JWT-only\nAPI key creation must require human-confirmed authentication so a leaked API key cannot mint new keys with broader scopes (privilege escalation block, security redesign 2026-05-09).\n\nO test script salva o `id` da chave mais recente em `keyId` para usar no Revoke."
           }
         },
         {
           "name": "Create API key",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const j = pm.response.json();",
+                  "const id = j.id || j.apiKey?.id || j.key?.id;",
+                  "if (id != null) pm.collectionVariables.set('keyId', String(id));",
+                  "const raw = j.rawKey || j.key || j.apiKey?.rawKey;",
+                  "if (raw) console.log('⚠️  Chave bruta exibida UMA única vez — copie agora:', raw);"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "header": [
@@ -729,7 +980,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"projectId\": 1,\n  \"scopes\": [\"wallets:read\", \"forwarders:flush\"],\n  \"label\": \"Postman test\",\n  \"ipAllowlist\": [\"203.0.113.0/24\"],\n  \"expiresAt\": \"2026-12-31T23:59:59Z\"\n}"
+              "raw": "{\n  \"projectId\": {{projectId}},\n  \"scopes\": [\"wallets:read\", \"deposits:read\", \"withdrawals:read\", \"gas-tanks:read\", \"forwarders:read\"],\n  \"label\": \"Postman test\",\n  \"ipAllowlist\": [],\n  \"expiresAt\": \"2026-12-31T23:59:59Z\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api-keys",
@@ -766,19 +1017,13 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api-keys/:id",
+              "raw": "{{baseUrl}}/api-keys/{{keyId}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "api-keys",
-                ":id"
-              ],
-              "variable": [
-                {
-                  "key": "id",
-                  "value": "1"
-                }
+                "{{keyId}}"
               ]
             },
             "auth": {

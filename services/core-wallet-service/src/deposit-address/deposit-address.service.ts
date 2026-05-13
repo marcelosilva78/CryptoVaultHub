@@ -11,6 +11,7 @@ import { RedisService } from '../redis/redis.service';
 import { PricingService } from '../pricing/pricing.service';
 
 export interface DepositAddressResult {
+  id: number;
   address: string;
   externalId: string;
   label: string | null;
@@ -60,6 +61,7 @@ export class DepositAddressService {
         `Deposit address idempotent hit for client ${clientId}, chain ${chainId}, external ID ${externalId}: ${existing.address}`,
       );
       return {
+        id: Number(existing.id),
         address: existing.address,
         externalId: existing.externalId,
         label: existing.label ?? null,
@@ -154,6 +156,7 @@ export class DepositAddressService {
     }
 
     return {
+      id: Number(created.id),
       address: forwarderAddress,
       externalId,
       label: label ?? null,
