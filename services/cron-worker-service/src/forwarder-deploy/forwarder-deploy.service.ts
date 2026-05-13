@@ -284,8 +284,19 @@ export class ForwarderDeployService {
 
         // CvhForwarder's constructor auto-forwards any pre-existing native balance
         // to the parent. So after a deploy, if the forwarder is empty and we have
-        // confirmed native deposits referencing it, the deploy tx itself is the sweep.
+        // native deposits referencing it, the deploy tx itself is the sweep.
         // Reconcile: mark those native deposits as swept using the deploy tx hash.
+        //
+        // We accept any non-terminal status here — `confirmed` is the canonical
+        // case (event-detected deposit that reached confirmation depth) but
+        // polling-synth deposits ride sideways and stay in `pending` because
+        // their txHash is a `polling:` placeholder that the confirmation tracker
+        // skips. Without widening this filter, those rows would be orphaned
+        // even though on-chain proves the funds were swept by the deploy itself.
+        //
+        // The forwarderAddress join is case-insensitive because deposit_addresses
+        // stores the EIP-55 mixed-case form while deposits stores lowercase
+        // (set by the indexer's persistence handler).
         try {
           const postDeployBalance = await provider.getBalance(addr.address);
           if (postDeployBalance === 0n) {
@@ -296,9 +307,11 @@ export class ForwarderDeployService {
             if (nativeToken) {
               const reconciled = await this.prisma.deposit.updateMany({
                 where: {
-                  forwarderAddress: addr.address,
+                  forwarderAddress: addr.address.toLowerCase(),
                   chainId,
-                  status: 'confirmed',
+                  status: {
+                    in: ['pending', 'detected', 'confirming', 'confirmed'],
+                  },
                   sweepTxHash: null,
                   tokenId: nativeToken.id,
                 },
@@ -306,6 +319,7 @@ export class ForwarderDeployService {
                   status: 'swept',
                   sweepTxHash: txHash,
                   sweptAt: new Date(),
+                  confirmedAt: new Date(),
                 },
               });
               if (reconciled.count > 0) {
