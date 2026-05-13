@@ -214,23 +214,32 @@ export class BlockProcessorService {
       );
     }
 
-    // 4. Always record the block as indexed (even with 0 events) so the
-    //    gap detector knows it was processed and does not re-flag it.
-    await this.prisma.indexedBlock.upsert({
-      where: {
-        uq_chain_block: { chainId, blockNumber: BigInt(blockNumber) },
-      },
-      update: { eventsDetected: relevantEvents.length },
-      create: {
-        chainId,
-        blockNumber: BigInt(blockNumber),
-        blockHash: block.hash!,
-        parentHash: block.parentHash,
-        blockTimestamp: BigInt(block.timestamp),
-        transactionCount: block.transactions.length,
-        eventsDetected: relevantEvents.length,
-      },
-    });
+    // 4. Record the block ONLY if it had at least one relevant Transfer
+    //    event touching a monitored address. The product invariant is that
+    //    the indexer does not mirror every block of every chain (would
+    //    require petabytes for high-volume chains like BSC at 28k blocks/day
+    //    × N chains); we persist only the rows we care about. The gap
+    //    detector tracks "was this block already scanned?" via the Redis
+    //    key `scanned:<chain>:<block>` (written by the backfill worker on
+    //    every block it visits, regardless of events), so empty blocks are
+    //    covered without polluting cvh_indexer.indexed_blocks.
+    if (relevantEvents.length > 0) {
+      await this.prisma.indexedBlock.upsert({
+        where: {
+          uq_chain_block: { chainId, blockNumber: BigInt(blockNumber) },
+        },
+        update: { eventsDetected: relevantEvents.length },
+        create: {
+          chainId,
+          blockNumber: BigInt(blockNumber),
+          blockHash: block.hash!,
+          parentHash: block.parentHash,
+          blockTimestamp: BigInt(block.timestamp),
+          transactionCount: block.transactions.length,
+          eventsDetected: relevantEvents.length,
+        },
+      });
+    }
 
     // 5. Cache block hash in Redis for reorg detection
     await this.redis.setCache(

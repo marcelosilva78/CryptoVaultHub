@@ -58,10 +58,26 @@ export class GapDetectorService {
     });
     if (!earliest) return 0;
 
-    const startBlock = Number(earliest.startBlock);
+    const earliestStart = Number(earliest.startBlock);
     const endBlock = Number(cursor.lastBlock);
 
-    if (startBlock >= endBlock) return 0;
+    if (earliestStart >= endBlock) return 0;
+
+    // Cap the lookback window. After the polling-detector started syncing the
+    // cursor to the real chain head (fix for the "+1 per tick" lag), the first
+    // gap detection on a long-running tenant would enqueue tens of thousands
+    // of blocks of backfill in one shot — hammering the public RPC and
+    // potentially tripping circuit breakers. Each subsequent gap-detection
+    // tick (cron) advances by another MAX_GAP_LOOKBACK if work remains, so
+    // catching up to a 50k-block deficit takes ~5 ticks at 10k blocks each
+    // instead of one big-bang scan.
+    const MAX_GAP_LOOKBACK = 10_000;
+    const startBlock = Math.max(earliestStart, endBlock - MAX_GAP_LOOKBACK);
+    if (startBlock > earliestStart) {
+      this.logger.log(
+        `Gap detection chain ${chainId}: capping window to [${startBlock}, ${endBlock}] (would-have been [${earliestStart}, ${endBlock}], ${endBlock - earliestStart} blocks behind)`,
+      );
+    }
 
     // Find blocks in range that are NOT in indexed_blocks and NOT in Redis scanned set
     // We check in batches of 1000 to avoid huge queries

@@ -351,22 +351,46 @@ export class PollingDetectorService {
       await multicall3.aggregate3.staticCall(calls);
     this.logger.log(`pollChain ${chainId} step4 (Multicall3): ${Date.now() - t4}ms, ${results.length} results`);
 
-    // Compare with cached balances. We DON'T need a fresh block number here —
-    // it's only used for synth txHash and sync_cursor advance. Use the chain's
-    // existing cursor (cheap, in-DB) and bump it by 1 — staleness of a few
-    // blocks doesn't affect correctness; the indexer re-converges on the next
-    // tick. This saves a 30s eth_blockNumber RPC call on contended public BSC.
+    // Real chain head — the cursor MUST track the head, not bump by +1 per
+    // tick. The previous "+1 per tick" trick fell behind by ~25,920 blocks/day
+    // on BSC (28,800 blocks/day produced vs 2,880 ticks/day × 1 block each),
+    // so any consumer reading sync_cursors saw a stale view and downstream
+    // confirmations math went negative for fresh deposits. To keep the
+    // contended-RPC concern the original comment raised, we cache the head
+    // in Redis for 25s — that's below the 30s cron interval, so each tick
+    // pulls either a fresh eth_blockNumber or a 1-tick-stale cached value,
+    // never blocking on RPC under contention. The cache key is local to
+    // the indexer (not shared with other services) because freshness >
+    // de-dup with downstream readers.
     const t5 = Date.now();
-    const lastCursor = await this.prisma.syncCursor.findUnique({
-      where: { chainId },
-      select: { lastBlock: true },
-    });
-    const currentBlock = Number(lastCursor?.lastBlock ?? 0n) + 1;
-    this.logger.log(`pollChain ${chainId} step5 (cursor read, skipping getBlockNumber): ${Date.now() - t5}ms, currentBlock~=${currentBlock}`);
+    let currentBlock: number;
+    const headCacheKey = `chainHead:${chainId}`;
+    const cachedHead = await this.redis.getCache(headCacheKey);
+    if (cachedHead) {
+      currentBlock = parseInt(cachedHead, 10);
+    } else {
+      try {
+        currentBlock = await provider.getBlockNumber();
+        await this.redis.setCache(headCacheKey, String(currentBlock), 25);
+      } catch (err) {
+        // RPC down — fall back to the cursor's stored value rather than 0,
+        // so a transient outage doesn't reset the cursor.
+        const cursor = await this.prisma.syncCursor.findUnique({
+          where: { chainId },
+          select: { lastBlock: true },
+        });
+        currentBlock = Number(cursor?.lastBlock ?? 0n);
+        this.logger.warn(
+          `pollChain ${chainId} step5: eth_blockNumber failed (${(err as Error).message}), reusing cursor ${currentBlock}`,
+        );
+      }
+    }
+    this.logger.log(`pollChain ${chainId} step5 (chain head ${cachedHead ? 'cache' : 'rpc'}): ${Date.now() - t5}ms, currentBlock=${currentBlock}`);
 
-    // Advance the sync cursor — this is the only place that does so on the HTTP-only path.
-    // Without this, GapDetector sees lastBlock=0 and refuses to schedule backfills,
-    // and any consumer reading sync_cursors thinks the indexer is dead.
+    // Advance the sync cursor to the chain head. GapDetector + BackfillWorker
+    // then enqueue the work of scanning [previousCursor+1 .. currentBlock]
+    // for Transfer events touching monitored addresses (capped per-batch to
+    // stay friendly with the public RPC — see gap-detector.service.ts).
     try {
       await this.prisma.syncCursor.upsert({
         where: { chainId },
