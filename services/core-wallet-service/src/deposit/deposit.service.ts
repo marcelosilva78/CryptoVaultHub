@@ -1,7 +1,36 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { ethers } from 'ethers';
+import { Prisma } from '../generated/prisma-client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PricingService } from '../pricing/pricing.service';
+
+/**
+ * Pull the last indexed block per chain from cvh_indexer.sync_cursors. The
+ * indexer keeps this column up-to-date after every poll cycle (~30s), so
+ * it lags the chain head by at most one tick — precise enough for live
+ * confirmation counts. Cross-DB raw SQL because Prisma's model points at
+ * cvh_wallets; the MySQL user already has SELECT on cvh_indexer.
+ *
+ * Returns a Map<chainId, lastBlock>. Chains without a cursor row (early
+ * boot / never-indexed) are simply absent from the result; callers should
+ * treat null as "head unknown, fall back to stored confirmations".
+ */
+async function fetchIndexerHeads(
+  prisma: PrismaService,
+  chainIds: number[],
+): Promise<Map<number, bigint>> {
+  if (chainIds.length === 0) return new Map();
+  const rows = await prisma.$queryRaw<
+    Array<{ chain_id: number; last_block: bigint }>
+  >`
+    SELECT chain_id, last_block
+    FROM cvh_indexer.sync_cursors
+    WHERE chain_id IN (${Prisma.join(chainIds)})
+  `;
+  const out = new Map<number, bigint>();
+  for (const r of rows) out.set(r.chain_id, r.last_block);
+  return out;
+}
 
 /**
  * Date range parsing.
@@ -23,31 +52,55 @@ function parseToDate(s: string): Date {
 }
 
 /**
- * Normalize the on-chain confirmation count for a deposit row.
+ * Surface the live on-chain confirmation count for a deposit row.
  *
- * The stored `confirmations` column is written by the confirmation-tracker
- * as it polls. Two cases produce a stale value:
+ * The stored `confirmations` column is unreliable because:
+ *   1. The confirmation-tracker stops polling once status reaches a terminal
+ *      state (confirmed → swept), so the column freezes at whatever was
+ *      written then.
+ *   2. Polling-synth deposits never get tracker updates at all (the tracker
+ *      skips rows whose tx_hash starts with "polling:") so the column stays
+ *      at 0 forever.
+ *   3. Manually reconciled rows had no backfill until recently.
  *
- *   1. Polling-synth deposits: txHash is a `polling:<block>:<addr>` placeholder
- *      and the tracker skips them, so `confirmations` stays at 0 forever.
- *   2. Manually reconciled rows: when the post-deploy reconciler promotes a
- *      row to `swept` (or the gas-tank receipt reconciler does the same), it
- *      previously didn't backfill `confirmations`.
+ * The truth is on-chain: confirmations = current_head - block_number, where
+ * current_head is the chain's latest block. We use the indexer's last
+ * indexed block (cvh_indexer.sync_cursors.last_block) as the head — that's
+ * what the rest of the system relies on, and it lags real-time by at most
+ * one poll cycle (~30s), which is plenty precise for "how confirmed is
+ * this deposit?".
  *
- * For terminal-success statuses (`confirmed`, `swept`), the deposit by
- * definition reached confirmation depth — otherwise the sweep would not have
- * happened. So we surface `max(stored, required)` for those rows. For other
- * statuses we pass the raw value through.
+ * Returned value:
+ *   - 0 when blockNumber > currentBlock (shouldn't happen; defensive).
+ *   - currentBlock - blockNumber when known.
+ *   - As a floor, max(required, stored) for confirmed/swept rows (their
+ *     mere existence in terminal state proves they reached confirmation
+ *     depth at least once; protects against indexer lag making swept rows
+ *     look unconfirmed).
+ *   - Stored value when the indexer's last_block isn't known (early boot).
  */
 function effectiveConfirmations(
   status: string,
   stored: number,
   required: number,
+  blockNumber: bigint,
+  indexerHead: bigint | null,
 ): number {
-  if (status === 'confirmed' || status === 'swept') {
-    return Math.max(stored, required);
+  if (indexerHead === null) {
+    // No indexer cursor yet — fall back to old behaviour.
+    if (status === 'confirmed' || status === 'swept') {
+      return Math.max(stored, required);
+    }
+    return stored;
   }
-  return stored;
+  const diff = indexerHead - blockNumber;
+  const live = diff > 0n ? Number(diff) : 0;
+  if (status === 'confirmed' || status === 'swept') {
+    // Floor at required so a swept row never shows fewer than its threshold —
+    // even if the indexer is briefly behind the chain head.
+    return Math.max(live, required);
+  }
+  return live;
 }
 
 /**
@@ -124,6 +177,11 @@ export class DepositService {
       ? await this.pricing.getPricesUsd(coingeckoIds)
       : {};
 
+    // Indexer head per chain — used to compute live confirmations dynamically
+    // (currentBlock - blockNumber) instead of capping at requiredConfirmations.
+    const chainIdsInPage = [...new Set(rows.map((r) => r.chainId))];
+    const indexerHeads = await fetchIndexerHeads(this.prisma, chainIdsInPage);
+
     const deposits = rows.map((r) => {
       const token = tokenMap.get(r.tokenId.toString());
       const decimals = token?.decimals ?? 18;
@@ -159,6 +217,8 @@ export class DepositService {
           r.status,
           r.confirmations,
           r.confirmationsRequired,
+          r.blockNumber,
+          indexerHeads.get(r.chainId) ?? null,
         ),
         requiredConfirmations: r.confirmationsRequired,
         sweepTxHash: r.sweepTxHash,
@@ -189,9 +249,11 @@ export class DepositService {
     const row = await this.prisma.deposit.findFirst({ where });
     if (!row) throw new NotFoundException(`Deposit ${id} not found`);
 
-    const token = await this.prisma.token.findUnique({
-      where: { id: row.tokenId },
-    });
+    const [token, heads] = await Promise.all([
+      this.prisma.token.findUnique({ where: { id: row.tokenId } }),
+      fetchIndexerHeads(this.prisma, [row.chainId]),
+    ]);
+    const indexerHead = heads.get(row.chainId) ?? null;
 
     const decimals = token?.decimals ?? 18;
     const humanAmount = humanizeAmount(row.amountRaw, row.amount, decimals);
@@ -215,6 +277,8 @@ export class DepositService {
         row.status,
         row.confirmations,
         row.confirmationsRequired,
+        row.blockNumber,
+        indexerHead,
       ),
       requiredConfirmations: row.confirmationsRequired,
       sweepTxHash: row.sweepTxHash,

@@ -215,7 +215,7 @@ export function SweepPolicyCard({ projectId, chainId, chainName }: Props) {
               <span className="text-caption font-display text-text-secondary">
                 {MODE_LABELS[m]}
                 {m === "threshold_value" && (
-                  <span className="ml-1 text-[10px] text-text-muted">(requer USD pricing — em breve)</span>
+                  <span className="ml-1 text-[10px] text-text-muted">(tokens sem cotação na CoinGecko não são considerados)</span>
                 )}
               </span>
             </label>
@@ -254,8 +254,8 @@ export function SweepPolicyCard({ projectId, chainId, chainName }: Props) {
               placeholder="10.00"
               className="bg-surface-input border border-border-default rounded-input px-2.5 py-1.5 text-caption text-text-primary font-mono outline-none focus:border-border-focus"
             />
-            <div className="text-[10px] text-status-warning font-display">
-              ⚠️ Modo aceito mas ainda não acionado no backend (requer integração de preços por token). Use threshold por contagem ou agenda enquanto isso.
+            <div className="text-[10px] text-text-muted/70 font-display">
+              Ex.: 10.00 = espera o saldo acumulado do forwarder atingir US$ 10 antes de varrer. Preços via CoinGecko (cache 5 min). Tokens sem cotação ficam de fora — o sweep não dispara até todos os tokens terem preço, evitando varreduras precoces.
             </div>
           </div>
         )}

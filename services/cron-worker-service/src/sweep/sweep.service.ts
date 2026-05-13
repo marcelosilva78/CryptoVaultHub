@@ -4,6 +4,7 @@ import { ethers } from 'ethers';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { EvmProviderService } from '../blockchain/evm-provider.service';
+import { PricingService } from '../pricing/pricing.service';
 import { TransactionSubmitterService } from './transaction-submitter.service';
 import { GasTankTxLoggerService } from '../gas-tank/gas-tank-tx-logger.service';
 import {
@@ -80,6 +81,7 @@ export class SweepService {
     private readonly txSubmitter: TransactionSubmitterService,
     private readonly gasTankTxLogger: GasTankTxLoggerService,
     private readonly policyResolver: SweepPolicyResolver,
+    private readonly pricing: PricingService,
   ) {}
 
   /**
@@ -892,6 +894,9 @@ export class SweepService {
       id: bigint;
       projectId: bigint | null;
       forwarderAddress: string;
+      tokenId: bigint;
+      amount: string;
+      amountRaw: string;
     },
   >(chainId: number, confirmed: T[]): Promise<T[]> {
     // Distinct (projectId, chainId) pairs for which we need policy resolution.
@@ -907,31 +912,35 @@ export class SweepService {
     );
     const snap = await this.policyResolver.snapshot(distinctPairs);
 
-    // Count non-terminal deposits per forwarder (needed for threshold_count).
-    // We count from the full set of confirmed deposits we just fetched —
-    // good enough for the threshold check, since the threshold cares about
-    // "how many unswept deposits accumulated".
+    // Count non-terminal deposits per forwarder (threshold_count input).
     const countPerForwarder = new Map<string, number>();
     for (const d of confirmed) {
       const k = d.forwarderAddress.toLowerCase();
       countPerForwarder.set(k, (countPerForwarder.get(k) ?? 0) + 1);
     }
 
+    // USD value per forwarder (threshold_value input). Skipped when no
+    // distinct policy uses threshold_value — pricing is cached so cheap, but
+    // a tenant on auto/manual/threshold_count doesn't need it.
+    const usdPerForwarder = await this.computeUsdPerForwarder(
+      chainId,
+      confirmed,
+      this.distinctNeedsUsd(snap, distinctPairs),
+    );
+
     const allowed: T[] = [];
     const projectIdsAdvanced = new Set<string>();
     for (const d of confirmed) {
       if (d.projectId == null) {
-        // Project-less deposit (shouldn't happen in normal flow) — fall back
-        // to auto so legacy data isn't accidentally held back.
         allowed.push(d);
         continue;
       }
+      const fwd = d.forwarderAddress.toLowerCase();
       const decision = snap.qualifies(
         { projectId: d.projectId, chainId },
         {
-          depositCountForwarder:
-            countPerForwarder.get(d.forwarderAddress.toLowerCase()) ?? 0,
-          unsweptUsdForwarder: null, // threshold_value not yet wired in cron
+          depositCountForwarder: countPerForwarder.get(fwd) ?? 0,
+          unsweptUsdForwarder: usdPerForwarder.get(fwd) ?? null,
         },
       );
       if (decision.allow) {
@@ -958,5 +967,95 @@ export class SweepService {
     );
 
     return allowed;
+  }
+
+  /**
+   * Returns true if any policy in the snapshot needs USD pricing
+   * (i.e. mode === 'threshold_value'). Used to short-circuit the
+   * pricing call when no tenant has opted into that mode.
+   */
+  private distinctNeedsUsd(
+    snap: SweepPolicySnapshot,
+    pairs: Array<{ projectId: bigint; chainId: number }>,
+  ): boolean {
+    for (const p of pairs) {
+      const policy = snap.policyFor(p.projectId, p.chainId);
+      if (policy.mode === 'threshold_value' && !policy.isPaused) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Per-forwarder USD value of unswept deposits. Sums
+   * humanized_amount * priceUsd across all deposits on the same
+   * forwarder. Tokens without a coingeckoId, or whose price lookup
+   * fails, contribute null to the per-forwarder total — which the
+   * resolver treats as "USD unavailable → skip", erring on the side
+   * of holding back the sweep rather than firing prematurely.
+   *
+   * Skips the whole computation when no policy in scope is
+   * threshold_value (the common case), avoiding a pointless CoinGecko
+   * round-trip per cycle.
+   */
+  private async computeUsdPerForwarder<
+    T extends {
+      forwarderAddress: string;
+      tokenId: bigint;
+      amount: string;
+      amountRaw: string;
+    },
+  >(
+    chainId: number,
+    deposits: T[],
+    needsUsd: boolean,
+  ): Promise<Map<string, number | null>> {
+    const out = new Map<string, number | null>();
+    if (!needsUsd || deposits.length === 0) return out;
+
+    // Resolve token metadata for every distinct tokenId in scope.
+    const distinctTokenIds = [...new Set(deposits.map((d) => d.tokenId))];
+    const tokens = await this.prisma.token.findMany({
+      where: { id: { in: distinctTokenIds } },
+    });
+    const tokenById = new Map(tokens.map((t) => [t.id.toString(), t]));
+
+    const coingeckoIds = tokens
+      .map((t) => t.coingeckoId)
+      .filter((x): x is string => !!x);
+    const prices = await this.pricing.getPricesUsd(coingeckoIds);
+
+    for (const d of deposits) {
+      const fwd = d.forwarderAddress.toLowerCase();
+      const token = tokenById.get(d.tokenId.toString());
+      if (!token || !token.coingeckoId) {
+        if (!out.has(fwd)) out.set(fwd, null);
+        continue;
+      }
+      const price = prices[token.coingeckoId];
+      if (typeof price !== 'number') {
+        if (!out.has(fwd)) out.set(fwd, null);
+        continue;
+      }
+      // Humanise using amountRaw (source of truth — same logic as the
+      // public deposits endpoint).
+      let humanAmount: number;
+      try {
+        humanAmount = Number(ethers.formatUnits(d.amountRaw, token.decimals));
+      } catch {
+        humanAmount = Number(d.amount);
+      }
+      if (!Number.isFinite(humanAmount)) {
+        if (!out.has(fwd)) out.set(fwd, null);
+        continue;
+      }
+      const usd = humanAmount * price;
+      const prev = out.get(fwd);
+      // Once a forwarder has a null entry (a token we can't price), keep
+      // it null — better to skip the sweep than to underestimate.
+      if (prev === null) continue;
+      out.set(fwd, (prev ?? 0) + usd);
+    }
+
+    return out;
   }
 }
