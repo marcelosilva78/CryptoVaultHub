@@ -124,11 +124,15 @@ export class WebhookController {
     if (!delivery) {
       throw new NotFoundException('Delivery not found');
     }
-    const result = await this.deliveryService.deliverWebhook(
+    // deliverWebhook returns the raw Prisma row whose id/webhookId/clientId
+    // are BigInts — serializing them with res.json crashes. Re-read the row
+    // through getDeliveryDetail so BigInts are normalized for the response.
+    await this.deliveryService.deliverWebhook(
       BigInt(id),
       BigInt(delivery.webhookId),
     );
-    return { success: true, delivery: result };
+    const updated = await this.deliveryService.getDeliveryDetail(BigInt(id));
+    return { success: true, delivery: updated };
   }
 
   @Post('deliveries/:id/resend')
