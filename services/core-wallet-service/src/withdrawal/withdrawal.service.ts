@@ -361,16 +361,33 @@ export class WithdrawalService {
       },
       orderBy: { createdAt: 'desc' },
     });
+    if (withdrawals.length === 0) return [];
 
-    return withdrawals.map((w) => this.formatWithdrawal(w));
+    // Resolve tokenSymbol per row so the portal can render the Token column
+    // without doing a per-row lookup. Without this every row's tokenSymbol
+    // was null, and the UI showed an empty Token column.
+    const tokenIds = Array.from(new Set(withdrawals.map((w) => w.tokenId)));
+    const tokens = await this.prisma.token.findMany({
+      where: { id: { in: tokenIds } },
+      select: { id: true, symbol: true, decimals: true, contractAddress: true },
+    });
+    const tokenById = new Map(tokens.map((t) => [t.id.toString(), t]));
+
+    return withdrawals.map((w) => this.formatWithdrawal(w, tokenById.get(w.tokenId.toString())));
   }
 
-  private formatWithdrawal(w: any) {
+  private formatWithdrawal(
+    w: any,
+    token?: { symbol: string; decimals: number; contractAddress: string },
+  ) {
     return {
       id: Number(w.id),
       clientId: Number(w.clientId),
       chainId: w.chainId,
       tokenId: Number(w.tokenId),
+      tokenSymbol: token?.symbol ?? null,
+      tokenDecimals: token?.decimals ?? null,
+      tokenAddress: token?.contractAddress ?? null,
       sourceWallet: w.sourceWallet,
       fromWallet: w.fromWallet,
       toAddressId: Number(w.toAddressId),

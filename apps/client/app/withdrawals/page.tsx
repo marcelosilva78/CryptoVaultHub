@@ -442,7 +442,12 @@ export default function WithdrawalsPage() {
       setSubmitSuccess(false);
       setAmountError(null);
 
-      await clientFetch('/v1/withdrawals', {
+      const created = await clientFetch<{
+        success: boolean;
+        withdrawal?: { id: number | string; status: string };
+        id?: number | string;
+        status?: string;
+      }>('/v1/withdrawals', {
         method: 'POST',
         body: JSON.stringify({
           chainId: formChain,
@@ -452,6 +457,32 @@ export default function WithdrawalsPage() {
           amount: normalizeAmount(formAmount),
         }),
       });
+
+      // Auto-advance pending_approval → approved. In full-custody mode the
+      // session JWT already represents the client's authority over funds;
+      // the explicit /approve hop was a legacy step that left UI-submitted
+      // withdrawals stuck on `pending_approval` forever (the cron worker
+      // only picks up `approved` rows). The endpoint is a no-op for non-
+      // full-custody clients (returns 4xx that we surface inline). We do
+      // not fail the whole submission if approve fails — the withdrawal
+      // row exists and the user can re-trigger approval via the API.
+      const newId =
+        created?.withdrawal?.id ?? created?.id ?? null;
+      const newStatus =
+        created?.withdrawal?.status ?? created?.status ?? '';
+      if (newId != null && newStatus === 'pending_approval') {
+        try {
+          await clientFetch(`/v1/withdrawals/${newId}/approve`, {
+            method: 'POST',
+          });
+        } catch (approveErr: any) {
+          // Surface as a non-fatal warning. The row exists; the user can
+          // approve via the API or contact support.
+          setSubmitError(
+            `Withdrawal created (id ${newId}) but auto-approve failed: ${approveErr?.message ?? approveErr}. The row is in pending_approval — contact support to advance it.`,
+          );
+        }
+      }
 
       setSubmitSuccess(true);
       setFormAmount("");
