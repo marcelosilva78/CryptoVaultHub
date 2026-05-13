@@ -455,6 +455,14 @@ export default function WebhooksPage() {
     }
   };
 
+  // Hooks must run on every render — keep them above any conditional returns
+  // to satisfy the Rules of Hooks (React error #310).
+  const availableEventTypes = useMemo(() => {
+    const set = new Set<string>();
+    webhooks.forEach((w) => w.events?.forEach((e) => set.add(e)));
+    return Array.from(set).sort();
+  }, [webhooks]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -477,13 +485,6 @@ export default function WebhooksPage() {
       </div>
     );
   }
-
-  // Pre-compute event-type union for the filter dropdown from configured webhooks.
-  const availableEventTypes = useMemo(() => {
-    const set = new Set<string>();
-    webhooks.forEach((w) => w.events?.forEach((e) => set.add(e)));
-    return Array.from(set).sort();
-  }, [webhooks]);
 
   const formatTimestamp = (iso: string | null | undefined) => {
     if (!iso) return "—";
