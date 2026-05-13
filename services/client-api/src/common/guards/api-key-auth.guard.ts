@@ -121,7 +121,15 @@ export class ApiKeyAuthGuard implements CanActivate {
 
       return true;
     } catch (err) {
+      // Pass through both auth-shaped exceptions verbatim. Previously we
+      // caught EVERYTHING here and rethrew as UnauthorizedException — which
+      // silently turned a 403 (insufficient scopes) into a 401 with a misleading
+      // 'Invalid or expired JWT token' body, which the portal then treated as
+      // a session-expired error and prompted the user to log in again. Now the
+      // 403 surfaces correctly so the UI can show 'Insufficient scopes: …'
+      // inline.
       if (err instanceof UnauthorizedException) throw err;
+      if (err instanceof ForbiddenException) throw err;
       this.logger.error(
         `JWT validation failed: ${(err as Error).message}`,
       );
@@ -150,11 +158,20 @@ export class ApiKeyAuthGuard implements CanActivate {
   }
 
   private mapRoleToScopes(role: string): string[] {
+    // Maps a portal session's clientRole to API scope macros that
+    // expandLegacyScopes() then unfolds into granular scopes. Authenticated
+    // owner/admin sessions need 'withdraw' explicitly so the LEGACY_WITHDRAW
+    // macro expands to `withdrawals:hot` / `withdrawals:gas-tank` — without
+    // it, the portal's New Withdrawal form is rejected with a 403 that the
+    // user sees as a misleading 'session expired' message.
+    //
+    // API keys (X-API-Key path) are unaffected: they carry their own granular
+    // scopes from api_keys.scopes and never come through this mapping.
     switch (role) {
       case 'owner':
-        return ['read', 'write', 'admin'];
+        return ['read', 'write', 'withdraw', 'admin'];
       case 'admin':
-        return ['read', 'write'];
+        return ['read', 'write', 'withdraw'];
       case 'viewer':
         return ['read'];
       default:
