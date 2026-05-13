@@ -23,6 +23,34 @@ function parseToDate(s: string): Date {
 }
 
 /**
+ * Normalize the on-chain confirmation count for a deposit row.
+ *
+ * The stored `confirmations` column is written by the confirmation-tracker
+ * as it polls. Two cases produce a stale value:
+ *
+ *   1. Polling-synth deposits: txHash is a `polling:<block>:<addr>` placeholder
+ *      and the tracker skips them, so `confirmations` stays at 0 forever.
+ *   2. Manually reconciled rows: when the post-deploy reconciler promotes a
+ *      row to `swept` (or the gas-tank receipt reconciler does the same), it
+ *      previously didn't backfill `confirmations`.
+ *
+ * For terminal-success statuses (`confirmed`, `swept`), the deposit by
+ * definition reached confirmation depth — otherwise the sweep would not have
+ * happened. So we surface `max(stored, required)` for those rows. For other
+ * statuses we pass the raw value through.
+ */
+function effectiveConfirmations(
+  status: string,
+  stored: number,
+  required: number,
+): number {
+  if (status === 'confirmed' || status === 'swept') {
+    return Math.max(stored, required);
+  }
+  return stored;
+}
+
+/**
  * Coerce a stored deposit amount into a human-readable token-units string.
  *
  * Background: producers in this codebase disagree about what goes into
@@ -127,7 +155,11 @@ export class DepositService {
         txHash: r.txHash,
         blockNumber: r.blockNumber.toString(),
         fromAddress: r.fromAddress,
-        confirmations: r.confirmations,
+        confirmations: effectiveConfirmations(
+          r.status,
+          r.confirmations,
+          r.confirmationsRequired,
+        ),
         requiredConfirmations: r.confirmationsRequired,
         sweepTxHash: r.sweepTxHash,
         externalId: r.externalId,
@@ -179,7 +211,11 @@ export class DepositService {
       txHash: row.txHash,
       blockNumber: row.blockNumber.toString(),
       fromAddress: row.fromAddress,
-      confirmations: row.confirmations,
+      confirmations: effectiveConfirmations(
+        row.status,
+        row.confirmations,
+        row.confirmationsRequired,
+      ),
       requiredConfirmations: row.confirmationsRequired,
       sweepTxHash: row.sweepTxHash,
       externalId: row.externalId,
