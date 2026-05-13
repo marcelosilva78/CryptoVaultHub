@@ -75,8 +75,14 @@ export default function WebhooksPage() {
   const [testingId, setTestingId] = useState<string | null>(null);
   const [deliveryStatusFilter, setDeliveryStatusFilter] = useState("all");
 
-  /* ── Create-modal state ────────────────────────────────────── */
+  /* ── Create / Edit modal state ──────────────────────────────
+   * The same modal handles both flows; `editingWebhookId` switches the
+   * behaviour. `null` = create mode (POST), a real id = edit mode (PATCH).
+   * On edit we never show the secret panel — the backend does not return
+   * the secret on PATCH (it was only available once, at creation time).
+   */
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [editingWebhookId, setEditingWebhookId] = useState<string | null>(null);
   const [createUrl, setCreateUrl] = useState("");
   const [createLabel, setCreateLabel] = useState("");
   const [createEvents, setCreateEvents] = useState<string[]>([]);
@@ -86,7 +92,13 @@ export default function WebhooksPage() {
   const [createdWebhook, setCreatedWebhook] = useState<Webhook | null>(null);
   const createOverlayRef = useRef<HTMLDivElement>(null);
 
+  /* ── Delete confirmation state ────────────────────────────── */
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
   const resetCreateModal = () => {
+    setEditingWebhookId(null);
     setCreateUrl("");
     setCreateLabel("");
     setCreateEvents([]);
@@ -98,6 +110,18 @@ export default function WebhooksPage() {
 
   const openCreateModal = () => {
     resetCreateModal();
+    setShowCreateModal(true);
+  };
+
+  const openEditModal = (wh: Webhook) => {
+    setEditingWebhookId(wh.id);
+    setCreateUrl(wh.url);
+    setCreateLabel(wh.label ?? "");
+    setCreateEvents(wh.events);
+    setCreateActive(wh.isActive);
+    setCreating(false);
+    setCreateError("");
+    setCreatedWebhook(null);
     setShowCreateModal(true);
   };
 
@@ -133,22 +157,52 @@ export default function WebhooksPage() {
 
     setCreating(true);
     try {
-      const res = await clientFetch<{ webhook: Webhook }>("/v1/webhooks", {
-        method: "POST",
-        body: JSON.stringify({
-          url: trimmedUrl,
-          events: createEvents,
-          ...(createLabel.trim() ? { label: createLabel.trim() } : {}),
-          isActive: createActive,
-        }),
-      });
-      setCreatedWebhook(res.webhook);
-      // Refresh the webhook list in the background
-      fetchWebhooks();
+      if (editingWebhookId) {
+        // Edit flow: PATCH the existing row. No secret rotation here; the
+        // backend never re-issues the signing secret on edit.
+        await clientFetch(`/v1/webhooks/${editingWebhookId}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            url: trimmedUrl,
+            events: createEvents,
+            label: createLabel.trim() || null,
+            isActive: createActive,
+          }),
+        });
+        await fetchWebhooks();
+        closeCreateModal();
+      } else {
+        const res = await clientFetch<{ webhook: Webhook }>("/v1/webhooks", {
+          method: "POST",
+          body: JSON.stringify({
+            url: trimmedUrl,
+            events: createEvents,
+            ...(createLabel.trim() ? { label: createLabel.trim() } : {}),
+            isActive: createActive,
+          }),
+        });
+        setCreatedWebhook(res.webhook);
+        // Refresh the webhook list in the background
+        fetchWebhooks();
+      }
     } catch (err: any) {
-      setCreateError(err.message || "Failed to create webhook.");
+      setCreateError(err.message || (editingWebhookId ? "Failed to update webhook." : "Failed to create webhook."));
     } finally {
       setCreating(false);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    setDeleteBusy(true);
+    setDeleteError(null);
+    try {
+      await clientFetch(`/v1/webhooks/${id}`, { method: "DELETE" });
+      setDeletingId(null);
+      await fetchWebhooks();
+    } catch (err: any) {
+      setDeleteError(err?.message || "Failed to delete webhook.");
+    } finally {
+      setDeleteBusy(false);
     }
   };
 
@@ -298,10 +352,19 @@ export default function WebhooksPage() {
                   {testSent && testingId === null ? "Test Sent!" : "Test Delivery"}
                 </button>
                 <button
-                  onClick={() => window.alert("Edit webhook coming soon.")}
+                  onClick={() => openEditModal(wh)}
                   className="inline-flex items-center px-2.5 py-[4px] rounded-button font-display text-micro font-semibold cursor-pointer transition-colors duration-fast bg-transparent text-text-secondary border border-border-default hover:border-accent-primary hover:text-text-primary"
                 >
                   Edit
+                </button>
+                <button
+                  onClick={() => {
+                    setDeleteError(null);
+                    setDeletingId(wh.id);
+                  }}
+                  className="inline-flex items-center px-2.5 py-[4px] rounded-button font-display text-micro font-semibold cursor-pointer transition-colors duration-fast bg-transparent text-status-error border border-status-error/40 hover:bg-status-error/10 hover:border-status-error"
+                >
+                  Delete
                 </button>
               </div>
             </div>
@@ -504,7 +567,11 @@ export default function WebhooksPage() {
             {/* Header */}
             <div className="flex items-start justify-between mb-4">
               <div className="text-subheading font-bold font-display">
-                {createdWebhook ? "Webhook Created" : "New Webhook"}
+                {createdWebhook
+                  ? "Webhook Created"
+                  : editingWebhookId
+                    ? "Edit Webhook"
+                    : "New Webhook"}
               </div>
               <button
                 onClick={closeCreateModal}
@@ -712,15 +779,71 @@ export default function WebhooksPage() {
                     {creating ? (
                       <>
                         <div className="w-3.5 h-3.5 border-2 border-accent-text/30 border-t-accent-text rounded-full animate-spin" />
-                        Creating...
+                        {editingWebhookId ? "Saving..." : "Creating..."}
                       </>
                     ) : (
-                      "Create Webhook"
+                      editingWebhookId ? "Save Changes" : "Create Webhook"
                     )}
                   </button>
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Delete confirmation modal ─────────────────────────── */}
+      {deletingId && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-[4px] z-[200] flex items-center justify-center animate-fade-in"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !deleteBusy) setDeletingId(null);
+          }}
+        >
+          <div className="bg-surface-card border border-border-default rounded-modal p-6 w-[460px] animate-fade-up shadow-float">
+            <div className="flex items-center gap-2 mb-3">
+              <AlertTriangle className="w-5 h-5 text-status-error shrink-0" />
+              <div className="text-subheading font-bold font-display">
+                Delete webhook?
+              </div>
+            </div>
+            <p className="text-caption text-text-secondary font-display mb-4">
+              The endpoint will stop receiving deliveries immediately. Past
+              deliveries (and the delivery log) are preserved. This cannot be
+              undone — to receive events again you'll need to register a new
+              webhook and store a new signing secret.
+            </p>
+            <div className="bg-surface-input rounded-input border border-border-subtle px-3 py-2 mb-4 font-mono text-code text-text-secondary break-all">
+              {webhooks.find((w) => w.id === deletingId)?.url ?? deletingId}
+            </div>
+            {deleteError && (
+              <div className="mb-3 px-3 py-2 bg-status-error-subtle border border-status-error/25 rounded-card text-status-error text-caption font-display">
+                {deleteError}
+              </div>
+            )}
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setDeletingId(null)}
+                disabled={deleteBusy}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-button font-display text-caption font-semibold cursor-pointer transition-all duration-fast bg-transparent text-text-secondary border border-border-default hover:border-accent-primary hover:text-text-primary disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDelete(deletingId)}
+                disabled={deleteBusy}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-button font-display text-caption font-semibold cursor-pointer transition-all duration-fast bg-status-error text-white hover:bg-status-error/80 disabled:opacity-50"
+              >
+                {deleteBusy ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  "Delete webhook"
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
