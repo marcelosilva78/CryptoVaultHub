@@ -475,11 +475,21 @@ export class PollingDetectorService {
               )
             : null;
 
+        // Synthesised tx hash for polling-detected deposits when we couldn't
+        // resolve a real Transfer event tx within the lookback window. Must
+        // fit inside deposits.tx_hash VARCHAR(66) — the legacy long form
+        // `polling:<block>:<addr>:<token>` overflows for ERC20 (token contract
+        // is 42 chars on its own). We compress to the last 8 hex chars of
+        // both the forwarder and the token contract, which is still unique
+        // per (block, address, token) and clearly distinct from real tx
+        // hashes (real hashes are 66 chars total and start with 0x).
+        const addrTail = meta.address.slice(-8).toLowerCase();
+        const tokenTail = (meta.tokenAddress ?? 'native').slice(-8).toLowerCase();
+        const synthHash = `polling:${currentBlock}:${addrTail}:${tokenTail}`;
+
         await this.redis.publishToStream('deposits:detected', {
           chainId: chainId.toString(),
-          txHash:
-            resolved?.txHash ??
-            `polling:${currentBlock}:${meta.address}:${meta.tokenAddress ?? 'native'}`,
+          txHash: resolved?.txHash ?? synthHash,
           blockNumber: (resolved?.blockNumber ?? currentBlock).toString(),
           fromAddress: resolved?.fromAddress ?? 'unknown',
           toAddress: meta.address,
