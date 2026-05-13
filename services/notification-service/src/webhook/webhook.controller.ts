@@ -144,6 +144,66 @@ export class WebhookController {
     return { success: true, ...result };
   }
 
+  /**
+   * Cross-webhook deliveries listing with filters + pagination. Used by the
+   * portal's Delivery Log to power its bulk-resend, filtering and paging UX.
+   * The :webhookId-scoped endpoint above remains for backwards compat.
+   */
+  @Get('deliveries')
+  async listDeliveriesForClient(
+    @Query('clientId') clientId: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('status') status?: string,
+    @Query('webhookId') webhookId?: string,
+    @Query('eventType') eventType?: string,
+    @Query('fromDate') fromDate?: string,
+    @Query('toDate') toDate?: string,
+  ) {
+    if (!clientId) {
+      throw new NotFoundException('clientId query param required');
+    }
+    const parsedFrom = fromDate ? new Date(fromDate) : undefined;
+    const parsedTo = toDate ? new Date(toDate) : undefined;
+    if (parsedFrom && Number.isNaN(parsedFrom.getTime())) {
+      throw new NotFoundException('fromDate is not a valid date');
+    }
+    if (parsedTo && Number.isNaN(parsedTo.getTime())) {
+      throw new NotFoundException('toDate is not a valid date');
+    }
+    // Bare YYYY-MM-DD widen to end-of-day so the inclusive contract from the
+    // deposits endpoint also applies here.
+    if (parsedTo && /^\d{4}-\d{2}-\d{2}$/.test(toDate ?? '')) {
+      parsedTo.setUTCHours(23, 59, 59, 999);
+    }
+    const result = await this.deliveryService.listDeliveriesForClient({
+      clientId: BigInt(clientId),
+      page: page ? parseInt(page, 10) || 1 : 1,
+      limit: limit ? parseInt(limit, 10) || 20 : 20,
+      status,
+      webhookId: webhookId ? parseInt(webhookId, 10) : undefined,
+      eventType,
+      fromDate: parsedFrom,
+      toDate: parsedTo,
+    });
+    return { success: true, ...result };
+  }
+
+  @Post('deliveries/retry-bulk')
+  @HttpCode(HttpStatus.OK)
+  async retryDeliveriesBulk(
+    @Body() body: { clientId: number; ids: Array<number | string> },
+  ) {
+    if (!body?.clientId || !Array.isArray(body.ids) || body.ids.length === 0) {
+      throw new NotFoundException('clientId and ids[] are required');
+    }
+    const result = await this.deliveryService.retryDeliveriesBulk(
+      BigInt(body.clientId),
+      body.ids.map((id) => BigInt(id)),
+    );
+    return { success: true, ...result };
+  }
+
   @Get('stats')
   async getDeliveryStats() {
     return this.webhookService.getDeliveryStats();

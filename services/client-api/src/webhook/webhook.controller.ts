@@ -436,6 +436,63 @@ The response includes the HTTP status code and response time from your endpoint.
     return { success: true, ...result };
   }
 
+  /**
+   * Cross-webhook delivery listing. Drives the portal's Delivery Log table,
+   * which needs to span all webhooks of a client at once with filters by
+   * status, webhookId, eventType, and a date window, plus pagination.
+   */
+  @Get('deliveries')
+  @ClientAuth('webhooks:read')
+  @ApiOperation({
+    summary: 'List deliveries across all webhooks (scope: webhooks:read)',
+    description: `Cross-webhook deliveries listing with filters and pagination. Each row includes the originating webhook label + URL so the portal's Delivery Log table can render the originating endpoint without per-row lookups.
+
+Filters:
+- \`status\` (one of pending/success/retrying/failed/sent)
+- \`webhookId\` (integer)
+- \`eventType\` (string, e.g. deposit.swept)
+- \`fromDate\`, \`toDate\` — ISO-8601 or bare YYYY-MM-DD (inclusive UTC window)
+- \`page\` (default 1) and \`limit\` (default 20, max 100)`,
+  })
+  async listAllDeliveries(
+    @Query('page') page: string | undefined,
+    @Query('limit') limit: string | undefined,
+    @Query('status') status: string | undefined,
+    @Query('webhookId') webhookId: string | undefined,
+    @Query('eventType') eventType: string | undefined,
+    @Query('fromDate') fromDate: string | undefined,
+    @Query('toDate') toDate: string | undefined,
+    @CurrentClientId() clientId: number,
+  ) {
+    return this.webhookService.listDeliveriesForClient(clientId, {
+      page: page ? parseInt(page, 10) || 1 : 1,
+      limit: limit ? parseInt(limit, 10) || 20 : 20,
+      status,
+      webhookId,
+      eventType,
+      fromDate,
+      toDate,
+    });
+  }
+
+  /**
+   * Bulk retry — accepts up to 100 delivery ids and re-sends each. Returns
+   * per-id ok/error so the UI can show granular results in a single shot.
+   */
+  @Post('deliveries/retry-bulk')
+  @ClientAuth('webhooks:write')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Retry many deliveries in one request (scope: webhooks:write)',
+    description: 'Body: { ids: number[] }. Each id is retried independently; the response contains per-id { ok, error } so the caller can report granular results.',
+  })
+  async retryDeliveriesBulk(
+    @Body() body: { ids: Array<number | string> },
+    @CurrentClientId() clientId: number,
+  ) {
+    return this.webhookService.retryDeliveriesBulk(clientId, body?.ids ?? []);
+  }
+
   @Post('deliveries/:id/retry')
   @ClientAuth('webhooks:write')
   @HttpCode(HttpStatus.OK)

@@ -648,18 +648,124 @@ export class WebhookDeliveryService {
   }
 
   /**
+   * Cross-webhook delivery listing for a client. Supports filtering by
+   * webhookId, eventType, status, and a date window, plus paginated reads.
+   * Joins webhooks for label/url so the UI can render the originating
+   * endpoint without an extra round-trip per row.
+   */
+  async listDeliveriesForClient(params: {
+    clientId: bigint;
+    page: number;
+    limit: number;
+    status?: string;
+    webhookId?: number;
+    eventType?: string;
+    fromDate?: Date;
+    toDate?: Date;
+  }) {
+    const { clientId, page, limit, status, webhookId, eventType, fromDate, toDate } = params;
+    const where: Record<string, any> = { clientId };
+    if (status) where.status = status;
+    if (webhookId) where.webhookId = BigInt(webhookId);
+    if (eventType) where.eventType = eventType;
+    if (fromDate || toDate) {
+      where.createdAt = {};
+      if (fromDate) where.createdAt.gte = fromDate;
+      if (toDate) where.createdAt.lte = toDate;
+    }
+    const safeLimit = Math.max(1, Math.min(limit, 100));
+    const safePage = Math.max(1, page);
+    const [rows, total] = await Promise.all([
+      this.prisma.webhookDelivery.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        include: { webhook: { select: { id: true, description: true, url: true } } },
+        skip: (safePage - 1) * safeLimit,
+        take: safeLimit,
+      }),
+      this.prisma.webhookDelivery.count({ where }),
+    ]);
+    return {
+      deliveries: rows.map((d: any) => ({
+        ...this.formatDelivery(d),
+        webhookLabel: d.webhook?.description ?? null,
+        webhookUrl: d.webhook?.url ?? null,
+      })),
+      meta: {
+        page: safePage,
+        limit: safeLimit,
+        total,
+        totalPages: Math.ceil(total / safeLimit),
+      },
+    };
+  }
+
+  /**
+   * Bulk retry. Accepts up to 100 delivery ids and retries each via the
+   * normal deliverWebhook path. Returns per-id success/failure so the
+   * caller can show a granular summary.
+   */
+  async retryDeliveriesBulk(
+    clientId: bigint,
+    ids: bigint[],
+  ): Promise<{ ok: number; failed: number; results: Array<{ id: string; ok: boolean; error?: string }> }> {
+    const capped = ids.slice(0, 100);
+    const owned = await this.prisma.webhookDelivery.findMany({
+      where: { id: { in: capped }, clientId },
+      select: { id: true, webhookId: true },
+    });
+    const ownedById = new Map(owned.map((d) => [d.id.toString(), d.webhookId]));
+    const results: Array<{ id: string; ok: boolean; error?: string }> = [];
+    let ok = 0;
+    let failed = 0;
+    for (const id of capped) {
+      const webhookId = ownedById.get(id.toString());
+      if (!webhookId) {
+        failed++;
+        results.push({ id: id.toString(), ok: false, error: 'Not found for client' });
+        continue;
+      }
+      try {
+        await this.deliverWebhook(id, webhookId);
+        ok++;
+        results.push({ id: id.toString(), ok: true });
+      } catch (err) {
+        failed++;
+        results.push({
+          id: id.toString(),
+          ok: false,
+          error: (err as Error).message,
+        });
+      }
+    }
+    return { ok, failed, results };
+  }
+
+  /**
    * Get a single delivery with all attempts.
    */
   async getDeliveryDetail(deliveryId: bigint) {
     const delivery = await this.prisma.webhookDelivery.findUnique({
       where: { id: deliveryId },
-      include: { attempts_log: { orderBy: { attemptNumber: 'asc' } } },
+      include: {
+        attempts_log: { orderBy: { attemptNumber: 'asc' } },
+        webhook: { select: { id: true, description: true, url: true } },
+      },
     });
 
     if (!delivery) return null;
 
     return {
       ...this.formatDelivery(delivery),
+      webhookLabel: (delivery as any).webhook?.description ?? null,
+      webhookUrl: (delivery as any).webhook?.url ?? null,
+      requestUrl: (delivery as any).requestUrl ?? null,
+      requestHeaders: (delivery as any).requestHeaders ?? null,
+      responseBody: (delivery as any).responseBody ?? null,
+      responseHeaders: (delivery as any).responseHeaders ?? null,
+      errorMessage: (delivery as any).errorMessage ?? null,
+      errorCode: (delivery as any).errorCode ?? null,
+      deliveredAt: (delivery as any).deliveredAt ?? null,
       attempts_log: (delivery.attempts_log ?? []).map((a: any) => ({
         id: Number(a.id),
         attemptNumber: a.attemptNumber,

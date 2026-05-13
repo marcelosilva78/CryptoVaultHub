@@ -156,6 +156,52 @@ export class WebhookService {
     }
   }
 
+  async listDeliveriesForClient(
+    clientId: number,
+    params: {
+      page?: number;
+      limit?: number;
+      status?: string;
+      webhookId?: string;
+      eventType?: string;
+      fromDate?: string;
+      toDate?: string;
+    },
+  ) {
+    try {
+      const { data } = await axios.get(
+        `${this.notificationUrl}/webhooks/deliveries`,
+        {
+          headers: this.headers,
+          params: { clientId, ...params },
+          timeout: 15000,
+        },
+      );
+      return data;
+    } catch (error: any) {
+      if (error.response) {
+        throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
+      }
+      throw new InternalServerErrorException('Downstream service unavailable');
+    }
+  }
+
+  async retryDeliveriesBulk(clientId: number, ids: Array<number | string>) {
+    try {
+      const { data } = await axios.post(
+        `${this.notificationUrl}/webhooks/deliveries/retry-bulk`,
+        { clientId, ids },
+        { headers: this.headers, timeout: 60000 },
+      );
+      return data;
+    } catch (error: any) {
+      if (error.response) {
+        throw new HttpException(error.response.data?.message || 'Service error', error.response.status);
+      }
+      throw new InternalServerErrorException('Downstream service unavailable');
+    }
+  }
+
   async retryDelivery(clientId: number, deliveryId: string) {
     try {
       const { data } = await axios.post(
