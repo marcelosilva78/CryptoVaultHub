@@ -209,6 +209,17 @@ export class DepositPersistenceHandler implements OnModuleInit, OnModuleDestroy 
     const contractAddress = data.contractAddress ?? 'native';
     const amount = data.amount ?? '0';
     const blockNumber = BigInt(data.blockNumber ?? '0');
+    const source = data.source ?? 'unknown';
+    // Polling-detected rows: balance polling only observes a delta AFTER the
+    // tx is included in a block (and typically after several blocks have
+    // confirmed it, since Multicall3 reads against the latest state). The
+    // synthetic `polling:` tx hash is invisible to the confirmation-tracker,
+    // so without this shortcut the row would stay in (pending, confirmations=0)
+    // forever — the bug we hit with deposits id=4 and id=9. Mark these rows as
+    // already confirmed at insert time so the sweep service picks them up
+    // immediately, the API surfaces the right confirmation count, and we never
+    // produce orphans that have to be reconciled manually.
+    const isPollingSource = source === 'polling';
 
     if (!chainId || !txHash || !toAddress) {
       this.logger.warn('Skipping entry with missing chainId, txHash, or toAddress');
@@ -307,20 +318,40 @@ export class DepositPersistenceHandler implements OnModuleInit, OnModuleDestroy 
     // 4. Upsert deposit row into cvh_wallets.deposits (cross-DB raw SQL)
     //    Unique key: (tx_hash, forwarder_address) — matches uq_tx_forwarder
     // ------------------------------------------------------------------
-    await this.prisma.$executeRaw`
-      INSERT INTO cvh_wallets.deposits
-        (client_id, project_id, chain_id, forwarder_address, external_id,
-         token_id, amount, amount_raw, tx_hash, block_number, from_address,
-         status, confirmations, confirmations_required, detected_at)
-      VALUES
-        (${depositAddr.client_id}, ${depositAddr.project_id}, ${chainId},
-         ${toAddress}, ${depositAddr.external_id},
-         ${tokenId}, ${amount}, ${amount},
-         ${txHash}, ${blockNumber}, ${fromAddress},
-         'pending', 0, ${confirmationsRequired}, NOW())
-      ON DUPLICATE KEY UPDATE
-        confirmations_required = VALUES(confirmations_required)
-    `;
+    const initialStatus = isPollingSource ? 'confirmed' : 'pending';
+    const initialConfirmations = isPollingSource ? confirmationsRequired : 0;
+
+    if (isPollingSource) {
+      await this.prisma.$executeRaw`
+        INSERT INTO cvh_wallets.deposits
+          (client_id, project_id, chain_id, forwarder_address, external_id,
+           token_id, amount, amount_raw, tx_hash, block_number, from_address,
+           status, confirmations, confirmations_required, detected_at, confirmed_at)
+        VALUES
+          (${depositAddr.client_id}, ${depositAddr.project_id}, ${chainId},
+           ${toAddress}, ${depositAddr.external_id},
+           ${tokenId}, ${amount}, ${amount},
+           ${txHash}, ${blockNumber}, ${fromAddress},
+           ${initialStatus}, ${initialConfirmations}, ${confirmationsRequired}, NOW(), NOW())
+        ON DUPLICATE KEY UPDATE
+          confirmations_required = VALUES(confirmations_required)
+      `;
+    } else {
+      await this.prisma.$executeRaw`
+        INSERT INTO cvh_wallets.deposits
+          (client_id, project_id, chain_id, forwarder_address, external_id,
+           token_id, amount, amount_raw, tx_hash, block_number, from_address,
+           status, confirmations, confirmations_required, detected_at)
+        VALUES
+          (${depositAddr.client_id}, ${depositAddr.project_id}, ${chainId},
+           ${toAddress}, ${depositAddr.external_id},
+           ${tokenId}, ${amount}, ${amount},
+           ${txHash}, ${blockNumber}, ${fromAddress},
+           ${initialStatus}, ${initialConfirmations}, ${confirmationsRequired}, NOW())
+        ON DUPLICATE KEY UPDATE
+          confirmations_required = VALUES(confirmations_required)
+      `;
+    }
 
     this.logger.log(
       `Deposit persisted: ${txHash} on chain ${chainId} → ${toAddress} (${amount})`,

@@ -210,6 +210,51 @@ export class GasTankReceiptReconcilerService implements OnModuleInit, OnModuleDe
                 }
               }
 
+              // Orphan-reconciliation pass: a sweep tx empties the forwarder
+              // for the swept token (we verified postBalance == 0). Any other
+              // deposit row on the same (chainId, forwarderAddress, tokenId)
+              // tuple that is still in a non-terminal status (pending,
+              // detected, confirming, confirmed) was ALSO swept by this same
+              // tx — those rows usually exist because:
+              //   - polling-detector created a row before its source field
+              //     was honoured by the persistence handler (status='pending');
+              //   - the realtime path and the polling path BOTH emitted for
+              //     the same balance change (one real txHash, one polling
+              //     synth), and the polling row was never linked to a sweep.
+              // Cascading them here prevents the row from being stranded forever
+              // with confirmations=0 / status=pending while the actual funds
+              // are already in the hot wallet.
+              const tokenIdsCascaded = [
+                ...new Set(
+                  pendingDeposits
+                    .filter((d) => safeToCascadeIds.includes(d.id))
+                    .map((d) => d.tokenId),
+                ),
+              ];
+              if (tokenIdsCascaded.length > 0) {
+                const orphans = await this.prisma.deposit.updateMany({
+                  where: {
+                    chainId: row.chainId,
+                    forwarderAddress: forwarderAddress.toLowerCase(),
+                    tokenId: { in: tokenIdsCascaded },
+                    status: {
+                      in: ['pending', 'detected', 'confirming', 'confirmed'],
+                    },
+                  },
+                  data: {
+                    status: 'swept',
+                    sweepTxHash: row.txHash,
+                    sweptAt: new Date(),
+                    confirmedAt: new Date(),
+                  },
+                });
+                if (orphans.count > 0) {
+                  this.logger.log(
+                    `Orphan-reconciled ${orphans.count} stale deposit row(s) on forwarder ${forwarderAddress} for sweep tx ${row.txHash} (forwarder balance is zero — they were swept by the same tx)`,
+                  );
+                }
+              }
+
               if (noopIds.length > 0) {
                 this.logger.warn(
                   `Held back ${noopIds.length} deposit(s) from cascade for tx ${row.txHash} (forwarder still funded — suspected no-op sweep). Next sweep cycle will retry once forwarder is deployed.`,
