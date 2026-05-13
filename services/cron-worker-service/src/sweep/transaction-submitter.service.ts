@@ -12,6 +12,27 @@ const FORWARDER_IFACE = new ethers.Interface([
   'function flush() external',
 ]);
 
+/**
+ * ABI fragments for CvhWalletSimple operations used by the sweep path.
+ *
+ * - flushForwarderTokens: signer-only (no multisig signature). Routes a single
+ *   ERC-20 flush through the wallet so the inner forwarder call's msg.sender
+ *   equals parentAddress (== wallet). This is the simplest and preferred path
+ *   for single-token sweeps.
+ *
+ * - sendMultiSig: full 2-of-3 multisig call. Required when we need to invoke
+ *   arbitrary calldata on a target (e.g. forwarder.batchFlushERC20Tokens or
+ *   forwarder.flush) since the wallet contract does not expose a signer-only
+ *   wrapper for those operations.
+ *
+ * - getNextSequenceId: needed to pick a fresh sequenceId for sendMultiSig.
+ */
+const CVH_WALLET_IFACE = new ethers.Interface([
+  'function flushForwarderTokens(address payable forwarderAddress, address tokenContractAddress) external',
+  'function sendMultiSig(address toAddress, uint256 value, bytes calldata data, uint256 expireTime, uint256 sequenceId, bytes calldata signature) external',
+  'function getNextSequenceId() public view returns (uint256)',
+]);
+
 export interface SignAndSubmitParams {
   chainId: number;
   clientId: number;
@@ -86,6 +107,135 @@ export class TransactionSubmitterService {
     return (
       this.BATCH_BASE_GAS + this.BATCH_GAS_PER_TOKEN * BigInt(tokenCount)
     );
+  }
+
+  /**
+   * Build calldata for CvhWalletSimple.flushForwarderTokens(forwarder, token).
+   * This is the signer-only single-token sweep path: msg.sender to the wallet
+   * must be one of the 3 signers (platform/client/backup), and the wallet then
+   * calls forwarder.flushTokens(token) — so the forwarder sees msg.sender ==
+   * parentAddress (the wallet) and the onlyAllowedAddress modifier passes.
+   *
+   * No multisig signature is required for this path.
+   */
+  buildWalletFlushForwarderTokensCalldata(
+    forwarderAddress: string,
+    tokenContractAddress: string,
+  ): string {
+    return CVH_WALLET_IFACE.encodeFunctionData('flushForwarderTokens', [
+      forwarderAddress,
+      tokenContractAddress,
+    ]);
+  }
+
+  /**
+   * Build calldata for CvhWalletSimple.sendMultiSig(...). The inner `data`
+   * payload is executed by the wallet as `target.call{value: value}(data)`,
+   * so the forwarder sees msg.sender == wallet (parentAddress) and any
+   * onlyAllowedAddress-gated function passes.
+   *
+   * Used for native ETH sweeps (inner = forwarder.flush()) and batch ERC-20
+   * sweeps (inner = forwarder.batchFlushERC20Tokens(tokens)) where no
+   * signer-only wrapper exists on the wallet.
+   */
+  buildSendMultiSigCalldata(params: {
+    toAddress: string;
+    value: bigint;
+    innerData: string;
+    expireTime: number;
+    sequenceId: number;
+    signature: string;
+  }): string {
+    return CVH_WALLET_IFACE.encodeFunctionData('sendMultiSig', [
+      params.toAddress,
+      params.value,
+      params.innerData,
+      params.expireTime,
+      params.sequenceId,
+      params.signature,
+    ]);
+  }
+
+  /**
+   * Fetch the next sequence ID from a CvhWalletSimple deployed at the given
+   * address. Mirrors the helper used by withdrawal-worker / withdrawal-executor.
+   */
+  async getWalletNextSequenceId(
+    chainId: number,
+    walletAddress: string,
+  ): Promise<number> {
+    const provider = await this.evmProvider.getProvider(chainId);
+    const contract = new ethers.Contract(
+      walletAddress,
+      CVH_WALLET_IFACE,
+      provider,
+    );
+    const next: bigint = await contract.getNextSequenceId();
+    return Number(next);
+  }
+
+  /**
+   * Ask Key Vault to sign the EIP-191-prefixed operationHash with the given
+   * key type. The contract applies "\x19Ethereum Signed Message:\n32" inside
+   * ecrecover, so we hash the prefixed payload before calling Key Vault
+   * (which exposes raw ECDSA sign over a 32-byte digest).
+   *
+   * Mirrors WithdrawalWorkerService.signViaKeyVault — keeping it local here
+   * avoids a cross-module dependency from sweep -> withdrawal.
+   */
+  async signOperationHashViaKeyVault(params: {
+    clientId: number;
+    operationHash: string;
+    keyType: 'platform' | 'backup' | 'client';
+    requestedBy: string;
+  }): Promise<{ signature: string; address: string }> {
+    const prefixedHash = ethers.solidityPackedKeccak256(
+      ['string', 'bytes32'],
+      ['\x19Ethereum Signed Message:\n32', params.operationHash],
+    );
+
+    const url = `${this.keyVaultUrl}/keys/${params.clientId}/sign`;
+    const internalKey = process.env.INTERNAL_SERVICE_KEY ?? '';
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10_000);
+
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Internal-Service-Key': internalKey,
+        },
+        body: JSON.stringify({
+          hash: prefixedHash,
+          keyType: params.keyType,
+          requestedBy: params.requestedBy,
+        }),
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const body = await res.text();
+        throw new Error(
+          `Key Vault sign failed (${res.status}): ${body}`,
+        );
+      }
+
+      const data = (await res.json()) as {
+        success: boolean;
+        signature: string;
+        address: string;
+      };
+      if (!data.success || !data.signature) {
+        throw new Error(
+          `Key Vault sign returned unsuccessful for client ${params.clientId}`,
+        );
+      }
+      return { signature: data.signature, address: data.address };
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   /**

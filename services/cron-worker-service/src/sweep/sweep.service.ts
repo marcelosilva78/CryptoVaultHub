@@ -11,6 +11,28 @@ const ERC20_ABI = [
   'function balanceOf(address account) external view returns (uint256)',
 ];
 
+/**
+ * Default expiry window for sendMultiSig operations (seconds).
+ * Mirrors WITHDRAWAL_EXPIRE_SECONDS default; 1 hour is comfortably above
+ * any realistic mempool delay while still bounded for replay safety.
+ */
+const SWEEP_MULTISIG_EXPIRE_SECONDS = 3600;
+
+/**
+ * Conservative gas limit for sendMultiSig wrapping a forwarder flush.
+ * Inner forwarder.flush()/batchFlush + multisig verification + sequenceId
+ * window update typically runs ~120k-220k gas; 350k gives ample headroom
+ * and is only used as a fallback when estimateGas reverts.
+ */
+const SWEEP_MULTISIG_DEFAULT_GAS = 350_000n;
+
+/**
+ * Conservative gas limit for the signer-only wallet.flushForwarderTokens
+ * wrapper. Slightly higher than a plain ERC-20 transfer (~65k) because of
+ * the extra contract hop and onlySigner check; 200k is safe.
+ */
+const SWEEP_FLUSH_WRAPPER_DEFAULT_GAS = 200_000n;
+
 export interface SweepJobData {
   chainId: number;
   clientId: number;
@@ -185,6 +207,145 @@ export class SweepService {
   }
 
   /**
+   * Resolve the parent (CvhWalletSimple) contract address that owns the
+   * given forwarder. The forwarder was provisioned with parentAddress ==
+   * hot wallet contract.
+   *
+   * Resolution order:
+   *  1. If the deposit row carries a project_id > 0 we use
+   *     project_chains.hot_wallet_address for that (project, chain).
+   *  2. Otherwise we fall back to the legacy per-client hot wallet on the
+   *     `wallets` table.
+   *
+   * Returns null only when the system is misconfigured (no wallet at all
+   * for that scope) — caller must skip the sweep for that forwarder and
+   * surface a warning. Never silently submit from gas tank: that's the
+   * exact failure mode this refactor exists to prevent.
+   */
+  private async resolveParentWallet(params: {
+    clientId: number;
+    chainId: number;
+    projectId: bigint | null;
+  }): Promise<string | null> {
+    if (params.projectId !== null && params.projectId > 0n) {
+      const projectWallet = await this.getProjectHotWallet(
+        params.projectId,
+        params.chainId,
+      );
+      if (projectWallet) return projectWallet;
+    }
+    return this.getClientHotWallet(params.clientId, params.chainId);
+  }
+
+  /**
+   * Submit a sweep operation that requires the multisig path (native flush
+   * or batchFlushERC20Tokens). Mirrors the withdrawal-worker flow:
+   *
+   *  1. Fetch next sequenceId from the wallet contract
+   *  2. Compute operationHash matching CvhWalletSimple's abi.encode layout
+   *  3. Ask Key Vault to sign the EIP-191 prefixed hash with the BACKUP key
+   *     (the platform key is msg.sender for the outer tx, so the cosigner
+   *     must be a different signer — backup is the canonical choice and
+   *     matches the withdrawal worker)
+   *  4. Build sendMultiSig calldata and broadcast the outer tx FROM platform
+   *     key TO the wallet contract
+   *
+   * The forwarder's onlyAllowedAddress modifier passes because the inner
+   * call's msg.sender ends up being the wallet (== parentAddress).
+   */
+  private async submitMultiSigForwarderCall(params: {
+    chainId: number;
+    clientId: number;
+    forwarderAddress: string;
+    walletAddress: string;
+    innerData: string;
+    gasLimitFallback: bigint;
+  }): Promise<string> {
+    const sequenceId = await this.txSubmitter.getWalletNextSequenceId(
+      params.chainId,
+      params.walletAddress,
+    );
+
+    const expireTime =
+      Math.floor(Date.now() / 1000) + SWEEP_MULTISIG_EXPIRE_SECONDS;
+
+    const operationHash = this.buildSendMultiSigOperationHash({
+      chainId: params.chainId,
+      walletAddress: params.walletAddress,
+      toAddress: params.forwarderAddress,
+      value: 0n,
+      data: params.innerData,
+      expireTime,
+      sequenceId,
+    });
+
+    const { signature, address: cosignerAddress } =
+      await this.txSubmitter.signOperationHashViaKeyVault({
+        clientId: params.clientId,
+        operationHash,
+        keyType: 'backup',
+        requestedBy: 'sweep-service',
+      });
+
+    this.logger.debug(
+      `sweep multisig: chain=${params.chainId} wallet=${params.walletAddress} forwarder=${params.forwarderAddress} seqId=${sequenceId} cosigner=${cosignerAddress}`,
+    );
+
+    const outerCalldata = this.txSubmitter.buildSendMultiSigCalldata({
+      toAddress: params.forwarderAddress,
+      value: 0n,
+      innerData: params.innerData,
+      expireTime,
+      sequenceId,
+      signature,
+    });
+
+    return this.txSubmitter.signAndSubmit({
+      chainId: params.chainId,
+      clientId: params.clientId,
+      from: '', // submitter resolves the platform key EOA
+      to: params.walletAddress,
+      data: outerCalldata,
+      keyType: 'platform',
+      gasLimit: params.gasLimitFallback,
+    });
+  }
+
+  /**
+   * Compute the operationHash that CvhWalletSimple.sendMultiSig recomputes
+   * on-chain:
+   *   keccak256(abi.encode(
+   *     getNetworkId(), address(this), toAddress, value, data,
+   *     expireTime, sequenceId
+   *   ))
+   * where getNetworkId() == Strings.toString(block.chainid).
+   */
+  private buildSendMultiSigOperationHash(params: {
+    chainId: number;
+    walletAddress: string;
+    toAddress: string;
+    value: bigint;
+    data: string;
+    expireTime: number;
+    sequenceId: number;
+  }): string {
+    return ethers.keccak256(
+      ethers.AbiCoder.defaultAbiCoder().encode(
+        ['string', 'address', 'address', 'uint256', 'bytes', 'uint256', 'uint256'],
+        [
+          String(params.chainId),
+          params.walletAddress,
+          params.toAddress,
+          params.value,
+          params.data,
+          params.expireTime,
+          params.sequenceId,
+        ],
+      ),
+    );
+  }
+
+  /**
    * Execute sweep: find forwarders with token balances > 0, flush to hot wallet.
    * Uses a Redis distributed lock to prevent concurrent sweeps for the same (chainId, clientId).
    */
@@ -280,10 +441,14 @@ export class SweepService {
 
     // 5. Group deposits by forwarder address, then by token within each forwarder.
     //    This lets us use batchFlushERC20Tokens when a forwarder has multiple tokens.
+    //    We also track the projectId observed for each forwarder — needed to
+    //    resolve which CvhWalletSimple instance owns it (project-scoped vs
+    //    legacy client-scoped hot wallet).
     const depositsByForwarder = new Map<
       string,
       Map<bigint, typeof deposits>
     >();
+    const depositsByForwarderProjectId = new Map<string, bigint | null>();
     for (const deposit of deposits) {
       let forwarderMap = depositsByForwarder.get(deposit.forwarderAddress);
       if (!forwarderMap) {
@@ -293,6 +458,16 @@ export class SweepService {
       const existing = forwarderMap.get(deposit.tokenId) ?? [];
       existing.push(deposit);
       forwarderMap.set(deposit.tokenId, existing);
+
+      // First deposit on this forwarder wins for projectId resolution.
+      // All deposits on a single forwarder share the same parent wallet by
+      // construction (forwarder.parentAddress is set at deploy time).
+      if (!depositsByForwarderProjectId.has(deposit.forwarderAddress)) {
+        depositsByForwarderProjectId.set(
+          deposit.forwarderAddress,
+          deposit.projectId ?? null,
+        );
+      }
     }
 
     // 6. For each forwarder, verify on-chain balances and submit flush transactions
@@ -369,30 +544,59 @@ export class SweepService {
           (t) => !t.token.isNative,
         );
 
+        // Resolve the parent wallet (CvhWalletSimple) for this forwarder.
+        // The sweep MUST be routed through the wallet so the inner forwarder
+        // call has msg.sender == parentAddress, satisfying onlyAllowedAddress.
+        // Calling the forwarder directly from the gas tank EOA reverts with
+        // NotAllowed() because the gas tank is neither parentAddress nor
+        // feeAddress (those are the wallet itself in our deploys).
+        const forwarderProjectId = depositsByForwarderProjectId.get(forwarderAddress) ?? null;
+        const parentWalletAddress = await this.resolveParentWallet({
+          clientId,
+          chainId,
+          projectId: forwarderProjectId,
+        });
+
+        if (!parentWalletAddress) {
+          this.logger.error(
+            `Cannot sweep forwarder ${forwarderAddress} on chain ${chainId}: no parent hot wallet found for client=${clientId} project=${forwarderProjectId}. Skipping until provisioning is fixed.`,
+          );
+          for (const tokenDeposits of tokenDepositsMap.values()) {
+            result.failed += tokenDeposits.length;
+          }
+          continue;
+        }
+
         // --- Handle native ETH flush ---
+        // Routed through wallet.sendMultiSig(forwarder, 0, flush(), ...) so the
+        // forwarder's flush() sees msg.sender == wallet (== parentAddress).
         for (const entry of nativeTokens) {
           try {
-            const calldata = this.txSubmitter.buildFlushNativeCalldata();
-
-            const sweepTxHash = await this.txSubmitter.signAndSubmit({
+            const sweepTxHash = await this.submitMultiSigForwarderCall({
               chainId,
               clientId,
-              from: gasTank.address,
-              to: forwarderAddress,
-              data: calldata,
+              forwarderAddress,
+              walletAddress: parentWalletAddress,
+              innerData: this.txSubmitter.buildFlushNativeCalldata(),
+              gasLimitFallback: SWEEP_MULTISIG_DEFAULT_GAS,
             });
 
-            // TODO: gasPriceWei is '0' here — the actual price is resolved inside signAndSubmit.
-            // The receipt reconciler (gas-tank-receipt-reconciler.service) backfills gasCostWei via on-chain receipt.
             await this.gasTankTxLogger.logSubmit({
               walletId: gasTank.id,
               projectId: gasTank.projectId,
               chainId,
               txHash: sweepTxHash,
               operationType: 'sweep',
-              toAddress: forwarderAddress,
+              toAddress: parentWalletAddress,
               gasPriceWei: '0',
-              metadata: { clientId, forwarderAddress, tokenSymbol: entry.token.symbol, depositCount: entry.depositCount },
+              metadata: {
+                clientId,
+                forwarderAddress,
+                walletAddress: parentWalletAddress,
+                tokenSymbol: entry.token.symbol,
+                depositCount: entry.depositCount,
+                sweepPath: 'sendMultiSig.flush',
+              },
             });
 
             await this.prisma.deposit.updateMany({
@@ -418,7 +622,7 @@ export class SweepService {
             });
 
             this.logger.log(
-              `Submitted native flush on chain ${chainId}: forwarder=${forwarderAddress}, tx=${sweepTxHash}`,
+              `Submitted native flush via wallet on chain ${chainId}: wallet=${parentWalletAddress}, forwarder=${forwarderAddress}, tx=${sweepTxHash}`,
             );
           } catch (error) {
             const msg =
@@ -426,6 +630,11 @@ export class SweepService {
             this.logger.error(
               `Native flush failed for forwarder ${forwarderAddress} on chain ${chainId}: ${msg}`,
             );
+            // Mark deposits back to sweep_failed so the cron retries them.
+            await this.prisma.deposit.updateMany({
+              where: { id: { in: entry.depositIds } },
+              data: { status: 'sweep_failed' },
+            });
             result.failed += entry.depositCount;
           }
         }
@@ -434,32 +643,45 @@ export class SweepService {
         if (erc20Tokens.length === 0) continue;
 
         if (erc20Tokens.length === 1) {
-          // Single token: use flushTokens(tokenAddress)
+          // Single token: use wallet.flushForwarderTokens(forwarder, token).
+          // onlySigner-gated wrapper on the wallet — no multisig signature
+          // needed. msg.sender of the inner forwarder.flushTokens call ends
+          // up being the wallet itself, satisfying onlyAllowedAddress.
           const entry = erc20Tokens[0];
           try {
-            const calldata = this.txSubmitter.buildFlushCalldata(
-              entry.token.contractAddress,
-            );
+            const calldata =
+              this.txSubmitter.buildWalletFlushForwarderTokensCalldata(
+                forwarderAddress,
+                entry.token.contractAddress,
+              );
 
             const sweepTxHash = await this.txSubmitter.signAndSubmit({
               chainId,
               clientId,
-              from: gasTank.address,
-              to: forwarderAddress,
+              from: '', // submitter resolves the platform key EOA
+              to: parentWalletAddress,
               data: calldata,
+              keyType: 'platform',
+              gasLimit: SWEEP_FLUSH_WRAPPER_DEFAULT_GAS,
             });
 
-            // TODO: gasPriceWei is '0' here — the actual price is resolved inside signAndSubmit.
-            // The receipt reconciler (gas-tank-receipt-reconciler.service) backfills gasCostWei via on-chain receipt.
             await this.gasTankTxLogger.logSubmit({
               walletId: gasTank.id,
               projectId: gasTank.projectId,
               chainId,
               txHash: sweepTxHash,
               operationType: 'sweep',
-              toAddress: forwarderAddress,
+              toAddress: parentWalletAddress,
               gasPriceWei: '0',
-              metadata: { clientId, forwarderAddress, tokenSymbol: entry.token.symbol, tokenAddress: entry.token.contractAddress, depositCount: entry.depositCount },
+              metadata: {
+                clientId,
+                forwarderAddress,
+                walletAddress: parentWalletAddress,
+                tokenSymbol: entry.token.symbol,
+                tokenAddress: entry.token.contractAddress,
+                depositCount: entry.depositCount,
+                sweepPath: 'wallet.flushForwarderTokens',
+              },
             });
 
             await this.prisma.deposit.updateMany({
@@ -485,50 +707,60 @@ export class SweepService {
             });
 
             this.logger.log(
-              `Submitted flushTokens on chain ${chainId}: forwarder=${forwarderAddress}, token=${entry.token.symbol}, tx=${sweepTxHash}`,
+              `Submitted flushForwarderTokens via wallet on chain ${chainId}: wallet=${parentWalletAddress}, forwarder=${forwarderAddress}, token=${entry.token.symbol}, tx=${sweepTxHash}`,
             );
           } catch (error) {
             const msg =
               error instanceof Error ? error.message : String(error);
             this.logger.error(
-              `flushTokens failed for forwarder ${forwarderAddress}, token ${entry.token.symbol} on chain ${chainId}: ${msg}`,
+              `flushForwarderTokens failed for forwarder ${forwarderAddress}, token ${entry.token.symbol} on chain ${chainId}: ${msg}`,
             );
+            await this.prisma.deposit.updateMany({
+              where: { id: { in: entry.depositIds } },
+              data: { status: 'sweep_failed' },
+            });
             result.failed += entry.depositCount;
           }
         } else {
-          // Multiple tokens on same forwarder: use batchFlushERC20Tokens
+          // Multiple tokens on same forwarder: wallet has no signer-only
+          // wrapper for batchFlushERC20Tokens, so we go through sendMultiSig
+          // with inner data = forwarder.batchFlushERC20Tokens(tokens).
           try {
             const tokenAddresses = erc20Tokens.map(
               (e) => e.token.contractAddress,
             );
-            const calldata =
+            const innerData =
               this.txSubmitter.buildBatchFlushCalldata(tokenAddresses);
-            const gasLimit =
-              this.txSubmitter.estimateBatchGasLimit(erc20Tokens.length);
 
-            const sweepTxHash = await this.txSubmitter.signAndSubmit({
+            const sweepTxHash = await this.submitMultiSigForwarderCall({
               chainId,
               clientId,
-              from: gasTank.address,
-              to: forwarderAddress,
-              data: calldata,
-              gasLimit,
+              forwarderAddress,
+              walletAddress: parentWalletAddress,
+              innerData,
+              gasLimitFallback:
+                this.txSubmitter.estimateBatchGasLimit(erc20Tokens.length) +
+                100_000n, // extra headroom for multisig verification overhead
             });
 
-            // TODO: gasPriceWei is '0' here — the actual price is resolved inside signAndSubmit.
-            // The receipt reconciler (gas-tank-receipt-reconciler.service) backfills gasCostWei via on-chain receipt.
             await this.gasTankTxLogger.logSubmit({
               walletId: gasTank.id,
               projectId: gasTank.projectId,
               chainId,
               txHash: sweepTxHash,
               operationType: 'sweep',
-              toAddress: forwarderAddress,
+              toAddress: parentWalletAddress,
               gasPriceWei: '0',
-              metadata: { clientId, forwarderAddress, tokenAddresses, tokenCount: erc20Tokens.length },
+              metadata: {
+                clientId,
+                forwarderAddress,
+                walletAddress: parentWalletAddress,
+                tokenAddresses,
+                tokenCount: erc20Tokens.length,
+                sweepPath: 'sendMultiSig.batchFlushERC20Tokens',
+              },
             });
 
-            // All ERC-20 deposits on this forwarder share the same sweep tx
             const allDepositIds = erc20Tokens.flatMap((e) => e.depositIds);
             const totalDepositCount = erc20Tokens.reduce(
               (sum, e) => sum + e.depositCount,
@@ -562,14 +794,19 @@ export class SweepService {
             });
 
             this.logger.log(
-              `Submitted batchFlushERC20Tokens on chain ${chainId}: forwarder=${forwarderAddress}, tokens=[${tokenSymbols}], tx=${sweepTxHash}`,
+              `Submitted batchFlushERC20Tokens via wallet on chain ${chainId}: wallet=${parentWalletAddress}, forwarder=${forwarderAddress}, tokens=[${tokenSymbols}], tx=${sweepTxHash}`,
             );
           } catch (error) {
             const msg =
               error instanceof Error ? error.message : String(error);
             this.logger.error(
-              `batchFlushERC20Tokens failed for forwarder ${forwarderAddress} on chain ${chainId}: ${msg}`,
+              `batchFlushERC20Tokens via wallet failed for forwarder ${forwarderAddress} on chain ${chainId}: ${msg}`,
             );
+            const allDepositIds = erc20Tokens.flatMap((e) => e.depositIds);
+            await this.prisma.deposit.updateMany({
+              where: { id: { in: allDepositIds } },
+              data: { status: 'sweep_failed' },
+            });
             const totalFailed = erc20Tokens.reduce(
               (sum, e) => sum + e.depositCount,
               0,
