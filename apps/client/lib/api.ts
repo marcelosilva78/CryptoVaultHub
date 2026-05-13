@@ -46,8 +46,26 @@ export async function clientFetch<T = any>(
   });
 
   if (res.status === 401) {
+    // Token expired mid-session. Try to refresh once; if the refresh succeeds,
+    // re-issue the original call and let the result propagate. If refresh
+    // fails, behaviour diverges by method:
+    //   - GET / HEAD / OPTIONS: redirect to login (read calls are idempotent
+    //     and the user will retry after re-authenticating).
+    //   - State-changing methods (POST/PATCH/PUT/DELETE): DO NOT redirect.
+    //     The user's form data is on screen and a hard redirect destroys it
+    //     and looks like the form action failed silently. Instead surface
+    //     "Session expired — please log in again" inline so the user sees
+    //     the real cause and can re-authenticate without losing context.
     const refreshed = await attemptTokenRefresh();
-    if (!refreshed) clearAuthAndRedirect();
+    const method = (options.method ?? 'GET').toUpperCase();
+    const isIdempotent =
+      method === 'GET' || method === 'HEAD' || method === 'OPTIONS';
+    if (!refreshed) {
+      if (isIdempotent) clearAuthAndRedirect();
+      throw new Error(
+        'Session expired. Please log in again to continue.',
+      );
+    }
 
     const retryRes = await fetch(`/api/proxy${path}`, {
       ...options,
@@ -55,7 +73,12 @@ export async function clientFetch<T = any>(
       credentials: 'include',
     });
     if (!retryRes.ok) {
-      if (retryRes.status === 401) clearAuthAndRedirect();
+      if (retryRes.status === 401) {
+        if (isIdempotent) clearAuthAndRedirect();
+        throw new Error(
+          'Session expired. Please log in again to continue.',
+        );
+      }
       const e = await retryRes.json().catch(() => ({ message: 'Request failed' }));
       throw new Error(e.message || `HTTP ${retryRes.status}`);
     }

@@ -395,10 +395,21 @@ export default function WithdrawalsPage() {
     return match?.balance ?? null;
   };
 
+  // Accept comma OR dot as the decimal separator. Brazilian / European users
+  // routinely type "0,0055" and parseFloat would silently truncate to 0,
+  // letting an invalid value through. We normalise on read; the API always
+  // receives the dot form.
+  function normalizeAmount(s: string): string {
+    return s.replace(',', '.').trim();
+  }
+
   // Validate the amount and return an error string (or null if valid)
   function validateAmount(amount: string): string | null {
-    if (!amount || amount.trim() === '') return 'Amount is required';
-    const num = parseFloat(amount);
+    const raw = amount;
+    if (!raw || raw.trim() === '') return 'Amount is required';
+    const norm = normalizeAmount(raw);
+    if (!/^\d+(\.\d+)?$/.test(norm)) return 'Please enter a valid number';
+    const num = parseFloat(norm);
     if (isNaN(num)) return 'Please enter a valid number';
     if (num <= 0) return 'Amount must be greater than 0';
     // Check against available balance for the selected token
@@ -438,7 +449,7 @@ export default function WithdrawalsPage() {
           sourceWallet,
           tokenSymbol: formToken,
           toAddress: formDestination,
-          amount: formAmount,
+          amount: normalizeAmount(formAmount),
         }),
       });
 
@@ -606,7 +617,14 @@ export default function WithdrawalsPage() {
             </label>
             <select
               value={formToken}
-              onChange={(e) => setFormToken(e.target.value)}
+              onChange={(e) => {
+                setFormToken(e.target.value);
+                // Clear the amount when the token changes so a leftover
+                // value typed in (or "Use max"-filled) for a different
+                // token doesn't get accidentally submitted in new units.
+                setFormAmount('');
+                setAmountError(null);
+              }}
               disabled={sourceWallet === "gas_tank"}
               className="w-full bg-surface-input border border-border-default rounded-input px-3 py-2 text-text-primary font-display text-body outline-none focus:border-border-focus cursor-pointer transition-colors duration-fast disabled:opacity-60 disabled:cursor-not-allowed"
             >
@@ -651,12 +669,20 @@ export default function WithdrawalsPage() {
               Amount
             </label>
             <input
-              type="number"
-              step="any"
-              min="0"
+              // text + inputMode="decimal" so browsers in pt-BR / pt-PT locales
+              // that render type="number" with comma as the decimal separator
+              // (and silently strip it from .value) don't drop the user's
+              // input. We normalise comma → dot ourselves in validateAmount
+              // and at submit time.
+              type="text"
+              inputMode="decimal"
               value={formAmount}
               onChange={(e) => {
-                setFormAmount(e.target.value);
+                // Accept only digits + one separator. Strip everything else
+                // so paste from spreadsheet/exchange (with thousands sep or
+                // currency prefix) doesn't poison the field.
+                const cleaned = e.target.value.replace(/[^0-9.,]/g, '');
+                setFormAmount(cleaned);
                 setAmountError(null);
               }}
               onBlur={() => {
@@ -670,11 +696,20 @@ export default function WithdrawalsPage() {
               }`}
             />
             {(() => {
-              const balance = sourceWallet === "gas_tank" ? gasTankBalance : hotNativeBalance();
+              // Available + Use max must reflect the SELECTED token, not just
+              // the chain's native. Otherwise switching BNB → USDT keeps the
+              // BNB max visible and "Use max" writes the BNB balance into a
+              // USDT withdrawal — silent units mismatch.
+              const isGasTank = sourceWallet === "gas_tank";
+              const nativeSym = nativeSymbolForChain(formChain);
+              const unit = isGasTank ? nativeSym : (formToken || nativeSym);
+              const balance = isGasTank
+                ? gasTankBalance
+                : (chainTokens.find((t) => t.symbol === formToken)?.balance ?? null);
               if (!balance) return null;
               return (
                 <p className="text-xs text-[var(--accent-primary)] mt-1">
-                  Available: {balance} {nativeSymbolForChain(formChain)}{" "}
+                  Available: {balance} {unit}{" "}
                   <button
                     type="button"
                     onClick={() => setFormAmount(balance)}
