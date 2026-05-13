@@ -135,6 +135,25 @@ model Deposit {
   @@map("deposits")
 }
 
+model SweepPolicy {
+  id              BigInt    @id @default(autoincrement())
+  projectId       BigInt    @map("project_id")
+  chainId         Int       @map("chain_id")
+  mode            String    @default("auto") @db.VarChar(20)
+  thresholdCount  Int?      @map("threshold_count")
+  thresholdUsd    Decimal?  @db.Decimal(18, 2) @map("threshold_usd")
+  scheduleCron    String?   @db.VarChar(64) @map("schedule_cron")
+  scheduleTz      String?   @default("UTC") @db.VarChar(64) @map("schedule_tz")
+  isPaused        Boolean   @default(false) @map("is_paused")
+  lastRunAt       DateTime? @map("last_run_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@unique([projectId, chainId], name: "uq_project_chain_policy")
+  @@index([mode], map: "idx_mode")
+  @@map("sweep_policies")
+}
+
 // ---------------------------------------------------------------------------
 // Withdrawals: accessed via raw SQL ($queryRaw/$executeRaw) against
 // cvh_transactions.withdrawals since that table is in a different database.

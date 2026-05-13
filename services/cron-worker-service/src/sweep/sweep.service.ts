@@ -6,6 +6,10 @@ import { RedisService } from '../redis/redis.service';
 import { EvmProviderService } from '../blockchain/evm-provider.service';
 import { TransactionSubmitterService } from './transaction-submitter.service';
 import { GasTankTxLoggerService } from '../gas-tank/gas-tank-tx-logger.service';
+import {
+  SweepPolicyResolver,
+  SweepPolicySnapshot,
+} from './sweep-policy-resolver.service';
 
 const ERC20_ABI = [
   'function balanceOf(address account) external view returns (uint256)',
@@ -75,6 +79,7 @@ export class SweepService {
     private readonly evmProvider: EvmProviderService,
     private readonly txSubmitter: TransactionSubmitterService,
     private readonly gasTankTxLogger: GasTankTxLoggerService,
+    private readonly policyResolver: SweepPolicyResolver,
   ) {}
 
   /**
@@ -127,9 +132,24 @@ export class SweepService {
       await Promise.allSettled(
         pairs.map(async (pair) => {
           const tPair = Date.now();
+          // Manual-trigger bypass: when a user clicks "Sweep agora" in the
+          // portal, the client-api → core-wallet path sets a short-lived Redis
+          // flag at sweep:bypass:<chainId>:<clientId>. The next tick reads
+          // that flag, runs executeSweep with bypassPolicy=true (so manual
+          // and threshold/schedule policies don't hold deposits back), then
+          // clears the flag.
+          const bypassKey = `sweep:bypass:${pair.chainId}:${pair.clientId}`;
+          const bypassFlag = await this.redis.getClient().getdel(bypassKey).catch(() => null);
+          const bypassPolicy = bypassFlag !== null && bypassFlag !== undefined;
+          if (bypassPolicy) {
+            this.logger.log(
+              `Sweep pair ${pair.chainId}/${pair.clientId}: manual bypass flag found, ignoring policy gates`,
+            );
+          }
+
           try {
             await Promise.race([
-              this.executeSweep(pair.chainId, pair.clientId),
+              this.executeSweep(pair.chainId, pair.clientId, { bypassPolicy }),
               new Promise<never>((_, reject) =>
                 setTimeout(
                   () =>
@@ -352,6 +372,7 @@ export class SweepService {
   async executeSweep(
     chainId: number,
     clientId: number,
+    options: { bypassPolicy?: boolean } = {},
   ): Promise<SweepResult> {
     const result: SweepResult = {
       chainId,
@@ -381,7 +402,7 @@ export class SweepService {
 
     try {
     // 1. Get confirmed deposits that are not yet swept
-    const deposits = await this.prisma.deposit.findMany({
+    const allConfirmed = await this.prisma.deposit.findMany({
       where: {
         chainId,
         clientId: BigInt(clientId),
@@ -390,7 +411,27 @@ export class SweepService {
       },
     });
 
-    if (deposits.length === 0) return result;
+    if (allConfirmed.length === 0) return result;
+
+    // 1.5. Policy gate. Each deposit belongs to a (projectId, chainId) tuple
+    // with an optional row in cvh_wallets.sweep_policies. Tenants on the
+    // default `auto` mode are unaffected (no row → treated as auto). Other
+    // modes filter the deposit set: manual hides everything, threshold_count
+    // gates per-forwarder by accumulated count, schedule gates per-project
+    // by the cron expression's next-due timestamp.
+    //
+    // bypassPolicy is set by the manual /v1/sweep/now endpoint so a user-
+    // triggered sweep ignores all gates.
+    const deposits = options.bypassPolicy
+      ? allConfirmed
+      : await this.applyPolicyFilter(chainId, allConfirmed);
+
+    if (deposits.length === 0) {
+      this.logger.debug(
+        `Sweep ${chainId}/${clientId}: ${allConfirmed.length} confirmed deposit(s) held back by policy`,
+      );
+      return result;
+    }
 
     // 2. Get chain config and contracts
     const chain = await this.prisma.chain.findUnique({
@@ -834,5 +875,88 @@ export class SweepService {
         await this.redis.getClient().del(lockKey);
       }
     }
+  }
+
+  /**
+   * Per-cycle policy filter. Groups deposits by (projectId, forwarderAddress)
+   * and applies the SweepPolicy gate. Returns the subset of deposits that
+   * the sweep service is allowed to act on right now. Also stamps last_run_at
+   * for every (project, chain) tuple whose deposits pass through, so
+   * scheduled policies know when the last actual run happened.
+   *
+   * For `manual` and policies that hold deposits back, the rows stay in
+   * `confirmed` and will be re-evaluated on the next cycle (no data loss).
+   */
+  private async applyPolicyFilter<
+    T extends {
+      id: bigint;
+      projectId: bigint | null;
+      forwarderAddress: string;
+    },
+  >(chainId: number, confirmed: T[]): Promise<T[]> {
+    // Distinct (projectId, chainId) pairs for which we need policy resolution.
+    const distinctPairs = Array.from(
+      new Map(
+        confirmed
+          .filter((d) => d.projectId != null)
+          .map((d) => [`${d.projectId}:${chainId}`, {
+            projectId: d.projectId as bigint,
+            chainId,
+          }]),
+      ).values(),
+    );
+    const snap = await this.policyResolver.snapshot(distinctPairs);
+
+    // Count non-terminal deposits per forwarder (needed for threshold_count).
+    // We count from the full set of confirmed deposits we just fetched —
+    // good enough for the threshold check, since the threshold cares about
+    // "how many unswept deposits accumulated".
+    const countPerForwarder = new Map<string, number>();
+    for (const d of confirmed) {
+      const k = d.forwarderAddress.toLowerCase();
+      countPerForwarder.set(k, (countPerForwarder.get(k) ?? 0) + 1);
+    }
+
+    const allowed: T[] = [];
+    const projectIdsAdvanced = new Set<string>();
+    for (const d of confirmed) {
+      if (d.projectId == null) {
+        // Project-less deposit (shouldn't happen in normal flow) — fall back
+        // to auto so legacy data isn't accidentally held back.
+        allowed.push(d);
+        continue;
+      }
+      const decision = snap.qualifies(
+        { projectId: d.projectId, chainId },
+        {
+          depositCountForwarder:
+            countPerForwarder.get(d.forwarderAddress.toLowerCase()) ?? 0,
+          unsweptUsdForwarder: null, // threshold_value not yet wired in cron
+        },
+      );
+      if (decision.allow) {
+        allowed.push(d);
+        projectIdsAdvanced.add(d.projectId.toString());
+      } else {
+        this.logger.debug(
+          `Sweep policy held deposit ${d.id} (forwarder ${d.forwarderAddress}, project ${d.projectId}): ${decision.reason}`,
+        );
+      }
+    }
+
+    // Stamp last_run_at for every project we actually advanced.
+    await Promise.all(
+      Array.from(projectIdsAdvanced).map((pid) =>
+        this.policyResolver
+          .markRun(BigInt(pid), chainId)
+          .catch((err) =>
+            this.logger.warn(
+              `Failed to stamp lastRunAt for project ${pid} chain ${chainId}: ${(err as Error).message}`,
+            ),
+          ),
+      ),
+    );
+
+    return allowed;
   }
 }

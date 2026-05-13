@@ -14,6 +14,7 @@ import { RedisModule } from './common/redis/redis.module';
 import { ProjectModule } from './project/project.module';
 import { ProjectSetupModule } from './project-setup/project-setup.module';
 import { FlushModule } from './flush/flush.module';
+import { SweepPolicyModule } from './sweep-policy/sweep-policy.module';
 import { DeployTraceModule } from './deploy-trace/deploy-trace.module';
 import { AddressGroupModule } from './address-group/address-group.module';
 import { ExportModule } from './export/export.module';
@@ -46,6 +47,7 @@ import { PostHogInterceptor } from './common/interceptors/posthog.interceptor';
     ProjectModule,
     ProjectSetupModule,
     FlushModule,
+    SweepPolicyModule,
     DeployTraceModule,
     AddressGroupModule,
     ExportModule,

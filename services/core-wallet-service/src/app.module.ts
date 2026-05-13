@@ -21,6 +21,7 @@ import { DeployModule } from './deploy/deploy.module';
 import { AddressGroupModule } from './address-group/address-group.module';
 import { AddressBookModule } from './address-book/address-book.module';
 import { CoSignModule } from './co-sign/co-sign.module';
+import { SweepPolicyModule } from './sweep-policy/sweep-policy.module';
 import { InternalServiceGuard } from './common/guards/internal-service.guard';
 import { HealthController } from './common/health.controller';
 
@@ -60,6 +61,7 @@ import { HealthController } from './common/health.controller';
     AddressGroupModule,
     AddressBookModule,
     CoSignModule,
+    SweepPolicyModule,
   ],
   controllers: [HealthController],
   providers: [
